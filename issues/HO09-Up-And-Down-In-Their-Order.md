@@ -55,3 +55,6 @@ stood, and `down` after a failed `up` takes down what came up.
 - With Agent Frontend, whose Dart package is `host up` and `host down`: the callback's file and its fields, the exit
   code for the stop, and how the tarball and the inventory reach the host, as the contract between this collection
   and that package.
+- What porelo-frontend's package met on a fresh Ubuntu 26.04, to hold in the plays too: its `sudo` is sudo-rs, which
+  ignores `-E`, so an environment goes through `sudo env …`; Ansible refuses a locale that is not UTF-8, so the plays
+  run under `C.UTF-8`; and a fresh image has no apt lists while cloud-init may still hold apt's lock.

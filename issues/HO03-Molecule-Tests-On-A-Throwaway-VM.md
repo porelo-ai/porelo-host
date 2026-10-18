@@ -1,6 +1,6 @@
 # HO03 — Molecule Tests On A Throwaway VM
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** M - one Molecule scenario and the script that makes and deletes its VM, an acceptance step every role is
 tested by; no contract another repository reads.
 
@@ -52,4 +52,4 @@ and leaves nothing behind on this machine, after a failure too.
 - [x] The probe on GitHub's runner, run 39145070246: the VM up after 17 s, the scenario green, in about three minutes.
   Its three runs before failed in the probe's own setup, never on KVM: no `qemu-img`, the network not started, and
   rootless podman under `sg`.
-- [ ] The Build's `molecule` job green on GitHub.
+- [x] The Build's `molecule` job green on GitHub: Build 39145739190 on `a42046e`, the job in 2 min 28 s.
