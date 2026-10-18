@@ -1,0 +1,55 @@
+# Measures, once and by hand, whether a GitHub-hosted runner can carry the Molecule test as it runs locally: whether it
+# offers /dev/kvm, and whether build/molecule.sh's libvirt VM (Ubuntu 26.04, 4 vCPU, 4 GB, nested KVM) starts there and
+# passes its scenario. It rents nothing and publishes nothing; it is deleted once its answer is written down.
+name: KVM probe
+
+on:
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    probe:
+        runs-on: ubuntu-24.04
+        timeout-minutes: 30
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+
+            - name: What the runner offers
+              run: |
+                  set -u
+                  nproc; free -g; uname -r
+                  grep -m1 -oE 'vmx|svm' /proc/cpuinfo || echo "no vmx or svm flag"
+                  ls -l /dev/kvm || echo "no /dev/kvm"
+                  lsmod | grep -E '^kvm' || echo "no kvm module"
+
+            # The runner account may not open /dev/kvm by default; this rule lets the kvm group do so.
+            - name: KVM for the runner's account
+              run: |
+                  set -eu
+                  echo 'KERNEL=="kvm", GROUP="kvm", MODE="0660", OPTIONS+="static_node=kvm"' \
+                      | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+                  sudo udevadm control --reload-rules
+                  sudo udevadm trigger --name-match=kvm
+                  ls -l /dev/kvm
+
+            - name: libvirt, virt-install and xorriso from Ubuntu's archive
+              run: |
+                  set -eu
+                  sudo apt-get update -qq
+                  sudo apt-get install -y -qq --no-install-recommends \
+                      libvirt-daemon-system libvirt-clients qemu-system-x86 virtinst xorriso
+                  sudo usermod -aG libvirt,kvm "$USER"
+                  sudo virsh pool-info images >/dev/null 2>&1 || {
+                      sudo mkdir -p /var/lib/libvirt/images
+                      sudo virsh pool-define-as images dir --target /var/lib/libvirt/images
+                      sudo virsh pool-start images
+                  }
+                  sudo virsh net-start default 2>/dev/null || true
+                  dpkg-query -W libvirt-daemon-system qemu-system-x86 virtinst xorriso
+
+            - name: The Molecule scenario on its VM, as build/molecule.sh runs it locally
+              run: sg libvirt -c 'build/molecule.sh'
