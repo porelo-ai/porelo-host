@@ -53,7 +53,11 @@ jobs:
                   sudo virsh net-info default >/dev/null 2>&1 || sudo virsh net-define /usr/share/libvirt/networks/default.xml
                   LC_ALL=C sudo virsh net-info default | grep -q '^Active: *yes' || sudo virsh net-start default
                   LC_ALL=C sudo virsh net-info default | grep '^Active: *yes'
+                  # libvirt's socket for this one account, by an ACL: a step under `sg libvirt` would start rootless
+                  # podman under a new group, whose user namespace newuidmap refuses.
+                  sudo setfacl -m "u:$USER:rw" /run/libvirt/libvirt-sock
+                  virsh -c qemu:///system list --all >/dev/null
                   dpkg-query -W libvirt-daemon-system qemu-system-x86 qemu-utils dnsmasq-base virtinst xorriso
 
             - name: The Molecule scenario on its VM, as build/molecule.sh runs it locally
-              run: sg libvirt -c 'build/molecule.sh'
+              run: build/molecule.sh
