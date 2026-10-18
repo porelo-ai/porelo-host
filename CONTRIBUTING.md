@@ -16,6 +16,8 @@ podman, so nothing but podman and Java 25 is installed:
     build/tools.sh yamllint --strict -c build/yamllint-ansible.yml .
     build/tools.sh yamllint --strict -c build/yamllint.yml .
     build/tools.sh ansible-lint -c build/ansible-lint.yml
+    build/tools.sh black --check -l 120 plugins tests
+    build/tools.sh python3 -m pytest -q -p no:cacheprovider -p no:pytest-ansible tests/unit
     build/tools.sh ansible-galaxy collection build --output-path target --force
     build/check-tarball.sh target/porelo-host-*.tar.gz
 

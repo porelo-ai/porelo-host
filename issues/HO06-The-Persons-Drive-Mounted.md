@@ -50,3 +50,6 @@ nothing is run from it; at `down` it is unmounted, with everything written to it
 - Whether `tresorit-cli login --email <address> --password-on-stdin` logs in over `ssh … bash -s` with no terminal,
   once without and once with a second factor on the account, so porelo-frontend can give the login as it gives the
   vault's passphrase; read in Tresorit's documentation, not yet measured.
+- That the role adds `drive` to `porelo_host_needs` in `up`'s first play while the drive is logged out or not synced,
+  so the second play stops with the waiting line `doc/lines.md` describes; [HO09](README.md#ho09) built that stop and leaves its
+  acceptance here.

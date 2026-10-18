@@ -22,10 +22,12 @@ issues: https://github.com/porelo-ai/porelo-host/issues
 build_ignore:
   - ".*"
   - "*/.*"
+  - "*/__pycache__"
   - mvnw
   - build
   - doc
   - extensions
+  - tests
   - issues
   - mkdocs.yml
   - AGENTS.md

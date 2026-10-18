@@ -9,4 +9,6 @@ exclude_paths:
     - build/
     - doc/
     - issues/
+    # Plays a test runs on purpose with what the production profile refuses, such as ignore_errors.
+    - tests/
     - mkdocs.yml

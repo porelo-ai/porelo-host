@@ -9,6 +9,7 @@ ignore: |
     meta/
     doc/
     issues/
+    tests/
     mkdocs.yml
     target/
     .ansible/

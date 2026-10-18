@@ -1,0 +1,26 @@
+---
+- name: Steps of every kind
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Do nothing
+        ansible.builtin.debug:
+            msg: nothing
+      - name: Change something
+        ansible.builtin.command:
+            cmd: "true"
+        changed_when: true
+      - name: Be skipped
+        ansible.builtin.debug:
+            msg: never
+        when: false
+      - name: Fail and be ignored
+        ansible.builtin.command:
+            cmd: "false"
+        changed_when: false
+        ignore_errors: true
+      - name: Fail with a secret
+        ansible.builtin.fail:
+            msg: the secret is planted-secret-value
+        no_log: true

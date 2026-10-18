@@ -53,11 +53,24 @@
             vars:
               porelo_host_account: {{ converge_account }}
 
-    - name: Run up on the host itself, as host up does
+    - name: Run up on the host itself, as host up does, its steps as JSON lines
       ansible.builtin.command:
         cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.up
+      environment:
+        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
+        LC_ALL: C.UTF-8
       register: converge_up
-      changed_when: converge_up.stdout is search('changed=[1-9]')
+      changed_when: >-
+        converge_up.stdout is search('"state": "changed"')
+
+    - name: Keep the lines of the last up for verify
+      ansible.builtin.copy:
+        dest: /root/porelo-host-up.lines
+        content: "{{ converge_up.stdout }}\n"
+        owner: root
+        group: root
+        mode: "0600"
+      changed_when: false
 
   handlers:
     - name: Install the collection from that tarball

@@ -34,21 +34,31 @@ stood, and `down` after a failed `up` takes down what came up.
   removes the homeserver's database volume, its port, its registration token and its poll positions; so the room's
   copy comes before it at `down`, and at `up` the room is restored before the first `porelo task start`, which would
   otherwise make a fresh homeserver.
-- **What a program reads**, as porelo-frontend's issue on putting a project on a server asks: a callback plugin of
-  this collection writes one JSON line per step - started, done or refused, its name, and on a refusal the command
-  that fixes it - into a file the caller names, beside Ansible's text for a person; the stop for the person is a
-  refusal of its own kind, naming the host and the account. Ansible's exit codes stay as they are, and `host up` turns
-  the stop into an exit code of its own, so the interface asks the person instead of showing a failure.
-- **Red first**: `up` with the vault left shut must end in the stop, with its line in the file; the second `up`
-  after the vault is opened must report the first play's roles `changed=0`.
+- **What a program reads is built: the stdout callback `porelo.host.lines`** (`plugins/callback/lines.py`), the
+  contract agreed with porelo-frontend and written in `doc/lines.md`: one JSON line per task's start and end, and the
+  stop as `{"v": 1, "state": "waiting", "needs": [...]}` from the second play's first task, tagged
+  `porelo_host_waiting`. Ansible's own exit code stays; the caller maps the stop from the line.
+- **The stop's mechanism is built, its checks come with their roles**, changed from the plan once read against what
+  exists: of the plays' roles only `base` is built, `porelo vault status` is porelo's [B208](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b208), and the drive is
+  [HO06](README.md#ho06). Each role the person's step serves adds what is missing to the fact `porelo_host_needs` in
+  the first play - [HO02](README.md#ho02) `vault` or `vault-new`, [HO06](README.md#ho06) `drive` - and the second play's first task
+  stops on it. So the stop's own acceptance is [HO02](README.md#ho02)'s and [HO06](README.md#ho06)'s.
+- **`playbooks/down.yml`** names its steps' order and holds none yet; each comes with the role that brings something
+  up.
+- **The collection's first Python** is checked with what the pinned image holds: `black --check`, `py_compile`, and
+  pytest tests that run the image's own `ansible-playbook` with the callback. The image's pytest-ansible plugin is
+  left out, since it links the collection into the checkout as `collections/`.
 
 ## Acceptance
 
-- On the test VM `build/molecule.sh` makes: `up`, the stop, the person's step done by the test, `up` again, all green; `down`;
-  `up` once more with the room and records back.
-- A `down` after an `up` broken off in its second play leaves the host as `down` promises, and names nothing as
-  failed that was never there.
-- The JSON lines of a run name every step once, and the stop's line names the commands of the person's step.
+- [x] The callback's tests, run by the real `ansible-playbook`: every line is version 1 JSON; each task starts once
+  and ends as `ok`, `changed`, `skipped` or `failed`, an ignored failure as `ok`; a `no_log` task's planted secret is
+  in no output; the stop is a waiting line naming its needs, and no failure. Seen red: the waiting branch removed, and
+  a callback that wrote a task's arguments, which leaked the secret.
+- [ ] On the test VM, `up` run as `host up` runs it, with the callback and `C.UTF-8`: every line is the contract's
+  JSON, each start has its end, nothing fails or waits; a second `up` changes nothing.
+- The stop on the test VM, a vault left shut or a drive not synced: [HO02](README.md#ho02)'s and
+  [HO06](README.md#ho06)'s.
 
 ## To be checked
 

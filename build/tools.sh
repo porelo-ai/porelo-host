@@ -14,5 +14,5 @@ work=/work/ansible_collections/porelo/host
 # Only this collection's own variables pass in, so nothing else of the caller's environment reaches the tools.
 # The checkout is mounted where Ansible finds it as the collection porelo.host, so the playbooks name its roles so.
 exec podman run --rm --userns=keep-id --user "$(id -u):$(id -g)" -e HOME=/tmp --env 'PORELO_HOST_*' \
-    -e ANSIBLE_COLLECTIONS_PATH=/work \
+    -e ANSIBLE_COLLECTIONS_PATH=/work -e PYTHONDONTWRITEBYTECODE=1 \
     -v "$root:$work:Z" -w "$work" "$image" "$@"

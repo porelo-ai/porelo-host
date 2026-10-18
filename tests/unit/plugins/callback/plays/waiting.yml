@@ -1,0 +1,10 @@
+---
+- name: Wait for the person
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Stop for the person's step
+        ansible.builtin.fail:
+            msg: '{{ ["drive", "vault-new"] | to_json }}'
+        tags: [porelo_host_waiting]

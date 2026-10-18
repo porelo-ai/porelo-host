@@ -53,3 +53,6 @@ run changes nothing that is already as it should be.
 ## To be checked
 
 - That `porelo-setup-latest.sh` is fetched with its digest checked, and from where.
+- That the role adds `vault-new` (no vault, `porelo vault status` 4) or `vault` (shut, 3) to `porelo_host_needs` in
+  `up`'s first play, so its second play stops with the waiting line `doc/lines.md` describes; [HO09](README.md#ho09) built that stop and
+  leaves its acceptance here.

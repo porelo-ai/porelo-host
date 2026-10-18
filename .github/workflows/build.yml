@@ -57,6 +57,16 @@ jobs:
             - name: The collection against ansible-lint's production profile
               run: build/tools.sh ansible-lint -c build/ansible-lint.yml
 
+            # The collection's Python, with what the pinned image holds: its format, that it compiles, and the tests
+            # that run it under the image's own ansible-playbook. The image's pytest-ansible plugin is left out, since
+            # it would link the collection into the checkout as collections/.
+            - name: The plugins' Python and their tests
+              run: |
+                  set -eu
+                  build/tools.sh black --check -l 120 plugins tests
+                  build/tools.sh python3 -c "import sys; compile(open(sys.argv[1]).read(), sys.argv[1], 'exec')" plugins/callback/lines.py
+                  build/tools.sh python3 -m pytest -q -p no:cacheprovider -p no:pytest-ansible tests/unit
+
             - name: The tarball, holding only what the collection ships
               run: |
                   set -eu

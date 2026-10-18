@@ -8,4 +8,5 @@
 .mvn/maven.config
 *.log
 *.retry
+__pycache__/
 /target/

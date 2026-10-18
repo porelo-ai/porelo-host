@@ -104,3 +104,21 @@
         fail_msg: >-
           {{ verify_account }}'s rootless podman mapped {{ verify_account_podman.stdout_lines }}
           (rc {{ verify_account_podman.rc }}: {{ verify_account_podman.stderr }})
+
+    # The lines callback, as porelo-frontend's host command reads it from a real up on the host.
+    - name: Read the lines of the last up
+      ansible.builtin.slurp:
+        src: /root/porelo-host-up.lines
+      register: verify_lines_file
+
+    - name: Assert every line is the contract's JSON, every task ends, and nothing failed or waits
+      ansible.builtin.assert:
+        that:
+          - verify_lines | length > 0
+          - verify_lines | map(attribute='v') | unique == [1]
+          - verify_lines | selectattr('state', 'equalto', 'started') | list | length
+            == verify_lines | selectattr('state', 'in', ['ok', 'changed', 'skipped']) | list | length
+          - verify_lines | selectattr('state', 'in', ['failed', 'waiting']) | list | length == 0
+        fail_msg: "the last up's lines: {{ verify_lines }}"
+      vars:
+        verify_lines: "{{ (verify_lines_file.content | b64decode).splitlines() | select | map('from_json') | list }}"

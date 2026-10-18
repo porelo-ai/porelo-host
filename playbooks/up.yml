@@ -1,6 +1,8 @@
 ---
-# What `host up` runs on the host itself, with `-c local`. Its roles come with the issues that build them.
-- name: Bring the host up
+# What `host up` runs on the host itself, with `-c local`: two plays around the one step only the person can take.
+# Each role the person's step serves adds what is missing to the fact porelo_host_needs in the first play; the
+# second play's first task stops on it, and the lines callback reports that stop as a waiting line.
+- name: Bring the host up to the person's step
   hosts: localhost
   connection: local
   gather_facts: false
@@ -12,3 +14,14 @@
       ansible.builtin.include_role:
         name: porelo.host.base
         tasks_from: account
+
+- name: Bring the host up from the person's step
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Stop for what only the person can give
+      ansible.builtin.fail:
+        msg: "{{ porelo_host_needs | default([]) | to_json }}"
+      when: porelo_host_needs | default([]) | length > 0
+      tags: [porelo_host_waiting]
