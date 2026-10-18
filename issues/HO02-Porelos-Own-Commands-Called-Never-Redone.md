@@ -1,7 +1,6 @@
 # HO02 — Porelo's Own Commands Called, Never Redone
 
-**Status:** Estimated; blocked by porelo's issue on what a host playbook reads from Porelo (an Idea, linked here once
-it is on porelo's `main`).
+**Status:** Estimated; blocked by porelo [B208](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b208).
 **Size:** L - one role here, but it rests on a contract with `porelo` that does not exist yet, and `up` is cut in two
 by a step the person takes by hand.
 
@@ -52,5 +51,4 @@ run changes nothing that is already as it should be.
 
 ## To be checked
 
-- The link to porelo's issue on what a host playbook reads from Porelo, once it is published.
 - That `porelo-setup-latest.sh` is fetched with its digest checked, and from where.

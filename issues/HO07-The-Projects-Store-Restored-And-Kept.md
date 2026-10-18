@@ -1,7 +1,7 @@
 # HO07 — The Project's Store Restored And Kept
 
 **Status:** Estimated; blocked by porelo-project [PJ45](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj45), and by
-porelo-message-matrix's issue on the room outliving the machine (an Idea, linked here once it is published).
+porelo-message-matrix [MX24](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx24).
 **Size:** L - one role, a script and a timer here, but every entry's copy and restore is another repository's command,
 and the round trip is measured on a rented host.
 

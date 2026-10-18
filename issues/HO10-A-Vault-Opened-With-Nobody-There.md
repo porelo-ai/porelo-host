@@ -1,7 +1,6 @@
 # HO10 — A Vault Opened With Nobody There
 
-**Status:** Estimated; blocked by porelo's issue on `vault unlock` reading the passphrase on its standard input (an
-Idea, linked here once it is published).
+**Status:** Estimated; blocked by porelo [B209](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b209).
 **Size:** XS - the playbook only checks that the vault is open and stops if not; opening it is the caller's, through
 Porelo's command.
 
