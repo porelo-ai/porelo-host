@@ -6,8 +6,8 @@ uses: a role installs packages, KVM and system services, and only a fresh machin
     build/molecule.sh
 
 runs the Molecule scenario `extensions/molecule/default` against such a VM, through libvirt on the machine it is
-started on (`qemu:///system`, pool `images`, network `default`). It needs libvirt, `virt-install`, `xorriso`, ssh and
-podman there; Molecule itself runs from the image `build/tools-image` pins.
+started on (`qemu:///system`, pool `images`, network `default`). It needs libvirt, `qemu-img`, `virt-install`,
+`xorriso`, ssh and podman there; Molecule itself runs from the image `build/tools-image` pins.
 
 **What a run makes and leaves.** One domain and two volumes, its disk and its cloud-init seed, all named
 `porelo-host-molecule-<run>`. It deletes them at its end, after a failure and on an interrupt too, and believes that
