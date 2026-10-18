@@ -9,6 +9,7 @@ says why.
 | Where the collection ships | A tarball attached to the repository's GitHub releases; Ansible Galaxy later. | [Why](#where-the-collection-ships) |
 | The systems | Ubuntu 26.04 at first; another system is an issue of its own. | [Why](#the-systems) |
 | Where the playbook runs | On the host itself, with Ubuntu's own `ansible-core` and `-c local`. | [Why](#where-the-playbook-runs) |
+| Where the VM test runs | On a libvirt VM per run everywhere: here, in the GitHub Build and in the Forgejo build. | [Why](#where-the-vm-test-runs) |
 | `ansible-test sanity` | Left out until the collection holds Python. | [Why](#ansible-test-sanity) |
 | The changelog | `CHANGELOG.md`, Keep a Changelog, as in every Porelo repository; no `antsibull-changelog`. | [Why](#the-changelog) |
 
@@ -36,6 +37,16 @@ variables in each role and a Molecule scenario, so it is an issue of its own rat
 `ansible-core` from Ubuntu's packages and runs the playbook there with `-c local`. The person's computer needs only ssh
 and `host up`, on Linux and Windows alike: on Windows Ansible's control node does not run, and on neither can podman
 be assumed. The `ansible-core` the host's Ubuntu carries is therefore the version the collection is held to.
+
+## Where the VM test runs
+
+The roles install packages, KVM and system services, so they are tested on a fresh VM, never in a container. GitHub's
+hosted runner `ubuntu-24.04` offers KVM (an AMD CPU with `svm`, `/dev/kvm`, `kvm_amd`), and a probe ran
+`build/molecule.sh` green there: the VM answered after 17 s, and the job took about three minutes. Forgejo builds with
+the same workflows, so one test runs the same in all three places, with no rented machine. The Build runs it on `main`
+and on the project's own pull requests, never on a fork's, whose code would run on this repository's runner. The
+packages the runner adds are pinned by version; a version the archive no longer carries stops the Build, and the pins
+are moved by hand.
 
 ## `ansible-test sanity`
 

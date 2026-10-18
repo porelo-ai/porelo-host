@@ -1,6 +1,7 @@
 # Checks the collection on every push to main and every pull request: the documents' shared rules, then yamllint,
-# ansible-lint in its production profile, and the tarball, which may hold only what the collection ships. The Ansible
-# tools run from the image build/tools-image pins, as they do locally. It rents no machine.
+# ansible-lint in its production profile, and the tarball, which may hold only what the collection ships; then the
+# Molecule scenario on a VM the runner makes and deletes. The Ansible tools run from the image build/tools-image pins,
+# as they do locally. It rents no machine.
 name: Build
 
 on:
@@ -61,3 +62,55 @@ jobs:
                   set -eu
                   build/tools.sh ansible-galaxy collection build --output-path target
                   build/check-tarball.sh target/porelo-host-*.tar.gz
+
+    # The roles on a VM made and deleted for the run, as build/molecule.sh runs them locally and as the Forgejo build
+    # runs them: GitHub's runner offers KVM, measured by a probe that ran the scenario green there. Never for a fork's
+    # pull request, whose code would run with this repository's runner.
+    molecule:
+        needs: build
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        runs-on: ubuntu-24.04
+        timeout-minutes: 20
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+
+            # The runner's account may not open /dev/kvm by default; this rule lets the kvm group do so.
+            - name: KVM for the runner's account
+              run: |
+                  set -eu
+                  echo 'KERNEL=="kvm", GROUP="kvm", MODE="0660", OPTIONS+="static_node=kvm"' \
+                      | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+                  sudo udevadm control --reload-rules
+                  sudo udevadm trigger --name-match=kvm
+                  ls -l /dev/kvm
+
+            # Pinned by version; a version the archive no longer carries stops here, and the pins are moved by hand.
+            - name: libvirt with its network, qemu-img, virt-install and xorriso, by version
+              run: |
+                  set -eu
+                  sudo apt-get update -qq
+                  sudo apt-get install -y -qq --no-install-recommends \
+                      libvirt-daemon-system=10.0.0-2ubuntu8.19 \
+                      qemu-system-x86=1:8.2.2+ds-0ubuntu1.18 \
+                      qemu-utils=1:8.2.2+ds-0ubuntu1.18 \
+                      dnsmasq-base=2.91-0ubuntu0.24.04.2 \
+                      virtinst=1:4.1.0-3ubuntu0.1 \
+                      xorriso=1:1.5.6-1.1ubuntu3
+                  sudo virsh pool-info images >/dev/null 2>&1 || {
+                      sudo mkdir -p /var/lib/libvirt/images
+                      sudo virsh pool-define-as images dir --target /var/lib/libvirt/images
+                      sudo virsh pool-start images
+                  }
+                  # libvirt's NAT network must be active before the script runs, and saying so fails here.
+                  sudo virsh net-info default >/dev/null 2>&1 || sudo virsh net-define /usr/share/libvirt/networks/default.xml
+                  LC_ALL=C sudo virsh net-info default | grep -q '^Active: *yes' || sudo virsh net-start default
+                  LC_ALL=C sudo virsh net-info default | grep '^Active: *yes'
+                  # libvirt's socket for this one account, by an ACL: a step under `sg libvirt` would start rootless
+                  # podman under a new group, whose user namespace newuidmap refuses.
+                  sudo setfacl -m "u:$USER:rw" /run/libvirt/libvirt-sock
+                  virsh -c qemu:///system list --all >/dev/null
+
+            - name: The Molecule scenario on its VM
+              run: build/molecule.sh

@@ -13,8 +13,10 @@ and leaves nothing behind on this machine, after a failure too.
 - **Why not a container**: the roles install packages, KVM, podman and systemd units and mount a drive. A container
   shows none of that truly, and the shared VMs are other agents' test machines, where a playbook that installs as
   root changes what their runs measure.
-- **Decided**: Molecule makes and deletes its own libvirt VM on this machine per run, 4 vCPUs and 4 GB; it runs here
-  before every hand-over, and the GitHub Build runs the linters and the tarball only.
+- **Decided**: Molecule makes and deletes its own libvirt VM per run, 4 vCPUs and 4 GB, here before every hand-over
+  and in the Build. Measured first by a hand-started probe: GitHub's `ubuntu-24.04` runner offers KVM, and the
+  scenario ran green there; so the Build's `molecule` job runs it on `main` and on the project's own pull requests,
+  never on a fork's, with libvirt, qemu-img, dnsmasq, virt-install and xorriso pinned by version.
 - **The VM is the script's, not Molecule's**, changed from the plan's `create.yml` and `destroy.yml`: Molecule runs in
   the pinned image, which reaches neither `virsh` nor this machine's libvirt. `build/molecule.sh` makes the VM through
   `qemu:///system`, pool `images`, network `default`: a 20 G copy-on-write disk over the Ubuntu 26.04 cloud image
@@ -47,3 +49,7 @@ and leaves nothing behind on this machine, after a failure too.
   interrupted in `converge` exited 130 and left nothing; a planted volume named like a run made the script refuse to
   start, naming it.
 - [x] The time of one full run is in `doc/`: about a minute with the image cached.
+- [x] The probe on GitHub's runner, run 39145070246: the VM up after 17 s, the scenario green, in about three minutes.
+  Its three runs before failed in the probe's own setup, never on KVM: no `qemu-img`, the network not started, and
+  rootless podman under `sg`.
+- [ ] The Build's `molecule` job green on GitHub.

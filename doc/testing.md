@@ -23,6 +23,9 @@ only one accepted.
 its tarball, and `porelo.host.up` run on the machine itself with `-c local`. A second converge must change nothing,
 and `verify` reads on the machine what `up` promises.
 
+**In the Build** the same script runs on GitHub's runner, after the linters and the tarball, on `main` and on the
+project's own pull requests: about three minutes, the runner adding libvirt by pinned versions first.
+
 **How long it takes**, measured on this project's workstation (16 threads, AMD): about a minute from start to clean-up
 with the image cached - 52 s for a run whose `up` has no role yet, of which the VM takes about 15 s to answer ssh.
 The first run on a machine also downloads the image, 825 MB, about 70 s at the measured 12 MB/s.
