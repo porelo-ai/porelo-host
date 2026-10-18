@@ -1,0 +1,16 @@
+---
+- name: cpu | Read the CPU's virtualization flags
+  ansible.builtin.command:
+    cmd: grep -m1 -oE 'vmx|svm' /proc/cpuinfo
+  register: __base_cpu_flags
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: cpu | Stop on a CPU without virtualization
+  ansible.builtin.assert:
+    that: __base_cpu_flags.stdout in ['vmx', 'svm']
+    fail_msg: >-
+      this host's CPU offers no virtualization (neither vmx nor svm in /proc/cpuinfo), so KVM cannot run here;
+      nothing was installed
+    quiet: true

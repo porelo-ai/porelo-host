@@ -1,0 +1,21 @@
+---
+argument_specs:
+  main:
+    short_description: The host's packages, KVM and podman, machine-wide.
+    description:
+      - Stops before it installs anything on a CPU without virtualization.
+    options:
+      base_packages:
+        type: list
+        elements: str
+        description: Packages every host gets beside KVM's and podman's.
+        default: [acl, ca-certificates, curl, git]
+  account:
+    short_description: Porelo's account in KVM's and libvirt's groups.
+    description:
+      - Run after Porelo's setup script made the account; checks its linger and subordinate ids, makes neither.
+    options:
+      base_account:
+        type: str
+        required: true
+        description: The account Porelo's tasks run as, from the collection-wide variable porelo_host_account.

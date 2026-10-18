@@ -1,7 +1,9 @@
 ---
 # The collection is held to ansible-lint's strictest profile.
 profile: production
-offline: true
+# Not offline: its prerun installs this collection from the checkout, so the playbooks find its roles by name;
+# the collection names no dependency for it to fetch.
+offline: false
 exclude_paths:
     - .github/
     - build/

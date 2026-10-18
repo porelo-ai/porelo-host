@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  author: Michael Schnell
+  description: The host's base - its packages, KVM usable by Porelo's account, and podman.
+  license: GPL-3.0-or-later
+  min_ansible_version: "2.19"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - all
+dependencies: []

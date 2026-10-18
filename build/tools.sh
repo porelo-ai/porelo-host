@@ -12,5 +12,7 @@ printf '%s\n' "$image" | grep -Eqx '[a-z0-9./-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]
 command -v podman >/dev/null || { echo "REFUSED: podman is not installed, and it runs the tools" >&2; exit 1; }
 work=/work/ansible_collections/porelo/host
 # Only this collection's own variables pass in, so nothing else of the caller's environment reaches the tools.
+# The checkout is mounted where Ansible finds it as the collection porelo.host, so the playbooks name its roles so.
 exec podman run --rm --userns=keep-id --user "$(id -u):$(id -g)" -e HOME=/tmp --env 'PORELO_HOST_*' \
+    -e ANSIBLE_COLLECTIONS_PATH=/work \
     -v "$root:$work:Z" -w "$work" "$image" "$@"

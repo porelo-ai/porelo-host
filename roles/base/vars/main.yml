@@ -1,0 +1,5 @@
+---
+# The groups that let an account open /dev/kvm and libvirt's socket.
+__base_account_groups:
+  - kvm
+  - libvirt

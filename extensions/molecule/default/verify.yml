@@ -6,6 +6,7 @@
   become: true
   vars:
     verify_version: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_VERSION') }}"
+    verify_account: porelo-test
   tasks:
     - name: Read which collections the host has
       ansible.builtin.command:
@@ -49,3 +50,57 @@
         that: verify_kvm.rc == 0 and verify_kvm.stdout == '12'
         fail_msg: >-
           asked KVM_GET_API_VERSION for 12, got rc {{ verify_kvm.rc }}: {{ verify_kvm.stdout }} {{ verify_kvm.stderr }}
+
+    # The base role: the account itself uses KVM, libvirt and rootless podman.
+    - name: Ask KVM for its API version as the account
+      ansible.builtin.command:
+        cmd: python3 -c "import fcntl, os; print(fcntl.ioctl(os.open('/dev/kvm', os.O_RDWR), 0xAE00))"
+      become: true
+      become_user: "{{ verify_account }}"
+      register: verify_account_kvm
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the account opens KVM
+      ansible.builtin.assert:
+        that: verify_account_kvm.rc == 0 and verify_account_kvm.stdout == '12'
+        fail_msg: >-
+          {{ verify_account }} asked KVM_GET_API_VERSION for 12, got rc {{ verify_account_kvm.rc }}:
+          {{ verify_account_kvm.stdout }} {{ verify_account_kvm.stderr }}
+
+    - name: Ask libvirt for its domains as the account
+      ansible.builtin.command:
+        cmd: virsh -c qemu:///system list --all --name
+      become: true
+      become_user: "{{ verify_account }}"
+      register: verify_account_libvirt
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the account reaches libvirt
+      ansible.builtin.assert:
+        that: verify_account_libvirt.rc == 0
+        fail_msg: "{{ verify_account }} could not reach libvirt: {{ verify_account_libvirt.stderr }}"
+
+    - name: Read the account's id
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ verify_account }}"
+
+    - name: Map the account's subordinate ids in rootless podman
+      ansible.builtin.command:
+        cmd: podman unshare cat /proc/self/uid_map
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      register: verify_account_podman
+      changed_when: false
+      failed_when: false
+
+    - name: Assert rootless podman maps more than the account's own id
+      ansible.builtin.assert:
+        that: verify_account_podman.rc == 0 and verify_account_podman.stdout_lines | length > 1
+        fail_msg: >-
+          {{ verify_account }}'s rootless podman mapped {{ verify_account_podman.stdout_lines }}
+          (rc {{ verify_account_podman.rc }}: {{ verify_account_podman.stderr }})

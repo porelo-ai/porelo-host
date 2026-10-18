@@ -1,0 +1,6 @@
+---
+- name: kvm | Run libvirt now and at every boot
+  ansible.builtin.systemd_service:
+    name: "{{ __base_libvirt_service }}"
+    state: started
+    enabled: true

@@ -1,0 +1,9 @@
+---
+__base_kvm_packages:
+  - qemu-system-x86
+  - libvirt-daemon-system
+  - libvirt-clients
+__base_podman_packages:
+  - podman
+  - uidmap
+__base_libvirt_service: libvirtd

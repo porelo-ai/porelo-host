@@ -1,0 +1,23 @@
+---
+- name: Read which system this is, where the play gathered no facts
+  ansible.builtin.setup:
+    gather_subset: [min]
+  when: ansible_facts['distribution'] is not defined
+
+- name: Load the variables of this system
+  ansible.builtin.include_vars: "{{ lookup('ansible.builtin.first_found', __base_vars_files) }}"
+  vars:
+    __base_vars_files:
+      files:
+        - "{{ ansible_facts['distribution'] }}-{{ ansible_facts['distribution_major_version'] }}.yml"
+      paths:
+        - "{{ role_path }}/vars"
+
+- name: Check the CPU before anything is installed
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/cpu.yml"
+
+- name: Install the packages
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/install.yml"
+
+- name: Run libvirt
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/kvm.yml"

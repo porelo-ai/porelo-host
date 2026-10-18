@@ -1,0 +1,10 @@
+---
+# The account Porelo's tasks run as; made by Porelo's own setup script, never by this role.
+base_account: "{{ porelo_host_account }}"
+
+# Packages every host gets beside KVM and podman.
+base_packages:
+  - acl
+  - ca-certificates
+  - curl
+  - git

@@ -1,0 +1,43 @@
+---
+# Run once Porelo's setup script has made the account, with its linger and its subuid and subgid ranges; this part
+# only adds the account to KVM's and libvirt's groups, and checks what the script promised rather than redoing it.
+- name: account | Read the account Porelo's setup made
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ base_account }}"
+    fail_key: false
+
+- name: account | Stop if Porelo's setup has not made the account
+  ansible.builtin.assert:
+    that: ansible_facts['getent_passwd'][base_account] is not none
+    fail_msg: "no account {{ base_account }}; Porelo's setup script makes it, and runs before this part"
+    quiet: true
+
+- name: account | Let the account open KVM and libvirt
+  ansible.builtin.user:
+    name: "{{ base_account }}"
+    groups: "{{ __base_account_groups }}"
+    append: true
+
+- name: account | Read the account's linger
+  ansible.builtin.stat:
+    path: "/var/lib/systemd/linger/{{ base_account }}"
+  register: __base_linger
+
+- name: account | Read the account's subordinate ids
+  ansible.builtin.command:
+    cmd: grep -c "^{{ base_account }}:" /etc/subuid /etc/subgid
+  register: __base_subids
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: account | Stop if the account lacks what rootless podman and its user services need
+  ansible.builtin.assert:
+    that:
+      - __base_linger.stat.exists
+      - __base_subids.stdout_lines | map('regex_replace', '^.*:', '') | map('int') | min > 0
+    fail_msg: >-
+      {{ base_account }} lacks linger ({{ __base_linger.stat.exists }}) or subuid and subgid ranges
+      ({{ __base_subids.stdout_lines }}), which Porelo's setup script gives an account it makes
+    quiet: true

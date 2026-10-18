@@ -7,6 +7,7 @@
   become: true
   vars:
     converge_tarball: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_TARBALL') }}"
+    converge_account: porelo-test
   tasks:
     - name: Install Ubuntu's own ansible-core
       ansible.builtin.apt:
@@ -27,9 +28,34 @@
     - name: Install the collection before up runs
       ansible.builtin.meta: flush_handlers
 
+    # Stands in for Porelo's setup script, which makes the account with its linger and subordinate ids.
+    - name: Make the account as Porelo's setup script makes it
+      ansible.builtin.user:
+        name: "{{ converge_account }}"
+        create_home: true
+        shell: /bin/bash
+
+    - name: Give the account its linger, as Porelo's setup script does
+      ansible.builtin.command:
+        cmd: loginctl enable-linger {{ converge_account }}
+        creates: /var/lib/systemd/linger/{{ converge_account }}
+
+    - name: Write the inventory host up writes
+      ansible.builtin.copy:
+        dest: /root/porelo-host-inventory.yml
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          all:
+            hosts:
+              localhost:
+            vars:
+              porelo_host_account: {{ converge_account }}
+
     - name: Run up on the host itself, as host up does
       ansible.builtin.command:
-        cmd: ansible-playbook -c local -i localhost, porelo.host.up
+        cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.up
       register: converge_up
       changed_when: converge_up.stdout is search('changed=[1-9]')
 
