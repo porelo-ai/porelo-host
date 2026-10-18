@@ -12,6 +12,7 @@ ignore: |
     issues/
     mkdocs.yml
     target/
+    .ansible/
 rules:
     document-start: disable
     comments:

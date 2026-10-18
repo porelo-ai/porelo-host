@@ -3,6 +3,7 @@ docs_dir: doc
 strict: true
 nav:
     - Overview: index.md
+    - Decisions: decisions.md
 validation:
     links:
         anchors: warn

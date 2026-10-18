@@ -11,6 +11,7 @@ ignore: |
     issues/
     mkdocs.yml
     target/
+    .ansible/
 rules:
     comments:
         min-spaces-from-content: 1

@@ -11,8 +11,9 @@ variable or a log.
 ## Plan
 
 - **The playbook does not open the vault**: [HO09](README.md#ho09)'s second play already checks that it is open and
-  stops with its own kind of refusal if not. The caller - `porelo-machines host up`, porelo-frontend - asks the
-  person, runs `porelo vault unlock` over ssh with the passphrase on its standard input, and runs `up` again.
+  stops with its own kind of refusal if not. The caller - porelo-frontend's `host up`, its interface or its command
+  line - asks the person, runs `porelo vault unlock` over ssh with the passphrase on its standard input, and runs `up`
+  again.
 - **What changes here**: the stop's line names that command in the form the caller runs it, besides the `ssh -t` one
   a person types; nothing in the playbook reads, holds or passes the passphrase.
 - **Red first**: the second play against a shut vault must stop before it deposits anything; already [HO09](README.md#ho09)'s test.

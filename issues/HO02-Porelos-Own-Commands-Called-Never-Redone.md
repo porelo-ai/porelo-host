@@ -21,10 +21,11 @@ run changes nothing that is already as it should be.
   with nobody there is [HO10](README.md#ho10). At `down`, `porelo vault clear --yes` removes the keys from the host, after the copies [HO09](README.md#ho09)
   orders before it, since on an account with its own homeserver it removes the homeserver's database too. Everything as the account,
   through `become_user`, never as root after the install.
-- **What Porelo reads comes from Porelo**: [PJ40](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj40) has Porelo write the inventory and its variables from `project.yml`,
-  the repositories' files and the person's machine file. The role takes only what that writes - the account, the
-  project's name and URL, the signing key's fingerprint, the tasks to start - validated by `meta/argument_specs.yml`,
-  and never reads `project.yml` itself.
+- **What the plays read is written for them, in two parts** (decided): porelo-frontend's `host up` writes the first
+  play's variables - the account, the packages - since no Porelo runs before the host exists; Porelo on the host
+  writes the second play's after `porelo setup`, from `project.yml` and the person's machine file on the drive - the
+  project's name and URL, the signing key's fingerprint, the tasks to start, the keys as names and drive paths. The
+  role validates both by `meta/argument_specs.yml` and never reads `project.yml` itself.
 - **The keys go from the drive into the vault on the host**: for each key the inventory names (a name and a path on
   the person's mounted drive), the task runs `porelo vault put <name> < <path>` on the host, so the value goes from a
   file into Porelo's standard input and never through Ansible; `no_log: true` on it all the same.

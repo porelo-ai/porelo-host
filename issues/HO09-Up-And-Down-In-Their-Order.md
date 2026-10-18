@@ -4,7 +4,7 @@
 **Size:** M - two playbooks and the order of the roles, a stop the caller resumes from, and the output a program
 reads; the roles themselves are the other issues'.
 
-**What must be true.** `porelo-machines host up` and `host down` each run one playbook of this collection, `up.yml`
+**What must be true.** `host up` and `host down`, porelo-frontend's command, each run one playbook of this collection, `up.yml`
 and `down.yml`, which take the roles in their order; a run stopped halfway is started again and goes on from where it
 stood, and `down` after a failed `up` takes down what came up.
 
@@ -13,6 +13,10 @@ stood, and `down` after a failed `up` takes down what came up.
 - **Decided: this order, not [PJ40](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj40)'s**: the drive comes before the VPN, since the VPN's key lies on the
   drive, and the person has one stop, for the Tresorit login and the vault; the host is reached over its public ssh
   only until the VPN is up.
+- **Decided: the playbook runs on the host itself.** `host up` copies the collection's tarball and the inventory to
+  the host over ssh, installs `ansible-core` from Ubuntu's packages (2.20 on 26.04), and runs `ansible-playbook -c
+  local` there; `down` the same, before the host is given back. The person's computer needs only ssh and `host up`.
+  So every play's target is `localhost`, and the plays take no host from the inventory.
 - **`playbooks/up.yml`, two plays**:
   1. `base` ([HO04](README.md#ho04)), `porelo`'s install, account and setup ([HO02](README.md#ho02)), `drive`'s
      install and daemon ([HO06](README.md#ho06)); then it ends, naming what the person runs over `ssh -t`: the
@@ -34,7 +38,7 @@ stood, and `down` after a failed `up` takes down what came up.
   this collection writes one JSON line per step - started, done or refused, its name, and on a refusal the command
   that fixes it - into a file the caller names, beside Ansible's text for a person; the stop for the person is a
   refusal of its own kind, naming the host and the account. Ansible's exit codes stay as they are, and `host up` turns
-  the stop into an exit code of its own, so porelo-frontend asks the person instead of showing a failure.
+  the stop into an exit code of its own, so the interface asks the person instead of showing a failure.
 - **Red first**: `up` with the vault left shut must end in the stop, with its line in the file; the second `up`
   after the vault is opened must report the first play's roles `changed=0`.
 
@@ -48,5 +52,6 @@ stood, and `down` after a failed `up` takes down what came up.
 
 ## To be checked
 
-- With Agent Core, when `host up` is built: the callback's file and its fields, and the exit code for the stop, as
-  the contract between this collection, `porelo-machines` and porelo-frontend.
+- With Agent Frontend, whose Dart package is `host up` and `host down`: the callback's file and its fields, the exit
+  code for the stop, and how the tarball and the inventory reach the host, as the contract between this collection
+  and that package.

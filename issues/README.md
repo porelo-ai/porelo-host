@@ -11,12 +11,6 @@ channel.
 Its prefix is `HO`. *Open questions*, in *Analyzed* only, counts what waits on the operator. A group with nothing in
 it is left out.
 
-## Implementing
-
-| # | Size | Blocked by | What it covers |
-|---|---|---|---|
-| <a id="ho01"></a>[HO01](HO01-The-Collections-Skeleton.md) | M | - | `porelo.host` as a collection at the root: `galaxy.yml`, `meta/runtime.yml`, yamllint and ansible-lint, a tarball checked to hold only what ships, a Build on a GitHub runner with the documents' checks, the tools from one image pinned by digest; built, the Build on GitHub left. |
-
 ## Backlog
 
 | # | Size | Blocked by | What it covers |
@@ -37,3 +31,9 @@ it is left out.
 | <a id="ho08"></a>[HO08](HO08-The-Forge-With-Its-Registry.md) | M | - | Role `forge`: Forgejo, its runner and registry in rootless podman on the VPN only, mirrors of the project's repositories, credentials made and kept on the host. |
 | <a id="ho12"></a>[HO12](HO12-The-VM-Pool.md) | L | - | Role `vm_pool`: VMs with run accounts `porelo-machines` rents from, made by the same code as the test VM, deleted by name at `down`. |
 | <a id="ho10"></a>[HO10](HO10-A-Vault-Opened-With-Nobody-There.md) | XS | porelo [B209](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b209) | `up` to the end with the vault opened by the caller over ssh with the passphrase on standard input; the playbook only checks and stops. |
+
+## Finished
+
+| # | Title | What was built |
+|---|---|---|
+| <a id="ho01"></a>HO01 | The Collection's Skeleton | `porelo.host` builds into a tarball checked to hold only what it ships, and its Build runs the documents' checks, yamllint and ansible-lint from one image pinned by digest. |

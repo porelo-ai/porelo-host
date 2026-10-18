@@ -15,9 +15,10 @@ project, depositing keys and starting tasks.
 **The collection has no role yet**: it builds and is checked, and its roles are planned in
 [its issues](issues/README.md).
 
-**Requirements**: `ansible-core` 2.19 or newer on the person's machine, which runs the playbook over ssh; a host with
-Ubuntu 26.04; Porelo in the version the collection's own carries (`0.5.1-snapshot` follows Porelo 0.5.1). It is
-installed from the tarball a release attaches, `ansible-galaxy collection install porelo-host-<version>.tar.gz`.
+**Requirements**: a host with Ubuntu 26.04; the playbook runs on the host itself, with the `ansible-core` Ubuntu
+carries (2.20; the collection needs 2.19 or newer), so the person's computer needs only ssh. Porelo in the version
+the collection's own follows (`0.5.1-snapshot`, Porelo 0.5.1). It is installed from the tarball a release attaches,
+`ansible-galaxy collection install porelo-host-<version>.tar.gz`.
 
 **Documentation: [porelo-ai.github.io](https://porelo-ai.github.io)**, all of Porelo's documentation in one site.
 

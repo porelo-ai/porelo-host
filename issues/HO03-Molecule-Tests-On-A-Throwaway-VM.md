@@ -14,7 +14,7 @@ and leaves nothing behind on this machine, after a failure too.
   shows none of that truly, and the shared VMs are other agents' test machines, where a playbook that installs as
   root changes what their runs measure.
 - **Decided**: Molecule makes and deletes its own libvirt VM on this machine per run, 4 vCPUs and 4 GB; it runs here
-  before every hand-over, and the GitHub Build runs lint, sanity and the tarball only ([HO01](README.md#ho01)).
+  before every hand-over, and the GitHub Build runs the linters and the tarball only.
 - **`extensions/molecule/default/`**, ansible-native as the `ansible-new-molecule` skill sets out: `molecule.yml`
   with no `driver:`, `platforms:`, `provisioner:` or `verifier:` blocks, and the full default sequence including
   `idempotence`.
@@ -25,7 +25,9 @@ and leaves nothing behind on this machine, after a failure too.
 - **`destroy.yml`** removes exactly that VM, its disk and its seed by the recorded name, refuses a name it did not
   make, and runs on an interrupt too; `create.yml` refuses to start over a VM of an earlier run that is still there,
   naming it.
-- **`converge.yml`** runs `playbooks/up.yml`; **`verify.yml`** asserts what `up` promises (packages, `/dev/kvm`,
+- **`converge.yml`** does what `host up` does: copies the collection's tarball into the VM, installs Ubuntu's own
+  `ansible-core` there and runs `playbooks/up.yml` with `-c local`, so the test runs the version a host runs, not the
+  image's; **`verify.yml`** asserts what `up` promises (packages, `/dev/kvm`,
   podman, the account, `porelo doctor`); a second scenario, `down`, runs `up`, then `down`, and asserts what `down`
   leaves.
 - **Red first**: `verify.yml` against a converge that skips the KVM role must fail on `/dev/kvm`; a `destroy.yml` run
