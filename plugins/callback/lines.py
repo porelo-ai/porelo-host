@@ -43,7 +43,8 @@ class CallbackModule(CallbackBase):
         sys.stdout.flush()
 
     def _step(self, result, state, msg=""):
-        self._line(play=self._play, task=result.task_name, state=state, msg=msg)
+        # The task's own name, as its start line has it: result.task_name drops a role's prefix on some ansible-core.
+        self._line(play=self._play, task=result._task.get_name().strip(), state=state, msg=msg)
 
     @staticmethod
     def _message(result):

@@ -119,6 +119,8 @@
           - verify_lines | selectattr('state', 'equalto', 'started') | list | length
             == verify_lines | selectattr('state', 'in', ['ok', 'changed', 'skipped']) | list | length
           - verify_lines | selectattr('state', 'in', ['failed', 'waiting']) | list | length == 0
+          - verify_lines | selectattr('state', 'equalto', 'started') | map(attribute='task') | list
+            == verify_lines | selectattr('state', 'in', ['ok', 'changed', 'skipped']) | map(attribute='task') | list
         fail_msg: "the last up's lines: {{ verify_lines }}"
       vars:
         verify_lines: "{{ (verify_lines_file.content | b64decode).splitlines() | select | map('from_json') | list }}"
