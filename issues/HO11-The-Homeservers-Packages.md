@@ -21,5 +21,5 @@ start, and the playbook itself starts nothing of it.
 
 ## Acceptance
 
-- On [HO03](README.md#ho03)'s VM: after `up`, both packages are installed, the unit is disabled, and the first
+- On the test VM `build/molecule.sh` makes: after `up`, both packages are installed, the unit is disabled, and the first
   `porelo task start` of a project naming the transport brings the homeserver up.

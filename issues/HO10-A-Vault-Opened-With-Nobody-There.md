@@ -20,5 +20,5 @@ variable or a log.
 
 ## Acceptance
 
-- On [HO03](README.md#ho03)'s VM: `up`, the stop, the vault opened over ssh with the passphrase on standard input,
+- On the test VM `build/molecule.sh` makes: `up`, the stop, the vault opened over ssh with the passphrase on standard input,
   `up` again to the end; the passphrase appears in no output of the run and in no file on the host.

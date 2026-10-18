@@ -44,7 +44,7 @@ stood, and `down` after a failed `up` takes down what came up.
 
 ## Acceptance
 
-- On [HO03](README.md#ho03)'s VM: `up`, the stop, the person's step done by the test, `up` again, all green; `down`;
+- On the test VM `build/molecule.sh` makes: `up`, the stop, the person's step done by the test, `up` again, all green; `down`;
   `up` once more with the room and records back.
 - A `down` after an `up` broken off in its second play leaves the host as `down` promises, and names nothing as
   failed that was never there.

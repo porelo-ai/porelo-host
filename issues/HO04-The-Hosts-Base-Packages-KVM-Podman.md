@@ -25,7 +25,7 @@
 
 ## Acceptance
 
-- [x] On [HO03](README.md#ho03)'s VM, as the account: KVM answers `KVM_GET_API_VERSION` through `/dev/kvm`, `virsh -c
+- [x] On the test VM `build/molecule.sh` makes, as the account: KVM answers `KVM_GET_API_VERSION` through `/dev/kvm`, `virsh -c
   qemu:///system` lists domains, and `podman unshare` maps more than the account's own id; `idempotence` reports
   `changed=0`. A container was not started: that needs an image from the network, which the test does not pull.
 - [x] Seen red: the account left out of the groups could not open `/dev/kvm`; on a CPU with `svm` and `vmx` off the

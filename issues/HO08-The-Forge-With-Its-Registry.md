@@ -26,7 +26,7 @@ it, and `down` stops it without losing anything the next `up` could not make aga
 
 ## Acceptance
 
-- On [HO03](README.md#ho03)'s VM: a workflow of a mirrored repository runs on the runner and publishes into the
+- On the test VM `build/molecule.sh` makes: a workflow of a mirrored repository runs on the runner and publishes into the
   registry; a second `up` changes nothing and registers no second runner.
 - A project file without a forge leaves the host without Forgejo, its image, its units or its ports.
 

@@ -37,7 +37,7 @@ drive, never through Ansible.
 
 ## Acceptance
 
-- The round trip of the red test, on [HO03](README.md#ho03)'s VM against a test bucket, then once on a rented host
+- The round trip of the red test, on the test VM `build/molecule.sh` makes against a test bucket, then once on a rented host
   with its time measured.
 - A failing entry command stops the timer's run and `down`, names the entry, and no `forget` runs after it.
 - `restic snapshots` shows each entry under its tag, at most its count kept.

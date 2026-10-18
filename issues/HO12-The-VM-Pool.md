@@ -15,7 +15,7 @@ deletes them with nothing left.
   copy-on-write disk, a cloud-init seed with a key made on the host), `accounts.yml` (the run accounts in each VM, four
   to start with, and `porelo-reset-account` installed there), `machines.yml` (the file `porelo-machines` reads to
   find the pool's VMs and accounts).
-- **Made the same way as [HO03](README.md#ho03)'s test VM**, by one task file both use, so the pool and the test
+- **Made the same way as the test VM `build/molecule.sh` makes**, by one task file both use, so the pool and the test
   are made by the same code.
 - **Names say the project and the host's run**, so `down` deletes exactly what this host's `up` made, by name, and
   refuses a domain it cannot attribute.
@@ -24,7 +24,7 @@ deletes them with nothing left.
 
 ## Acceptance
 
-- On [HO03](README.md#ho03)'s VM, with nested KVM: `porelo-machines` rents and returns a pool account, and an acceptance leg runs in
+- On the test VM `build/molecule.sh` makes, with nested KVM: `porelo-machines` rents and returns a pool account, and an acceptance leg runs in
   it.
 - After `down`, `virsh list --all` and the storage pool show nothing of the run.
 
@@ -32,5 +32,5 @@ deletes them with nothing left.
 
 - With Agent Core: which file `porelo-machines`' `LocalVms` reads for its VMs and accounts, and its version, so it
   becomes the contract this role writes; [PJ22](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj22) keeps the pool `porelo-machines`'.
-- Nested KVM inside [HO03](README.md#ho03)'s test VM, three levels deep, measured before the first run; if it is too slow, the pool is
+- Nested KVM inside the test VM `build/molecule.sh` makes, three levels deep, measured before the first run; if it is too slow, the pool is
   tested on a rented host only.

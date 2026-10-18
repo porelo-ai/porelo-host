@@ -24,12 +24,12 @@ next start would collide with.
   `meta/argument_specs.yml`; nothing from a provider's name.
 - **At `down`**: the interface is stopped and its file removed, so the next `up` writes it again; the peer is the
   person's own and stays theirs.
-- **Red first**: [HO03](README.md#ho03)'s `verify.yml` asserts that a port of a service bound to all addresses is not
+- **Red first**: the scenario's `verify.yml` asserts that a port of a service bound to all addresses is not
   reachable on the public address; it fails without `firewall.yml`, then passes.
 
 ## Acceptance
 
-- On [HO03](README.md#ho03)'s VM: a peer made for the test reaches the host through the VPN; the same service is refused on the public
+- On the test VM `build/molecule.sh` makes: a peer made for the test reaches the host through the VPN; the same service is refused on the public
   address; `idempotence` reports `changed=0`.
 - The private key's value appears in no output of the run (`-vvv`) and in no file but its own.
 - A missing key file stops the role before the firewall changes, naming the path.

@@ -41,7 +41,7 @@ run changes nothing that is already as it should be.
 
 ## Acceptance
 
-- On a fresh host ([HO03](README.md#ho03)): after `up`, `porelo doctor` passes as the account, the project is
+- On the test VM `build/molecule.sh` makes: after `up`, `porelo doctor` passes as the account, the project is
   followed with its signature checked, and the named tasks run.
 - A second `up` reports `changed=0` for this role.
 - A planted key's value appears nowhere in `ansible-playbook -vvv`'s output, the host's journal, or Ansible's facts

@@ -33,7 +33,7 @@ nothing is run from it; at `down` it is unmounted, with everything written to it
 
 ## Acceptance
 
-- On [HO03](README.md#ho03)'s VM, with a local folder in the tresor's place: the folder is there after `up`, on its
+- On the test VM `build/molecule.sh` makes, with a local folder in the tresor's place: the folder is there after `up`, on its
   `noexec` filesystem, and unmounted after `down`; `idempotence` reports `changed=0`.
 - At the first real `up`: a file written on the host before `down` is in the tresor afterwards, and a file put into
   the tresor elsewhere is on the host after the next `up`; a sync that does not finish within its limit stops `down`,

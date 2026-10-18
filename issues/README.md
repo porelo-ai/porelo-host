@@ -11,12 +11,6 @@ channel.
 Its prefix is `HO`. *Open questions*, in *Analyzed* only, counts what waits on the operator. A group with nothing in
 it is left out.
 
-## Review
-
-| # | Size | Blocked by | What it covers |
-|---|---|---|---|
-| <a id="ho03"></a>[HO03](HO03-Molecule-Tests-On-A-Throwaway-VM.md) | M | - | One ansible-native Molecule scenario on a libvirt VM `build/molecule.sh` makes and deletes per run, Ubuntu 26.04 with nested KVM, leaving nothing after a failure or an interrupt, here and in the Build on GitHub's runner; green in both.
-
 ## Implementing
 
 | # | Size | Blocked by | What it covers |
@@ -42,3 +36,4 @@ it is left out.
 | # | Title | What was built |
 |---|---|---|
 | <a id="ho01"></a>HO01 | The Collection's Skeleton | `porelo.host` builds into a tarball checked to hold only what it ships, and its Build runs the documents' checks, yamllint and ansible-lint from one image pinned by digest. |
+| <a id="ho03"></a>HO03 | Molecule Tests On A Throwaway VM | `build/molecule.sh` tests the roles on a libvirt VM made and deleted for each run, here and in the Build on GitHub's runner, leaving nothing after a failure or an interrupt. |
