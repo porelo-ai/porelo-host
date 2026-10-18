@@ -1,0 +1,7 @@
+.*
+!.gitignore
+!.gitkeep
+!.editorconfig
+!.github
+*.log
+*.retry
