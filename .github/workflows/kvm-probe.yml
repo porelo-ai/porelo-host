@@ -36,20 +36,24 @@ jobs:
                   sudo udevadm trigger --name-match=kvm
                   ls -l /dev/kvm
 
-            - name: libvirt, qemu-img, virt-install and xorriso from Ubuntu's archive
+            - name: libvirt with its network, qemu-img, virt-install and xorriso from Ubuntu's archive
               run: |
                   set -eu
                   sudo apt-get update -qq
                   sudo apt-get install -y -qq --no-install-recommends \
-                      libvirt-daemon-system libvirt-clients qemu-system-x86 qemu-utils virtinst xorriso
+                      libvirt-daemon-system libvirt-clients qemu-system-x86 qemu-utils dnsmasq-base virtinst xorriso
                   sudo usermod -aG libvirt,kvm "$USER"
                   sudo virsh pool-info images >/dev/null 2>&1 || {
                       sudo mkdir -p /var/lib/libvirt/images
                       sudo virsh pool-define-as images dir --target /var/lib/libvirt/images
                       sudo virsh pool-start images
                   }
-                  sudo virsh net-start default 2>/dev/null || true
-                  dpkg-query -W libvirt-daemon-system qemu-system-x86 qemu-utils virtinst xorriso
+                  # libvirt's NAT network needs dnsmasq, which --no-install-recommends leaves out; it must be
+                  # active before the script runs, and saying so fails here rather than inside virt-install.
+                  sudo virsh net-info default >/dev/null 2>&1 || sudo virsh net-define /usr/share/libvirt/networks/default.xml
+                  LC_ALL=C sudo virsh net-info default | grep -q '^Active: *yes' || sudo virsh net-start default
+                  LC_ALL=C sudo virsh net-info default | grep '^Active: *yes'
+                  dpkg-query -W libvirt-daemon-system qemu-system-x86 qemu-utils dnsmasq-base virtinst xorriso
 
             - name: The Molecule scenario on its VM, as build/molecule.sh runs it locally
               run: sg libvirt -c 'build/molecule.sh'
