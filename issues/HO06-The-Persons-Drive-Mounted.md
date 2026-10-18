@@ -1,6 +1,6 @@
 # HO06 — The Person's Drive Mounted
 
-**Status:** Estimated.
+**Status:** Backlog.
 **Size:** M - one role around a third-party client that runs headless, whose login only the person can give, and
 whose `down` must wait until everything written is synced.
 
@@ -13,7 +13,8 @@ nothing is run from it; at `down` it is unmounted, with everything written to it
   servers without a desktop. It syncs a tresor two ways into a local folder (`tresorit-cli sync --start <tresor>
   --path <dir>`); it is not a mount, so "mounted" here means that folder, synced.
 - **One role, `drive`**: `install.yml` (the installer for the account, under its home, its digest checked before it
-  runs), `service.yml` (a systemd user unit for `tresorit-daemon`, with lingering from [HO04](README.md#ho04)),
+  runs), `service.yml` (a systemd user unit for `tresorit-daemon`, with the linger Porelo's setup
+  script gives the account),
   `sync.yml` (exactly one tresor, `drive_tresor`, into `drive_path`; any other sync the daemon reports is stopped,
   so only that one folder is on the host).
 - **The login is the person's**: `tresorit-cli login` asks for the account's password, which never passes through

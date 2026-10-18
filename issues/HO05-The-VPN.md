@@ -1,6 +1,6 @@
 # HO05 — The VPN
 
-**Status:** Estimated.
+**Status:** Backlog.
 **Size:** M - one role with a firewall and a key that must reach the host without passing through Ansible.
 
 **What must be true.** The person reaches the host only through their own VPN, with the key from their drive, and

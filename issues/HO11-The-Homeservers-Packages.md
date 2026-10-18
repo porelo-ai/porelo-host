@@ -12,7 +12,8 @@ start, and the playbook itself starts nothing of it.
   is a disabled systemd user unit running Tuwunel in rootless podman on 127.0.0.1, with no federation, which the
   transport's `setup` brings up at the first task start of a project that names `mail.transports.matrix`. A task
   file `matrix.yml` in [HO02](README.md#ho02)'s role installs the two packages when the inventory names the
-  transport, and enables nothing; lingering for the account is [HO04](README.md#ho04)'s.
+  transport, and enables nothing; the account's linger is Porelo's setup
+  script's.
 - **Its state** is [HO07](README.md#ho07)'s to restore before that first start: the podman volume
   `porelo-matrix-homeserver`, `~/.config/porelo/matrix/homeserver.conf` and `registration-token`, and the poll
   positions under `~/.local/state/porelo/transports/matrix`; its accounts' tokens are in the vault.

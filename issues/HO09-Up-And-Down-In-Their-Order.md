@@ -1,6 +1,6 @@
 # HO09 — Up And Down In Their Order
 
-**Status:** Estimated.
+**Status:** Implementing.
 **Size:** M - two playbooks and the order of the roles, a stop the caller resumes from, and the output a program
 reads; the roles themselves are the other issues'.
 
@@ -18,7 +18,7 @@ stood, and `down` after a failed `up` takes down what came up.
   local` there; `down` the same, before the host is given back. The person's computer needs only ssh and `host up`.
   So every play's target is `localhost`, and the plays take no host from the inventory.
 - **`playbooks/up.yml`, two plays**:
-  1. `base` ([HO04](README.md#ho04)), `porelo`'s install, account and setup ([HO02](README.md#ho02)), `drive`'s
+  1. the role `porelo.host.base`, `porelo`'s install, account and setup ([HO02](README.md#ho02)), `drive`'s
      install and daemon ([HO06](README.md#ho06)); then it ends, naming what the person runs over `ssh -t`: the
      Tresorit login and `porelo vault init|unlock`.
   2. It checks first that the drive is synced and the vault open, and stops naming the step if not; then `vpn`
