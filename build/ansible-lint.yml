@@ -1,0 +1,10 @@
+---
+# The collection is held to ansible-lint's strictest profile.
+profile: production
+offline: true
+exclude_paths:
+    - .github/
+    - build/
+    - doc/
+    - issues/
+    - mkdocs.yml

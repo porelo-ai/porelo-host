@@ -15,7 +15,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho01"></a>[HO01](HO01-The-Collections-Skeleton.md) | M | - | `porelo.host` as a collection at the root: `galaxy.yml`, `meta/runtime.yml`, lint and sanity, `CHANGELOG.md` kept, a Build on a GitHub runner with the documents' checks, `ansible-lint`, `ansible-test sanity` and the tarball, the tools from one pinned image. |
+| <a id="ho01"></a>[HO01](HO01-The-Collections-Skeleton.md) | M | - | `porelo.host` as a collection at the root: `galaxy.yml`, `meta/runtime.yml`, yamllint and ansible-lint, a tarball checked to hold only what ships, a Build on a GitHub runner with the documents' checks, the tools from one image pinned by digest; built, the Build on GitHub left. |
 
 ## Backlog
 

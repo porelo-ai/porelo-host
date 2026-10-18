@@ -1,0 +1,41 @@
+# Checks the documents: the shared blocks of AGENTS.md and .editorconfig against their hashes, and no citation of an
+# issue that goes stale, with the shared build tools from Central. Of its own because a shared block or an index in
+# another repository can change while this one stands still; it leases no machine.
+name: Shared rules check
+
+# Once a day, not on a push: every hand-over runs the same checks locally on its exact commit first, and a run per
+# push spent build minutes on what was already known. 03:17 UTC lies outside the hours the repositories are worked in.
+on:
+    schedule:
+        - cron: '17 3 * * *'
+    pull_request:
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    check:
+        runs-on: ubuntu-24.04
+        timeout-minutes: 10
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  # Nothing here pushes, so the job's token has no business staying in .git/config.
+                  persist-credentials: false
+
+            # Maven by the wrapper's pinned distribution and digest; the runner's own Java 25 only runs porelo-machines
+            # once, which installs the pinned GraalVM, checked against its digest, as JAVA_HOME for the steps after it.
+            - name: The shared build tools and the pinned GraalVM
+              run: |
+                  set -eu
+                  [ -n "${JAVA_HOME_25_X64:-}" ] || { echo "::error::this runner has no Java 25 (JAVA_HOME_25_X64)"; exit 1; }
+                  export JAVA_HOME="$JAVA_HOME_25_X64"
+                  ./mvnw -B -q -f build/pom.xml dependency:build-classpath -Dmdep.outputFile="$RUNNER_TEMP/tools-cp.txt"
+                  "$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.machines.Main jdk --github
+
+            - name: The shared blocks against their hashes
+              run: '"$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.release.Main check-shared AGENTS.md .editorconfig'
+
+            - name: No citation of an issue that goes stale
+              run: '"$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.release.Main check-citations .'

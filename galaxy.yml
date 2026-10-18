@@ -1,0 +1,34 @@
+---
+# The collection's identity. Its version follows Porelo's, since its roles call Porelo's commands.
+namespace: porelo
+name: host
+version: 0.5.1-snapshot
+readme: README.md
+authors:
+  - Michael Schnell <michael@fuin.org>
+description: Brings a Porelo project up on a server and takes it down again.
+license:
+  - GPL-3.0-or-later
+tags:
+  - porelo
+  - infrastructure
+  - linux
+dependencies: {}
+repository: https://github.com/porelo-ai/porelo-host
+documentation: https://porelo-ai.github.io
+homepage: https://github.com/porelo-ai/porelo-host
+issues: https://github.com/porelo-ai/porelo-host/issues
+# The tarball holds what runs and what a person installing it reads; the repository's own work stays out.
+build_ignore:
+  - ".*"
+  - "*/.*"
+  - mvnw
+  - build
+  - doc
+  - issues
+  - mkdocs.yml
+  - AGENTS.md
+  - CLAUDE.md
+  - CONTRIBUTING.md
+  - SECURITY.md
+  - target

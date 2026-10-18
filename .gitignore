@@ -3,5 +3,9 @@
 !.gitkeep
 !.editorconfig
 !.github
+!.mvn
+# Each agent's own local repository prefix, so what one agent installs is not what another resolves.
+.mvn/maven.config
 *.log
 *.retry
+/target/

@@ -1,0 +1,16 @@
+# What keeps the pinned workflow steps current. Every 'uses:' names a commit with its version beside it; a pin nobody
+# moves rots. One reviewed pull request a week, after a release has been out for three days. Nothing merges it
+# automatically. The Ansible tools' image in build/tools-image is moved by this repository's agent.
+version: 2
+updates:
+    - package-ecosystem: github-actions
+      directory: "/"
+      schedule:
+          interval: weekly
+      cooldown:
+          default-days: 3
+      groups:
+          actions:
+              patterns: ["*"]
+      commit-message:
+          prefix: "Move the pinned workflow steps"

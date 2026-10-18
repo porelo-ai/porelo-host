@@ -1,0 +1,63 @@
+# Checks the collection on every push to main and every pull request: the documents' shared rules, then yamllint,
+# ansible-lint in its production profile, and the tarball, which may hold only what the collection ships. The Ansible
+# tools run from the image build/tools-image pins, as they do locally. It rents no machine.
+name: Build
+
+on:
+    push:
+        branches: [main]
+        # A change only to the workflows is checked by its pull request; on its own it builds nothing.
+        paths-ignore: ['.github/**']
+    pull_request:
+        paths-ignore: ['.github/**']
+
+permissions:
+    contents: read
+
+jobs:
+    build:
+        runs-on: ubuntu-24.04
+        timeout-minutes: 20
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  # Nothing here pushes, so the job's token has no business staying in .git/config.
+                  persist-credentials: false
+
+            # Maven by the wrapper's pinned distribution and digest; the runner's own Java 25 only runs porelo-machines
+            # once, which installs the pinned GraalVM, checked against its digest, as JAVA_HOME for the steps after it.
+            - name: The shared build tools and the pinned GraalVM
+              run: |
+                  set -eu
+                  [ -n "${JAVA_HOME_25_X64:-}" ] || { echo "::error::this runner has no Java 25 (JAVA_HOME_25_X64)"; exit 1; }
+                  export JAVA_HOME="$JAVA_HOME_25_X64"
+                  ./mvnw -B -q -f build/pom.xml dependency:build-classpath -Dmdep.outputFile="$RUNNER_TEMP/tools-cp.txt"
+                  "$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.machines.Main jdk --github
+
+            - name: The shared blocks against their hashes
+              run: '"$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.release.Main check-shared AGENTS.md .editorconfig'
+
+            - name: No citation of an issue that goes stale
+              run: '"$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.release.Main check-citations .'
+
+            - name: The documentation chapter
+              run: '"$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.release.Main check-doc-site doc mkdocs.yml'
+
+            - name: Every step pinned
+              run: '"$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.release.Main check-actions .github'
+
+            # Two spaces where the collection's Ansible YAML lives, four everywhere else, as .editorconfig says.
+            - name: The YAML
+              run: |
+                  set -eu
+                  build/tools.sh yamllint --strict -c build/yamllint-ansible.yml .
+                  build/tools.sh yamllint --strict -c build/yamllint.yml .
+
+            - name: The collection against ansible-lint's production profile
+              run: build/tools.sh ansible-lint -c build/ansible-lint.yml
+
+            - name: The tarball, holding only what the collection ships
+              run: |
+                  set -eu
+                  build/tools.sh ansible-galaxy collection build --output-path target
+                  build/check-tarball.sh target/porelo-host-*.tar.gz

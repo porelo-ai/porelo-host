@@ -1,0 +1,28 @@
+---
+# The collection's Ansible YAML: two spaces, as .editorconfig says for these paths, and what ansible-lint expects of
+# yamllint, with the line length every Porelo repository keeps. build/yamllint.yml holds every other file to four.
+extends: default
+# Everything but those paths is left to build/yamllint.yml.
+ignore: |
+    .github/
+    build/
+    meta/
+    doc/
+    issues/
+    mkdocs.yml
+    target/
+rules:
+    comments:
+        min-spaces-from-content: 1
+    comments-indentation: false
+    braces:
+        max-spaces-inside: 1
+    indentation:
+        spaces: 2
+    line-length:
+        max: 120
+    octal-values:
+        forbid-implicit-octal: true
+        forbid-explicit-octal: true
+    truthy:
+        allowed-values: ["true", "false"]

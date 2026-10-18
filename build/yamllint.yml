@@ -1,0 +1,30 @@
+---
+# Every YAML file outside the collection's Ansible paths: four spaces, as .editorconfig says, sequences indented under
+# their key. build/yamllint-ansible.yml holds the rest to two.
+extends: default
+ignore: |
+    roles/
+    playbooks/
+    molecule/
+    extensions/
+    galaxy.yml
+    doc/
+    issues/
+    mkdocs.yml
+    target/
+rules:
+    document-start: disable
+    comments:
+        min-spaces-from-content: 1
+    comments-indentation: false
+    indentation:
+        spaces: 4
+        indent-sequences: true
+    # A workflow's command line stays whole, as in every Porelo repository's workflows.
+    line-length:
+        max: 120
+        ignore: |
+            .github/
+    truthy:
+        allowed-values: ["true", "false"]
+        check-keys: false

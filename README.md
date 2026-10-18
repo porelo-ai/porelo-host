@@ -12,8 +12,12 @@ data the project keeps, and starts the tasks; at down it copies that data off an
 back. What keeps a guarantee stays Porelo's: the playbook calls Porelo's own commands for following a signed
 project, depositing keys and starting tasks.
 
-**Nothing is built here yet.** Its shape, and what outlives a machine, are planned in
-[porelo-project's issues](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md).
+**The collection has no role yet**: it builds and is checked, and its roles are planned in
+[its issues](issues/README.md).
+
+**Requirements**: `ansible-core` 2.19 or newer on the person's machine, which runs the playbook over ssh; a host with
+Ubuntu 26.04; Porelo in the version the collection's own carries (`0.5.1-snapshot` follows Porelo 0.5.1). It is
+installed from the tarball a release attaches, `ansible-galaxy collection install porelo-host-<version>.tar.gz`.
 
 **Documentation: [porelo-ai.github.io](https://porelo-ai.github.io)**, all of Porelo's documentation in one site.
 

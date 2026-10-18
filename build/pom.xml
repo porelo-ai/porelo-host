@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Nothing is built from this: it names the shared build tools, so the Build and the Shared rules check can take them
+     from Central by version and run their checks on this repository. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.fuin.porelo</groupId>
+    <artifactId>porelo-host-tools</artifactId>
+    <version>0</version>
+    <packaging>pom</packaging>
+
+    <properties>
+        <!-- The shared build tools, from porelo-ai/porelo-buildtools: its snapshot between releases, as every Porelo
+             repository builds on. -->
+        <porelo.buildtools.version>0.5.1-SNAPSHOT</porelo.buildtools.version>
+    </properties>
+
+    <!-- Central's snapshots, for snapshots only: this repository has no settings file, and the workflow's one Maven
+         call reads this pom. Releases still come from Central itself. -->
+    <repositories>
+        <repository>
+            <id>central.sonatype.snapshots</id>
+            <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+            <releases>
+                <enabled>false</enabled>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+                <updatePolicy>always</updatePolicy>
+            </snapshots>
+        </repository>
+    </repositories>
+
+    <dependencies>
+        <!-- Installs the GraalVM the CI snapshots pin, checked against its digest. -->
+        <dependency>
+            <groupId>org.fuin.porelo</groupId>
+            <artifactId>porelo-machines</artifactId>
+            <version>${porelo.buildtools.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.fuin.porelo</groupId>
+            <artifactId>porelo-release</artifactId>
+            <version>${porelo.buildtools.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.8.1</version>
+            </plugin>
+        </plugins>
+    </build>
+</project>

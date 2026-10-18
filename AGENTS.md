@@ -346,6 +346,12 @@ and the UTC time that text last changed; change it in the channel first, never i
   task go through Porelo's own commands, never through a role, a variable or a log.
 - **No secret passes through an inventory, a variable or a task's output**; keys reach the host's vault through
   `porelo vault` alone.
+- **The Ansible tools run from one image pinned by digest in `build/tools-image`**, through `build/tools.sh`, here and
+  in the Build; nothing of Ansible is installed on a machine that checks the collection. The image is moved by this
+  repository's agent, not by Dependabot.
+- **Files that cannot be Java, and why:** `mvnw`, the Maven wrapper that fetches the shared build tools by
+  `build/pom.xml`, which builds nothing; `build/tools.sh` and `build/check-tarball.sh`, shell, since they run the
+  container and read its tarball where the collection is checked, and the collection itself is YAML.
 
 ## The skills this repository uses
 
