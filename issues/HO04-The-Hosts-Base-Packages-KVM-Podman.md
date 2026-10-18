@@ -1,6 +1,6 @@
 # HO04 — The Host's Base: Packages, KVM, Podman
 
-**Status:** Estimated.
+**Status:** Backlog.
 **Size:** S - one role with its tests, no contract another repository reads.
 
 **What must be true.** After `up`, the host has the packages the project needs, KVM usable by Porelo's account

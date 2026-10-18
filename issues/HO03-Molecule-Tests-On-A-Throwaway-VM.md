@@ -1,6 +1,6 @@
 # HO03 — Molecule Tests On A Throwaway VM
 
-**Status:** Estimated.
+**Status:** Backlog.
 **Size:** M - one Molecule scenario with its own create and destroy, an acceptance step every role is tested by; no
 contract another repository reads.
 

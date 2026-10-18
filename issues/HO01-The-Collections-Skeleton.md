@@ -1,6 +1,6 @@
 # HO01 — The Collection's Skeleton
 
-**Status:** Estimated.
+**Status:** Implementing.
 **Size:** M - a collection's metadata, its lint and sanity configuration, a workflow and the documents' checks; no
 role yet, but the shape every later issue builds in.
 
