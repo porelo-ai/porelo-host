@@ -1,0 +1,40 @@
+---
+# Does inside the VM what `host up` does on a host: Ubuntu's own ansible-core, the collection from its tarball, and
+# `up` run on the machine itself.
+- name: Converge
+  hosts: all
+  gather_facts: false
+  become: true
+  vars:
+    converge_tarball: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_TARBALL') }}"
+  tasks:
+    - name: Install Ubuntu's own ansible-core
+      ansible.builtin.apt:
+        name: ansible-core
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Copy the collection's tarball onto the host
+      ansible.builtin.copy:
+        src: "{{ converge_tarball }}"
+        dest: /root/porelo-host.tar.gz
+        owner: root
+        group: root
+        mode: "0600"
+      notify: Install the collection from that tarball
+
+    - name: Install the collection before up runs
+      ansible.builtin.meta: flush_handlers
+
+    - name: Run up on the host itself, as host up does
+      ansible.builtin.command:
+        cmd: ansible-playbook -c local -i localhost, porelo.host.up
+      register: converge_up
+      changed_when: converge_up.stdout is search('changed=[1-9]')
+
+  handlers:
+    - name: Install the collection from that tarball
+      ansible.builtin.command:
+        cmd: ansible-galaxy collection install --force /root/porelo-host.tar.gz
+      changed_when: true

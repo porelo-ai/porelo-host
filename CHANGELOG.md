@@ -11,3 +11,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The collection `porelo.host`, built with `ansible-galaxy collection build` into a tarball that holds only what it
   ships; no role yet.
+- The playbook `porelo.host.up`, run on the host itself with `-c local`; no role yet.

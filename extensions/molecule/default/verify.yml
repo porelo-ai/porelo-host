@@ -1,0 +1,51 @@
+---
+# What a host has after `up`, read on the host. Each role's issue adds what its role promises.
+- name: Verify
+  hosts: all
+  gather_facts: false
+  become: true
+  vars:
+    verify_version: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_VERSION') }}"
+  tasks:
+    - name: Read which collections the host has
+      ansible.builtin.command:
+        cmd: ansible-galaxy collection list porelo.host --format json
+      register: verify_collections
+      changed_when: false
+
+    - name: Assert the host has the collection in the version under test
+      ansible.builtin.assert:
+        that:
+          - verify_found | length == 1
+          - verify_found[0].version == verify_version
+        fail_msg: "asked for porelo.host {{ verify_version }}, found {{ verify_found }}"
+      vars:
+        # Keyed by the name with its dot, which an attribute lookup would read as two levels.
+        verify_found: "{{ verify_collections.stdout | from_json | dict2items | map(attribute='value')
+          | map('dict2items') | flatten | selectattr('key', 'equalto', 'porelo.host') | map(attribute='value')
+          | list }}"
+
+    - name: Read whether ansible-core is Ubuntu's own package
+      ansible.builtin.command:
+        cmd: dpkg-query -W -f=${Status} ansible-core
+      register: verify_ansible_core
+      changed_when: false
+
+    - name: Assert ansible-core came from Ubuntu
+      ansible.builtin.assert:
+        that: verify_ansible_core.stdout == 'install ok installed'
+        fail_msg: "asked for Ubuntu's ansible-core, dpkg says {{ verify_ansible_core.stdout }}"
+
+    # Asked of KVM itself: Ubuntu makes /dev/kvm as a static node even where no CPU extension stands behind it.
+    - name: Ask KVM for its API version through /dev/kvm
+      ansible.builtin.command:
+        cmd: python3 -c "import fcntl, os; print(fcntl.ioctl(os.open('/dev/kvm', os.O_RDWR), 0xAE00))"
+      register: verify_kvm
+      changed_when: false
+      failed_when: false
+
+    - name: Assert KVM answers, as on a rented host
+      ansible.builtin.assert:
+        that: verify_kvm.rc == 0 and verify_kvm.stdout == '12'
+        fail_msg: >-
+          asked KVM_GET_API_VERSION for 12, got rc {{ verify_kvm.rc }}: {{ verify_kvm.stdout }} {{ verify_kvm.stderr }}

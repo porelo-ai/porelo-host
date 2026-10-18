@@ -1,0 +1,7 @@
+---
+# What `host up` runs on the host itself, with `-c local`. Its roles come with the issues that build them.
+- name: Bring the host up
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks: []

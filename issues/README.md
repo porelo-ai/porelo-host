@@ -11,11 +11,16 @@ channel.
 Its prefix is `HO`. *Open questions*, in *Analyzed* only, counts what waits on the operator. A group with nothing in
 it is left out.
 
+## Implementing
+
+| # | Size | Blocked by | What it covers |
+|---|---|---|---|
+| <a id="ho03"></a>[HO03](HO03-Molecule-Tests-On-A-Throwaway-VM.md) | M | - | One ansible-native Molecule scenario on a libvirt VM `build/molecule.sh` makes and deletes per run, Ubuntu 26.04 with nested KVM, leaving nothing after a failure or an interrupt; built, green here.
+
 ## Backlog
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho03"></a>[HO03](HO03-Molecule-Tests-On-A-Throwaway-VM.md) | M | - | One ansible-native Molecule scenario whose `create` and `destroy` make and remove a libvirt VM per run, Ubuntu 26.04 with nested KVM, leaving nothing after a failure too. |
 | <a id="ho04"></a>[HO04](HO04-The-Hosts-Base-Packages-KVM-Podman.md) | S | - | Role `base`: the packages, KVM usable by the account, rootless podman with lingering; stops first on a CPU without virtualization. |
 
 ## Estimated

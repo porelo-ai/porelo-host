@@ -25,6 +25,7 @@ build_ignore:
   - mvnw
   - build
   - doc
+  - extensions
   - issues
   - mkdocs.yml
   - AGENTS.md

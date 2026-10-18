@@ -1,8 +1,8 @@
 # HO03 — Molecule Tests On A Throwaway VM
 
-**Status:** Backlog.
-**Size:** M - one Molecule scenario with its own create and destroy, an acceptance step every role is tested by; no
-contract another repository reads.
+**Status:** Implementing.
+**Size:** M - one Molecule scenario and the script that makes and deletes its VM, an acceptance step every role is
+tested by; no contract another repository reads.
 
 **What must be true.** Every role, and `up` and `down` together, are tested on a fresh Ubuntu 26.04 machine made for
 the run and deleted after it, with KVM inside it as on a rented host. The test proves a second run changes nothing,
@@ -15,33 +15,35 @@ and leaves nothing behind on this machine, after a failure too.
   root changes what their runs measure.
 - **Decided**: Molecule makes and deletes its own libvirt VM on this machine per run, 4 vCPUs and 4 GB; it runs here
   before every hand-over, and the GitHub Build runs the linters and the tarball only.
+- **The VM is the script's, not Molecule's**, changed from the plan's `create.yml` and `destroy.yml`: Molecule runs in
+  the pinned image, which reaches neither `virsh` nor this machine's libvirt. `build/molecule.sh` makes the VM through
+  `qemu:///system`, pool `images`, network `default`: a 20 G copy-on-write disk over the Ubuntu 26.04 cloud image
+  `build/test-image` pins by URL and SHA-256 (checked against Ubuntu's `SHA256SUMS`, downloaded once into
+  `~/.porelo/cache/`, uploaded once as the base volume `porelo-host-base-<digest>.qcow2`), a cloud-init seed with a
+  client key and a host key made for the run and accepted alone, `host-passthrough` for nested KVM, 4 vCPUs and 4 GB.
+  Everything a run makes is named `porelo-host-molecule-<run>`.
+- **What it leaves**: it refuses to start while anything named `porelo-host-molecule-*` is in libvirt, naming it; at
+  its end, after a failure and on an interrupt too, it stops the domain before it undefines it, deletes the disk and
+  the seed, and believes that only when libvirt lists none of them, else it names what is left and exits 1. It reads
+  `virsh` with `LC_ALL=C`. cloud-init is waited for once, and anything but a clean finish fails at once.
 - **`extensions/molecule/default/`**, ansible-native as the `ansible-new-molecule` skill sets out: `molecule.yml`
-  with no `driver:`, `platforms:`, `provisioner:` or `verifier:` blocks, and the full default sequence including
-  `idempotence`.
-- **`create.yml`** makes one VM through libvirt on this machine: a copy-on-write disk over the Ubuntu 26.04 cloud
-  image (downloaded once, its digest checked against the one Ubuntu publishes), a cloud-init seed with an ssh key made
-  for the run, nested KVM, 4 vCPUs and 4 GB. The VM's name says the agent and the run
-  (`porelo-host-molecule-<run>`), and the run's id goes into a file in Molecule's ephemeral directory.
-- **`destroy.yml`** removes exactly that VM, its disk and its seed by the recorded name, refuses a name it did not
-  make, and runs on an interrupt too; `create.yml` refuses to start over a VM of an earlier run that is still there,
-  naming it.
-- **`converge.yml`** does what `host up` does: copies the collection's tarball into the VM, installs Ubuntu's own
-  `ansible-core` there and runs `playbooks/up.yml` with `-c local`, so the test runs the version a host runs, not the
-  image's; **`verify.yml`** asserts what `up` promises (packages, `/dev/kvm`,
-  podman, the account, `porelo doctor`); a second scenario, `down`, runs `up`, then `down`, and asserts what `down`
-  leaves.
-- **Red first**: `verify.yml` against a converge that skips the KVM role must fail on `/dev/kvm`; a `destroy.yml` run
-  after a planted failure in `converge` must still leave no domain and no volume of the run.
+  with no `driver:`, `platforms:`, `provisioner:` or `verifier:` blocks, the inventory from the script, and the
+  sequence `syntax`, `converge`, `idempotence`, `verify`.
+- **`converge.yml`** does what `host up` does: installs Ubuntu's own `ansible-core`, copies the collection's tarball
+  into the VM and installs it, and runs `porelo.host.up` with `-c local`, so the test runs the version a host runs,
+  not the image's. **`verify.yml`** asserts what a host has after `up`: the collection in the version under test,
+  `ansible-core` from Ubuntu, and KVM answering `KVM_GET_API_VERSION` through `/dev/kvm`. Each role's issue adds what
+  its role promises; the `down` scenario comes with [HO09](README.md#ho09)'s `down.yml`.
+- **`playbooks/up.yml`** is a play on `localhost` with no role yet, so the scenario has something to run.
 
 ## Acceptance
 
-- `molecule test` passes, and `idempotence` reports `changed=0`.
-- After it, and after a run interrupted in `converge`, `virsh list --all` and `virsh vol-list images` show nothing
-  named for the run.
-- The time of one full run is measured and written in `doc/`, so a hand-over can say how long it takes.
-
-## To be checked
-
-- Whether `qemu:///system` is reachable through `sg libvirt` from Molecule's playbooks, and in which storage pool the
-  run's volumes belong (`images` exists).
-- How long the Ubuntu 26.04 cloud image takes to boot with cloud-init here, measured, before the first long run.
+- [x] `build/molecule.sh` passes: `syntax`, `converge`, `idempotence` with `changed=0`, `verify`; libvirt lists
+  nothing of the run afterwards.
+- [x] Seen red: `verify` refused a version other than the one under test, naming both; and a VM with `svm` and `vmx`
+  switched off, where KVM did not answer. A first `verify` that only looked for `/dev/kvm` passed on such a VM,
+  since Ubuntu makes the node anyway; it was replaced. A converge that skipped installing the collection failed.
+- [x] Seen red: a clean-up with the domain's stop broken on purpose named the domain left and exited 1; a run
+  interrupted in `converge` exited 130 and left nothing; a planted volume named like a run made the script refuse to
+  start, naming it.
+- [x] The time of one full run is in `doc/`: about a minute with the image cached.

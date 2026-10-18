@@ -25,3 +25,7 @@ The documents' checks take the shared build tools by `build/pom.xml`:
     java -cp "$(cat target/tools-cp.txt)" org.fuin.porelo.release.Main check-shared AGENTS.md .editorconfig
 
 and the same for `check-citations .`, `check-doc-site doc mkdocs.yml` and `check-actions .github`.
+
+A role is tested on a VM made for the run, as [`doc/testing.md`](doc/testing.md) describes:
+
+    build/molecule.sh

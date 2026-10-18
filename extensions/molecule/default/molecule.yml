@@ -1,0 +1,17 @@
+---
+# The VM is made and deleted by build/molecule.sh around this run, so the sequence has no create or destroy of its own;
+# the script passes the VM's inventory and the tarball under test in PORELO_HOST_*.
+ansible:
+  executor:
+    args:
+      ansible_playbook:
+        - --inventory=${PORELO_HOST_INVENTORY}
+  env:
+    ANSIBLE_FORCE_COLOR: "false"
+
+scenario:
+  test_sequence:
+    - syntax
+    - converge
+    - idempotence
+    - verify
