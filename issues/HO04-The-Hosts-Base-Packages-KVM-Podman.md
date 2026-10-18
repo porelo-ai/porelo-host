@@ -1,6 +1,6 @@
 # HO04 — The Host's Base: Packages, KVM, Podman
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** S - one role with its tests, no contract another repository reads.
 
 **What must be true.** After `up`, the host has the packages the project needs, KVM usable by Porelo's account
@@ -31,3 +31,4 @@
 - [x] Seen red: the account left out of the groups could not open `/dev/kvm`; on a CPU with `svm` and `vmx` off the
   role stopped with "offers no virtualization … nothing was installed", and its install task never ran; an account
   without linger made the account part stop, naming it.
+- [x] The Build's `molecule` job green on GitHub's runner with the role: Build 39146818112 on `3035b4b`, in 4 min.
