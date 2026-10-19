@@ -2,7 +2,8 @@
 
 The person's drive on the host: one folder, read and written, on a filesystem of its own that is mounted `noexec`,
 `nosuid` and `nodev`, so nothing synced into it can be started. The filesystem lives in a sparse file and is mounted
-by a systemd mount unit, so it comes back at every boot. `tasks_from: down` unmounts it, last at `down`.
+by a systemd mount unit, so it comes back at every boot. Tresorit's client is installed for the account from
+Tresorit's own installer, which runs only once `porelo.host.tresorit_installer` found it signed under the pinned CA. `tasks_from: down` unmounts it, last at `down`.
 
 ## Requirements
 
@@ -17,6 +18,8 @@ Ubuntu 26.04, run as root on the host itself (`-c local`), after Porelo's setup 
 | `drive_image` | `/var/lib/porelo-host/drive.img` | The sparse file its filesystem lives in. |
 | `drive_size` | `20G` | How large that file may grow. |
 | `drive_client` | `true` | Whether Tresorit's client syncs the person's tresor into the folder. |
+| `drive_installer_url` | Tresorit's own address | Tresorit's Linux installer, as Tresorit's site serves it. |
+| `drive_installer_ca_sha256` | `AC:46:31:BC:…:3D:D2:42` | The fingerprint of the CA that issues the installer's signing certificate. |
 
 ## Example
 

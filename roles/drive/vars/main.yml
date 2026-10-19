@@ -1,0 +1,3 @@
+---
+__drive_installer: /var/cache/porelo-host/tresorit_installer.run
+__drive_client_dir: "{{ ansible_facts['getent_passwd'][drive_account][4] }}/.local/share/tresorit"

@@ -1,0 +1,35 @@
+---
+# The installer is downloaded and checked as root, in a directory only root writes, and only then run as the account:
+# what runs is the file that was checked.
+- name: install | Read the account's home
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ drive_account }}"
+
+- name: install | Make the directory the installer is kept in
+  ansible.builtin.file:
+    path: "{{ __drive_installer | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: install | Download Tresorit's installer
+  ansible.builtin.get_url:
+    url: "{{ drive_installer_url }}"
+    dest: "{{ __drive_installer }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: install | Check the installer is signed under the pinned CA
+  porelo.host.tresorit_installer:
+    path: "{{ __drive_installer }}"
+    ca_sha256: "{{ drive_installer_ca_sha256 }}"
+
+- name: install | Install Tresorit's client for the account, asking nothing
+  ansible.builtin.command:
+    cmd: sh {{ __drive_installer }} --update-v2 {{ __drive_client_dir }}
+    creates: "{{ __drive_client_dir }}/tresorit-cli"
+  become: true
+  become_user: "{{ drive_account }}"

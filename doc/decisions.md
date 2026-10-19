@@ -10,7 +10,8 @@ says why.
 | The systems | Ubuntu 26.04 at first; another system is an issue of its own. | [Why](#the-systems) |
 | Where the playbook runs | On the host itself, with Ubuntu's own `ansible-core` and `-c local`. | [Why](#where-the-playbook-runs) |
 | Where the VM test runs | On a libvirt VM per run everywhere: here, in the GitHub Build and in the Forgejo build. | [Why](#where-the-vm-test-runs) |
-| `ansible-test sanity` | Left out until the collection holds Python. | [Why](#ansible-test-sanity) |
+| `ansible-test sanity` | Not run yet, though the collection holds Python; it comes in its own pinned container. | [Why](#ansible-test-sanity) |
+| Tresorit's installer | Run only when signed under a pinned CA, whose fingerprint was read from the installer itself. | [Why](#tresorits-installer) |
 | Ubuntu's `ansible-core` and CVE-2026-89091 | An accepted risk: the one tarball the host installs is the collection's own. | [Why](#ubuntus-ansible-core-and-cve-2026-89091) |
 | The changelog | `CHANGELOG.md`, Keep a Changelog, as in every Porelo repository; no `antsibull-changelog`. | [Why](#the-changelog) |
 
@@ -51,9 +52,28 @@ are moved by hand.
 
 ## `ansible-test sanity`
 
-Its tests are for modules and plugins, which the collection has none of; the roles are checked by `ansible-lint`. It
-also installs its own requirements from PyPI at run time, by version and without a hash, which a pinned build may not
-do. It comes back with the collection's first Python, in its own pinned container.
+The collection holds Python: the `lines` callback and the `tresorit_installer` module. `ansible-test sanity` is not
+run on them yet, since it installs its own requirements from PyPI at run time, by version and without a hash, which a
+pinned build may not do. Until it runs in a pinned container of its own, the Build checks them with `black`, a
+compile, and unit tests that run each under the image's own `ansible-playbook`; what sanity adds beyond that, such as
+the module's documentation against its arguments, is not checked.
+
+## Tresorit's installer
+
+**What holds.** Tresorit serves one Linux installer at a fixed address and replaces it without notice, so it cannot
+be pinned by its digest. Its line 2 is an RSASSA-PSS SHA-512 signature over everything from line 3 on, and line 3 is
+the signing certificate with the CA that issued it. The role runs the installer only when that CA's SHA-256
+fingerprint is the pinned one, the CA issued the certificate, the certificate is made for code signing and valid
+now, and the signature covers the file as it is; the installer's own `CHECKSUM` is a CRC and is not relied on.
+
+**Where the pin comes from.** The fingerprint of "Tresorit Code Signing CA 2020" was read from the installer as
+Tresorit's site serves it, fetched twice by separate ways, by curl here and in the operator's browser, both
+byte-identical. Tresorit publishes no fingerprint that could be read instead. The CA's root, "Tresorit Root CA 2014",
+is not in the file.
+
+**What would change the answer.** A fingerprint Tresorit publishes, which then replaces the one read; a new CA when
+this one expires on 2029-12-31, which stops the role, naming the pinned fingerprint, until the pin is read again
+in the same way.
 
 ## Ubuntu's `ansible-core` and CVE-2026-89091
 

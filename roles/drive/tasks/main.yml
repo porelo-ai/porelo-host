@@ -1,3 +1,7 @@
 ---
 - name: Give the drive a filesystem nothing runs from
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/filesystem.yml"
+
+- name: Install Tresorit's client, its installer checked first
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/install.yml"
+  when: drive_client

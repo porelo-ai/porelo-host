@@ -12,3 +12,9 @@ drive_size: 20G
 # Whether Tresorit's client syncs the person's tresor into the folder. Off, the folder stays empty and local: the
 # Molecule tests run so, since Tresorit is met only at a real up.
 drive_client: true
+
+# Tresorit's Linux installer as Tresorit's site serves it, and the SHA-256 fingerprint of the CA that issues its
+# signing certificate; the installer runs only once porelo.host.tresorit_installer found it signed under that CA.
+drive_installer_url: https://installerstorage.blob.core.windows.net/public/install/tresorit_installer.run
+drive_installer_ca_sha256: >-
+  AC:46:31:BC:C9:81:CA:10:06:35:14:FB:42:FD:47:4A:9C:94:BB:8E:50:38:9C:4D:F4:2E:E2:01:09:3D:D2:42

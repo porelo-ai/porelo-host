@@ -23,6 +23,14 @@ argument_specs:
         type: bool
         default: true
         description: Whether Tresorit's client syncs the person's tresor into the folder.
+      drive_installer_url:
+        type: str
+        default: https://installerstorage.blob.core.windows.net/public/install/tresorit_installer.run
+        description: Tresorit's Linux installer, as Tresorit's site serves it.
+      drive_installer_ca_sha256:
+        type: str
+        default: AC:46:31:BC:C9:81:CA:10:06:35:14:FB:42:FD:47:4A:9C:94:BB:8E:50:38:9C:4D:F4:2E:E2:01:09:3D:D2:42
+        description: The SHA-256 fingerprint of the CA that issues the installer's signing certificate.
   down:
     short_description: The drive unmounted, last at down.
     options:
