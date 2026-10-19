@@ -9,7 +9,8 @@ type: stdout
 short_description: One JSON line per task, for porelo-frontend's host command
 description:
   - Writes one JSON object per line to stdout instead of Ansible's text, so a program reads each step's state.
-  - A task's start gives C(started); its end gives C(ok), C(changed), C(skipped) or C(failed).
+  - A task's start gives C(started); its end gives C(ok), C(changed), C(skipped) or C(failed). A handler's lines are
+    a task's; a meta task writes none, since Ansible ends it with no result.
   - A failed task tagged C(porelo_host_waiting) gives C(waiting) with the C(needs) its message names, the stop where
     the person's step comes.
   - A task with C(no_log) never has its message written.
@@ -25,6 +26,7 @@ from ansible.plugins.callback import CallbackBase
 VERSION = 1
 WAITING_TAG = "porelo_host_waiting"
 HIDDEN = "hidden, the task has no_log"
+META_ACTIONS = ("meta", "ansible.builtin.meta", "ansible.legacy.meta")
 
 
 class CallbackModule(CallbackBase):
@@ -56,7 +58,13 @@ class CallbackModule(CallbackBase):
         self._play = play.get_name().strip()
 
     def v2_playbook_on_task_start(self, task, is_conditional):
+        # Ansible gives a meta task such as flush_handlers no result, so its start would stand without an end.
+        if task.action in META_ACTIONS:
+            return
         self._line(play=self._play, task=task.get_name().strip(), state="started", msg="")
+
+    def v2_playbook_on_handler_task_start(self, task):
+        self.v2_playbook_on_task_start(task, False)
 
     def v2_runner_on_ok(self, result):
         self._step(result, "changed" if result._result.get("changed") else "ok")

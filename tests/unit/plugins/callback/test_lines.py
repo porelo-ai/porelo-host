@@ -53,3 +53,16 @@ def test_the_stop_is_a_waiting_line_naming_what_it_waits_for():
     assert code == 2, f"ansible-playbook ends a failed play with 2, and the caller maps it: {output}"
     assert {"v": 1, "state": "waiting", "needs": ["drive", "vault-new"]} in lines, output
     assert not [line for line in lines if line["state"] == "failed"], f"the stop is no failure: {output}"
+
+
+def test_a_meta_task_writes_no_line_since_ansible_ends_it_with_none():
+    _, lines, output = run("meta.yml")
+    tasks = [(line["task"], line["state"]) for line in lines]
+    assert tasks == [
+        ("Change something and notify", "started"),
+        ("Change something and notify", "changed"),
+        ("Run the handler", "started"),
+        ("Run the handler", "ok"),
+        ("Do nothing after", "started"),
+        ("Do nothing after", "ok"),
+    ], output

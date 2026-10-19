@@ -1,0 +1,20 @@
+---
+- name: A meta task between two steps
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Change something and notify
+        ansible.builtin.command:
+            cmd: "true"
+        changed_when: true
+        notify: Run the handler
+      - name: Run the handlers now
+        ansible.builtin.meta: flush_handlers
+      - name: Do nothing after
+        ansible.builtin.debug:
+            msg: nothing
+  handlers:
+      - name: Run the handler
+        ansible.builtin.debug:
+            msg: handled
