@@ -37,6 +37,7 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho15"></a>[HO15](HO15-The-Host-On-Fedora.md) | - | - | The host on Fedora as on Ubuntu 26.04: SELinux, firewalld, `dnf` and a Molecule scenario on Fedora to measure. |
+| <a id="ho16"></a>[HO16](HO16-The-Persons-Drive-On-OneDrive.md) | - | - | OneDrive in Tresorit's place for the person's drive, chosen per project: client, login, encryption and sync to measure. |
 
 ## Estimated
 
