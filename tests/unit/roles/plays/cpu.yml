@@ -1,0 +1,10 @@
+---
+- name: Check one CPU
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Run base's CPU check against the given cpuinfo
+        ansible.builtin.include_role:
+            name: porelo.host.base
+            tasks_from: cpu

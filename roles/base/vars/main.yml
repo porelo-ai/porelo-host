@@ -3,3 +3,5 @@
 __base_account_groups:
   - kvm
   - libvirt
+# The file the CPU check reads its flags from; the unit tests name others in its place.
+__base_cpuinfo: /proc/cpuinfo
