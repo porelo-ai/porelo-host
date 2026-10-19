@@ -8,6 +8,51 @@
   vars:
     side_effect_drive: /srv/porelo-host/drive
   tasks:
+    # First a down whose drive never reads synced: it must stop on the drive, saying what would be lost, and keep it.
+    - name: Keep the stub's tresor syncing
+      ansible.builtin.file:
+        path: /home/porelo-test/.local/share/tresorit/stub-state/never-idle
+        state: touch
+        owner: porelo-test
+        group: porelo-test
+        mode: "0644"
+        modification_time: preserve
+        access_time: preserve
+
+    - name: Run down while the drive does not read synced
+      ansible.builtin.command:
+        cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.down -e drive_sync_wait=10
+      environment:
+        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
+        LC_ALL: C.UTF-8
+      register: side_effect_unsynced
+      changed_when: true
+      failed_when: false
+
+    - name: Read whether the drive is still mounted after it
+      ansible.builtin.command:
+        cmd: findmnt --noheadings --mountpoint {{ side_effect_drive }}
+      register: side_effect_kept
+      changed_when: false
+      failed_when: false
+
+    - name: Assert down stopped on the drive, saying what would be lost, and left it mounted and logged in
+      ansible.builtin.assert:
+        that:
+          - side_effect_unsynced.rc == 2
+          - side_effect_unsynced.stdout is search('did not read synced within 10 s')
+          - side_effect_unsynced.stdout is search('would be lost with the host')
+          - side_effect_kept.rc == 0
+        fail_msg: >-
+          down with an unsynced drive gave rc {{ side_effect_unsynced.rc }}:
+          {{ side_effect_unsynced.stdout_lines | select('search', 'failed') | list }};
+          mount rc {{ side_effect_kept.rc }}
+
+    - name: Let the stub's tresor read synced again
+      ansible.builtin.file:
+        path: /home/porelo-test/.local/share/tresorit/stub-state/never-idle
+        state: absent
+
     - name: Run down on the host itself, as host down does, its steps as JSON lines
       ansible.builtin.command:
         cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.down

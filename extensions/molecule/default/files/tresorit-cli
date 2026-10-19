@@ -50,6 +50,8 @@ transfers)
     logged_in || error CLINotLoggedIn "You need to log in first to perform this action"
     tresor=${3:-}
     [ -s "$state/sync" ] && [ "$(cut -f1 "$state/sync")" = "$tresor" ] || error CLITresorNotSynced "Tresor is not synced"
+    # A file never-idle beside the state keeps the tresor syncing, as a sync that does not finish.
+    [ -e "$state/never-idle" ] && { printf '%s\tsyncing\t1\t0\n' "$tresor"; exit 0; }
     polls=$(($(cat "$state/polls") + 1)); echo $polls > "$state/polls"
     case $polls in 1) printf '%s\tindexing\t0\t0\n' "$tresor" ;; 2) printf '%s\tsyncing\t1\t0\n' "$tresor" ;;
         *) printf '%s\tidle\t0\t0\n' "$tresor" ;; esac ;;

@@ -1,17 +1,20 @@
 ---
-- name: down-client | Read the account's home
+# A failed up may have stopped before Porelo's setup made the account, or before the client was installed; down then
+# has no client to take, and goes on.
+- name: down-client | Read the account's home, if up got as far as the account
   ansible.builtin.getent:
     database: passwd
     key: "{{ drive_account }}"
+    fail_key: false
 
-# A failed up may have stopped before the client was installed; down then has no client to take.
 - name: down-client | Read whether the client is there
   ansible.builtin.stat:
     path: "{{ __drive_client_dir }}/tresorit-cli"
   register: __drive_cli
+  when: ansible_facts['getent_passwd'][drive_account] is not none
 
 - name: down-client | Sync, log out and stop the client
-  when: __drive_cli.stat.exists
+  when: __drive_cli.stat.exists | default(false)
   block:
     - name: down-client | Read whether the client is logged in
       ansible.builtin.command:
@@ -26,8 +29,17 @@
     - name: down-client | Wait until everything written is synced, then log out
       when: __drive_logged_in
       block:
-        - name: down-client | Wait until the person's tresor is synced
-          ansible.builtin.include_tasks: "{{ role_path }}/tasks/synced.yml"
+        # A sync that does not finish is a copy that failed: down stops, and the host is kept, saying what is at risk.
+        - name: down-client | Wait until the person's tresor is synced, or say what would be lost
+          block:
+            - name: down-client | Wait until the person's tresor is synced
+              ansible.builtin.include_tasks: "{{ role_path }}/tasks/synced.yml"
+          rescue:
+            - name: down-client | Stop, the drive not synced
+              ansible.builtin.fail:
+                msg: >-
+                  the drive's tresor {{ drive_tresor }} did not read synced within {{ drive_sync_wait }} s; what was
+                  written on the host since its last sync would be lost with the host, so the drive stays as it is
 
         - name: down-client | Stop syncing the person's tresor
           ansible.builtin.command:
