@@ -31,5 +31,11 @@ its digest, so `host up` can take exactly that tarball and refuse any other befo
 
 ## To be checked
 
+- **The tarball is not reproducible as built today:** the collection built twice from the same commit `9edc14a` on
+  2026-10-19 gave two SHA-256s (`a3760efa…` at 13:38Z, `4b209775…` at 14:03Z), likely the times in the tar. So a
+  digest pinned per release means something only for the one tarball the release builds and attaches; whether
+  `ansible-galaxy collection build` can be made reproducible (fixed times, sorted entries) is to be read, and either
+  way a person's `host up` takes the release's own file, never one built again.
+
 - Which version the first release takes: `galaxy.yml` says `0.5.1-snapshot`, while a release needs a plain
   semantic version matching Porelo's.
