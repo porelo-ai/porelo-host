@@ -104,6 +104,17 @@ In a VM of `build/molecule.sh`'s, Ubuntu 26.04, porelo `0.5.1~snapshot.312`:
 - `vault put --from-file=<path>` reads the key on the host itself. It says `stored` again for the same value, so a
   `put` cannot yet report "unchanged"; porelo's Idea for that is Core's.
 
+## Waits for
+
+- **`tasks.yml`**, the last part: the agent packages the inventory names (`agent_package`) installed through the setup
+  script's `--with`, with the Matrix transport and homeserver where the project names them; `agent-login:<agent>`
+  added to the stop's needs for each agent not signed in; then `porelo task start <task> -p <project> -r <repository>
+  --agent <agent> --detach --no-input`, guarded by `porelo task status --json`. Decided by QH20 (a), 2026-10-19. It
+  waits for porelo's "A Machine File's Task Names Its Agent" (the inventory's `agent` and `agent_package`) and
+  "Whether An Agent Is Signed In, As A Contract" (`porelo agents --json`'s `signed_in`), since without the second a
+  second `up` cannot tell a signed-in agent from one still waiting, and the role must not guess or keep a mark of its
+  own.
+
 ## To be checked
 
 - `porelo-setup` as a package, once published: its name, and that the script runs from it as from the download.
