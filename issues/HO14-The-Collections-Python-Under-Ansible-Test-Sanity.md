@@ -1,6 +1,6 @@
 # HO14 — The Collection's Python Under `ansible-test sanity`
 
-**Status:** Estimated.
+**Status:** Analyzed.
 **Size:** S - one pinned container image and one Build step; the findings it brings are fixed where they arise.
 
 **What must be true.** The collection's Python, the `lines` callback and the `tresorit_installer` module, passes
