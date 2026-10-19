@@ -92,6 +92,11 @@ run changes nothing that is already as it should be.
   drive's), only where up got as far as the account and a vault. Molecule's side effect finds no vault after `down`
   (`vault status` 4); seen red first without it (`vault status` 0). On the development host: cleared, `down` rc 0.
 
+- **The sixth full Scaleway run, 2026-10-19** (collection `224f529`, porelo 313): Porelo installed by its pinned key
+  with the setup script from its package, the account made by it, the person's key let in as the account; the vault
+  made with the operator's passphrase over stdin and open (`vault status` 0); the machine file's project followed with
+  its signature checked; at `down` the vault cleared and the person's key taken off. All `OK`.
+
 ## Measured
 
 In a VM of `build/molecule.sh`'s, Ubuntu 26.04, porelo `0.5.1~snapshot.312`:

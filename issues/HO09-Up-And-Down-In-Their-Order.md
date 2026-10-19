@@ -1,6 +1,6 @@
 # HO09 — Up And Down In Their Order
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** M - two playbooks and the order of the roles, a stop the caller resumes from, and the output a program
 reads; the roles themselves are the other issues'.
 
@@ -55,10 +55,12 @@ stood, and `down` after a failed `up` takes down what came up.
   and ends as `ok`, `changed`, `skipped` or `failed`, an ignored failure as `ok`; a `no_log` task's planted secret is
   in no output; the stop is a waiting line naming its needs, and no failure. Seen red: the waiting branch removed, and
   a callback that wrote a task's arguments, which leaked the secret.
-- [ ] On the test VM, `up` run as `host up` runs it, with the callback and `C.UTF-8`: every line is the contract's
-  JSON, each start has its end, nothing fails or waits; a second `up` changes nothing.
-- The stop on the test VM, a vault left shut or a drive not synced: [HO02](README.md#ho02)'s and
-  [HO06](README.md#ho06)'s.
+- [x] On the test VM, `up` run as `host up` runs it, with the callback and `C.UTF-8`: every line is the contract's
+  JSON, each start has its end, nothing fails or waits; a second `up` changes nothing. Molecule's verify and its
+  idempotence step, green on GitHub's runner.
+- [x] The stop, a vault left shut or a drive not synced: [HO02](README.md#ho02)'s and [HO06](README.md#ho06)'s, in
+  Molecule and in the sixth full Scaleway run, 2026-10-19, which stopped with `needs: ["drive", "vault-new"]` and went
+  through after the operator's login and passphrase.
 
 ## To be checked
 

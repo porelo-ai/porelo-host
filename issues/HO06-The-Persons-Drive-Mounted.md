@@ -1,6 +1,6 @@
 # HO06 — The Person's Drive Mounted
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** M - one role around a third-party client that runs headless, whose login only the person can give, and
 whose `down` must wait until everything written is synced.
 
@@ -40,10 +40,15 @@ nothing is run from it; at `down` it is unmounted, with everything written to it
   `drive` alone; after the login `up` runs through, the person's tresor syncs into `drive_path` and no other does;
   `down` logs the client out with `--unlink` and stops every sync. This is the stop's acceptance
   [HO09](README.md#ho09) left here.
-- [ ] At the first real `up`: a file written on the host before `down` is in the tresor afterwards, and a file put
-  into the tresor elsewhere is on the host after the next `up`; a sync that does not finish within its limit stops
-  `down`, naming the tresor. Measured by hand on `ubuntu26.04` both ways (see Measured), not yet by `up` and `down`.
-- [ ] The Tresorit password appears in no output of the run.
+- [x] At the first real `up`: a file written on the host before `down` is in the tresor afterwards, and a file put
+  into the tresor elsewhere is on the host after the next `up`: the sixth full Scaleway run, 2026-10-19, with the
+  operator's own Tresorit login, both ways `OK`. A sync that does not finish within its limit stops `down`, naming the
+  tresor: Molecule's side effect, with the client's stub kept syncing.
+- [ ] The Tresorit password appears in no output of the run. By construction the collection never holds it:
+  porelo-host gives it on `tresorit-cli login`'s stdin over ssh as the account, and no task of the role receives it.
+  Its value is the operator's, so it is the operator's test: search the run's own log for it, e.g.
+  `read -rs p; grep -c -F -- "$p" ~/.porelo/handover/porelo-host-scaleway-test/run-*.jsonl; unset p`, expecting 0
+  in each file.
 
 ## Built
 

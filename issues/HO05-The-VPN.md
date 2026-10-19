@@ -1,6 +1,6 @@
 # HO05 — The VPN
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** M - one role with a firewall and a key that must reach the host without passing through Ansible.
 
 **What must be true.** The person reaches the host only through their own VPN, with the key from their drive, and
@@ -55,5 +55,6 @@ next start would collide with.
 - [x] A missing key file stops the role before the firewall changes, naming the path: verify runs `up` with a path
   where no file is and another ssh port, and finds rc 2, the path named, and the rules' file unchanged. Seen red first
   with the firewall's tasks moved ahead of the key's check.
-- [ ] On a real host, the person's peer reaches a service through the VPN alone: the Scaleway test's
-  `machines_after_up`.
+- [x] On a real host, the person's peer reaches a service through the VPN alone: the sixth full Scaleway run,
+  2026-10-19 (collection `224f529`), the person's key from the tresor: the service answered at `10.73.0.1:8080`
+  through the tunnel and the public address refused it (`machines_after_up`'s proofs `OK`).
