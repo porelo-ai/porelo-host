@@ -41,3 +41,24 @@
       {{ base_account }} lacks linger ({{ __base_linger.stat.exists }}) or subuid and subgid ranges
       ({{ __base_subids.stdout_lines }}), which Porelo's setup script gives an account it makes
     quiet: true
+
+# The person reaches the account itself over ssh: porelo's own way to open its vault (doc/hosts.md), and the way
+# porelo-host logs the drive in. Their one key is added, and nothing else of the file is touched.
+- name: account | Make the account's ssh directory
+  ansible.builtin.file:
+    path: "{{ ansible_facts['getent_passwd'][base_account][4] }}/.ssh"
+    state: directory
+    owner: "{{ base_account }}"
+    group: "{{ base_account }}"
+    mode: "0700"
+  when: base_authorized_key | length > 0
+
+- name: account | Let the person's key log in as the account
+  ansible.builtin.lineinfile:
+    path: "{{ ansible_facts['getent_passwd'][base_account][4] }}/.ssh/authorized_keys"
+    line: "{{ base_authorized_key }}"
+    create: true
+    owner: "{{ base_account }}"
+    group: "{{ base_account }}"
+    mode: "0600"
+  when: base_authorized_key | length > 0

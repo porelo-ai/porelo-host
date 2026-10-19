@@ -2,6 +2,11 @@
 # The account Porelo's tasks run as; made by Porelo's own setup script, never by this role.
 base_account: "{{ porelo_host_account }}"
 
+# The person's public ssh key, from the collection-wide porelo_host_authorized_key porelo-frontend's inventory names:
+# the person reaches the account itself over ssh, as porelo's doc/hosts.md has them open the vault and porelo-host
+# logs the drive in. A public key is no secret.
+base_authorized_key: "{{ porelo_host_authorized_key | default('') }}"
+
 # Packages every host gets beside KVM and podman.
 base_packages:
   - acl

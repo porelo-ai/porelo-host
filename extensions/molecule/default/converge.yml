@@ -28,22 +28,6 @@
     - name: Install the collection before up runs
       ansible.builtin.meta: flush_handlers
 
-    # Stands in for the setup script porelo's package will hold at that path once published: the published script of
-    # the newest snapshot, which is that file byte for byte, as porelo's own check of its package says.
-    - name: Put the newest snapshot's published script where porelo's package will hold it
-      ansible.builtin.shell:
-        cmd: >-
-          set -o pipefail && mkdir -p /usr/share/porelo/setup
-          && newest=$(curl -fsSL https://fuinorg.jfrog.io/artifactory/api/storage/porelo-dist-deb/setup/
-          | python3 -c 'import json, re, sys; print(max((c["uri"] for c in json.load(sys.stdin)["children"]
-          if re.fullmatch(r"/porelo-setup-.*snapshot\.[0-9]+\.sh", c["uri"])),
-          key=lambda u: int(re.search(r"snapshot\.([0-9]+)", u).group(1))))')
-          && curl -fsSL -o /usr/share/porelo/setup/porelo-setup.sh
-          "https://fuinorg.jfrog.io/artifactory/porelo-dist-deb/setup$newest"
-          && chmod 0755 /usr/share/porelo/setup/porelo-setup.sh
-        creates: /usr/share/porelo/setup/porelo-setup.sh
-        executable: /bin/bash
-
     # Stands in for the part of Porelo's setup script up runs too, since the client's stub below goes into the
     # account's home before the first up: the script then finds the account and must leave it as it is.
     - name: Make the account as Porelo's setup script makes it
@@ -74,6 +58,18 @@
         creates: "{{ item }}.key"
       loop: [/root/vpn-host, /etc/wireguard/verify-peer]
 
+    # Stands in for the person's ssh key, which porelo-host passes as porelo_host_authorized_key and logs in with as
+    # the account itself, for the drive's login and the vault's step.
+    - name: Make the person's ssh key for the run
+      ansible.builtin.command:
+        cmd: ssh-keygen -q -t ed25519 -N "" -C person -f /root/person-ssh
+        creates: /root/person-ssh
+
+    - name: Read the person's public ssh key
+      ansible.builtin.slurp:
+        src: /root/person-ssh.pub
+      register: converge_person_public
+
     - name: Read the test peer's public key
       ansible.builtin.slurp:
         src: /etc/wireguard/verify-peer.pub
@@ -98,6 +94,7 @@
               drive_sync_wait: 60
               porelo_host_vpn_peer_public_key: {{ converge_peer_public.content | b64decode | trim }}
               porelo_host_vpn_peer_address: 10.73.0.2/32
+              porelo_host_authorized_key: {{ converge_person_public.content | b64decode | trim }}
               vpn_private_key_path: /root/vpn-host.key
 
     # The client's stub in the place the installer puts the real one, so the role leaves it as an installed client.

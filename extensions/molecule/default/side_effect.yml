@@ -119,3 +119,17 @@
       ansible.builtin.assert:
         that: side_effect_vault.rc == 4
         fail_msg: "after down, porelo vault status gave {{ side_effect_vault.rc }}: {{ side_effect_vault.stdout }}"
+
+    - name: Try the person's key as the account after down
+      ansible.builtin.command:
+        argv: [ssh, -o, BatchMode=yes, -o, IdentitiesOnly=yes, -o, StrictHostKeyChecking=accept-new,
+               -o, UserKnownHostsFile=/root/person-known-hosts, -i, /root/person-ssh, porelo-test@127.0.0.1, "true"]
+      register: side_effect_person_ssh
+      changed_when: false
+      failed_when: false
+
+    - name: Assert down took the person's key off the account
+      ansible.builtin.assert:
+        that: side_effect_person_ssh.rc == 255 and side_effect_person_ssh.stderr is search('Permission denied')
+        fail_msg: >-
+          after down, ssh as porelo-test: rc {{ side_effect_person_ssh.rc }}, {{ side_effect_person_ssh.stderr }}

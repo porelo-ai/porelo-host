@@ -22,3 +22,8 @@
       ansible.builtin.include_role:
         name: porelo.host.drive
         tasks_from: down
+
+    - name: Take the person's key off the account, after the drive
+      ansible.builtin.include_role:
+        name: porelo.host.base
+        tasks_from: down

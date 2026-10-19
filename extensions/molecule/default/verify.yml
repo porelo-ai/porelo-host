@@ -347,6 +347,21 @@
         verify_follows: "{{ (verify_project.results[0].stdout | from_json).follows
           | selectattr('name', 'equalto', 'converge') | list }}"
 
+    # base: the person reaches the account itself over ssh, as porelo-host does for the drive's login and the vault.
+    - name: Log in over ssh as the account with the person's key, and ask Porelo for the vault
+      ansible.builtin.command:
+        argv: [ssh, -o, BatchMode=yes, -o, IdentitiesOnly=yes, -o, StrictHostKeyChecking=accept-new,
+               -o, UserKnownHostsFile=/root/person-known-hosts, -i, /root/person-ssh, "{{ verify_account }}@127.0.0.1",
+               "cd /tmp && XDG_RUNTIME_DIR=/run/user/$(id -u) porelo vault status"]
+      register: verify_person_ssh
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the person's key logs in as the account
+      ansible.builtin.assert:
+        that: verify_person_ssh.rc == 0 and verify_person_ssh.stdout is search('^open', multiline=True)
+        fail_msg: "ssh as {{ verify_account }}: rc {{ verify_person_ssh.rc }}, {{ verify_person_ssh.stderr }}"
+
     # The lines callback, as porelo-frontend's host command reads it from a real up on the host.
     - name: Read the lines of the last up
       ansible.builtin.slurp:

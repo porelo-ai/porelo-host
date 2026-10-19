@@ -59,6 +59,10 @@ nothing is run from it; at `down` it is unmounted, with everything written to it
 - In Molecule a stub of `tresorit-cli` (`extensions/molecule/default/files/`) answers as the client was measured, so
   the role's steps around the client run in the Build; Tresorit itself is met only at a real `up`. Seen red first:
   without the `drive` need the first `up` ran through with rc 0.
+- The fourth full Scaleway run (2026-10-19) stopped at the drive's login: porelo-host logs in over ssh as the account,
+  which held no key of the person's. `base`'s account step now lets `porelo_host_authorized_key` in as the account,
+  and `down` takes it off last; Molecule logs in with it as the account and is refused after `down`, seen red first
+  with the run's very refusal.
 
 ## Measured
 

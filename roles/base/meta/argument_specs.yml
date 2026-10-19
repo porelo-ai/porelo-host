@@ -19,3 +19,18 @@ argument_specs:
         type: str
         required: true
         description: The account Porelo's tasks run as, from the collection-wide variable porelo_host_account.
+      base_authorized_key:
+        type: str
+        default: ""
+        description: The person's public ssh key, from porelo_host_authorized_key, let in as the account.
+  down:
+    short_description: The person's key taken off the account, last at down.
+    options:
+      base_account:
+        type: str
+        required: true
+        description: The account Porelo's tasks run as.
+      base_authorized_key:
+        type: str
+        default: ""
+        description: The person's public ssh key, as up added it.

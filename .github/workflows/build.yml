@@ -8,9 +8,9 @@ on:
     push:
         branches: [main]
         # A change only to the workflows is checked by its pull request; on its own it builds nothing.
-        paths-ignore: ['.github/**', 'porelo.yml']
+        paths-ignore: ['.github/**', 'porelo.yml', 'issues/**', 'doc/**', '**/*.md']
     pull_request:
-        paths-ignore: ['.github/**', 'porelo.yml']
+        paths-ignore: ['.github/**', 'porelo.yml', 'issues/**', 'doc/**', '**/*.md']
 
 permissions:
     contents: read
