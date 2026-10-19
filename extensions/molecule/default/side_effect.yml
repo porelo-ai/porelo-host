@@ -1,6 +1,6 @@
 ---
 # Runs `down` on the host itself, as `host down` does, after verify has read what `up` left, and reads what `down`
-# leaves: the drive unmounted.
+# leaves: the VPN taken down and the drive unmounted.
 - name: Side effect
   hosts: all
   gather_facts: false
@@ -29,3 +29,22 @@
       ansible.builtin.assert:
         that: side_effect_mount.rc != 0
         fail_msg: "{{ side_effect_drive }} is still mounted after down: {{ side_effect_mount.stdout }}"
+
+    - name: Read whether the VPN's interface is still there
+      ansible.builtin.command:
+        cmd: ip link show wg-porelo
+      register: side_effect_vpn
+      changed_when: false
+      failed_when: false
+
+    - name: Read whether the VPN's file is still there
+      ansible.builtin.stat:
+        path: /etc/wireguard/wg-porelo.conf
+      register: side_effect_vpn_conf
+
+    - name: Assert down took the VPN's interface and its file
+      ansible.builtin.assert:
+        that:
+          - side_effect_vpn.rc != 0
+          - not side_effect_vpn_conf.stat.exists
+        fail_msg: "after down: interface rc {{ side_effect_vpn.rc }}, file {{ side_effect_vpn_conf.stat.exists }}"

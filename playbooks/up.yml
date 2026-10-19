@@ -29,3 +29,7 @@
         msg: "{{ porelo_host_needs | default([]) | to_json }}"
       when: porelo_host_needs | default([]) | length > 0
       tags: [porelo_host_waiting]
+
+    - name: Let the person reach the host through their VPN alone
+      ansible.builtin.include_role:
+        name: porelo.host.vpn

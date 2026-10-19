@@ -1,0 +1,15 @@
+---
+- name: Install WireGuard's tools and nftables
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/install.yml"
+
+- name: Check the host's key is there before anything changes
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/key.yml"
+
+- name: Configure the VPN's interface
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/configure.yml"
+
+- name: Run the VPN
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/service.yml"
+
+- name: Leave only ssh and the VPN on the public address
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/firewall.yml"

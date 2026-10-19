@@ -1,0 +1,14 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=The host's firewall: only ssh and the VPN on the public address
+Wants=network-pre.target
+Before=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft --file /etc/porelo-host/firewall.nft
+ExecStop=/usr/sbin/nft delete table inet porelo_host
+
+[Install]
+WantedBy=multi-user.target

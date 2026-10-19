@@ -1,6 +1,6 @@
 # HO05 — The VPN
 
-**Status:** Backlog.
+**Status:** Implementing.
 **Size:** M - one role with a firewall and a key that must reach the host without passing through Ansible.
 
 **What must be true.** The person reaches the host only through their own VPN, with the key from their drive, and
@@ -27,9 +27,29 @@ next start would collide with.
 - **Red first**: the scenario's `verify.yml` asserts that a port of a service bound to all addresses is not
   reachable on the public address; it fails without `firewall.yml`, then passes.
 
+## Built
+
+- The role as planned, in `up`'s second play after the person's step, since the key is on the drive and the drive is
+  synced only after the person's login; `down` takes it down before the drive.
+- **Ubuntu 26.04's AppArmor profile for `wg`** (from the `apparmor` package) lets it read only `/etc/wireguard`, and
+  holds no `dac_read_search`, so `PostUp = wg set %i private-key <path>` failed with `fopen: Permission denied` for a
+  key elsewhere. The role writes `/etc/apparmor.d/local/wg`, which the profile includes, with read for that one path
+  and `dac_read_search`, since the drive's file is the account's; a copy into `/etc/wireguard` would be a second file
+  holding the key.
+- **The firewall** is a table of its own, `inet porelo_host`, loaded by `porelo-host-firewall.service`, since
+  Ubuntu's `nftables.service` flushes the whole ruleset with libvirt's and podman's tables. It closes only the
+  interfaces the default routes leave by, so the host's own bridges stay as they are.
+- `porelo.host.lines` gave a meta task (`flush_handlers`, which the role needs to load the profile before the VPN
+  comes up) a start and no end, and a handler an end and no start; both mended in the callback, with a test.
+
 ## Acceptance
 
-- On the test VM `build/molecule.sh` makes: a peer made for the test reaches the host through the VPN; the same service is refused on the public
-  address; `idempotence` reports `changed=0`.
-- The private key's value appears in no output of the run (`-vvv`) and in no file but its own.
-- A missing key file stops the role before the firewall changes, naming the path.
+- [x] On the test VM: a peer made for the test, in a network namespace of its own, reaches a service bound to every
+  address through the VPN (`curl` 200); the same service is refused on the public address, from where Molecule
+  connects, while ssh answers; `idempotence` reports `changed=0`; after `down` the interface and its file are gone.
+  Seen red first: without the AppArmor rule `wg-quick@wg-porelo` does not start; without the firewall the service
+  answers on the public address.
+- [ ] The private key's value appears in no output of the run (`-vvv`) and in no file but its own. Checked so far:
+  not in `up`'s lines; `-vvv` not yet.
+- [ ] A missing key file stops the role before the firewall changes, naming the path. Built in `key.yml`, ahead of
+  the firewall; not yet run.

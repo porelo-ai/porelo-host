@@ -1,0 +1,16 @@
+---
+- name: Load wg's AppArmor profile again
+  ansible.builtin.command:
+    cmd: apparmor_parser --replace /etc/apparmor.d/wg
+  changed_when: true
+
+- name: Restart the VPN
+  ansible.builtin.systemd_service:
+    name: "wg-quick@{{ vpn_interface }}.service"
+    state: restarted
+
+- name: Load the firewall again
+  ansible.builtin.systemd_service:
+    name: porelo-host-firewall.service
+    state: restarted
+    daemon_reload: true

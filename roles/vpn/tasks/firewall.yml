@@ -1,0 +1,51 @@
+---
+# A table of its own, loaded by a unit of its own: Ubuntu's nftables.service flushes the whole ruleset, which would
+# take libvirt's and podman's tables with it.
+- name: firewall | Read the interfaces the host's default routes leave by
+  ansible.builtin.command:
+    cmd: ip -json {{ item }} route show default
+  loop: ["-4", "-6"]
+  register: __vpn_routes
+  changed_when: false
+  check_mode: false
+
+- name: firewall | Stop if the host has no default route to tell its public interface by
+  ansible.builtin.assert:
+    that: __vpn_public | length > 0
+    fail_msg: "no default route, so no public interface to close: {{ __vpn_routes.results | map(attribute='stdout') }}"
+    quiet: true
+
+- name: firewall | Make the directory the rules are kept in
+  ansible.builtin.file:
+    path: /etc/porelo-host
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: firewall | Write the rules
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/firewall.nft.j2"
+    dest: /etc/porelo-host/firewall.nft
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+    validate: nft --check --file %s
+  notify: Load the firewall again
+
+- name: firewall | Write the unit that loads them
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/porelo-host-firewall.service.j2"
+    dest: /etc/systemd/system/porelo-host-firewall.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Load the firewall again
+
+- name: firewall | Load the rules now and at every boot
+  ansible.builtin.systemd_service:
+    name: porelo-host-firewall.service
+    state: started
+    enabled: true
+    daemon_reload: true

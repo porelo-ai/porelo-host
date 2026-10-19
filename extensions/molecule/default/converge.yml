@@ -40,6 +40,28 @@
         cmd: loginctl enable-linger {{ converge_account }}
         creates: /var/lib/systemd/linger/{{ converge_account }}
 
+    # Stands in for the person's drive: the host's VPN key is a file the role only names, never reads; here it is made
+    # for the run, with the test peer's, which verify uses from a network namespace of its own.
+    - name: Install WireGuard's tools to make the run's keys
+      ansible.builtin.apt:
+        name: wireguard-tools
+        state: present
+
+    # The host's key outside /etc/wireguard, where Ubuntu's AppArmor profile lets wg read it only by the role's rule;
+    # the test peer's inside it, where the profile lets wg read it as it is.
+    - name: Make the run's VPN keys, the host's and the test peer's
+      ansible.builtin.shell:
+        cmd: >-
+          umask 077 && mkdir -p /etc/wireguard && wg genkey > {{ item }}.key
+          && wg pubkey < {{ item }}.key > {{ item }}.pub
+        creates: "{{ item }}.key"
+      loop: [/root/vpn-host, /etc/wireguard/verify-peer]
+
+    - name: Read the test peer's public key
+      ansible.builtin.slurp:
+        src: /etc/wireguard/verify-peer.pub
+      register: converge_peer_public
+
     - name: Write the inventory host up writes
       ansible.builtin.copy:
         dest: /root/porelo-host-inventory.yml
@@ -54,6 +76,11 @@
               porelo_host_account: {{ converge_account }}
               # Tresorit is met only at a real up; here a local folder stands in the tresor's place.
               drive_client: false
+              vpn_address: 10.73.0.1/24
+              vpn_private_key_path: /root/vpn-host.key
+              vpn_peers:
+                - public_key: {{ converge_peer_public.content | b64decode | trim }}
+                  allowed_ips: 10.73.0.2/32
 
     - name: Run up on the host itself, as host up does, its steps as JSON lines
       ansible.builtin.command:

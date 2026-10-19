@@ -149,6 +149,82 @@
         that: verify_drive_run.rc != 0 and verify_drive_run.stdout != 'ran'
         fail_msg: "a script in {{ verify_drive }} ran: rc {{ verify_drive_run.rc }}, {{ verify_drive_run.stdout }}"
 
+    # The vpn role: a service bound to every address is reached through the VPN, from a peer in a network namespace of
+    # its own, and refused on the public address, from where Molecule itself connects.
+    - name: Start a service bound to every address
+      ansible.builtin.command:
+        argv: [systemd-run, --unit, verify-listener, --collect, python3, -m, http.server, --bind, "::", "8080"]
+        creates: /run/systemd/transient/verify-listener.service
+
+    - name: Make the test peer in a network namespace of its own, linked to the host
+      ansible.builtin.shell:
+        cmd: |
+          set -eu
+          ip netns add verify-peer
+          ip link add verify-host type veth peer name verify-ns netns verify-peer
+          ip address add 10.250.0.1/30 dev verify-host && ip link set verify-host up
+          ip -n verify-peer address add 10.250.0.2/30 dev verify-ns
+          ip -n verify-peer link set verify-ns up && ip -n verify-peer link set lo up
+          ip -n verify-peer link add wg0 type wireguard
+          ip netns exec verify-peer wg set wg0 private-key /etc/wireguard/verify-peer.key \
+              peer "$(cat /root/vpn-host.pub)" endpoint 10.250.0.1:51820 allowed-ips 10.73.0.1/32
+          ip -n verify-peer address add 10.73.0.2/24 dev wg0 && ip -n verify-peer link set wg0 up
+        executable: /bin/bash
+        creates: /run/netns/verify-peer
+
+    - name: Reach the service through the VPN from the test peer
+      ansible.builtin.command:
+        cmd: ip netns exec verify-peer curl -fsS --max-time 10 -o /dev/null -w '%{http_code}' http://10.73.0.1:8080/
+      register: verify_vpn_reach
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the service answers through the VPN
+      ansible.builtin.assert:
+        that: verify_vpn_reach.rc == 0 and verify_vpn_reach.stdout == '200'
+        fail_msg: >-
+          through the VPN: rc {{ verify_vpn_reach.rc }}, {{ verify_vpn_reach.stdout }} {{ verify_vpn_reach.stderr }}
+
+    - name: Reach ssh on the public address, from where Molecule connects
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: 22
+        timeout: 10
+      delegate_to: localhost
+      become: false
+
+    - name: Reach the same service on the public address, from where Molecule connects
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: 8080
+        timeout: 5
+      delegate_to: localhost
+      become: false
+      register: verify_public_reach
+      failed_when: false
+
+    - name: Assert the public address refuses the service
+      ansible.builtin.assert:
+        that: verify_public_reach.msg is defined and verify_public_reach.msg is search('Timeout')
+        fail_msg: "{{ ansible_host }}:8080 answered on the public address: {{ verify_public_reach }}"
+
+    - name: Read the host's private key's value, only to search the run's lines for it
+      ansible.builtin.slurp:
+        src: /root/vpn-host.key
+      register: verify_host_key
+      no_log: true
+
+    - name: Read the lines of the last up, to search for the key
+      ansible.builtin.slurp:
+        src: /root/porelo-host-up.lines
+      register: verify_key_lines
+
+    - name: Assert the host's private key appears in no line of up
+      ansible.builtin.assert:
+        that: (verify_host_key.content | b64decode | trim) not in (verify_key_lines.content | b64decode)
+        fail_msg: the host's private VPN key appears in up's lines
+      no_log: true
+
     # The lines callback, as porelo-frontend's host command reads it from a real up on the host.
     - name: Read the lines of the last up
       ansible.builtin.slurp:

@@ -1,0 +1,10 @@
+---
+- name: configure | Write the interface's file, which names the key's path and never holds the key
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/wireguard.conf.j2"
+    dest: "/etc/wireguard/{{ vpn_interface }}.conf"
+    owner: root
+    group: root
+    mode: "0600"
+    backup: true
+  notify: Restart the VPN

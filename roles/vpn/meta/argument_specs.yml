@@ -1,0 +1,46 @@
+---
+argument_specs:
+  main:
+    short_description: WireGuard to the person's peers, and a firewall leaving only ssh and the VPN public.
+    options:
+      vpn_interface:
+        type: str
+        default: wg-porelo
+        description: The VPN's interface, and the name of its file under /etc/wireguard.
+      vpn_port:
+        type: int
+        default: 51820
+        description: The UDP port the VPN listens on.
+      vpn_address:
+        type: str
+        required: true
+        description: The host's address inside the VPN with its prefix, from the inventory Porelo writes.
+      vpn_peers:
+        type: list
+        elements: dict
+        required: true
+        description: The person's peers, from the inventory Porelo writes.
+        options:
+          public_key:
+            type: str
+            required: true
+            description: The peer's public key, base64 as wg prints it.
+          allowed_ips:
+            type: str
+            required: true
+            description: The addresses the peer is allowed inside the VPN.
+      vpn_private_key_path:
+        type: path
+        required: true
+        description: The file on the person's drive holding the host's private key; named to wg, never read here.
+      vpn_ssh_port:
+        type: int
+        default: 22
+        description: The TCP port ssh listens on, kept open on the public address.
+  down:
+    short_description: The VPN stopped and its file removed.
+    options:
+      vpn_interface:
+        type: str
+        default: wg-porelo
+        description: The VPN's interface.
