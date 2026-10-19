@@ -15,3 +15,4 @@ scenario:
     - converge
     - idempotence
     - verify
+    - side_effect

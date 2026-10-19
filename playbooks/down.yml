@@ -7,4 +7,8 @@
   hosts: localhost
   connection: local
   gather_facts: false
-  tasks: []
+  tasks:
+    - name: Take the person's drive down, last
+      ansible.builtin.include_role:
+        name: porelo.host.drive
+        tasks_from: down

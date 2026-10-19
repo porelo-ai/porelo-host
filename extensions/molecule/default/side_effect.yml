@@ -1,0 +1,31 @@
+---
+# Runs `down` on the host itself, as `host down` does, after verify has read what `up` left, and reads what `down`
+# leaves: the drive unmounted.
+- name: Side effect
+  hosts: all
+  gather_facts: false
+  become: true
+  vars:
+    side_effect_drive: /srv/porelo-host/drive
+  tasks:
+    - name: Run down on the host itself, as host down does, its steps as JSON lines
+      ansible.builtin.command:
+        cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.down
+      environment:
+        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
+        LC_ALL: C.UTF-8
+      register: side_effect_down
+      changed_when: >-
+        side_effect_down.stdout is search('"state": "changed"')
+
+    - name: Read whether the drive's folder is still mounted
+      ansible.builtin.command:
+        cmd: findmnt --noheadings --mountpoint {{ side_effect_drive }}
+      register: side_effect_mount
+      changed_when: false
+      failed_when: false
+
+    - name: Assert down left the drive unmounted
+      ansible.builtin.assert:
+        that: side_effect_mount.rc != 0
+        fail_msg: "{{ side_effect_drive }} is still mounted after down: {{ side_effect_mount.stdout }}"

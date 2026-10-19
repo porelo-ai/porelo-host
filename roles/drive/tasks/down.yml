@@ -1,0 +1,21 @@
+---
+# The drive is taken down last at `down` and unmounted, so nothing of it is left mounted on a host that is given back;
+# the wait until Tresorit has synced everything written comes before this with the client's tasks.
+- name: down | Read the mount unit's name for the drive's path
+  ansible.builtin.command:
+    cmd: systemd-escape --path --suffix=mount {{ drive_path }}
+  register: __drive_unit
+  changed_when: false
+  check_mode: false
+
+# A failed up may have stopped before the unit was written; down then has nothing of the drive to take.
+- name: down | Read whether up wrote the drive's mount unit
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ __drive_unit.stdout }}"
+  register: __drive_unit_file
+
+- name: down | Unmount the drive
+  ansible.builtin.systemd_service:
+    name: "{{ __drive_unit.stdout }}"
+    state: stopped
+  when: __drive_unit_file.stat.exists

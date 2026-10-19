@@ -7,6 +7,7 @@
   vars:
     verify_version: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_VERSION') }}"
     verify_account: porelo-test
+    verify_drive: /srv/porelo-host/drive
   tasks:
     - name: Read which collections the host has
       ansible.builtin.command:
@@ -104,6 +105,49 @@
         fail_msg: >-
           {{ verify_account }}'s rootless podman mapped {{ verify_account_podman.stdout_lines }}
           (rc {{ verify_account_podman.rc }}: {{ verify_account_podman.stderr }})
+
+    # The drive role, with a local folder in the tresor's place: its own filesystem, nothing run from it.
+    - name: Read how the drive's folder is mounted
+      ansible.builtin.command:
+        cmd: findmnt --noheadings --output OPTIONS --mountpoint {{ verify_drive }}
+      register: verify_drive_mount
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the drive's folder is a filesystem of its own, mounted noexec, nosuid and nodev
+      ansible.builtin.assert:
+        that:
+          - verify_drive_mount.rc == 0
+          - verify_drive_mount.stdout.split(',') is superset(['noexec', 'nosuid', 'nodev'])
+        fail_msg: >-
+          {{ verify_drive }} is mounted with '{{ verify_drive_mount.stdout }}' (rc {{ verify_drive_mount.rc }})
+
+    - name: Put a script into the drive as the account
+      ansible.builtin.copy:
+        dest: "{{ verify_drive }}/verify-noexec.sh"
+        content: "#!/bin/sh\necho ran\n"
+        mode: "0755"
+      become: true
+      become_user: "{{ verify_account }}"
+
+    - name: Run that script as the account
+      ansible.builtin.command:
+        cmd: "{{ verify_drive }}/verify-noexec.sh"
+      become: true
+      become_user: "{{ verify_account }}"
+      register: verify_drive_run
+      changed_when: false
+      failed_when: false
+
+    - name: Remove the script again
+      ansible.builtin.file:
+        path: "{{ verify_drive }}/verify-noexec.sh"
+        state: absent
+
+    - name: Assert the script was refused
+      ansible.builtin.assert:
+        that: verify_drive_run.rc != 0 and verify_drive_run.stdout != 'ran'
+        fail_msg: "a script in {{ verify_drive }} ran: rc {{ verify_drive_run.rc }}, {{ verify_drive_run.stdout }}"
 
     # The lines callback, as porelo-frontend's host command reads it from a real up on the host.
     - name: Read the lines of the last up

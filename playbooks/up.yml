@@ -15,6 +15,10 @@
         name: porelo.host.base
         tasks_from: account
 
+    - name: Give the person's drive its folder
+      ansible.builtin.include_role:
+        name: porelo.host.drive
+
 - name: Bring the host up from the person's step
   hosts: localhost
   connection: local

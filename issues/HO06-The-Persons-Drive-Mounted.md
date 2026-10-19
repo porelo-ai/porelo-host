@@ -1,6 +1,6 @@
 # HO06 — The Person's Drive Mounted
 
-**Status:** Backlog.
+**Status:** Implementing.
 **Size:** M - one role around a third-party client that runs headless, whose login only the person can give, and
 whose `down` must wait until everything written is synced.
 

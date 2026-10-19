@@ -52,6 +52,8 @@
               localhost:
             vars:
               porelo_host_account: {{ converge_account }}
+              # Tresorit is met only at a real up; here a local folder stands in the tresor's place.
+              drive_client: false
 
     - name: Run up on the host itself, as host up does, its steps as JSON lines
       ansible.builtin.command:

@@ -1,0 +1,14 @@
+---
+# The account the drive is the person's folder for; made by Porelo's own setup script, never by this role.
+drive_account: "{{ porelo_host_account }}"
+
+# Where the drive's one folder is, on a filesystem of its own mounted noexec, nosuid and nodev.
+drive_path: /srv/porelo-host/drive
+
+# The file that filesystem lives in, and how large it may grow; the file is sparse, so it takes only what is written.
+drive_image: /var/lib/porelo-host/drive.img
+drive_size: 20G
+
+# Whether Tresorit's client syncs the person's tresor into the folder. Off, the folder stays empty and local: the
+# Molecule tests run so, since Tresorit is met only at a real up.
+drive_client: true

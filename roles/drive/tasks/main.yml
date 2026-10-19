@@ -1,0 +1,3 @@
+---
+- name: Give the drive a filesystem nothing runs from
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/filesystem.yml"
