@@ -49,7 +49,11 @@ next start would collide with.
   connects, while ssh answers; `idempotence` reports `changed=0`; after `down` the interface and its file are gone.
   Seen red first: without the AppArmor rule `wg-quick@wg-porelo` does not start; without the firewall the service
   answers on the public address.
-- [ ] The private key's value appears in no output of the run (`-vvv`) and in no file but its own. Checked so far:
-  not in `up`'s lines; `-vvv` not yet.
-- [ ] A missing key file stops the role before the firewall changes, naming the path. Built in `key.yml`, ahead of
-  the firewall; not yet run.
+- [x] The private key's value appears in no output of the run and in no file but its own: Molecule's verify searches
+  `up`'s lines and a whole `up` run with `-vvv` for it, and the interface's file names only its path. No file of the
+  role holds the key.
+- [x] A missing key file stops the role before the firewall changes, naming the path: verify runs `up` with a path
+  where no file is and another ssh port, and finds rc 2, the path named, and the rules' file unchanged. Seen red first
+  with the firewall's tasks moved ahead of the key's check.
+- [ ] On a real host, the person's peer reaches a service through the VPN alone: the Scaleway test's
+  `machines_after_up`.

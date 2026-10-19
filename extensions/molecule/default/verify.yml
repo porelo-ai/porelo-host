@@ -255,6 +255,56 @@
         that: verify_daemon.status.ActiveState == 'active'
         fail_msg: "tresorit-daemon.service is {{ verify_daemon.status.ActiveState | default(verify_daemon) }}"
 
+    # Ansible's own most talkative output of a whole up, searched for the host's private VPN key.
+    - name: Run up again with Ansible's -vvv and its own output
+      ansible.builtin.command:
+        cmd: ansible-playbook -vvv -c local -i /root/porelo-host-inventory.yml porelo.host.up
+      environment:
+        LC_ALL: C.UTF-8
+      register: verify_vvv
+      changed_when: false
+      no_log: true
+
+    - name: Assert up with -vvv ran, and its output holds no trace of the host's private key
+      ansible.builtin.assert:
+        that:
+          - verify_vvv.rc == 0
+          - (verify_host_key.content | b64decode | trim) not in (verify_vvv.stdout + verify_vvv.stderr)
+        fail_msg: "up with -vvv gave rc {{ verify_vvv.rc }}, or its output holds the host's private VPN key"
+      no_log: true
+
+    # A key file missing on the drive stops the vpn role before the firewall's rules are written again.
+    - name: Read the firewall's rules before an up without the key
+      ansible.builtin.stat:
+        path: /etc/porelo-host/firewall.nft
+      register: verify_rules_before
+
+    - name: Run up with a key path where no file is
+      ansible.builtin.command:
+        cmd: >-
+          ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.up
+          -e vpn_private_key_path=/srv/porelo-host/drive/porelo-host/no-such.key -e vpn_ssh_port=2222
+      environment:
+        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
+        LC_ALL: C.UTF-8
+      register: verify_no_key
+      changed_when: false
+      failed_when: false
+
+    - name: Read the firewall's rules after it
+      ansible.builtin.stat:
+        path: /etc/porelo-host/firewall.nft
+      register: verify_rules_after
+
+    - name: Assert up stopped on the missing key, naming its path, and left the firewall's rules as they were
+      ansible.builtin.assert:
+        that:
+          - verify_no_key.rc == 2
+          - verify_no_key.stdout is search('no key file at /srv/porelo-host/drive/porelo-host/no-such.key')
+          - verify_rules_after.stat.checksum == verify_rules_before.stat.checksum
+        fail_msg: "up without the key gave rc {{ verify_no_key.rc }}: {{ verify_no_key.stdout_lines | select('search',
+          'failed') | list }}; rules {{ verify_rules_before.stat.checksum }} -> {{ verify_rules_after.stat.checksum }}"
+
     # The lines callback, as porelo-frontend's host command reads it from a real up on the host.
     - name: Read the lines of the last up
       ansible.builtin.slurp:
