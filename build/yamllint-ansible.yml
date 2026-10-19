@@ -11,6 +11,7 @@ ignore: |
     issues/
     tests/
     mkdocs.yml
+    porelo.yml
     target/
     .ansible/
 rules:

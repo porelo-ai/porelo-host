@@ -1,0 +1,22 @@
+# What a Porelo task on this repository is built from: the image the Build runs the Ansible tools in, pinned by digest,
+# with the GraalVM the Java checks run on. A draft of the file a repository chooses its task image by, whose reader
+# in porelo does not exist yet, so nothing reads it today. Tools only: the rules a task runs under are the project's.
+#
+# The Molecule scenario is not here: it makes a libvirt VM with KVM, which a task's container cannot.
+image:
+    # One reference, pinned by digest, longer than a line.
+    # yamllint disable-line rule:line-length
+    base_image: ghcr.io/ansible/community-ansible-dev-tools:v26.10.1@sha256:196eb96767b8912ad6f0bbcb352312d3dfe7db8cf14bfc62e24e89c886daffd2
+    snippet: |
+        # The GraalVM the Build's pinned-jdk step takes, by its digest: porelo-buildtools' pin in hetzner/pom.xml.
+        RUN set -eu \
+            && release=https://github.com/graalvm/graalvm-ce-builds/releases/download/graal-25.4.4.1.1 \
+            && curl -fsSL -o /tmp/graalvm.tar.gz "$release/graalvm-community-jdk-25i4-25.0.4.1.1_linux-x64_bin.tar.gz" \
+            && echo "05ccbbe783210b6886ff7b08fcd0b061c5dce4852b05db87284fc0e24abb08e2  /tmp/graalvm.tar.gz" \
+                | sha256sum -c - \
+            && mkdir -p /opt/graalvm && tar -xzf /tmp/graalvm.tar.gz -C /opt/graalvm --strip-components=1 \
+            && rm /tmp/graalvm.tar.gz
+    env:
+        JAVA_HOME: /opt/graalvm
+        # build/tools.sh runs each tool here, since the task is in its image, the checkout linked as porelo.host.
+        HOST_TOOLS_IN_IMAGE: "1"

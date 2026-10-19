@@ -9,6 +9,15 @@ image=$(cat "$root/build/tools-image")
 # Taken by digest only: a tag alone could be moved to another image under the same name.
 printf '%s\n' "$image" | grep -Eqx '[a-z0-9./-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}' \
     || { echo "REFUSED: build/tools-image names no image by digest: $image" >&2; exit 1; }
+# Inside that image already, as a Porelo task built from porelo.yml is, the command runs here, with the checkout linked
+# where Ansible finds it as the collection porelo.host.
+if [ "${HOST_TOOLS_IN_IMAGE:-}" = 1 ]; then
+    links=$(mktemp -d)
+    mkdir -p "$links/ansible_collections/porelo"
+    ln -s "$root" "$links/ansible_collections/porelo/host"
+    cd "$links/ansible_collections/porelo/host"
+    ANSIBLE_COLLECTIONS_PATH=$links PYTHONDONTWRITEBYTECODE=1 exec "$@"
+fi
 command -v podman >/dev/null || { echo "REFUSED: podman is not installed, and it runs the tools" >&2; exit 1; }
 work=/work/ansible_collections/porelo/host
 # Only this collection's own variables pass in, so nothing else of the caller's environment reaches the tools.

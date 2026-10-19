@@ -32,6 +32,7 @@ build_ignore:
   - mkdocs.yml
   - AGENTS.md
   - CLAUDE.md
+  - porelo.yml
   - CONTRIBUTING.md
   - SECURITY.md
   - target
