@@ -25,7 +25,7 @@ argument_specs:
         description: Whether Tresorit's client syncs the person's tresor into the folder.
       drive_tresor:
         type: str
-        description: The person's tresor synced into the folder, by name; needed when drive_client is on.
+        description: The person's tresor synced into the folder, by name, from the collection-wide porelo_host_tresor.
       drive_sync_wait:
         type: int
         default: 900

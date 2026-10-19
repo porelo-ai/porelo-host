@@ -13,8 +13,9 @@ drive_size: 20G
 # Molecule tests run so, since Tresorit is met only at a real up.
 drive_client: true
 
-# The person's tresor that is synced into the folder, by name; from the inventory Porelo writes.
-# drive_tresor:
+# The person's tresor that is synced into the folder, by name, from the collection-wide porelo_host_tresor that
+# porelo-frontend's inventory names.
+drive_tresor: "{{ porelo_host_tresor }}"
 
 # How long up and down wait, in seconds, for the tresor to read synced before they stop, naming it.
 drive_sync_wait: 900

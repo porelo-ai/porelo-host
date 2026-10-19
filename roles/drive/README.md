@@ -25,7 +25,7 @@ Ubuntu 26.04, run as root on the host itself (`-c local`), after Porelo's setup 
 | `drive_image` | `/var/lib/porelo-host/drive.img` | The sparse file its filesystem lives in. |
 | `drive_size` | `20G` | How large that file may grow. |
 | `drive_client` | `true` | Whether Tresorit's client syncs the person's tresor into the folder. |
-| `drive_tresor` | (needed with the client) | The person's tresor synced into the folder, by name. |
+| `drive_tresor` | `{{ porelo_host_tresor }}` | The person's tresor synced into the folder, by name. |
 | `drive_sync_wait` | `900` | How long `up` and `down` wait, in seconds, for the tresor to read synced. |
 | `drive_installer_url` | Tresorit's own address | Tresorit's Linux installer, as Tresorit's site serves it. |
 | `drive_installer_ca_sha256` | `AC:46:31:BC:…:3D:D2:42` | The fingerprint of the CA that issues the installer's signing certificate. |

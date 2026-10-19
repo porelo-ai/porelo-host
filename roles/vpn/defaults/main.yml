@@ -3,14 +3,15 @@
 vpn_interface: wg-porelo
 vpn_port: 51820
 
-# The host's address inside the VPN with its prefix, such as 10.73.0.1/24; from the inventory Porelo writes.
-# vpn_address:
+# The host's address inside the VPN with its prefix; the person's peer has an address in the same network.
+vpn_address: 10.73.0.1/24
 
-# The person's peers, each with its public key and the addresses it is allowed, from the inventory Porelo writes; a
+# The person's peers, each with its public key and the addresses it is allowed inside the VPN; by default the one
+# peer porelo-frontend's inventory names in porelo_host_vpn_peer_public_key and porelo_host_vpn_peer_address. A
 # public key is no secret.
-# vpn_peers:
-#   - public_key: <base64>
-#     allowed_ips: 10.73.0.2/32
+vpn_peers:
+  - public_key: "{{ porelo_host_vpn_peer_public_key }}"
+    allowed_ips: "{{ porelo_host_vpn_peer_address }}"
 
 # The file holding the host's private key, on the person's drive; the role names it to wg and checks it is there,
 # never reads it.
