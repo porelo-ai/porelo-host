@@ -11,6 +11,7 @@ says why.
 | Where the playbook runs | On the host itself, with Ubuntu's own `ansible-core` and `-c local`. | [Why](#where-the-playbook-runs) |
 | Where the VM test runs | On a libvirt VM per run everywhere: here, in the GitHub Build and in the Forgejo build. | [Why](#where-the-vm-test-runs) |
 | `ansible-test sanity` | Left out until the collection holds Python. | [Why](#ansible-test-sanity) |
+| Ubuntu's `ansible-core` and CVE-2026-89091 | An accepted risk: the one tarball the host installs is the collection's own. | [Why](#ubuntus-ansible-core-and-cve-2026-89091) |
 | The changelog | `CHANGELOG.md`, Keep a Changelog, as in every Porelo repository; no `antsibull-changelog`. | [Why](#the-changelog) |
 
 ## The Ansible tools
@@ -53,6 +54,20 @@ are moved by hand.
 Its tests are for modules and plugins, which the collection has none of; the roles are checked by `ansible-lint`. It
 also installs its own requirements from PyPI at run time, by version and without a hash, which a pinned build may not
 do. It comes back with the collection's first Python, in its own pinned container.
+
+## Ubuntu's `ansible-core` and CVE-2026-89091
+
+**The exposure.** The host runs the plays with Ubuntu 26.04's own `ansible-core` 2.20.1, for which Ubuntu lists
+CVE-2026-89091 without a fix: `ansible-galaxy collection install` checks a tarball's member paths without following
+symbolic links, so a crafted collection tarball can write outside the directory it is installed into. `host up`
+runs exactly that command, as root, on the host.
+
+**Why it stays.** The one tarball the host installs is this collection's own, built by `ansible-galaxy collection
+build` from a clean clone at a pushed commit and refused by `build/check-tarball.sh` if it holds a dot file or
+anything outside the paths the collection ships. A crafted tarball would have to be ours.
+
+**What would change the answer.** A tarball from anywhere but this repository's release, an install from Ansible
+Galaxy, or Ubuntu shipping a fixed `ansible-core`, which the host then takes as it is.
 
 ## The changelog
 

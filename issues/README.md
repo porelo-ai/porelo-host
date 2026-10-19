@@ -25,6 +25,12 @@ it is left out.
 | <a id="ho05"></a>[HO05](HO05-The-VPN.md) | M | - | Role `vpn`: WireGuard with the host's key read from the drive by `wg` itself, nftables leaving only ssh and the VPN public. |
 | <a id="ho02"></a>[HO02](HO02-Porelos-Own-Commands-Called-Never-Redone.md) | L | porelo [B208](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b208) | Role `porelo`: the package, the account, `porelo setup`, keys from the drive into `porelo vault put` on the host, `follow --signed-by`, `task start`; idempotent by Porelo's own answers, no secret through Ansible; `up` pauses for the person to open the vault. |
 
+## Analyzed
+
+| # | Size | Blocked by | What it covers | Open questions |
+|---|---|---|---|---|
+| <a id="ho13"></a>[HO13](HO13-A-Release-Carries-Its-Tarball-And-Digest.md) | S | - | A release attaches the collection's tarball and its `SHA256SUMS`, so `host up` can refuse any other; the check itself is porelo-frontend's. | 0 |
+
 ## Estimated
 
 | # | Size | Blocked by | What it covers |
