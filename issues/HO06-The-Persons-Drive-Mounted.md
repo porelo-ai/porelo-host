@@ -58,13 +58,27 @@ On Ubuntu 26.04 in a VM of `build/molecule.sh`'s, with `drive_client` on, client
   answer rc 1 `CLINotLoggedIn`.
 - `login` takes `--email <address> --password-on-stdin`. A second factor is either `--totp <code>` or, without it,
   a prompt (help text, not yet measured).
-- **`sync --start <tresor>` takes no path**, unlike this plan's first reading. Where a tresor syncs to shows only in
-  `tresors` once logged in. `drive --mount <path>` is Tresorit Drive, all tresors in one mount.
+- `drive --mount <path>` is Tresorit Drive, all tresors in one mount, which the role does not use.
+
+Logged in, once, on `ubuntu26.04` as the account `machines`, with the operator's own login and a tresor made for the
+test (QH18), 2026-10-19:
+- Logged in, `sync --start <tresor> --path <dir>` is there (logged out, its help names no `--path`); rc 0, and
+  `tresors -p` then names the path in its second column, `-` while not synced.
+- `transfers -p --tresor <tresor>` gives `<tresor>\t<state>\t<files left>\t<errors>`. The states seen: `indexing`
+  after a write, `syncing 1 0` while uploading, `idle 0 0` once synced; a 2 MB file and a small one were up within
+  about 8 s. A tresor not synced answers rc 1 `CLITresorNotSynced`.
+- Files written on the host reached the operator's client, and a file put into the tresor there reached the host
+  within seconds. Synced files are `0664` with an ACL; the client keeps a `.tresorit` directory in the path.
+- `sync --stop` leaves the files in place; `logout --unlink` answers rc 0 and logs the device out.
+- The second factor needs no argument: with the password and then the one-time code piped as two lines over
+  `ssh -T`, no terminal on the host, the client printed "Enter your one time password", read the code from that same
+  stdin and logged in (the operator typed nothing at its prompt).
+- Through `sudo -u <account>` from another account's session the client answered `CLIDaemonNotRunning`; as the
+  account itself, over ssh, it reaches the daemon. `host up` logs in as the account.
 
 ## To be checked
 
-- With a login (QH18): where `sync --start` puts a tresor and whether that can be `drive_path`; what `transfers`
-  says while syncing and once synced; whether the second factor's prompt reads stdin with no terminal.
+- The ext4 filesystem's `lost+found`, root's `0700`, at the root of `drive_path`, which the client would try to sync.
 - That the role adds `drive` to `porelo_host_needs` in `up`'s first play while the drive is logged out or not synced,
   so the second play stops with the waiting line `doc/lines.md` describes; [HO09](README.md#ho09) built that stop and leaves its
   acceptance here.
