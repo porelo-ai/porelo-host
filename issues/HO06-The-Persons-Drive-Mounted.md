@@ -41,15 +41,30 @@ nothing is run from it; at `down` it is unmounted, with everything written to it
   naming the tresor.
 - No executable in `drive_path` runs; the Tresorit password appears in no output of the run.
 
+## Built
+
+- `0a4a42e`: the folder's filesystem, its mount unit and `down`'s unmount, with Molecule's verify and side effect.
+- `702b0e7`: the installer checked by `porelo.host.tresorit_installer` against the pinned CA (QH17, decided (a)
+  after the operator's own download matched), then installed as the account.
+- The daemon as the account's user unit `tresorit-daemon.service`, `Type=forking`.
+
+## Measured
+
+On Ubuntu 26.04 in a VM of `build/molecule.sh`'s, with `drive_client` on, client 3.5.1300.4870, logged out:
+- `up` installs and starts the client with no failed line, and a second `up` changes nothing.
+- The daemon runs as the account. Started directly, it forks into a session of its own at once, so the unit is
+  `Type=forking`. systemd finds its main PID, and `kill -9` of it restarts the unit within its `RestartSec`.
+- `tresorit-cli -p status` is tab-separated, `Logged in as:\t-` while logged out, rc 0. `tresors` and `transfers`
+  answer rc 1 `CLINotLoggedIn`.
+- `login` takes `--email <address> --password-on-stdin`. A second factor is either `--totp <code>` or, without it,
+  a prompt (help text, not yet measured).
+- **`sync --start <tresor>` takes no path**, unlike this plan's first reading. Where a tresor syncs to shows only in
+  `tresors` once logged in. `drive --mount <path>` is Tresorit Drive, all tresors in one mount.
+
 ## To be checked
 
-- The installer's address, and whether Tresorit names a digest or a signature for it; if not, the installer is
-  pinned by a digest taken once and written into the role.
-- Whether the daemon runs as an unprivileged account on Ubuntu 26.04, and which `tresorit-cli status` output
-  says "synced", read from the client itself.
-- Whether `tresorit-cli login --email <address> --password-on-stdin` logs in over `ssh … bash -s` with no terminal,
-  once without and once with a second factor on the account, so porelo-frontend can give the login as it gives the
-  vault's passphrase; read in Tresorit's documentation, not yet measured.
+- With a login (QH18): where `sync --start` puts a tresor and whether that can be `drive_path`; what `transfers`
+  says while syncing and once synced; whether the second factor's prompt reads stdin with no terminal.
 - That the role adds `drive` to `porelo_host_needs` in `up`'s first play while the drive is logged out or not synced,
   so the second play stops with the waiting line `doc/lines.md` describes; [HO09](README.md#ho09) built that stop and leaves its
   acceptance here.

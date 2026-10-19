@@ -5,3 +5,7 @@
 - name: Install Tresorit's client, its installer checked first
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/install.yml"
   when: drive_client
+
+- name: Run Tresorit's daemon as the account
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/service.yml"
+  when: drive_client

@@ -1,0 +1,14 @@
+{{ ansible_managed | comment }}
+# tresorit-daemon forks into a session of its own at once, so the unit is forking and tresorit-cli starts and stops it.
+[Unit]
+Description=Tresorit's daemon, syncing the person's tresor into the drive
+
+[Service]
+Type=forking
+ExecStart={{ __drive_client_dir }}/tresorit-cli start
+ExecStop={{ __drive_client_dir }}/tresorit-cli stop
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

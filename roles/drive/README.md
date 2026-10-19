@@ -3,7 +3,9 @@
 The person's drive on the host: one folder, read and written, on a filesystem of its own that is mounted `noexec`,
 `nosuid` and `nodev`, so nothing synced into it can be started. The filesystem lives in a sparse file and is mounted
 by a systemd mount unit, so it comes back at every boot. Tresorit's client is installed for the account from
-Tresorit's own installer, which runs only once `porelo.host.tresorit_installer` found it signed under the pinned CA. `tasks_from: down` unmounts it, last at `down`.
+Tresorit's own installer, which runs only once `porelo.host.tresorit_installer` found it signed under the pinned CA.
+Its daemon runs as a user unit of the account, `tresorit-daemon.service`, kept running by the account's linger and
+started again after a crash. `tasks_from: down` unmounts it, last at `down`.
 
 ## Requirements
 
