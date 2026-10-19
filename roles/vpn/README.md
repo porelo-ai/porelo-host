@@ -22,7 +22,7 @@ Ubuntu 26.04, run as root on the host itself (`-c local`), after the drive is sy
 | `vpn_port` | `51820` | The UDP port the VPN listens on. |
 | `vpn_address` | `10.73.0.1/24` | The host's address inside the VPN with its prefix. |
 | `vpn_peers` | the one peer of `porelo_host_vpn_peer_public_key` and `porelo_host_vpn_peer_address` | The person's peers, each `public_key` and `allowed_ips`. |
-| `vpn_private_key_path` | (required) | The file on the person's drive holding the host's private key. |
+| `vpn_private_key_path` | `/srv/porelo-host/drive/porelo-host/wireguard.key` | The file on the person's drive holding the host's private key. |
 | `vpn_ssh_port` | `22` | The TCP port ssh listens on, kept open on the public address. |
 
 ## Example
@@ -33,11 +33,8 @@ Ubuntu 26.04, run as root on the host itself (`-c local`), after the drive is sy
       roles:
         - role: porelo.host.vpn
           vars:
-            vpn_address: 10.73.0.1/24
-            vpn_private_key_path: /srv/porelo-host/drive/host/wireguard.key
-            vpn_peers:
-              - public_key: "<the person's public key>"
-                allowed_ips: 10.73.0.2/32
+            porelo_host_vpn_peer_public_key: "<the person's public key>"
+            porelo_host_vpn_peer_address: 10.73.0.2/32
 
 ## Behaviour
 

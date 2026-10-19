@@ -32,7 +32,7 @@ argument_specs:
             description: The addresses the peer is allowed inside the VPN.
       vpn_private_key_path:
         type: path
-        required: true
+        default: /srv/porelo-host/drive/porelo-host/wireguard.key
         description: The file on the person's drive holding the host's private key; named to wg, never read here.
       vpn_ssh_port:
         type: int
