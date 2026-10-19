@@ -1,0 +1,21 @@
+---
+# porelo vault status: 0 open, 3 shut, 4 no vault, 70 for a file that is not a vault (porelo's doc/hosts.md).
+- name: needs | Ask Porelo whether the account's vault is open
+  ansible.builtin.command:
+    cmd: porelo vault status
+  become: true
+  become_user: "{{ porelo_account }}"
+  environment: "{{ __porelo_user_environment }}"
+  register: __porelo_vault
+  changed_when: false
+  failed_when: __porelo_vault.rc not in [0, 3, 4]
+  check_mode: false
+
+# Only the person opens the vault; up's second play stops for it. porelo_host_needs is the collection's one fact the
+# roles share with that stop, so it carries the collection's prefix, not this role's.
+- name: needs | Name the vault as what the person must give
+  ansible.builtin.set_fact:
+    porelo_host_needs: "{{ porelo_host_needs | default([]) + [__porelo_need] }}"  # noqa: var-naming[no-role-prefix]
+  vars:
+    __porelo_need: "{{ {3: 'vault', 4: 'vault-new'}[__porelo_vault.rc] }}"
+  when: __porelo_vault.rc in [3, 4]

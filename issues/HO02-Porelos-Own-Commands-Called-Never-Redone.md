@@ -1,6 +1,6 @@
 # HO02 — Porelo's Own Commands Called, Never Redone
 
-**Status:** Backlog; blocked by porelo [B208](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b208).
+**Status:** Implementing.
 **Size:** L - one role here, but it rests on a contract with `porelo` that does not exist yet, and `up` is cut in two
 by a step the person takes by hand.
 
@@ -50,9 +50,36 @@ run changes nothing that is already as it should be.
   `porelo vault list` as the account shows no key.
 - A project file whose signature does not check stops the run with Porelo's own refusal, and no task is started.
 
+## Decided
+
+- **QH19 (d), 2026-10-19:** the setup script comes as a package, `porelo-setup`, from Porelo's apt repository, which
+  the role adds by the fingerprint porelo's `getting-started.md` pins; Ubuntu first. Until that package is published,
+  the Molecule scenario stands in for the script by that repository and `apt install porelo`.
+
+## Built
+
+- The role `porelo`'s first part, in `up`'s first play after the drive: `porelo setup` as the account (changed only
+  when its daemon line says `started`, since it writes its hooks on every run), then `porelo vault status`, adding
+  `vault-new` (4) or `vault` (3) to `porelo_host_needs`. Molecule: the first `up` stops with
+  `needs: ["drive", "vault-new"]`; after the person's step, `porelo vault init --passphrase-stdin` as the account, the
+  next `up` runs through, `porelo doctor` passes, and idempotence reports `changed=0`. Seen red first: without the role
+  the first `up` named `drive` alone.
+
+## Measured
+
+In a VM of `build/molecule.sh`'s, Ubuntu 26.04, porelo `0.5.1~snapshot.312`:
+- `porelo-setup-latest.sh --user <account> --distribution snapshots` gives rc 0 twice, the account with linger and
+  subordinate ids; `porelo setup` with no terminal gives rc 0 and "vault none yet".
+- `vault status` 4, then 0 after `vault init --passphrase-stdin`, 3 after `lock`, 0 after `unlock --passphrase-stdin`.
+- `project inventory --machine-file <missing>` 66; `project following --json` `{"follows":[]}`; `task status <none>
+  --json` `"state":"absent"`, rc 0. `following --json`'s `signed_by` lists fingerprints, which the machine file's
+  `signed_by` is compared with.
+- `vault put --from-file=<path>` reads the key on the host itself. It says `stored` again for the same value, so a
+  `put` cannot yet report "unchanged"; porelo's Idea for that is Core's.
+
 ## To be checked
 
-- That `porelo-setup-latest.sh` is fetched with its digest checked, and from where.
+- `porelo-setup` as a package, once published: its name, and that the script runs from it as from the download.
 - That the role adds `vault-new` (no vault, `porelo vault status` 4) or `vault` (shut, 3) to `porelo_host_needs` in
   `up`'s first play, so its second play stops with the waiting line `doc/lines.md` describes; [HO09](README.md#ho09) built that stop and
   leaves its acceptance here.

@@ -1,0 +1,3 @@
+---
+__porelo_user_environment:
+  XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][porelo_account][1] }}"

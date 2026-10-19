@@ -1,0 +1,3 @@
+---
+# The account Porelo's tasks run as; made by Porelo's own setup script, never by this role.
+porelo_account: "{{ porelo_host_account }}"

@@ -305,6 +305,26 @@
         fail_msg: "up without the key gave rc {{ verify_no_key.rc }}: {{ verify_no_key.stdout_lines | select('search',
           'failed') | list }}; rules {{ verify_rules_before.stat.checksum }} -> {{ verify_rules_after.stat.checksum }}"
 
+    # The porelo role: Porelo itself says the account can run tasks.
+    - name: Ask porelo doctor as the account
+      ansible.builtin.command:
+        cmd: porelo doctor
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      register: verify_doctor
+      changed_when: false
+      failed_when: false
+
+    - name: Assert porelo doctor passes, with the vault there and the daemon running
+      ansible.builtin.assert:
+        that:
+          - verify_doctor.rc == 0
+          - verify_doctor.stdout is search('^vault +there', multiline=True)
+          - verify_doctor.stdout is search('^daemon +running', multiline=True)
+        fail_msg: "porelo doctor gave rc {{ verify_doctor.rc }}: {{ verify_doctor.stdout_lines }}"
+
     # The lines callback, as porelo-frontend's host command reads it from a real up on the host.
     - name: Read the lines of the last up
       ansible.builtin.slurp:

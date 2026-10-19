@@ -1,0 +1,9 @@
+---
+argument_specs:
+  main:
+    short_description: Porelo's setup for the account, and the vault named as the person's step while missing or shut.
+    options:
+      porelo_account:
+        type: str
+        required: true
+        description: The account Porelo's tasks run as, from the collection-wide variable porelo_host_account.

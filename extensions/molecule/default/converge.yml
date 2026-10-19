@@ -28,6 +28,38 @@
     - name: Install the collection before up runs
       ansible.builtin.meta: flush_handlers
 
+    # Stands in for Porelo's setup script until it is checked before it runs: Porelo's repository added by the
+    # fingerprint porelo's getting-started pins, and the package installed from it, signed.
+    - name: Fetch Porelo's package key
+      ansible.builtin.get_url:
+        url: https://fuinorg.jfrog.io/artifactory/api/security/keypair/porelo-packages/public
+        dest: /root/porelo.asc
+        mode: "0644"
+
+    - name: Install the key only when it has the pinned fingerprint
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail && apt-get install -y -qq gnupg >/dev/null
+          && gpg --show-keys --with-colons /root/porelo.asc
+          | grep -q '^fpr:::::::::BF27A2FA637F505CAFBE431768D19D175D904415:'
+          && gpg --dearmor -o /usr/share/keyrings/porelo.gpg < /root/porelo.asc
+        creates: /usr/share/keyrings/porelo.gpg
+        executable: /bin/bash
+
+    - name: Name Porelo's repository, signed by that key
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/porelo.list
+        content: >
+          deb [signed-by=/usr/share/keyrings/porelo.gpg]
+          https://fuinorg.jfrog.io/artifactory/porelo-dist-deb snapshots main
+        mode: "0644"
+
+    - name: Install Porelo from it
+      ansible.builtin.apt:
+        name: porelo
+        state: present
+        update_cache: true
+
     # Stands in for Porelo's setup script, which makes the account with its linger and subordinate ids.
     - name: Make the account as Porelo's setup script makes it
       ansible.builtin.user:
@@ -124,7 +156,7 @@
         that:
           - converge_first_up.rc == 2
           - converge_first_waiting | length == 1
-          - converge_first_waiting[0].needs == ['drive']
+          - converge_first_waiting[0].needs == ['drive', 'vault-new']
           - converge_first_failed | length == 0
         fail_msg: "the first up gave rc {{ converge_first_up.rc }} and these lines: {{ converge_first_up.stdout }}"
       vars:
@@ -141,6 +173,17 @@
         group: root
         mode: "0600"
       when: not converge_first_seen.stat.exists
+
+    # The person's step for the vault, as porelo-frontend gives it: the passphrase on porelo's stdin, as the account.
+    - name: Make the account's vault, as the person's step does
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail && printf 'converge-passphrase\n' | XDG_RUNTIME_DIR=/run/user/$(id -u)
+          porelo vault init --passphrase-stdin
+        creates: /home/{{ converge_account }}/.local/share/porelo/vault.bin
+        executable: /bin/bash
+      become: true
+      become_user: "{{ converge_account }}"
 
     # The person's step, as porelo-frontend gives it: the password on the client's stdin, run as the account.
     - name: Log the client in, as the person's step does

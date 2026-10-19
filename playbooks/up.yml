@@ -19,6 +19,10 @@
       ansible.builtin.include_role:
         name: porelo.host.drive
 
+    - name: Run Porelo's setup, and ask whether the vault is open
+      ansible.builtin.include_role:
+        name: porelo.host.porelo
+
 - name: Bring the host up from the person's step
   hosts: localhost
   connection: local

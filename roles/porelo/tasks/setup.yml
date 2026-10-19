@@ -1,0 +1,17 @@
+---
+- name: setup | Read the account Porelo's setup script made
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ porelo_account }}"
+
+# porelo setup is safe to run again and skips the vault with no terminal; it writes its hooks on every run, so only
+# its daemon line says whether anything changed.
+- name: setup | Run porelo setup as the account
+  ansible.builtin.command:
+    cmd: porelo setup
+    stdin: ""
+  become: true
+  become_user: "{{ porelo_account }}"
+  environment: "{{ __porelo_user_environment }}"
+  register: __porelo_setup
+  changed_when: __porelo_setup.stdout is search('^daemon +started', multiline=True)

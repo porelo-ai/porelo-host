@@ -1,0 +1,7 @@
+---
+# up's first play: Porelo's setup for the account, and what of the vault only the person can give.
+- name: Run Porelo's setup for the account
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/setup.yml"
+
+- name: Name the vault as what the person must give, while it is missing or shut
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/needs.yml"
