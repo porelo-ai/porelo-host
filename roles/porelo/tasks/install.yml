@@ -1,0 +1,68 @@
+---
+# Run as root, before base's account step: Porelo's repository by its pinned key, Porelo from it, then Porelo's own
+# setup script, which makes the account. Nothing of what the script keeps is redone here.
+- name: install | Make the directory the key is kept in
+  ansible.builtin.file:
+    path: /var/cache/porelo-host
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: install | Download Porelo's package key
+  ansible.builtin.get_url:
+    url: "{{ porelo_key_url }}"
+    dest: /var/cache/porelo-host/porelo-packages.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: install | Read the key's fingerprint
+  ansible.builtin.command:
+    cmd: gpg --show-keys --with-colons /var/cache/porelo-host/porelo-packages.asc
+  register: __porelo_key
+  changed_when: false
+  check_mode: false
+
+- name: install | Stop on a key without the pinned fingerprint
+  ansible.builtin.assert:
+    that: __porelo_key.stdout_lines | select('match', '^fpr:') | map('split', ':') | map(attribute=9) | list
+      == [porelo_key_fingerprint]
+    fail_msg: >-
+      the key at {{ porelo_key_url }} is not the one with the fingerprint {{ porelo_key_fingerprint }}; nothing of
+      Porelo is installed
+    quiet: true
+
+- name: install | Install the key for apt
+  ansible.builtin.command:
+    cmd: gpg --dearmor --yes -o /usr/share/keyrings/porelo.gpg /var/cache/porelo-host/porelo-packages.asc
+    creates: /usr/share/keyrings/porelo.gpg
+
+- name: install | Name Porelo's repository, signed by that key
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/porelo.list
+    content: |
+      deb [signed-by=/usr/share/keyrings/porelo.gpg] {{ porelo_repository_url }} {{ porelo_distribution }} main
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: install | Install Porelo from it
+  ansible.builtin.apt:
+    name: porelo
+    state: present
+    update_cache: true
+
+# The script says "already" for each part it finds as it should be, and prints no summary of its own yet (porelo's
+# own Idea, beside "vault put" saying unchanged): nothing changed when the repository's two parts and the account's
+# three say so.
+- name: install | Run Porelo's setup script for the account
+  ansible.builtin.command:
+    cmd: sh {{ porelo_setup_script }} --user {{ porelo_account }} --distribution {{ porelo_distribution }}
+  register: __porelo_setup_script
+  changed_when: >-
+    not (__porelo_setup_script.stdout is search('porelo.gpg is already there')
+    and __porelo_setup_script.stdout is search('porelo.list already says this')
+    and __porelo_setup_script.stdout is search(porelo_account ~ ' exists')
+    and __porelo_setup_script.stdout is search('linger is already enabled')
+    and __porelo_setup_script.stdout is search('ranges are already allocated'))

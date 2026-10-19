@@ -8,8 +8,14 @@
   environment: "{{ __porelo_user_environment }}"
   register: __porelo_vault
   changed_when: false
-  failed_when: __porelo_vault.rc not in [0, 3, 4]
+  failed_when: false
   check_mode: false
+
+- name: needs | Stop on any other answer, with Porelo's own words
+  ansible.builtin.assert:
+    that: __porelo_vault.rc in [0, 3, 4]
+    fail_msg: "porelo vault status answered {{ __porelo_vault.rc }}: {{ __porelo_vault.stderr | default('') }}"
+    quiet: true
 
 # Only the person opens the vault; up's second play stops for it. porelo_host_needs is the collection's one fact the
 # roles share with that stop, so it carries the collection's prefix, not this role's.

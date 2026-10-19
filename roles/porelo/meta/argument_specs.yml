@@ -7,3 +7,31 @@ argument_specs:
         type: str
         required: true
         description: The account Porelo's tasks run as, from the collection-wide variable porelo_host_account.
+  install:
+    short_description: Porelo's repository by its pinned key, Porelo from it, and its setup script for the account.
+    options:
+      porelo_account:
+        type: str
+        required: true
+        description: The account Porelo's setup script makes.
+      porelo_distribution:
+        type: str
+        default: releases
+        choices: [releases, snapshots]
+        description: Which of Porelo's published distributions the host installs from.
+      porelo_key_url:
+        type: str
+        default: https://fuinorg.jfrog.io/artifactory/api/security/keypair/porelo-packages/public
+        description: Where Porelo's package key is fetched from.
+      porelo_key_fingerprint:
+        type: str
+        default: BF27A2FA637F505CAFBE431768D19D175D904415
+        description: The fingerprint the key must have, as porelo's getting-started pins it.
+      porelo_repository_url:
+        type: str
+        default: https://fuinorg.jfrog.io/artifactory/porelo-dist-deb
+        description: Porelo's apt repository.
+      porelo_setup_script:
+        type: path
+        default: /usr/share/porelo/setup/porelo-setup.sh
+        description: Porelo's setup script, as the package porelo ships it.

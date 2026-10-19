@@ -28,39 +28,24 @@
     - name: Install the collection before up runs
       ansible.builtin.meta: flush_handlers
 
-    # Stands in for Porelo's setup script until it is checked before it runs: Porelo's repository added by the
-    # fingerprint porelo's getting-started pins, and the package installed from it, signed.
-    - name: Fetch Porelo's package key
-      ansible.builtin.get_url:
-        url: https://fuinorg.jfrog.io/artifactory/api/security/keypair/porelo-packages/public
-        dest: /root/porelo.asc
-        mode: "0644"
-
-    - name: Install the key only when it has the pinned fingerprint
+    # Stands in for the setup script porelo's package will hold at that path once published: the published script of
+    # the newest snapshot, which is that file byte for byte, as porelo's own check of its package says.
+    - name: Put the newest snapshot's published script where porelo's package will hold it
       ansible.builtin.shell:
         cmd: >-
-          set -o pipefail && apt-get install -y -qq gnupg >/dev/null
-          && gpg --show-keys --with-colons /root/porelo.asc
-          | grep -q '^fpr:::::::::BF27A2FA637F505CAFBE431768D19D175D904415:'
-          && gpg --dearmor -o /usr/share/keyrings/porelo.gpg < /root/porelo.asc
-        creates: /usr/share/keyrings/porelo.gpg
+          set -o pipefail && mkdir -p /usr/share/porelo/setup
+          && newest=$(curl -fsSL https://fuinorg.jfrog.io/artifactory/api/storage/porelo-dist-deb/setup/
+          | python3 -c 'import json, re, sys; print(max((c["uri"] for c in json.load(sys.stdin)["children"]
+          if re.fullmatch(r"/porelo-setup-.*snapshot\.[0-9]+\.sh", c["uri"])),
+          key=lambda u: int(re.search(r"snapshot\.([0-9]+)", u).group(1))))')
+          && curl -fsSL -o /usr/share/porelo/setup/porelo-setup.sh
+          "https://fuinorg.jfrog.io/artifactory/porelo-dist-deb/setup$newest"
+          && chmod 0755 /usr/share/porelo/setup/porelo-setup.sh
+        creates: /usr/share/porelo/setup/porelo-setup.sh
         executable: /bin/bash
 
-    - name: Name Porelo's repository, signed by that key
-      ansible.builtin.copy:
-        dest: /etc/apt/sources.list.d/porelo.list
-        content: >
-          deb [signed-by=/usr/share/keyrings/porelo.gpg]
-          https://fuinorg.jfrog.io/artifactory/porelo-dist-deb snapshots main
-        mode: "0644"
-
-    - name: Install Porelo from it
-      ansible.builtin.apt:
-        name: porelo
-        state: present
-        update_cache: true
-
-    # Stands in for Porelo's setup script, which makes the account with its linger and subordinate ids.
+    # Stands in for the part of Porelo's setup script up runs too, since the client's stub below goes into the
+    # account's home before the first up: the script then finds the account and must leave it as it is.
     - name: Make the account as Porelo's setup script makes it
       ansible.builtin.user:
         name: "{{ converge_account }}"
@@ -106,6 +91,8 @@
               localhost:
             vars:
               porelo_host_account: {{ converge_account }}
+              # porelo vault status is in porelo's snapshots only, until a release carries it.
+              porelo_host_distribution: snapshots
               # Tresorit is met only at a real up; here a stub of its client answers as the real one was measured.
               porelo_host_tresor: porelo-test-drive
               drive_sync_wait: 60

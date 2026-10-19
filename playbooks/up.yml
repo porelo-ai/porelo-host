@@ -9,7 +9,12 @@
   roles:
     - porelo.host.base
   tasks:
-    # Stands where Porelo's setup script will run, which makes the account this part reads.
+    # Porelo's package and its setup script, which makes the account base's next part reads.
+    - name: Install Porelo and run its setup script for the account
+      ansible.builtin.include_role:
+        name: porelo.host.porelo
+        tasks_from: install
+
     - name: Let Porelo's account open KVM and libvirt
       ansible.builtin.include_role:
         name: porelo.host.base

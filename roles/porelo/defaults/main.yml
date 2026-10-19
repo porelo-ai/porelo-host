@@ -1,3 +1,16 @@
 ---
 # The account Porelo's tasks run as; made by Porelo's own setup script, never by this role.
 porelo_account: "{{ porelo_host_account }}"
+
+# Which of Porelo's published distributions the host installs from, releases or snapshots; from the collection-wide
+# porelo_host_distribution that porelo-frontend's inventory names.
+porelo_distribution: "{{ porelo_host_distribution | default('releases') }}"
+
+# Porelo's package key, and the fingerprint porelo's getting-started pins for it on a page served from elsewhere: the
+# key is installed only when it has exactly that fingerprint, and apt then takes only packages it signed.
+porelo_key_url: https://fuinorg.jfrog.io/artifactory/api/security/keypair/porelo-packages/public
+porelo_key_fingerprint: BF27A2FA637F505CAFBE431768D19D175D904415
+porelo_repository_url: https://fuinorg.jfrog.io/artifactory/porelo-dist-deb
+
+# Porelo's setup script, as the package porelo ships it; it makes the account with its linger and subordinate ids.
+porelo_setup_script: /usr/share/porelo/setup/porelo-setup.sh

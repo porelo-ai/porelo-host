@@ -65,6 +65,18 @@ run changes nothing that is already as it should be.
   next `up` runs through, `porelo doctor` passes, and idempotence reports `changed=0`. Seen red first: without the role
   the first `up` named `drive` alone.
 
+- `install.yml`, run as root before `base`'s account step: Porelo's key fetched and installed only with the pinned
+  fingerprint, its source line for `porelo_distribution` (from `porelo_host_distribution`, `releases` by default;
+  porelo [B208](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b208)'s `vault status` is in the
+  snapshots only so far), `apt install porelo`, then the setup script at the path
+  porelo's package will hold it (porelo's "The Setup Script Shipped As A Package"), changed only when its "already" lines are not all there. Molecule stands in for
+  the packaged script with the newest snapshot's published one.
+- **On the development host at Scaleway** (`195.154.103.106`, 2026-10-19, collection from the working tree): the three
+  steps made the account; `base`'s account step passed; the drive came up with Tresorit's real installer checked and
+  its daemon running; `porelo setup` ran; `up` stopped with `needs: ["drive", "vault-new"]`, and after a throwaway
+  `vault init --passphrase-stdin` with `needs: ["drive"]` alone. A second `up` changed nothing else. `down` from the
+  stop ended 0: VPN stopped, daemon stopped, drive unmounted.
+
 ## Measured
 
 In a VM of `build/molecule.sh`'s, Ubuntu 26.04, porelo `0.5.1~snapshot.312`:
