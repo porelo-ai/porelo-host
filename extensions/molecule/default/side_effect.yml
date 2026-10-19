@@ -1,6 +1,6 @@
 ---
 # Runs `down` on the host itself, as `host down` does, after verify has read what `up` left, and reads what `down`
-# leaves: the VPN taken down and the drive unmounted.
+# leaves: the VPN taken down, the client logged out and unlinked, the drive unmounted.
 - name: Side effect
   hosts: all
   gather_facts: false
@@ -48,3 +48,13 @@
           - side_effect_vpn.rc != 0
           - not side_effect_vpn_conf.stat.exists
         fail_msg: "after down: interface rc {{ side_effect_vpn.rc }}, file {{ side_effect_vpn_conf.stat.exists }}"
+
+    - name: Read the client's stub's state after down
+      ansible.builtin.find:
+        paths: /home/porelo-test/.local/share/tresorit/stub-state
+      register: side_effect_stub
+
+    - name: Assert down logged the client out with --unlink and stopped every sync
+      ansible.builtin.assert:
+        that: side_effect_stub.files | map(attribute='path') | map('basename') | list == ['unlinked']
+        fail_msg: "the stub's state after down: {{ side_effect_stub.files | map(attribute='path') | list }}"

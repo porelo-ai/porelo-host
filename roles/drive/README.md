@@ -5,7 +5,12 @@ The person's drive on the host: one folder, read and written, on a filesystem of
 by a systemd mount unit, so it comes back at every boot. Tresorit's client is installed for the account from
 Tresorit's own installer, which runs only once `porelo.host.tresorit_installer` found it signed under the pinned CA.
 Its daemon runs as a user unit of the account, `tresorit-daemon.service`, kept running by the account's linger and
-started again after a crash. `tasks_from: down` unmounts it, last at `down`.
+started again after a crash.
+
+While the client is logged out, the role adds `drive` to `porelo_host_needs`, and `up`'s second play stops for the
+person's login. Logged in, it syncs `drive_tresor` into the folder, stops every other sync the client has, and waits
+until the tresor reads `idle` with nothing left. `down` waits the same way, then stops the sync, logs out with
+`--unlink` so the host leaves no device on the person's account, stops the daemon and unmounts the folder. `tasks_from: down` takes it down, last at `down`.
 
 ## Requirements
 
@@ -20,6 +25,8 @@ Ubuntu 26.04, run as root on the host itself (`-c local`), after Porelo's setup 
 | `drive_image` | `/var/lib/porelo-host/drive.img` | The sparse file its filesystem lives in. |
 | `drive_size` | `20G` | How large that file may grow. |
 | `drive_client` | `true` | Whether Tresorit's client syncs the person's tresor into the folder. |
+| `drive_tresor` | (needed with the client) | The person's tresor synced into the folder, by name. |
+| `drive_sync_wait` | `900` | How long `up` and `down` wait, in seconds, for the tresor to read synced. |
 | `drive_installer_url` | Tresorit's own address | Tresorit's Linux installer, as Tresorit's site serves it. |
 | `drive_installer_ca_sha256` | `AC:46:31:BC:…:3D:D2:42` | The fingerprint of the CA that issues the installer's signing certificate. |
 

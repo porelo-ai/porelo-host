@@ -1,0 +1,65 @@
+---
+# Read and set as the account, through the daemon its user unit runs. The client's tab-separated output (`-p`) is
+# read as it was measured on client 3.5.1300.4870: `status` names who is logged in, `tresors` each tresor's sync path,
+# `transfers` a tresor's state, files left and errors.
+- name: sync | Read whether the client is logged in
+  ansible.builtin.command:
+    cmd: "{{ __drive_client_dir }}/tresorit-cli -p status"
+  become: true
+  become_user: "{{ drive_account }}"
+  environment: "{{ __drive_user_environment }}"
+  register: __drive_status
+  changed_when: false
+  check_mode: false
+
+# Only the person can log in; up's second play stops for it, naming the drive. porelo_host_needs is the collection's
+# one fact the roles share with up's stop, so it carries the collection's prefix, not this role's.
+- name: sync | Name the drive as what the person must give, while the client is logged out
+  ansible.builtin.set_fact:
+    porelo_host_needs: "{{ porelo_host_needs | default([]) + ['drive'] }}"  # noqa: var-naming[no-role-prefix]
+  when: not __drive_logged_in
+
+- name: sync | Sync the person's tresor into the drive
+  when: __drive_logged_in
+  block:
+    - name: sync | Read the account's tresors and where each syncs to
+      ansible.builtin.command:
+        cmd: "{{ __drive_client_dir }}/tresorit-cli -p tresors"
+      become: true
+      become_user: "{{ drive_account }}"
+      environment: "{{ __drive_user_environment }}"
+      register: __drive_tresors
+      changed_when: false
+      check_mode: false
+
+    - name: sync | Stop if the account has no tresor of that name
+      ansible.builtin.assert:
+        that: drive_tresor in __drive_tresor_paths
+        fail_msg: "the Tresorit account has no tresor named {{ drive_tresor }}"
+        quiet: true
+
+    # Only the one folder is on the host: any other tresor the client syncs is stopped, and the person's tresor is
+    # moved to the drive's folder if it syncs elsewhere.
+    - name: sync | Stop every other sync, and the person's tresor's where it is not the drive
+      ansible.builtin.command:
+        cmd: "{{ __drive_client_dir }}/tresorit-cli sync --stop {{ item.key | quote }}"
+      loop: "{{ __drive_tresor_paths | dict2items | rejectattr('value', 'equalto', '-')
+        | rejectattr('value', 'equalto', drive_path) | list }}"
+      loop_control:
+        label: "{{ item.key }}"
+      become: true
+      become_user: "{{ drive_account }}"
+      environment: "{{ __drive_user_environment }}"
+      changed_when: true
+
+    - name: sync | Sync the person's tresor into the drive's folder
+      ansible.builtin.command:
+        cmd: "{{ __drive_client_dir }}/tresorit-cli sync --start {{ drive_tresor | quote }} --path {{ drive_path }}"
+      when: __drive_tresor_paths[drive_tresor] != drive_path
+      become: true
+      become_user: "{{ drive_account }}"
+      environment: "{{ __drive_user_environment }}"
+      changed_when: true
+
+    - name: sync | Wait until the person's tresor is synced
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/synced.yml"

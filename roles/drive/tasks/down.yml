@@ -1,6 +1,10 @@
 ---
-# The drive is taken down last at `down` and unmounted, so nothing of it is left mounted on a host that is given back;
-# the wait until Tresorit has synced everything written comes before this with the client's tasks.
+# The drive is taken down last at `down`: what was written to it synced first, then the client logged out and its
+# device unlinked from the person's account, then unmounted, so nothing of it is left on a host that is given back.
+- name: down | Take Tresorit's client down once all is synced
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/down-client.yml"
+  when: drive_client
+
 - name: down | Read the mount unit's name for the drive's path
   ansible.builtin.command:
     cmd: systemd-escape --path --suffix=mount {{ drive_path }}

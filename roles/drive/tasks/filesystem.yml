@@ -59,3 +59,10 @@
     owner: "{{ drive_account }}"
     group: "{{ drive_account }}"
     mode: "0700"
+
+# ext4's lost+found, root's alone, would stand in the tresor's folder for the client to sync; fsck makes it again if
+# it ever needs one.
+- name: filesystem | Remove the filesystem's lost+found from the drive's folder
+  ansible.builtin.file:
+    path: "{{ drive_path }}/lost+found"
+    state: absent

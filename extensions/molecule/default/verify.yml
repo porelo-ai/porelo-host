@@ -225,6 +225,36 @@
         fail_msg: the host's private VPN key appears in up's lines
       no_log: true
 
+    # The drive's client, the stub in its place: the person's tresor syncs into the drive's folder, nothing else does.
+    - name: Read where the client syncs each tresor to
+      ansible.builtin.command:
+        cmd: /home/{{ verify_account }}/.local/share/tresorit/tresorit-cli -p tresors
+      become: true
+      become_user: "{{ verify_account }}"
+      register: verify_tresors
+      changed_when: false
+
+    - name: Assert only the person's tresor syncs, into the drive's folder
+      ansible.builtin.assert:
+        that: verify_tresors.stdout_lines | map('split', '\t') | map('batch', 2) | map('first') | list
+          == [['porelo-test-drive', verify_drive], ['porelo-test-other', '-']]
+        fail_msg: "the client syncs: {{ verify_tresors.stdout_lines }}"
+
+    - name: Read the client's daemon's user unit
+      ansible.builtin.systemd_service:
+        name: tresorit-daemon.service
+        scope: user
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      register: verify_daemon
+
+    - name: Assert the daemon runs
+      ansible.builtin.assert:
+        that: verify_daemon.status.ActiveState == 'active'
+        fail_msg: "tresorit-daemon.service is {{ verify_daemon.status.ActiveState | default(verify_daemon) }}"
+
     # The lines callback, as porelo-frontend's host command reads it from a real up on the host.
     - name: Read the lines of the last up
       ansible.builtin.slurp:

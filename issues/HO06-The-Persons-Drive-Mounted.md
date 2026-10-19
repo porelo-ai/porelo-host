@@ -34,12 +34,16 @@ nothing is run from it; at `down` it is unmounted, with everything written to it
 
 ## Acceptance
 
-- On the test VM `build/molecule.sh` makes, with a local folder in the tresor's place: the folder is there after `up`, on its
-  `noexec` filesystem, and unmounted after `down`; `idempotence` reports `changed=0`.
-- At the first real `up`: a file written on the host before `down` is in the tresor afterwards, and a file put into
-  the tresor elsewhere is on the host after the next `up`; a sync that does not finish within its limit stops `down`,
-  naming the tresor.
-- No executable in `drive_path` runs; the Tresorit password appears in no output of the run.
+- [x] On the test VM `build/molecule.sh` makes: the folder is there after `up`, on its `noexec` filesystem, and
+  unmounted after `down`; `idempotence` reports `changed=0`; no executable in `drive_path` runs.
+- [x] With the client's stub: a logged-out client stops the first `up` with rc 2 and one waiting line naming
+  `drive` alone; after the login `up` runs through, the person's tresor syncs into `drive_path` and no other does;
+  `down` logs the client out with `--unlink` and stops every sync. This is the stop's acceptance
+  [HO09](README.md#ho09) left here.
+- [ ] At the first real `up`: a file written on the host before `down` is in the tresor afterwards, and a file put
+  into the tresor elsewhere is on the host after the next `up`; a sync that does not finish within its limit stops
+  `down`, naming the tresor. Measured by hand on `ubuntu26.04` both ways (see Measured), not yet by `up` and `down`.
+- [ ] The Tresorit password appears in no output of the run.
 
 ## Built
 
@@ -47,6 +51,14 @@ nothing is run from it; at `down` it is unmounted, with everything written to it
 - `702b0e7`: the installer checked by `porelo.host.tresorit_installer` against the pinned CA (QH17, decided (a)
   after the operator's own download matched), then installed as the account.
 - The daemon as the account's user unit `tresorit-daemon.service`, `Type=forking`.
+- `sync.yml`, as measured: logged out, the role adds `drive` to `porelo_host_needs` and `up`'s second play stops
+  with the waiting line; logged in, it syncs `drive_tresor` into `drive_path` with `sync --start … --path`, stops
+  every other sync, and waits until `transfers` reads `idle 0 0` twice, within `drive_sync_wait`. `down` waits the
+  same way, then `sync --stop`, `logout --unlink`, the daemon stopped and the folder unmounted. An installed client
+  is left to update itself; ext4's `lost+found` is removed from the folder.
+- In Molecule a stub of `tresorit-cli` (`extensions/molecule/default/files/`) answers as the client was measured, so
+  the role's steps around the client run in the Build; Tresorit itself is met only at a real `up`. Seen red first:
+  without the `drive` need the first `up` ran through with rc 0.
 
 ## Measured
 
@@ -78,7 +90,4 @@ test (QH18), 2026-10-19:
 
 ## To be checked
 
-- The ext4 filesystem's `lost+found`, root's `0700`, at the root of `drive_path`, which the client would try to sync.
-- That the role adds `drive` to `porelo_host_needs` in `up`'s first play while the drive is logged out or not synced,
-  so the second play stops with the waiting line `doc/lines.md` describes; [HO09](README.md#ho09) built that stop and leaves its
-  acceptance here.
+- The first real `up` and `down` with the person's own drive, as the acceptance's third item says.

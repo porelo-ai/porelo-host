@@ -13,6 +13,12 @@ drive_size: 20G
 # Molecule tests run so, since Tresorit is met only at a real up.
 drive_client: true
 
+# The person's tresor that is synced into the folder, by name; from the inventory Porelo writes.
+# drive_tresor:
+
+# How long up and down wait, in seconds, for the tresor to read synced before they stop, naming it.
+drive_sync_wait: 900
+
 # Tresorit's Linux installer as Tresorit's site serves it, and the SHA-256 fingerprint of the CA that issues its
 # signing certificate; the installer runs only once porelo.host.tresorit_installer found it signed under that CA.
 drive_installer_url: https://installerstorage.blob.core.windows.net/public/install/tresorit_installer.run

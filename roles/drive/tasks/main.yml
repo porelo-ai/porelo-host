@@ -9,3 +9,7 @@
 - name: Run Tresorit's daemon as the account
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/service.yml"
   when: drive_client
+
+- name: Sync the person's tresor into the drive, or name the drive as what the person must give
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/sync.yml"
+  when: drive_client

@@ -1,0 +1,56 @@
+---
+- name: down-client | Read the account's home
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ drive_account }}"
+
+# A failed up may have stopped before the client was installed; down then has no client to take.
+- name: down-client | Read whether the client is there
+  ansible.builtin.stat:
+    path: "{{ __drive_client_dir }}/tresorit-cli"
+  register: __drive_cli
+
+- name: down-client | Sync, log out and stop the client
+  when: __drive_cli.stat.exists
+  block:
+    - name: down-client | Read whether the client is logged in
+      ansible.builtin.command:
+        cmd: "{{ __drive_client_dir }}/tresorit-cli -p status"
+      become: true
+      become_user: "{{ drive_account }}"
+      environment: "{{ __drive_user_environment }}"
+      register: __drive_status
+      changed_when: false
+      check_mode: false
+
+    - name: down-client | Wait until everything written is synced, then log out
+      when: __drive_logged_in
+      block:
+        - name: down-client | Wait until the person's tresor is synced
+          ansible.builtin.include_tasks: "{{ role_path }}/tasks/synced.yml"
+
+        - name: down-client | Stop syncing the person's tresor
+          ansible.builtin.command:
+            cmd: "{{ __drive_client_dir }}/tresorit-cli sync --stop {{ drive_tresor | quote }}"
+          become: true
+          become_user: "{{ drive_account }}"
+          environment: "{{ __drive_user_environment }}"
+          changed_when: true
+
+        - name: down-client | Log out and unlink this host from the person's account
+          ansible.builtin.command:
+            cmd: "{{ __drive_client_dir }}/tresorit-cli logout --unlink"
+          become: true
+          become_user: "{{ drive_account }}"
+          environment: "{{ __drive_user_environment }}"
+          changed_when: true
+
+    - name: down-client | Stop the client's daemon
+      ansible.builtin.systemd_service:
+        name: tresorit-daemon.service
+        scope: user
+        state: stopped
+        enabled: false
+      become: true
+      become_user: "{{ drive_account }}"
+      environment: "{{ __drive_user_environment }}"

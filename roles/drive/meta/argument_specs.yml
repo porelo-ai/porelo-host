@@ -23,6 +23,13 @@ argument_specs:
         type: bool
         default: true
         description: Whether Tresorit's client syncs the person's tresor into the folder.
+      drive_tresor:
+        type: str
+        description: The person's tresor synced into the folder, by name; needed when drive_client is on.
+      drive_sync_wait:
+        type: int
+        default: 900
+        description: How long up and down wait, in seconds, for the tresor to read synced.
       drive_installer_url:
         type: str
         default: https://installerstorage.blob.core.windows.net/public/install/tresorit_installer.run
@@ -32,8 +39,23 @@ argument_specs:
         default: AC:46:31:BC:C9:81:CA:10:06:35:14:FB:42:FD:47:4A:9C:94:BB:8E:50:38:9C:4D:F4:2E:E2:01:09:3D:D2:42
         description: The SHA-256 fingerprint of the CA that issues the installer's signing certificate.
   down:
-    short_description: The drive unmounted, last at down.
+    short_description: The tresor synced, the client logged out and unlinked, the drive unmounted, last at down.
     options:
+      drive_account:
+        type: str
+        required: true
+        description: The account the folder belongs to.
+      drive_client:
+        type: bool
+        default: true
+        description: Whether Tresorit's client syncs the person's tresor into the folder.
+      drive_tresor:
+        type: str
+        description: The person's tresor synced into the folder, by name.
+      drive_sync_wait:
+        type: int
+        default: 900
+        description: How long down waits, in seconds, for the tresor to read synced.
       drive_path:
         type: path
         default: /srv/porelo-host/drive
