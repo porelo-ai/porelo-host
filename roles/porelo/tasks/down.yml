@@ -1,0 +1,31 @@
+---
+# The vault taken off the host before it is given back: its keys came from the person's drive and come again from it
+# at the next up, so nothing is lost. A failed up may have stopped before Porelo, the account or the vault was there;
+# down then has nothing of it to take, and goes on.
+- name: down | Read the account, if up got as far as Porelo's setup script
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ porelo_account }}"
+    fail_key: false
+
+- name: down | Ask Porelo whether the account has a vault
+  ansible.builtin.command:
+    cmd: porelo vault status
+  become: true
+  become_user: "{{ porelo_account }}"
+  environment: "{{ __porelo_user_environment }}"
+  register: __porelo_vault
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: ansible_facts['getent_passwd'][porelo_account] is not none
+
+# 0 open, 3 shut; a shut vault is cleared unread, since no one at down opens it and its keys are the drive's.
+- name: down | Clear the vault, its cached passphrase and its shares
+  ansible.builtin.command:
+    argv: "{{ ['porelo', 'vault', 'clear', '--yes'] + (['--force'] if __porelo_vault.rc == 3 else []) }}"
+  become: true
+  become_user: "{{ porelo_account }}"
+  environment: "{{ __porelo_user_environment }}"
+  when: __porelo_vault.rc | default(-1) in [0, 3]
+  changed_when: true

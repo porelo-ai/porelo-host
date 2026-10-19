@@ -46,3 +46,10 @@ argument_specs:
         type: path
         default: /srv/porelo-host/drive/porelo-host/machine.yml
         description: The person's machine file on their drive, which Porelo reads.
+  down:
+    short_description: The account's vault cleared before the host is given back.
+    options:
+      porelo_account:
+        type: str
+        required: true
+        description: The account Porelo's tasks run as.

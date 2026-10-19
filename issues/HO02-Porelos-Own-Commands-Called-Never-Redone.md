@@ -88,6 +88,10 @@ run changes nothing that is already as it should be.
   a second run following nothing again; a machine file naming another key stopped the part with Porelo's 65,
   "signed by …, not by … Nothing was pinned. No inventory was written.", before any key or follow.
 
+- `down.yml`, first in `down`: `porelo vault clear --yes` (with `--force` for a shut vault, whose keys are the
+  drive's), only where up got as far as the account and a vault. Molecule's side effect finds no vault after `down`
+  (`vault status` 4); seen red first without it (`vault status` 0). On the development host: cleared, `down` rc 0.
+
 ## Measured
 
 In a VM of `build/molecule.sh`'s, Ubuntu 26.04, porelo `0.5.1~snapshot.312`:

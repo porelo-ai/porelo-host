@@ -103,3 +103,19 @@
       ansible.builtin.assert:
         that: side_effect_stub.files | map(attribute='path') | map('basename') | list == ['unlinked']
         fail_msg: "the stub's state after down: {{ side_effect_stub.files | map(attribute='path') | list }}"
+
+    - name: Ask Porelo whether the account still has a vault
+      ansible.builtin.command:
+        cmd: porelo vault status
+      become: true
+      become_user: porelo-test
+      environment:
+        XDG_RUNTIME_DIR: /run/user/1001
+      register: side_effect_vault
+      changed_when: false
+      failed_when: false
+
+    - name: Assert down cleared the vault
+      ansible.builtin.assert:
+        that: side_effect_vault.rc == 4
+        fail_msg: "after down, porelo vault status gave {{ side_effect_vault.rc }}: {{ side_effect_vault.stdout }}"
