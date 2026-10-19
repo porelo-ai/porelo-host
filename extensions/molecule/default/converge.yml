@@ -161,6 +161,37 @@
         mode: "0600"
       when: not converge_first_seen.stat.exists
 
+    # Stands in for the person's project and their machine file on the drive: a project of its own in a local
+    # repository, its commit signed by a key made for the run, the machine file naming that key's fingerprint and one
+    # key file for the vault.
+    - name: Make the run's project, signed, and the machine file on the drive
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          ssh-keygen -q -t ed25519 -N "" -C converge-signer -f ~/.ssh/converge-signer
+          mkdir ~/converge-project && cd ~/converge-project && git init -q -b main
+          printf 'project:\n  name: "converge"\n  security_class: "offline"\nimage:\n  base_image: "ubuntu:24.04"\n' \
+              > project.yml
+          git add project.yml
+          git -c user.name=converge -c user.email=converge@example.invalid -c gpg.format=ssh \
+              -c user.signingkey="$HOME/.ssh/converge-signer.pub" commit -q -S -m "The run's project"
+          drive=/srv/porelo-host/drive/porelo-host
+          mkdir -p "$drive/keys" && (umask 077 && head -c 20 /dev/urandom | base64 > "$drive/keys/converge-key")
+          signer=$(ssh-keygen -lf ~/.ssh/converge-signer.pub | cut -d' ' -f2)
+          {
+              echo 'project:'
+              echo '  name: converge'
+              echo "  url: \"$HOME/converge-project\""
+              echo "  signed_by: \"$signer\""
+              echo 'tasks: []'
+              echo 'keys:'
+              echo '  - { name: converge-key, path: keys/converge-key }'
+          } > "$drive/machine.yml"
+        creates: /srv/porelo-host/drive/porelo-host/machine.yml
+        executable: /bin/bash
+      become: true
+      become_user: "{{ converge_account }}"
+
     # The person's step for the vault, as porelo-frontend gives it: the passphrase on porelo's stdin, as the account.
     - name: Make the account's vault, as the person's step does
       ansible.builtin.shell:

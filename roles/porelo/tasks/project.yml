@@ -1,0 +1,89 @@
+---
+# up's second play, the vault open: the second inventory Porelo writes from the machine file, the keys from the
+# drive into the vault, the project followed by its signature. Every answer is Porelo's own (porelo's doc/hosts.md).
+- name: project | Read the account's id
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ porelo_account }}"
+
+- name: project | Ask Porelo for the second play's inventory from the person's machine file
+  ansible.builtin.command:
+    cmd: porelo project inventory --machine-file {{ porelo_machine_file }}
+  become: true
+  become_user: "{{ porelo_account }}"
+  environment: "{{ __porelo_user_environment }}"
+  register: __porelo_inventory
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: project | Stop on Porelo's refusal of the machine file, with its own words
+  ansible.builtin.assert:
+    that: __porelo_inventory.rc == 0
+    fail_msg: >-
+      porelo project inventory refused {{ porelo_machine_file }} with {{ __porelo_inventory.rc }}
+      ({{ 'no such file' if __porelo_inventory.rc == 66 else 'its project part is wrong' }}):
+      {{ __porelo_inventory.stderr }}
+    quiet: true
+
+- name: project | Stop on an inventory of a version this role does not know
+  ansible.builtin.assert:
+    that: __porelo_second.all.vars.porelo_inventory_version == 1
+    fail_msg: >-
+      Porelo wrote inventory version {{ __porelo_second.all.vars.porelo_inventory_version }}, this role reads 1
+    quiet: true
+
+- name: project | Ask Porelo which entries the vault holds, by name
+  ansible.builtin.command:
+    cmd: porelo vault list
+  become: true
+  become_user: "{{ porelo_account }}"
+  environment: "{{ __porelo_user_environment }}"
+  register: __porelo_vault_list
+  changed_when: false
+  check_mode: false
+
+# Only the key's name and path pass here; porelo reads the file itself. porelo vault put says stored even for a value
+# it already held, so until it can say unchanged, a key is put only while its name is missing from the vault: one the
+# person changes on the drive is put again by hand with porelo vault put.
+- name: project | Put each key from the drive into the vault, read by Porelo from its file
+  ansible.builtin.command:
+    cmd: porelo vault put {{ item.name | quote }} --from-file={{ item.path | quote }}
+  loop: "{{ __porelo_host.porelo_vault_keys | default([])
+    | rejectattr('name', 'in', __porelo_vault_list.stdout_lines | map('split') | map('first') | list) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  become: true
+  become_user: "{{ porelo_account }}"
+  environment: "{{ __porelo_user_environment }}"
+  no_log: true
+  changed_when: true
+
+- name: project | Ask Porelo which projects the account follows
+  ansible.builtin.command:
+    cmd: porelo project following --json
+  become: true
+  become_user: "{{ porelo_account }}"
+  environment: "{{ __porelo_user_environment }}"
+  register: __porelo_following
+  changed_when: false
+  check_mode: false
+
+# Followed again only where the address or the pinned key differs; never --unverified.
+- name: project | Follow the project, checked against the key the machine file names
+  ansible.builtin.command:
+    argv:
+      - porelo
+      - project
+      - follow
+      - "{{ __porelo_host.porelo_project.name }}"
+      - "{{ __porelo_host.porelo_project.url }}"
+      - "--signed-by={{ __porelo_host.porelo_project.signed_by }}"
+  when: >-
+    __porelo_followed | length == 0
+    or __porelo_followed[0].url != __porelo_host.porelo_project.url
+    or __porelo_host.porelo_project.signed_by not in (__porelo_followed[0].signed_by | default([]))
+  become: true
+  become_user: "{{ porelo_account }}"
+  environment: "{{ __porelo_user_environment }}"
+  changed_when: true

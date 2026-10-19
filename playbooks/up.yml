@@ -42,3 +42,8 @@
     - name: Let the person reach the host through their VPN alone
       ansible.builtin.include_role:
         name: porelo.host.vpn
+
+    - name: Put the keys into the vault and follow the project, through Porelo's own commands
+      ansible.builtin.include_role:
+        name: porelo.host.porelo
+        tasks_from: project

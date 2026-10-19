@@ -1,3 +1,7 @@
 ---
 __porelo_user_environment:
   XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][porelo_account][1] }}"
+__porelo_second: "{{ __porelo_inventory.stdout | from_yaml }}"
+__porelo_host: "{{ __porelo_second.all.hosts.localhost }}"
+__porelo_followed: "{{ (__porelo_following.stdout | from_json).follows
+  | selectattr('name', 'equalto', __porelo_host.porelo_project.name) | list }}"

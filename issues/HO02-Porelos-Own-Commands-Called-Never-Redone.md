@@ -77,6 +77,17 @@ run changes nothing that is already as it should be.
   `vault init --passphrase-stdin` with `needs: ["drive"]` alone. A second `up` changed nothing else. `down` from the
   stop ended 0: VPN stopped, daemon stopped, drive unmounted.
 
+- `project.yml`, in `up`'s second play after the VPN: `porelo project inventory --machine-file` (the machine file at
+  `porelo-host/machine.yml` on the drive), refused with Porelo's own words on 66 or 65, its version checked; each key
+  put by `porelo vault put --from-file` under `no_log`, only while its name is missing from `vault list`, since
+  `put` cannot say unchanged yet, so a key the person changes on the drive is put again by hand until it can; the
+  project followed with `--signed-by` the machine file's fingerprint only where `following --json` differs. Molecule:
+  a project of the run's own in a local repository, its commit signed by a key of the run's, is followed `verified`
+  and `applied`, its key is in the vault, idempotence `changed=0`. Seen red first without the part.
+- **On the development host:** the same with a throwaway signed project: followed and applied, the key in the vault,
+  a second run following nothing again; a machine file naming another key stopped the part with Porelo's 65,
+  "signed by …, not by … Nothing was pinned. No inventory was written.", before any key or follow.
+
 ## Measured
 
 In a VM of `build/molecule.sh`'s, Ubuntu 26.04, porelo `0.5.1~snapshot.312`:

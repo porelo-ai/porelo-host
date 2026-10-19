@@ -35,3 +35,14 @@ argument_specs:
         type: path
         default: /usr/share/porelo/setup/porelo-setup.sh
         description: Porelo's setup script, as the package porelo ships it.
+  project:
+    short_description: The second inventory from the machine file, the keys into the vault, the project followed.
+    options:
+      porelo_account:
+        type: str
+        required: true
+        description: The account Porelo's tasks run as.
+      porelo_machine_file:
+        type: path
+        default: /srv/porelo-host/drive/porelo-host/machine.yml
+        description: The person's machine file on their drive, which Porelo reads.

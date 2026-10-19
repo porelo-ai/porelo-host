@@ -325,6 +325,28 @@
           - verify_doctor.stdout is search('^daemon +running', multiline=True)
         fail_msg: "porelo doctor gave rc {{ verify_doctor.rc }}: {{ verify_doctor.stdout_lines }}"
 
+    - name: Ask Porelo which projects the account follows, and what its vault holds
+      ansible.builtin.command:
+        cmd: "{{ item }}"
+      loop: [porelo project following --json, porelo vault list]
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      register: verify_project
+      changed_when: false
+
+    - name: Assert the machine file's project is followed with its signature checked, and its key is in the vault
+      ansible.builtin.assert:
+        that:
+          - verify_follows | length == 1
+          - verify_follows[0].verified and verify_follows[0].outcome == 'applied'
+          - verify_project.results[1].stdout is search('^converge-key ', multiline=True)
+        fail_msg: "following: {{ verify_project.results[0].stdout }}; vault: {{ verify_project.results[1].stdout }}"
+      vars:
+        verify_follows: "{{ (verify_project.results[0].stdout | from_json).follows
+          | selectattr('name', 'equalto', 'converge') | list }}"
+
     # The lines callback, as porelo-frontend's host command reads it from a real up on the host.
     - name: Read the lines of the last up
       ansible.builtin.slurp:
