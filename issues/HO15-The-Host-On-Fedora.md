@@ -17,7 +17,8 @@ Ubuntu 26.04 only.
   collection installed and run by Fedora's `ansible-core` from its tarball, as Ubuntu's is today.
 - **A Molecule scenario on Fedora**, made by `build/molecule.sh` from a Fedora cloud image pinned by digest as
   `build/test-image` pins Ubuntu's.
-- **porelo-frontend's part**, its own issue: `host up` installs `ansible-core` with `dnf` on Fedora, chosen by the
+- **porelo-frontend's part**, its own issue, porelo-frontend
+  [F138](https://github.com/porelo-ai/porelo-frontend/blob/main/issues/README.md#f138): `host up` installs `ansible-core` with `dnf` on Fedora, chosen by the
   host's `/etc/os-release`, and a rented host is Fedora only where the provider offers it.
 
 ## What stays as it is
