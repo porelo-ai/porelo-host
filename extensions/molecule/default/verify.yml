@@ -362,6 +362,26 @@
         that: verify_person_ssh.rc == 0 and verify_person_ssh.stdout is search('^open', multiline=True)
         fail_msg: "ssh as {{ verify_account }}: rc {{ verify_person_ssh.rc }}, {{ verify_person_ssh.stderr }}"
 
+    # The drive's login, as porelo-host runs it: over ssh as the account, the client by name, the account's daemon.
+    - name: Ask the drive's client by name over ssh as the account, as porelo-host's drive step does
+      ansible.builtin.command:
+        argv: [ssh, -o, BatchMode=yes, -o, IdentitiesOnly=yes, -o, StrictHostKeyChecking=accept-new,
+               -o, UserKnownHostsFile=/root/person-known-hosts, -i, /root/person-ssh, "{{ verify_account }}@127.0.0.1",
+               "XDG_RUNTIME_DIR=/run/user/$(id -u) tresorit-cli -p status"]
+      register: verify_person_client
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the client is found by name and reaches the account's daemon
+      ansible.builtin.assert:
+        that:
+          - verify_person_client.rc == 0
+          - verify_person_client.stdout is search('^Tresorit daemon:\trunning', multiline=True)
+          - verify_person_client.stdout is search('^Logged in as:\t', multiline=True)
+        fail_msg: >-
+          tresorit-cli over ssh as {{ verify_account }}: rc {{ verify_person_client.rc }},
+          {{ verify_person_client.stdout }} {{ verify_person_client.stderr }}
+
     # The lines callback, as porelo-frontend's host command reads it from a real up on the host.
     - name: Read the lines of the last up
       ansible.builtin.slurp:

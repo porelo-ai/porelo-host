@@ -41,3 +41,17 @@
         creates: "{{ __drive_client_dir }}/tresorit-cli"
       become: true
       become_user: "{{ drive_account }}"
+
+# porelo-host logs the drive in over ssh as the account, whose non-interactive shell has no ~/.local on its PATH, and
+# calls the client by name; one fixed name finds it there. A wrapper rather than a link, so the client runs from its
+# own path, as Tresorit's installer put it, and finds what lies beside it.
+- name: install | Give the client a name every shell of the account finds
+  ansible.builtin.copy:
+    dest: /usr/local/bin/tresorit-cli
+    content: |
+      #!/bin/sh
+      # Written by porelo.host.drive: the account's Tresorit client, by one fixed name.
+      exec {{ __drive_client_dir }}/tresorit-cli "$@"
+    owner: root
+    group: root
+    mode: "0755"
