@@ -1,7 +1,8 @@
 # HO07 — The Project's Store Restored And Kept
 
-**Status:** Estimated; blocked by porelo-project [PJ45](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj45), and by
-porelo-message-matrix [MX24](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx24).
+**Status:** Backlog; blocked by porelo-project [PJ45](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj45), and by
+porelo-message-matrix [MX24](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx24), and by
+porelo [B231](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b231).
 **Size:** L - one role, a script and a timer here, but every entry's copy and restore is another repository's command,
 and the round trip is measured on a rented host.
 
@@ -19,7 +20,8 @@ drive, never through Ansible.
 - **The list is data, its entries commands**: `store_entries` names each entry with its command that writes a
   consistent copy into a directory, the one that puts it back, its schedule (`hourly` or `down`) and how many restic
   keeps: the room (porelo-message-matrix's `backup|restore <dir>`, 48), the usage records (`porelo keep [--restore]
-  <dir>`, 48), the Maven cache (copied as it stands at `down`, 1). The vault is never an entry.
+  <dir>`, 48; 0 done, 70 failed, and `--restore` alone 69 while a task runs), the Maven cache (copied as it stands at
+  `down`, 1). The vault is never an entry.
 - **One script, `porelo-host-keep`**, installed for the account: for each entry due, its command into a fresh
   directory, `restic backup --tag <entry>` of it, `restic forget --tag <entry> --keep-last <n>`; it stops at the
   first entry that fails and exits non-zero naming it, so a half copy is never thinned against.
@@ -44,4 +46,4 @@ drive, never through Ansible.
 
 ## To be checked
 
-- The two entry commands' names and exit codes, once porelo and porelo-message-matrix plan them.
+- The room's entry commands' names and exit codes, once porelo-message-matrix plans them.
