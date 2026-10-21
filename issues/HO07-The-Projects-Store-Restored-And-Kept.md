@@ -30,6 +30,12 @@ drive, never through Ansible.
 - **At `up`**, before the homeserver and the first `porelo task start`: `restic restore latest --tag <entry>` into a
   fresh directory and the entry's restore command, for each entry; a store with no snapshot yet is a first start and
   restores nothing, said so.
+- **The room's commands, as porelo-message-matrix
+  [MX24](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx24) plans them**: `backup
+  <dir>` into an existing empty directory, 0 with `{"backup": <id>}`, 75 when the homeserver is not active or no backup
+  appeared within 60 s, which fails that run, 78 when the unit is not installed; `restore <dir>` before the
+  homeserver's `setup`, 0 with `{"restore": <id>}`, or with `{"restore": "present"}` on a second `up` where the
+  database already is, which counts as unchanged; 78 for anything really wrong.
 - **The store's address and keys** (decided: the drive, since the vault hands no value out) reach restic through its
   environment, as files on the person's drive
   ([HO06](README.md#ho06)): `RESTIC_REPOSITORY_FILE`, `RESTIC_PASSWORD_FILE` and an S3 credentials file; the role
@@ -43,7 +49,3 @@ drive, never through Ansible.
   with its time measured.
 - A failing entry command stops the timer's run and `down`, names the entry, and no `forget` runs after it.
 - `restic snapshots` shows each entry under its tag, at most its count kept.
-
-## To be checked
-
-- The room's entry commands' names and exit codes, once porelo-message-matrix plans them.
