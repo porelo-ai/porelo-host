@@ -1,0 +1,117 @@
+---
+# Forgejo's runner as a quadlet unit of its own account, its jobs in containers of that account's podman, which alone
+# may open KVM; registered once, its token piped from Forgejo's command line straight into the runner's registration,
+# never an argument, a variable or an output.
+- name: runner | Let the runner's account open KVM, and no other account of the forge
+  ansible.builtin.user:
+    name: "{{ forge_runner_account }}"
+    groups: [kvm]
+    append: true
+
+- name: runner | Keep the runner account's id and home
+  ansible.builtin.set_fact:
+    __forge_runner_uid: "{{ __forge_users.results[1].uid }}"
+    __forge_runner_home: "{{ __forge_users.results[1].home }}"
+
+- name: runner | Make the runner's directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ forge_runner_account }}"
+    group: "{{ forge_runner_account }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ __forge_runner_home }}/.config", mode: "0755"}
+    - {path: "{{ __forge_runner_home }}/.config/containers", mode: "0755"}
+    - {path: "{{ __forge_runner_home }}/.config/containers/systemd", mode: "0755"}
+    - {path: "{{ __forge_runner_home }}/runner", mode: "0700"}
+    - {path: "{{ __forge_runner_home }}/tls", mode: "0755"}
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: runner | Give the runner the forge's CA bundle, for itself and its jobs
+  ansible.builtin.copy:
+    src: "{{ __forge_home }}/tls/ca-bundle.pem"
+    dest: "{{ __forge_runner_home }}/tls/ca-bundle.pem"
+    remote_src: true
+    owner: "{{ forge_runner_account }}"
+    group: "{{ forge_runner_account }}"
+    mode: "0644"
+  notify: Restart Forgejo's runner
+
+- name: runner | Write the runner's configuration
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/runner-config.yml.j2"
+    dest: "{{ __forge_runner_home }}/runner/config.yml"
+    owner: "{{ forge_runner_account }}"
+    group: "{{ forge_runner_account }}"
+    mode: "0600"
+  notify: Restart Forgejo's runner
+
+- name: runner | Run the runner account's podman socket, for its jobs' containers
+  ansible.builtin.systemd_service:
+    name: podman.socket
+    scope: user
+    state: started
+    enabled: true
+  become: true
+  become_user: "{{ forge_runner_account }}"
+  environment: "{{ __forge_runner_environment }}"
+
+- name: runner | Ask podman whether the runner's image is there
+  ansible.builtin.command:
+    argv: [podman, image, exists, "{{ __forge_runner_image }}"]
+  become: true
+  become_user: "{{ forge_runner_account }}"
+  environment: "{{ __forge_runner_environment }}"
+  register: __forge_runner_image_there
+  changed_when: false
+  failed_when: __forge_runner_image_there.rc not in [0, 1]
+  check_mode: false
+
+- name: runner | Pull the runner's image by its digest
+  ansible.builtin.command:
+    argv: [podman, pull, --quiet, "{{ __forge_runner_image }}"]
+  become: true
+  become_user: "{{ forge_runner_account }}"
+  environment: "{{ __forge_runner_environment }}"
+  when: __forge_runner_image_there.rc == 1
+  changed_when: true
+
+- name: runner | Register the runner once, its token piped from Forgejo into the registration
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      cd /
+      {
+          printf '%s\n' https://{{ forge_address }}:{{ forge_http_port }}
+          runuser -u {{ forge_account }} -- env XDG_RUNTIME_DIR=/run/user/{{ __forge_uid }} \
+              podman exec forgejo forgejo actions generate-runner-token
+          printf '%s\n' {{ forge_runner_name | quote }}
+      } | runuser -u {{ forge_runner_account }} -- env XDG_RUNTIME_DIR=/run/user/{{ __forge_runner_uid }} \
+          podman run --rm -i --userns keep-id:uid=1000,gid=1000 \
+          -v {{ __forge_runner_home }}/runner:/data -v {{ __forge_runner_home }}/tls:/tls:ro \
+          -e SSL_CERT_FILE=/tls/ca-bundle.pem {{ __forge_runner_image }} \
+          /bin/forgejo-runner register --config /data/config.yml > /dev/null
+    creates: "{{ __forge_runner_home }}/runner/.runner"
+    executable: /bin/bash
+  no_log: true
+
+- name: runner | Write the runner's quadlet unit
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/forgejo-runner.container.j2"
+    dest: "{{ __forge_runner_home }}/.config/containers/systemd/forgejo-runner.container"
+    owner: "{{ forge_runner_account }}"
+    group: "{{ forge_runner_account }}"
+    mode: "0644"
+  notify: Restart Forgejo's runner
+
+- name: runner | Run the runner
+  ansible.builtin.systemd_service:
+    name: forgejo-runner.service
+    scope: user
+    state: started
+    daemon_reload: true
+  become: true
+  become_user: "{{ forge_runner_account }}"
+  environment: "{{ __forge_runner_environment }}"

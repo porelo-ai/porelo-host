@@ -23,3 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   vault and its project followed by its signature, the tasks' agents installed, a stop with `agent-login:<agent>`
   for each agent whose sign-in the vault lacks, and the tasks started; at `down`, the tasks stopped and the vault
   cleared.
+- The role `porelo.host.forge`, where the host setting `porelo_host_forge` asks for it: Forgejo with its registry and
+  its runner in rootless podman under accounts of their own, HTTPS on the VPN's address alone with a CA made on the
+  host, the repositories `porelo_host_forge_repositories` names migrated once with push mirrors back, the person's
+  token for the central forge read from their drive by the shell alone; stopped at `down`, keeping nothing.

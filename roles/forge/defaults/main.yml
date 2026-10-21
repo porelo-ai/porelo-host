@@ -1,0 +1,30 @@
+---
+# The accounts Forgejo and its runner run as, never Porelo's: a task's container must not share a user namespace with
+# what holds the forge's admin, and a job's code must reach neither.
+forge_account: porelo-forge
+forge_runner_account: porelo-runner
+
+# The host's address inside the VPN, which the forge alone listens on; the vpn role's own, without its prefix.
+forge_address: "{{ (vpn_address | default('10.73.0.1/24')).split('/') | first }}"
+
+# The name the forge's certificate carries beside that address, and the ports it serves HTTPS and git over ssh on.
+forge_name: forge.porelo.internal
+forge_http_port: 3000
+forge_ssh_port: 2222
+
+# The repositories migrated once from the central forge into the owner's organization, each {name, url}, and that
+# owner; from porelo-frontend's first inventory. A url is https:// with no user in it, which the role checks too.
+forge_repositories: "{{ porelo_host_forge_repositories | default([]) }}"
+forge_owner: "{{ porelo_host_forge_owner | default('porelo') }}"
+
+# The person's token for the central forge, on their drive; the role checks it is there and never reads it.
+forge_central_token_path: /srv/porelo-host/drive/porelo-host/forge-central.token
+
+# Forgejo refuses to migrate from a private address; a stand-in for the central forge on the host itself needs it.
+forge_migrations_allow_local: false
+
+# The runner's name on the forge, and the labels its jobs run on, each name:docker://image pinned by digest; the
+# repositories' own labels come with their workflows.
+forge_runner_name: porelo-host
+forge_runner_labels:
+  - porelo-host:docker://docker.io/curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777

@@ -1,0 +1,40 @@
+---
+# Accounts of their own with what rootless podman and user services need: subordinate ids, which useradd gives an
+# account that is not a system one, and the linger that keeps their services up without a login.
+- name: accounts | Make the forge's and the runner's accounts
+  ansible.builtin.user:
+    name: "{{ item }}"
+    shell: /usr/sbin/nologin
+    create_home: true
+  loop: ["{{ forge_account }}", "{{ forge_runner_account }}"]
+  register: __forge_users
+
+- name: accounts | Give each its linger
+  ansible.builtin.command:
+    cmd: loginctl enable-linger {{ item }}
+    creates: /var/lib/systemd/linger/{{ item }}
+  loop: ["{{ forge_account }}", "{{ forge_runner_account }}"]
+
+# Each file on its own: grep answers 1 for an account it does not name there, and 2 for a file it cannot read.
+- name: accounts | Read their subordinate ids, in each file
+  ansible.builtin.command:
+    argv: [grep, -c, "^{{ item.0 }}:", "{{ item.1 }}"]
+  loop: "{{ [forge_account, forge_runner_account] | product(['/etc/subuid', '/etc/subgid']) | list }}"
+  register: __forge_subids
+  changed_when: false
+  failed_when: __forge_subids.rc not in [0, 1]
+  check_mode: false
+
+- name: accounts | Stop if an account lacks the subordinate ids rootless podman needs
+  ansible.builtin.assert:
+    that: __forge_subids.results | map(attribute='stdout') | map('int') | min > 0
+    fail_msg: >-
+      no subordinate ids for {{ __forge_subids.results | selectattr('stdout', 'equalto', '0') | map(attribute='item')
+      | list }}
+    quiet: true
+
+# From the user module's own answer, not getent, whose facts the porelo role reads after this one and getent replaces.
+- name: accounts | Keep the forge account's id and home
+  ansible.builtin.set_fact:
+    __forge_uid: "{{ __forge_users.results[0].uid }}"
+    __forge_home: "{{ __forge_users.results[0].home }}"

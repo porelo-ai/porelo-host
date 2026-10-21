@@ -1,0 +1,66 @@
+---
+# Forgejo as a quadlet unit of the forge's account. The image is pulled before the unit starts, so its start is not
+# timed by a download; its ports listen on the VPN's address alone, never on every address behind the firewall.
+- name: service | Make the account's directories for quadlet units
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ forge_account }}"
+    group: "{{ forge_account }}"
+    mode: "0755"
+  loop:
+    - "{{ __forge_home }}/.config"
+    - "{{ __forge_home }}/.config/containers"
+    - "{{ __forge_home }}/.config/containers/systemd"
+
+- name: service | Ask podman whether Forgejo's image is there
+  ansible.builtin.command:
+    argv: [podman, image, exists, "{{ __forge_image }}"]
+  become: true
+  become_user: "{{ forge_account }}"
+  environment: "{{ __forge_environment }}"
+  register: __forge_image_there
+  changed_when: false
+  failed_when: __forge_image_there.rc not in [0, 1]
+  check_mode: false
+
+- name: service | Pull Forgejo's image by its digest
+  ansible.builtin.command:
+    argv: [podman, pull, --quiet, "{{ __forge_image }}"]
+  become: true
+  become_user: "{{ forge_account }}"
+  environment: "{{ __forge_environment }}"
+  when: __forge_image_there.rc == 1
+  changed_when: true
+
+- name: service | Write Forgejo's quadlet unit
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/forgejo.container.j2"
+    dest: "{{ __forge_home }}/.config/containers/systemd/forgejo.container"
+    owner: "{{ forge_account }}"
+    group: "{{ forge_account }}"
+    mode: "0644"
+  notify: Restart Forgejo
+
+# A quadlet unit is generated, so it cannot be enabled; its [Install] section starts it with the account's services.
+- name: service | Run Forgejo
+  ansible.builtin.systemd_service:
+    name: forgejo.service
+    scope: user
+    state: started
+    daemon_reload: true
+  become: true
+  become_user: "{{ forge_account }}"
+  environment: "{{ __forge_environment }}"
+
+- name: service | Restart Forgejo now if its unit or certificate changed
+  ansible.builtin.meta: flush_handlers
+
+- name: service | Wait until Forgejo answers over TLS with the host's certificate
+  ansible.builtin.uri:
+    url: "https://{{ forge_address }}:{{ forge_http_port }}/api/v1/version"
+    ca_path: "{{ __forge_ca_dir }}/ca.pem"
+  register: __forge_version
+  until: __forge_version.status == 200
+  retries: 30
+  delay: 2

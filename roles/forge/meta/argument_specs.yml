@@ -1,0 +1,75 @@
+---
+argument_specs:
+  main:
+    short_description: Forgejo with its registry in rootless podman under accounts of its own, on the VPN's address.
+    description:
+      - Run in up's second play after the VPN, where the host setting porelo_host_forge is true.
+    options:
+      forge_account:
+        type: str
+        default: porelo-forge
+        description: The account Forgejo runs as, never Porelo's.
+      forge_runner_account:
+        type: str
+        default: porelo-runner
+        description: The account Forgejo's runner runs as, never Porelo's nor the forge's.
+      forge_address:
+        type: str
+        description: The host's address inside the VPN, the only one the forge listens on; the vpn role's by default.
+      forge_name:
+        type: str
+        default: forge.porelo.internal
+        description: The name the forge's certificate carries beside that address.
+      forge_http_port:
+        type: int
+        default: 3000
+        description: The port Forgejo serves HTTPS on.
+      forge_ssh_port:
+        type: int
+        default: 2222
+        description: The port Forgejo serves git over ssh on.
+      forge_runner_name:
+        type: str
+        default: porelo-host
+        description: The runner's name on the forge.
+      forge_runner_labels:
+        type: list
+        elements: str
+        description: The labels the runner's jobs run on, each name:docker://image pinned by digest.
+      forge_repositories:
+        type: list
+        elements: dict
+        default: []
+        description: The repositories migrated once from the central forge, from porelo_host_forge_repositories.
+        options:
+          name:
+            type: str
+            required: true
+            description: The repository's name on the forge, letters, digits, '.', '_' or '-'.
+          url:
+            type: str
+            required: true
+            description: Its address on the central forge, https:// with no user in it.
+      forge_owner:
+        type: str
+        default: porelo
+        description: The organization the repositories are migrated into, from porelo_host_forge_owner.
+      forge_central_token_path:
+        type: path
+        default: /srv/porelo-host/drive/porelo-host/forge-central.token
+        description: The person's token for the central forge on their drive, never read by the role.
+      forge_migrations_allow_local:
+        type: bool
+        default: false
+        description: Lets Forgejo migrate from a private address, for a stand-in central forge on the host.
+  down:
+    short_description: The forge taken off the host before it is given back, its secrets and units with it.
+    options:
+      forge_account:
+        type: str
+        default: porelo-forge
+        description: The account Forgejo runs as.
+      forge_runner_account:
+        type: str
+        default: porelo-runner
+        description: The account Forgejo's runner runs as.

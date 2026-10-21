@@ -97,6 +97,9 @@
               porelo_host_vpn_peer_address: 10.73.0.2/32
               porelo_host_authorized_key: {{ converge_person_public.content | b64decode | trim }}
               vpn_private_key_path: /root/vpn-host.key
+              porelo_host_forge: true
+              # The stand-in for the central forge is a repository on the host's own forge, at a private address.
+              forge_migrations_allow_local: true
 
     # The client's stub in the place the installer puts the real one, so the role leaves it as an installed client.
     - name: Make the client's directory as the account's
@@ -308,10 +311,81 @@
       changed_when: >-
         converge_up.stdout is search('"state": "changed"')
 
+    # Stands in for the central forge and the person's token for it: a user of the host's own forge with a public
+    # repository, its token in the file on the drive where the person puts theirs. Made once, after the forge is up.
+    - name: Make the stand-in for the central forge, its repository and the person's token for it
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          # The forge's account cannot enter the directory Molecule runs this from.
+          cd /
+          uid=$(id -u porelo-forge)
+          as_forge() { runuser -u porelo-forge -- env XDG_RUNTIME_DIR=/run/user/$uid "$@"; }
+          as_forge podman exec forgejo forgejo admin user create --username central \
+              --email central@example.invalid --random-password --must-change-password=false > /dev/null
+          token=/srv/porelo-host/drive/porelo-host/forge-central.token
+          (umask 077 && as_forge podman exec forgejo forgejo admin user generate-access-token --username central \
+              --token-name stand-in --scopes all --raw > "$token")
+          curl -fsS -o /dev/null --cacert /etc/porelo-host/forge/ca.pem \
+              -H @<(printf 'Authorization: token %s\n' "$(cat "$token")") -H 'Content-Type: application/json' \
+              -X POST https://10.73.0.1:3000/api/v1/user/repos -d '{"name": "stand-in", "auto_init": true}'
+          touch /root/porelo-host-forge-stand-in
+        creates: /root/porelo-host-forge-stand-in
+        executable: /bin/bash
+
+    - name: Write the inventory's forge repositories, as host up writes them
+      ansible.builtin.copy:
+        dest: /root/porelo-host-forge.yml
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          all:
+            vars:
+              porelo_host_forge_repositories:
+                - name: stand-in
+                  url: https://10.73.0.1:3000/central/stand-in.git
+
+    - name: Run up with the forge's repositories, its steps as JSON lines
+      ansible.builtin.command:
+        cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml -i /root/porelo-host-forge.yml porelo.host.up
+      environment:
+        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
+        LC_ALL: C.UTF-8
+      register: converge_up_forge
+      changed_when: >-
+        converge_up_forge.stdout is search('"state": "changed"')
+
+    # Stands in for a repository's workflow: one job on the host's runner, reaching the forge over TLS with the host's
+    # CA. Publishing waits on which credential jobs get: the run's own token may not write the registry. Committed
+    # once through the API, which starts the run.
+    - name: Commit a workflow to the migrated repository whose job reaches the forge over TLS
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          {% raw %}
+          workflow=$(base64 -w0 <<'WORKFLOW'
+          on: [push]
+          jobs:
+            probe:
+              runs-on: porelo-host
+              steps:
+                - run: curl -fsS https://10.73.0.1:3000/api/v1/version
+          WORKFLOW
+          )
+          {% endraw %}
+          curl -fsS -o /dev/null --cacert /etc/porelo-host/forge/ca.pem -H 'Content-Type: application/json' \
+              -H @<(printf 'Authorization: token %s\n' "$(cat /home/porelo-forge/.config/porelo-forge/api.token)") \
+              -X POST https://10.73.0.1:3000/api/v1/repos/porelo/stand-in/contents/.forgejo/workflows/probe.yml \
+              -d "{\"content\": \"$workflow\", \"message\": \"Reach the forge\"}"
+          touch /root/porelo-host-forge-workflow
+        creates: /root/porelo-host-forge-workflow
+        executable: /bin/bash
+
     - name: Keep the lines of the last up for verify
       ansible.builtin.copy:
         dest: /root/porelo-host-up.lines
-        content: "{{ converge_up.stdout }}\n"
+        content: "{{ converge_up_forge.stdout }}\n"
         owner: root
         group: root
         mode: "0600"

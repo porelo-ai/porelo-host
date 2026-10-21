@@ -1,0 +1,24 @@
+{{ ansible_managed | comment }}
+# The runner reaches its account's podman through the socket; its jobs never get it, as its configuration says.
+[Unit]
+Description=Forgejo's runner, its jobs in the runner account's containers
+StartLimitIntervalSec=0
+
+[Container]
+Image={{ __forge_runner_image }}
+ContainerName=forgejo-runner
+UserNS=keep-id:uid=1000,gid=1000
+Volume=%h/runner:/data
+Volume=%h/tls:/tls:ro
+Volume=%t/podman/podman.sock:/run/podman/podman.sock
+Environment=SSL_CERT_FILE=/tls/ca-bundle.pem
+Environment=DOCKER_HOST=unix:///run/podman/podman.sock
+Exec=/bin/forgejo-runner daemon --config /data/config.yml
+
+[Service]
+# After a boot the VPN may come up after the unit; it tries again until its address is there.
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,19 @@
+---
+- name: Make the forge's accounts
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/accounts.yml"
+
+- name: Make the host's CA and the forge's certificate
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/tls.yml"
+
+- name: Run Forgejo on the VPN's address
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/service.yml"
+
+- name: Register and run Forgejo's runner
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/runner.yml"
+
+- name: Make the forge's admin and its API token
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/admin.yml"
+
+- name: Migrate the repositories once, with their push mirrors
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/repositories.yml"
+  when: forge_repositories | length > 0

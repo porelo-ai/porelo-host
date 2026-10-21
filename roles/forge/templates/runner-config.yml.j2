@@ -1,0 +1,16 @@
+{{ ansible_managed | comment }}
+log:
+  level: info
+runner:
+  file: /data/.runner
+  capacity: 1
+  labels: {{ forge_runner_labels | to_json }}
+container:
+  # Jobs get no socket of the runner's podman, so a job cannot start containers beside itself.
+  docker_host: "-"
+  # Jobs trust the host's CA as the forge does, to reach its registry, whichever bundle their image's tools name.
+  options: >-
+    --volume={{ __forge_runner_home }}/tls/ca-bundle.pem:/etc/ssl/certs/ca-certificates.crt:ro
+    --env=SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+    --env=CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+  valid_volumes: [{{ (__forge_runner_home ~ '/tls/ca-bundle.pem') | to_json }}]

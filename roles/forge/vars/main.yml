@@ -1,0 +1,19 @@
+---
+# Forgejo's rootless image, by version and digest: the newest release at least three days old when it was pinned.
+__forge_image: >-
+  codeberg.org/forgejo/forgejo:17.0.0-rootless@sha256:6554520f7574602100b7d6620c6ac5b18cec30325f823777497eac36234f5cf8
+
+# The host's CA for the forge, made on the host and kept there; its certificate is what a client trusts.
+__forge_ca_dir: /etc/porelo-host/forge
+__forge_environment:
+  XDG_RUNTIME_DIR: "/run/user/{{ __forge_uid }}"
+
+# The forge's admin, made by Forgejo's own command line, and the file its API token is kept in.
+__forge_admin: porelo-admin
+__forge_token: "{{ __forge_home }}/.config/porelo-forge/api.token"
+
+# Forgejo's runner, by version and digest, the newest release at least three days old when it was pinned.
+__forge_runner_image: >-
+  code.forgejo.org/forgejo/runner:13.2.0@sha256:ca3d5eea46004789a175d1369eec6829d3ea9bfbe2011a06625b4bdaa55f7552
+__forge_runner_environment:
+  XDG_RUNTIME_DIR: "/run/user/{{ __forge_runner_uid }}"

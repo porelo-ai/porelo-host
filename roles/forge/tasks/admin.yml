@@ -1,0 +1,45 @@
+---
+# The forge's admin and its API token, made by Forgejo's own command line inside its container. The password it
+# generates goes nowhere; the token goes into a file only the forge's account and root read, by the shell, never
+# through a register or a fact.
+- name: admin | Ask Forgejo which admins it has
+  ansible.builtin.command:
+    argv: [podman, exec, forgejo, forgejo, admin, user, list, --admin]
+  become: true
+  become_user: "{{ forge_account }}"
+  environment: "{{ __forge_environment }}"
+  register: __forge_admins
+  changed_when: false
+  check_mode: false
+
+- name: admin | Make the forge's admin, its password generated and discarded
+  ansible.builtin.shell:
+    cmd: >-
+      podman exec forgejo forgejo admin user create --admin --username {{ __forge_admin }}
+      --email {{ __forge_admin }}@{{ forge_name }} --random-password --must-change-password=false > /dev/null
+  become: true
+  become_user: "{{ forge_account }}"
+  environment: "{{ __forge_environment }}"
+  when: __forge_admin not in (__forge_admins.stdout_lines[1:] | map('split') | map(attribute=1) | list)
+  changed_when: true
+  no_log: true
+
+- name: admin | Make the directory the API token is kept in
+  ansible.builtin.file:
+    path: "{{ __forge_home }}/.config/porelo-forge"
+    state: directory
+    owner: "{{ forge_account }}"
+    group: "{{ forge_account }}"
+    mode: "0700"
+
+- name: admin | Make the admin's API token into that file
+  ansible.builtin.shell:
+    cmd: >-
+      umask 077 && podman exec forgejo forgejo admin user generate-access-token --username {{ __forge_admin }}
+      --token-name porelo-host --scopes write:organization,write:repository --raw > {{ __forge_token }}.new
+      && mv {{ __forge_token }}.new {{ __forge_token }}
+    creates: "{{ __forge_token }}"
+  become: true
+  become_user: "{{ forge_account }}"
+  environment: "{{ __forge_environment }}"
+  no_log: true

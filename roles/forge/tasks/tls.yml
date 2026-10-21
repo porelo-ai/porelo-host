@@ -1,0 +1,76 @@
+---
+# A CA made on the host for this host, its key root's alone; the forge's certificate signed by it for the VPN's address
+# and the forge's name, its key the forge account's alone. Made once; nothing of either leaves the host but the CA's
+# certificate, which a client trusts.
+- name: tls | Make the CA's directory
+  ansible.builtin.file:
+    path: "{{ __forge_ca_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Made again when it would end within 30 days; a CA made again takes the forge's certificate with it.
+- name: tls | Make the host's CA, unless one holds for 30 days more
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      ca={{ __forge_ca_dir }}
+      if [ -f "$ca/ca.pem" ] && openssl x509 -checkend 2592000 -noout -in "$ca/ca.pem" > /dev/null; then
+          echo unchanged; exit 0
+      fi
+      umask 077
+      openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 365 -subj "/CN=Porelo host CA" \
+          -addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCertSign,cRLSign \
+          -keyout "$ca/ca.key" -out "$ca/ca.pem" 2> /dev/null
+      chmod 0644 "$ca/ca.pem"
+      rm -f {{ __forge_home }}/tls/forge.pem
+      echo made
+    executable: /bin/bash
+  register: __forge_ca
+  changed_when: __forge_ca.stdout == 'made'
+
+- name: tls | Make the forge's certificate directory
+  ansible.builtin.file:
+    path: "{{ __forge_home }}/tls"
+    state: directory
+    owner: "{{ forge_account }}"
+    group: "{{ forge_account }}"
+    mode: "0700"
+
+# Made again when it would end within 30 days, or names another address than the forge's.
+- name: tls | Make the forge's key and certificate, signed by the host's CA, unless they still hold
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      tls={{ __forge_home }}/tls
+      if [ -f "$tls/forge.pem" ] && openssl x509 -checkend 2592000 -noout -in "$tls/forge.pem" > /dev/null \
+          && openssl x509 -noout -ext subjectAltName -in "$tls/forge.pem" | grep -qF 'IP Address:{{ forge_address }}'
+      then
+          echo unchanged; exit 0
+      fi
+      umask 077
+      openssl req -x509 -CA {{ __forge_ca_dir }}/ca.pem -CAkey {{ __forge_ca_dir }}/ca.key \
+          -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 365 -subj "/CN={{ forge_name }}" \
+          -addext "subjectAltName=IP:{{ forge_address }},DNS:{{ forge_name }}" \
+          -addext basicConstraints=critical,CA:FALSE -addext extendedKeyUsage=serverAuth \
+          -keyout "$tls/forge.key" -out "$tls/forge.pem" 2> /dev/null
+      chown {{ forge_account }}: "$tls/forge.key" "$tls/forge.pem"
+      echo made
+    executable: /bin/bash
+  register: __forge_certificate
+  changed_when: __forge_certificate.stdout == 'made'
+  notify: Restart Forgejo
+
+# One bundle, the system's CAs and the host's, which Forgejo's Go and its git both read whole; a directory of
+# certificates would need OpenSSL's hashed names for git.
+- name: tls | Put the system's CAs and the host's into one bundle the forge trusts
+  ansible.builtin.copy:
+    content: |
+      {{ lookup('ansible.builtin.file', '/etc/ssl/certs/ca-certificates.crt') }}
+      {{ lookup('ansible.builtin.file', __forge_ca_dir ~ '/ca.pem') }}
+    dest: "{{ __forge_home }}/tls/ca-bundle.pem"
+    owner: "{{ forge_account }}"
+    group: "{{ forge_account }}"
+    mode: "0644"
+  notify: Restart Forgejo

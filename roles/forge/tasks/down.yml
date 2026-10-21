@@ -1,0 +1,51 @@
+---
+# Down takes the forge off the host and keeps nothing: Forgejo's volumes hold the person's token for the central forge
+# in each push mirror, so they go with the API token, the runner's registration and the CA; the accounts' linger goes
+# too, so nothing of the forge starts again at the next boot. The next up makes all of it again and migrates anew.
+- name: down | Read which of the forge's accounts up made
+  ansible.builtin.command:
+    argv: [getent, passwd, "{{ item }}"]
+  loop: ["{{ forge_runner_account }}", "{{ forge_account }}"]
+  register: __forge_down_accounts
+  changed_when: false
+  failed_when: __forge_down_accounts.rc not in [0, 2]
+  check_mode: false
+
+# Each account's part: its units and containers stopped, its volumes and files removed, its linger ended; the shell
+# says whether it changed anything, and nothing secret passes through it.
+- name: down | Take each account's part of the forge off the host
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      cd /
+      account={{ item.item | quote }}
+      uid=$(id -u "$account")
+      home=$(getent passwd "$account" | cut -d: -f6)
+      as() { runuser -u "$account" -- env XDG_RUNTIME_DIR=/run/user/$uid "$@"; }
+      changed=
+      if [ -d /run/user/$uid ]; then
+          as systemctl --user stop forgejo.service forgejo-runner.service podman.socket 2>/dev/null || true
+          if [ -n "$(as podman ps -aq)" ]; then as podman rm --all --force > /dev/null; changed=yes; fi
+          for volume in forgejo-data forgejo-config; do
+              if as podman volume exists "$volume"; then as podman volume rm "$volume" > /dev/null; changed=yes; fi
+          done
+      fi
+      for path in "$home/.config/containers/systemd/forgejo.container" \
+          "$home/.config/containers/systemd/forgejo-runner.container" "$home/.config/porelo-forge" "$home/runner" \
+          "$home/tls"; do
+          if [ -e "$path" ]; then rm -rf "$path"; changed=yes; fi
+      done
+      if [ -e "/var/lib/systemd/linger/$account" ]; then loginctl disable-linger "$account"; changed=yes; fi
+      loginctl terminate-user "$account" 2>/dev/null || true
+      echo "${changed:-unchanged}"
+    executable: /bin/bash
+  loop: "{{ __forge_down_accounts.results | selectattr('rc', 'equalto', 0) | list }}"
+  loop_control:
+    label: "{{ item.item }}"
+  register: __forge_down
+  changed_when: __forge_down.stdout == 'yes'
+
+- name: down | Remove the host's CA for the forge
+  ansible.builtin.file:
+    path: "{{ __forge_ca_dir }}"
+    state: absent

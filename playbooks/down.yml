@@ -8,6 +8,11 @@
   connection: local
   gather_facts: false
   tasks:
+    - name: Stop the host's forge, keeping nothing
+      ansible.builtin.include_role:
+        name: porelo.host.forge
+        tasks_from: down
+
     - name: Take the vault off the host
       ansible.builtin.include_role:
         name: porelo.host.porelo

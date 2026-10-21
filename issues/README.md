@@ -23,6 +23,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho08"></a>[HO08](HO08-The-Forge-With-Its-Registry.md) | L | porelo [B233](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b233), porelo [B234](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b234) (tasks' side only) | Role `forge`: Forgejo and its runner in rootless podman under two accounts of their own, on the VPN and the tasks' address only, its registry over TLS from a CA made on the host, the project's repositories migrated from the central forge with push mirrors, credentials made and kept on the host; run where the host setting `porelo_host_forge` asks for it. |
 | <a id="ho02"></a>[HO02](HO02-Porelos-Own-Commands-Called-Never-Redone.md) | L | - | Role `porelo`: the package, the account, `porelo setup`, keys from the drive into `porelo vault put` on the host, `follow --signed-by`, `task start`; idempotent by Porelo's own answers, no secret through Ansible; `up` pauses for the person to open the vault. |
 
 ## Backlog
@@ -43,7 +44,6 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho11"></a>[HO11](HO11-The-Homeservers-Packages.md) | XS | - | The Matrix transport's and homeserver's packages installed, nothing enabled; the first task start brings the homeserver up. |
-| <a id="ho08"></a>[HO08](HO08-The-Forge-With-Its-Registry.md) | M | - | Role `forge`: Forgejo, its runner and registry in rootless podman on the VPN only, mirrors of the project's repositories, credentials made and kept on the host. |
 | <a id="ho12"></a>[HO12](HO12-The-VM-Pool.md) | L | - | Role `vm_pool`: VMs with run accounts `porelo-machines` rents from, made by the same code as the test VM, deleted by name at `down`. |
 | <a id="ho10"></a>[HO10](HO10-A-Vault-Opened-With-Nobody-There.md) | XS | porelo [B209](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b209) | `up` to the end with the vault opened by the caller over ssh with the passphrase on standard input; the playbook only checks and stops. |
 | <a id="ho13"></a>[HO13](HO13-A-Release-Carries-Its-Tarball-And-Digest.md) | S | - | A release attaches the collection's tarball and its `SHA256SUMS`, so `host up` can refuse any other; the check itself is porelo-frontend's. |

@@ -185,6 +185,38 @@
         fail_msg: >-
           through the VPN: rc {{ verify_vpn_reach.rc }}, {{ verify_vpn_reach.stdout }} {{ verify_vpn_reach.stderr }}
 
+    # The forge role: Forgejo's API through the VPN over TLS, trusting the host's CA alone, and nothing of it listening
+    # anywhere but on the VPN's address - the firewall would hide a wider binding from the public side.
+    - name: Reach Forgejo's API through the VPN over TLS, trusting only the host's CA
+      ansible.builtin.command:
+        cmd: >-
+          ip netns exec verify-peer curl -fsS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem
+          https://10.73.0.1:3000/api/v1/version
+      register: verify_forge_api
+      changed_when: false
+      failed_when: false
+
+    - name: Assert Forgejo answers through the VPN with the host's certificate
+      ansible.builtin.assert:
+        that: verify_forge_api.rc == 0 and (verify_forge_api.stdout | from_json).version is defined
+        fail_msg: "Forgejo through the VPN: rc {{ verify_forge_api.rc }}, {{ verify_forge_api.stdout }}
+          {{ verify_forge_api.stderr }}"
+
+    - name: Read where Forgejo's ports listen
+      ansible.builtin.command:
+        cmd: ss -Hltn '( sport = :3000 or sport = :2222 )'
+      register: verify_forge_listen
+      changed_when: false
+
+    - name: Assert Forgejo's ports listen on the VPN's address alone
+      ansible.builtin.assert:
+        that:
+          - verify_forge_ports | length == 2
+          - verify_forge_ports | reject('match', '^10\.73\.0\.1:') | list | length == 0
+        fail_msg: "Forgejo listens on: {{ verify_forge_listen.stdout_lines }}"
+      vars:
+        verify_forge_ports: "{{ verify_forge_listen.stdout_lines | map('split') | map(attribute=3) | list }}"
+
     - name: Reach ssh on the public address, from where Molecule connects
       ansible.builtin.wait_for:
         host: "{{ ansible_host }}"
@@ -258,22 +290,104 @@
     # Ansible's own most talkative output of a whole up, searched for the host's private VPN key.
     - name: Run up again with Ansible's -vvv and its own output
       ansible.builtin.command:
-        cmd: ansible-playbook -vvv -c local -i /root/porelo-host-inventory.yml porelo.host.up
+        cmd: >-
+          ansible-playbook -vvv -c local -i /root/porelo-host-inventory.yml -i /root/porelo-host-forge.yml
+          porelo.host.up
       environment:
         LC_ALL: C.UTF-8
       register: verify_vvv
       changed_when: false
       no_log: true
 
-    - name: Assert up with -vvv ran, and its output holds no trace of the host's private key
+    - name: Read the person's token for the central forge, only to search the run's output for it
+      ansible.builtin.slurp:
+        src: /srv/porelo-host/drive/porelo-host/forge-central.token
+      register: verify_central_token
+      no_log: true
+
+    - name: Read the forge's API token, only to search the run's output for it
+      ansible.builtin.slurp:
+        src: /home/porelo-forge/.config/porelo-forge/api.token
+      register: verify_forge_token
+      no_log: true
+
+    - name: Assert up with -vvv ran, and its output holds no trace of the host's private key or either token
       ansible.builtin.assert:
         that:
           - verify_vvv.rc == 0
           - (verify_host_key.content | b64decode | trim) not in (verify_vvv.stdout + verify_vvv.stderr)
-        fail_msg: "up with -vvv gave rc {{ verify_vvv.rc }}, or its output holds the host's private VPN key"
+          - (verify_central_token.content | b64decode | trim) | length > 20
+          - (verify_central_token.content | b64decode | trim) not in (verify_vvv.stdout + verify_vvv.stderr)
+          - (verify_forge_token.content | b64decode | trim) | length > 20
+          - (verify_forge_token.content | b64decode | trim) not in (verify_vvv.stdout + verify_vvv.stderr)
+        fail_msg: "up with -vvv gave rc {{ verify_vvv.rc }}, or its output holds the host's private VPN key, the
+          person's token for the central forge or the forge's API token"
       no_log: true
 
+    # The forge role: the repository migrated from the stand-in for the central forge, with its push mirror back.
+    - name: Ask the forge for the migrated repository and its push mirrors
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          api() { curl -fsS --cacert /etc/porelo-host/forge/ca.pem -H @<(printf 'Authorization: token %s\n' \
+              "$(cat /home/porelo-forge/.config/porelo-forge/api.token)") "$@"; }
+          base=https://10.73.0.1:3000/api/v1/repos/porelo/stand-in
+          api "$base" && echo && api "$base/push_mirrors" && echo && api "$base/contents/README.md"
+        executable: /bin/bash
+      register: verify_forge_repo
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the repository was migrated with its content, as no mirror, its push mirror back on no interval
+      ansible.builtin.assert:
+        that:
+          - verify_forge_repo.rc == 0
+          - not verify_forge_lines[0].mirror
+          - verify_forge_lines[1] | length == 1
+          - verify_forge_lines[1][0].remote_address == 'https://10.73.0.1:3000/central/stand-in.git'
+          - verify_forge_lines[1][0].interval in ['0s', '0']
+          - not verify_forge_lines[1][0].sync_on_commit
+          - verify_forge_lines[2].name == 'README.md'
+        fail_msg: "the forge's repository: rc {{ verify_forge_repo.rc }}, {{ verify_forge_repo.stdout }}
+          {{ verify_forge_repo.stderr }}"
+      vars:
+        verify_forge_lines: "{{ verify_forge_repo.stdout_lines | select | map('from_json') | list }}"
+
     # A key file missing on the drive stops the vpn role before the firewall's rules are written again.
+    # The forge role's runner: the workflow converge committed runs on it and reaches the forge over TLS.
+    - name: Wait until the workflow's job has ended on the host's runner
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          curl -fsS --cacert /etc/porelo-host/forge/ca.pem \
+              -H @<(printf 'Authorization: token %s\n' "$(cat /home/porelo-forge/.config/porelo-forge/api.token)") \
+              https://10.73.0.1:3000/api/v1/repos/porelo/stand-in/actions/tasks
+        executable: /bin/bash
+      register: verify_forge_runs
+      until: verify_forge_runs.stdout is search('"status":"(success|failure)"')
+      retries: 40
+      delay: 15
+      changed_when: false
+      failed_when: false
+
+    # Read only when the job did not succeed: the runner's journal on this VM says why.
+    - name: Read the runner's journal, to say why the job failed
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail && journalctl --no-pager -n 40 _UID="$(id -u porelo-runner)"
+          | grep -e 'exited with status' -e 'level='
+        executable: /bin/bash
+      register: verify_forge_job_log
+      changed_when: false
+      failed_when: false
+      when: verify_forge_runs.stdout is not search('"status":"success"')
+
+    - name: Assert the job ran on the host's runner and reached the forge over TLS with the host's CA
+      ansible.builtin.assert:
+        that: verify_forge_runs.stdout is search('"status":"success"')
+        fail_msg: >-
+          the runs: {{ verify_forge_runs.stdout }}; the runner: {{ verify_forge_job_log.stdout | default('') }}
+
     - name: Read the firewall's rules before an up without the key
       ansible.builtin.stat:
         path: /etc/porelo-host/firewall.nft

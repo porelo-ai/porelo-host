@@ -8,6 +8,16 @@
   vars:
     side_effect_drive: /srv/porelo-host/drive
   tasks:
+    # The person's token for the central forge, kept aside before down unmounts the drive, to search what down leaves.
+    - name: Keep the stand-in's token aside, root's alone, to search the forge's accounts for it after down
+      ansible.builtin.copy:
+        src: /srv/porelo-host/drive/porelo-host/forge-central.token
+        dest: /root/forge-central.token
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0600"
+
     # First a down whose drive never reads synced: it must stop on the drive, saying what would be lost, and keep it.
     - name: Keep the stub's tresor syncing
       ansible.builtin.file:
@@ -150,3 +160,41 @@
         that: side_effect_person_ssh.rc == 255 and side_effect_person_ssh.stderr is search('Permission denied')
         fail_msg: >-
           after down, ssh as porelo-test: rc {{ side_effect_person_ssh.rc }}, {{ side_effect_person_ssh.stderr }}
+
+    # The forge role's down: nothing of the forge runs or would start again, and none of its secrets stays behind.
+    - name: Search the forge's accounts for the person's token, outside the images' layers
+      ansible.builtin.command:
+        argv: [grep, -rFl, --exclude-dir=overlay, --exclude-dir=overlay-layers, --exclude-dir=overlay-images,
+               -f, /root/forge-central.token, /home/porelo-forge, /home/porelo-runner]
+      register: side_effect_forge_token
+      changed_when: false
+      failed_when: false
+
+    - name: Ask which processes the forge's accounts still run
+      ansible.builtin.command:
+        cmd: pgrep -a -u porelo-forge,porelo-runner
+      register: side_effect_forge_processes
+      changed_when: false
+      failed_when: false
+
+    - name: Read what of the forge's units and secrets is left
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /home/porelo-forge/.config/containers/systemd/forgejo.container
+        - /home/porelo-runner/.config/containers/systemd/forgejo-runner.container
+        - /home/porelo-forge/.config/porelo-forge/api.token
+        - /home/porelo-runner/runner/.runner
+        - /etc/porelo-host/forge/ca.key
+      register: side_effect_forge_left
+
+    - name: Assert down left none of the forge's secrets, nothing of it running, and no unit to start it again
+      ansible.builtin.assert:
+        that:
+          - side_effect_forge_token.rc == 1
+          - side_effect_forge_processes.rc == 1
+          - side_effect_forge_left.results | selectattr('stat.exists') | list | length == 0
+        fail_msg: >-
+          after down, the person's token is in {{ side_effect_forge_token.stdout_lines }};
+          running: {{ side_effect_forge_processes.stdout_lines }};
+          left: {{ side_effect_forge_left.results | selectattr('stat.exists') | map(attribute='item') | list }}
