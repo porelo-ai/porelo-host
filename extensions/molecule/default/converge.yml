@@ -8,6 +8,7 @@
   vars:
     converge_tarball: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_TARBALL') }}"
     converge_account: porelo-test
+    converge_packages: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_PACKAGES') }}"
   tasks:
     - name: Install Ubuntu's own ansible-core
       ansible.builtin.apt:
@@ -158,6 +159,21 @@
         mode: "0600"
       when: not converge_first_seen.stat.exists
 
+    # Porelo's packages from a build not yet published, when build/molecule.sh was given them: installed over the
+    # published ones once the first up has installed those, and the account's daemon started again on them.
+    - name: Copy Porelo's handed-over packages onto the host
+      ansible.builtin.copy:
+        src: "{{ converge_packages }}/"
+        dest: /root/porelo-packages/
+        owner: root
+        group: root
+        mode: "0600"
+      when: converge_packages | length > 0
+      notify: Install Porelo's handed-over packages and start the account's daemon on them
+
+    - name: Install the handed-over packages before the next up
+      ansible.builtin.meta: flush_handlers
+
     # Stands in for the person's project and their machine file on the drive: a project of its own in a local
     # repository, its commit signed by a key made for the run, the machine file naming that key's fingerprint and one
     # key file for the vault.
@@ -169,6 +185,7 @@
           mkdir ~/converge-project && cd ~/converge-project && git init -q -b main
           printf 'project:\n  name: "converge"\n  security_class: "offline"\nimage:\n  base_image: "ubuntu:24.04"\n' \
               > project.yml
+          printf 'repositories:\n  code:\n    description: "Kept on this machine alone"\n' >> project.yml
           git add project.yml
           git -c user.name=converge -c user.email=converge@example.invalid -c gpg.format=ssh \
               -c user.signingkey="$HOME/.ssh/converge-signer.pub" commit -q -S -m "The run's project"
@@ -180,7 +197,8 @@
               echo '  name: converge'
               echo "  url: \"$HOME/converge-project\""
               echo "  signed_by: \"$signer\""
-              echo 'tasks: []'
+              echo 'tasks:'
+              echo '  - { name: converge-1, repository: code, agent: stub, package: porelo-agent-stub }'
               echo 'keys:'
               echo '  - { name: converge-key, path: keys/converge-key }'
           } > "$drive/machine.yml"
@@ -211,6 +229,75 @@
       become: true
       become_user: "{{ converge_account }}"
 
+    # Once, before the agent's sign-in: the vault is open but holds no credential for the stub's provider.
+    - name: Read whether the up before the agent's sign-in ran
+      ansible.builtin.stat:
+        path: /root/porelo-host-sign-in-up.lines
+      register: converge_sign_in_seen
+
+    - name: Run up before the agent's sign-in
+      when: not converge_sign_in_seen.stat.exists
+      ansible.builtin.command:
+        cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.up
+      environment:
+        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
+        LC_ALL: C.UTF-8
+      register: converge_sign_in_up
+      changed_when: true
+      failed_when: false
+
+    - name: Assert that up stopped for the stub's sign-in alone, and started no task
+      ansible.builtin.assert:
+        that:
+          - converge_sign_in_up.rc == 2
+          - converge_sign_in_waiting | length == 1
+          - converge_sign_in_waiting[0].needs == ['agent-login:stub']
+          - converge_sign_in_failed | length == 0
+        fail_msg: "that up gave rc {{ converge_sign_in_up.rc }} and these lines: {{ converge_sign_in_up.stdout }}"
+      vars:
+        converge_sign_in_lines: "{{ converge_sign_in_up.stdout_lines | select | map('from_json') | list }}"
+        converge_sign_in_waiting: "{{ converge_sign_in_lines | selectattr('state', 'equalto', 'waiting') | list }}"
+        converge_sign_in_failed: "{{ converge_sign_in_lines | selectattr('state', 'equalto', 'failed') | list }}"
+      when: not converge_sign_in_seen.stat.exists
+
+    # The container's name as the second play's inventory gives it: porelo-<project>-<task>.
+    - name: Ask Porelo whether the task runs before the sign-in
+      ansible.builtin.shell:
+        cmd: XDG_RUNTIME_DIR=/run/user/$(id -u) porelo task status porelo-converge-converge-1 --json
+      become: true
+      become_user: "{{ converge_account }}"
+      register: converge_before_sign_in
+      changed_when: false
+      when: not converge_sign_in_seen.stat.exists
+
+    - name: Assert no task was started before the sign-in
+      ansible.builtin.assert:
+        that: (converge_before_sign_in.stdout | from_json).state == 'absent'
+        fail_msg: "the task is there before the sign-in: {{ converge_before_sign_in.stdout }}"
+      when: not converge_sign_in_seen.stat.exists
+
+    - name: Keep that up's lines, so it runs once
+      ansible.builtin.copy:
+        dest: /root/porelo-host-sign-in-up.lines
+        content: "{{ converge_sign_in_up.stdout }}\n"
+        owner: root
+        group: root
+        mode: "0600"
+      when: not converge_sign_in_seen.stat.exists
+
+    # The person's sign-in, as porelo-frontend gives it, stands in by a key the stub's provider would refuse: whether
+    # it is signed in is what the vault holds, not whether the provider takes it.
+    - name: Sign the stub's provider in, as the person's step does
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail && printf 'converge-not-a-key\n' | XDG_RUNTIME_DIR=/run/user/$(id -u)
+          porelo vault put anthropic
+        executable: /bin/bash
+      become: true
+      become_user: "{{ converge_account }}"
+      changed_when: true
+      when: not converge_sign_in_seen.stat.exists
+
     - name: Run up on the host itself, as host up does, its steps as JSON lines
       ansible.builtin.command:
         cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.up
@@ -231,6 +318,15 @@
       changed_when: false
 
   handlers:
+    # apt's module takes one .deb at a time, and these must go in together, since they depend on each other.
+    - name: Install Porelo's handed-over packages and start the account's daemon on them
+      ansible.builtin.shell:  # noqa: command-instead-of-module
+        cmd: >-
+          apt-get install -y -qq --allow-downgrades /root/porelo-packages/*.deb
+          && runuser -u {{ converge_account }} -- env XDG_RUNTIME_DIR=/run/user/$(id -u {{ converge_account }})
+          systemctl --user restart porelod
+      changed_when: true
+
     - name: Install the collection from that tarball
       ansible.builtin.command:
         cmd: ansible-galaxy collection install --force /root/porelo-host.tar.gz

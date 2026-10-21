@@ -46,10 +46,30 @@ argument_specs:
         type: path
         default: /srv/porelo-host/drive/porelo-host/machine.yml
         description: The person's machine file on their drive, which Porelo reads.
-  down:
-    short_description: The account's vault cleared before the host is given back.
+  tasks:
+    short_description: After project, the tasks' agents installed, a stop for each sign-in missing, the tasks started.
     options:
       porelo_account:
         type: str
         required: true
         description: The account Porelo's tasks run as.
+      porelo_distribution:
+        type: str
+        default: releases
+        choices: [releases, snapshots]
+        description: Which of Porelo's published distributions the setup script installs agents from.
+      porelo_setup_script:
+        type: path
+        default: /usr/share/porelo/setup/porelo-setup.sh
+        description: Porelo's setup script, which installs the agent packages with --with.
+  down:
+    short_description: The machine file's tasks stopped and the account's vault cleared before the host is given back.
+    options:
+      porelo_account:
+        type: str
+        required: true
+        description: The account Porelo's tasks run as.
+      porelo_machine_file:
+        type: path
+        default: /srv/porelo-host/drive/porelo-host/machine.yml
+        description: The person's machine file on their drive, whose tasks are stopped.

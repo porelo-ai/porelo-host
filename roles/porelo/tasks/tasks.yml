@@ -1,0 +1,86 @@
+---
+# up's second play, after project.yml: the agents the machine file's tasks name installed through Porelo's setup
+# script, a stop for each agent whose sign-in the vault lacks, then each task started that is not running. Whether an
+# agent is signed in and whether a task runs are read from Porelo each time, never kept by the role.
+- name: tasks | Ask dpkg which of the tasks' agent packages are installed
+  ansible.builtin.command:
+    argv: "{{ ['dpkg-query', '-W', '-f', '${Package} ${db:Status-Status}\n'] + __porelo_agent_packages }}"
+  register: __porelo_agent_installed
+  changed_when: false
+  # 1 names a package dpkg does not know; any other answer would make every package look missing.
+  failed_when: __porelo_agent_installed.rc not in [0, 1]
+  check_mode: false
+  when: __porelo_agent_packages | length > 0
+
+- name: tasks | Install the missing agent packages through Porelo's setup script
+  ansible.builtin.command:
+    argv: "{{ ['sh', porelo_setup_script, '--user', porelo_account, '--distribution', porelo_distribution]
+      + (['--with'] | product(__porelo_agent_missing) | flatten) }}"
+  changed_when: true
+  when: __porelo_agent_missing | length > 0
+
+- name: tasks | Ask Porelo which agents are installed and whether the vault holds their sign-ins
+  ansible.builtin.command:
+    cmd: porelo agents --json
+  become: true
+  become_user: "{{ porelo_account }}"
+  environment: "{{ __porelo_user_environment }}"
+  register: __porelo_agents
+  changed_when: false
+  check_mode: false
+
+# signed_in is given only while the vault is open, and an agent without it would pass as signed in.
+- name: tasks | Stop unless the vault is open, since only then does Porelo say who is signed in
+  ansible.builtin.assert:
+    that: (__porelo_agents.stdout | from_json).vault == 'open'
+    fail_msg: "porelo agents --json reads the vault {{ (__porelo_agents.stdout | from_json).vault }}, not open"
+    quiet: true
+
+- name: tasks | Stop on a task's agent Porelo does not know
+  ansible.builtin.assert:
+    that: __porelo_task_agents | difference(__porelo_agents_known | map(attribute='name')) | length == 0
+    fail_msg: >-
+      the machine file names agents porelo agents does not list:
+      {{ __porelo_task_agents | difference(__porelo_agents_known | map(attribute='name')) | join(', ') }}
+    quiet: true
+
+# porelo_host_needs is the collection's one fact the roles share with the stop, as in needs.yml.
+- name: tasks | Name each agent whose sign-in the vault lacks as what the person must give
+  ansible.builtin.set_fact:
+    porelo_host_needs: "{{ porelo_host_needs | default([]) + __porelo_logins }}"  # noqa: var-naming[no-role-prefix]
+  vars:
+    __porelo_logins: "{{ __porelo_agents_known | selectattr('name', 'in', __porelo_task_agents)
+      | selectattr('signed_in', 'defined') | rejectattr('signed_in') | map(attribute='name')
+      | map('regex_replace', '^', 'agent-login:') | list }}"
+
+- name: tasks | Stop for the agents' sign-ins only the person can give
+  ansible.builtin.fail:
+    msg: "{{ porelo_host_needs | to_json }}"
+  when: porelo_host_needs | default([]) | length > 0
+  tags: [porelo_host_waiting]
+
+- name: tasks | Ask Porelo whether each task runs
+  ansible.builtin.command:
+    argv: [porelo, task, status, "{{ item.container }}", --json]
+  loop: "{{ __porelo_host.porelo_tasks | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  become: true
+  become_user: "{{ porelo_account }}"
+  environment: "{{ __porelo_user_environment }}"
+  register: __porelo_task_status
+  changed_when: false
+  check_mode: false
+
+- name: tasks | Start each task that is not running, with its own agent
+  ansible.builtin.command:
+    argv: "{{ ['porelo', 'task', 'start', item.item.name, '-p', item.item.project, '-r', item.item.repository,
+      '--detach', '--no-input'] + (['--agent', item.item.agent] if item.item.agent is defined else []) }}"
+  loop: "{{ __porelo_task_status.results
+    | rejectattr('item.container', 'in', __porelo_tasks_running) | list }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  become: true
+  become_user: "{{ porelo_account }}"
+  environment: "{{ __porelo_user_environment }}"
+  changed_when: true

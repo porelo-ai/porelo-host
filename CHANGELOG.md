@@ -18,3 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The role `porelo.host.base`: the host's packages, KVM with libvirt and podman, stopping on a CPU without
   virtualization before it installs anything; and, once Porelo's setup made the account, that account in KVM's and
   libvirt's groups.
+- The role `porelo.host.porelo`, everything through Porelo's own commands: Porelo installed by its pinned key with
+  its setup script, `porelo setup`, a stop while the vault is missing or shut, the machine file's keys put into the
+  vault and its project followed by its signature, the tasks' agents installed, a stop with `agent-login:<agent>`
+  for each agent whose sign-in the vault lacks, and the tasks started; at `down`, the tasks stopped and the vault
+  cleared.

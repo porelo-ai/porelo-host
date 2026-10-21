@@ -20,6 +20,42 @@
   check_mode: false
   when: ansible_facts['getent_passwd'][porelo_account] is not none
 
+# vault clear refuses past a running task that holds a token from the vault, so the machine file's tasks stop first;
+# a task the person started by hand still stops it, named by Porelo. Without the machine file there is nothing of up's.
+- name: down | Ask Porelo for the machine file's tasks
+  ansible.builtin.command:
+    cmd: porelo project inventory --machine-file {{ porelo_machine_file }}
+  become: true
+  become_user: "{{ porelo_account }}"
+  environment: "{{ __porelo_user_environment }}"
+  register: __porelo_inventory
+  changed_when: false
+  failed_when: __porelo_inventory.rc not in [0, 65, 66]
+  check_mode: false
+  when: __porelo_vault.rc | default(-1) in [0, 3]
+
+- name: down | Ask Porelo whether each of them runs
+  ansible.builtin.command:
+    argv: [porelo, task, status, "{{ item.container }}", --json]
+  loop: "{{ __porelo_host.porelo_tasks | default([]) if __porelo_inventory.rc | default(-1) == 0 else [] }}"
+  loop_control:
+    label: "{{ item.name }}"
+  become: true
+  become_user: "{{ porelo_account }}"
+  environment: "{{ __porelo_user_environment }}"
+  register: __porelo_task_status
+  changed_when: false
+  check_mode: false
+
+- name: down | Stop each task that runs; its container and workspace stay
+  ansible.builtin.command:
+    argv: [porelo, task, stop, "{{ item }}"]
+  loop: "{{ __porelo_tasks_running if __porelo_task_status.results is defined else [] }}"
+  become: true
+  become_user: "{{ porelo_account }}"
+  environment: "{{ __porelo_user_environment }}"
+  changed_when: true
+
 # 0 open, 3 shut; a shut vault is cleared unread, since no one at down opens it and its keys are the drive's.
 - name: down | Clear the vault, its cached passphrase and its shares
   ansible.builtin.command:

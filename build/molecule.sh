@@ -138,7 +138,20 @@ all:
       ansible_ssh_common_args: >-
         -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$work/target/molecule/$run/known_hosts
 EOF
+# Porelo's packages handed over from a build not yet published, in PORELO_HOST_PACKAGES: copied into the run, where
+# converge installs them over the published ones after the first up.
+packages=
+if [ -n "${PORELO_HOST_PACKAGES:-}" ]; then
+    set -- "$PORELO_HOST_PACKAGES"/*.deb
+    [ -f "$1" ] || fail "PORELO_HOST_PACKAGES=$PORELO_HOST_PACKAGES holds no .deb"
+    mkdir "$dir/packages"
+    cp "$@" "$dir/packages/"
+    say "Porelo's packages from $PORELO_HOST_PACKAGES, not the published ones:"
+    (cd "$dir/packages" && sha256sum ./*.deb) >&2
+    packages=$work/target/molecule/$run/packages
+fi
 PORELO_HOST_INVENTORY=$work/target/molecule/$run/inventory.yml \
 PORELO_HOST_TARBALL=$work/target/molecule/$run/porelo-host-$version.tar.gz \
 PORELO_HOST_VERSION=$version \
+PORELO_HOST_PACKAGES=$packages \
     "$root/build/tools.sh" molecule test -s "$scenario"

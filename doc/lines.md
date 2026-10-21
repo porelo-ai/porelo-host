@@ -25,7 +25,9 @@ with one line in place of a failure:
     {"v": 1, "state": "waiting", "needs": ["drive", "vault-new"]}
 
 `needs` names what is missing: `drive` when the person's drive is not logged in or not synced, `vault-new` when the
-account has no vault yet, `vault` when its vault is shut. `ansible-playbook` itself then exits 2, as on any failure,
+account has no vault yet, `vault` when its vault is shut. Once those are given, the same play stops again in the same
+way for `agent-login:<agent>`, one for each agent a task names whose sign-in the vault lacks, after the agents are
+installed and before any task starts. `ansible-playbook` itself then exits 2, as on any failure,
 so a program tells the stop from a failure by this line, never by the exit code. A second `up` after the person's step
 runs both plays from the top; what is done is done, so it goes on where it stopped.
 

@@ -47,3 +47,9 @@
       ansible.builtin.include_role:
         name: porelo.host.porelo
         tasks_from: project
+
+    # Stops again, with the same waiting line, while an agent the tasks name is not signed in.
+    - name: Install the tasks' agents and start the tasks, through Porelo's own commands
+      ansible.builtin.include_role:
+        name: porelo.host.porelo
+        tasks_from: tasks

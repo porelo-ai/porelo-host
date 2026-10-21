@@ -109,20 +109,36 @@ In a VM of `build/molecule.sh`'s, Ubuntu 26.04, porelo `0.5.1~snapshot.312`:
 - `vault put --from-file=<path>` reads the key on the host itself. It says `stored` again for the same value, so a
   `put` cannot yet report "unchanged"; porelo's Idea for that is Core's.
 
+- `tasks.yml`, the last part, in `up`'s second play after `project.yml`: the agent packages the inventory names
+  (`agent_package`) that dpkg lacks, installed by the setup script's `--with`; `porelo agents --json` read, the play
+  stopping unless it says the vault is open, and stopping with `agent-login:<agent>` for each task's agent whose
+  `signed_in` is false; then `porelo task start <task> -p <project> -r <repository> --agent <agent> --detach
+  --no-input` for each task whose `porelo task status --json` is not `running`. At `down`, before `vault clear`, which
+  refuses past a running task holding a token from the vault, the machine file's tasks are stopped, their containers
+  and workspaces kept. Molecule, with porelo `1d169a4d`'s packages handed over (`build/molecule.sh`'s
+  `PORELO_HOST_PACKAGES`) until porelo [B218](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b218) is published: a stub task; `up` stops with `["agent-login:stub"]` and no task
+  there; after `porelo vault put anthropic`, the next `up` starts it; idempotence `changed=0`; verify reads it
+  `running` on its repository with the stub `signed_in`; side_effect reads it stopped and kept after `down`. Seen red
+  first without the part: `up` ended 0 with no stop. Green on `f8df290`, 2026-10-21 18:43Z-18:52Z.
+
+## Read against the skills
+
+- `ansible-good-practices`, `ansible-new-role`, `ansible-new-collection`, `ansible-new-molecule`, each `2026.824.2`.
+  Fixed: a vault not open made every agent read as signed in, since Porelo then leaves `signed_in` out, so the play
+  now stops unless the vault reads open; a dpkg failure other than "unknown package" made every package look missing,
+  so only 0 and 1 are taken; the role's line in the changelog. Neither fault can be made to happen in the scenario,
+  since the first play stops on a shut vault and dpkg is not locked there; each is a refusal that only fails closed.
+- **Declined:** a task naming no agent runs the project's default, whose sign-in is not read here, since `porelo
+  agents --json` does not say which agent is the default; `porelo task start` then refuses it loudly (69, nothing
+  made). `up` again after `down` on the same host is not run: a host is given back after `down`. `down` stops on a
+  machine file Porelo refuses with anything but 65 or 66, before the VPN and the drive go down, which is loud.
+
 ## Waits for
 
-- **`tasks.yml`**, the last part: the agent packages the inventory names (`agent_package`) installed through the setup
-  script's `--with`, with the Matrix transport and homeserver where the project names them; `agent-login:<agent>`
-  added to the stop's needs for each agent not signed in; then `porelo task start <task> -p <project> -r <repository>
-  --agent <agent> --detach --no-input`, guarded by `porelo task status --json`. Decided by QH20 (a), 2026-10-19. It
-  waits for porelo's "A Machine File's Task Names Its Agent" (the inventory's `agent` and `agent_package`) and
-  "Whether An Agent Is Signed In, As A Contract" (`porelo agents --json`'s `signed_in`), since without the second a
-  second `up` cannot tell a signed-in agent from one still waiting, and the role must not guess or keep a mark of its
-  own.
+- **The Matrix transport and its homeserver**, installed where the project names them: the second play's inventory
+  carries no transport yet, so the role cannot read which; asked of porelo's agent as an issue.
 
 ## To be checked
 
-- `porelo-setup` as a package, once published: its name, and that the script runs from it as from the download.
-- That the role adds `vault-new` (no vault, `porelo vault status` 4) or `vault` (shut, 3) to `porelo_host_needs` in
-  `up`'s first play, so its second play stops with the waiting line `doc/lines.md` describes; [HO09](README.md#ho09) built that stop and
-  leaves its acceptance here.
+- `porelo-setup` as a package of its own, once published: its name, and that the script runs from it as from
+  Porelo's package today.

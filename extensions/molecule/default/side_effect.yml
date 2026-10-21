@@ -120,6 +120,23 @@
         that: side_effect_vault.rc == 4
         fail_msg: "after down, porelo vault status gave {{ side_effect_vault.rc }}: {{ side_effect_vault.stdout }}"
 
+    - name: Ask Porelo whether the machine file's task still runs
+      ansible.builtin.command:
+        cmd: porelo task status porelo-converge-converge-1 --json
+      become: true
+      become_user: porelo-test
+      environment:
+        XDG_RUNTIME_DIR: /run/user/1001
+      register: side_effect_task
+      changed_when: false
+
+    - name: Assert down stopped the task and kept it
+      ansible.builtin.assert:
+        that:
+          - not (side_effect_task.stdout | from_json).running
+          - (side_effect_task.stdout | from_json).state != 'absent'
+        fail_msg: "after down, porelo task status gave {{ side_effect_task.stdout }}"
+
     - name: Try the person's key as the account after down
       ansible.builtin.command:
         argv: [ssh, -o, BatchMode=yes, -o, IdentitiesOnly=yes, -o, StrictHostKeyChecking=accept-new,

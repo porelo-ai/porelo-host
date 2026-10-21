@@ -347,6 +347,29 @@
         verify_follows: "{{ (verify_project.results[0].stdout | from_json).follows
           | selectattr('name', 'equalto', 'converge') | list }}"
 
+    - name: Ask Porelo for the machine file's task, and which agents are signed in
+      ansible.builtin.command:
+        cmd: "{{ item }}"
+      loop: [porelo task status porelo-converge-converge-1 --json, porelo agents --json]
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      register: verify_tasks
+      changed_when: false
+
+    - name: Assert the machine file's task runs on its repository, with the stub signed in
+      ansible.builtin.assert:
+        that:
+          - verify_task.running
+          - verify_task.project == 'converge' and verify_task.repository == 'code'
+          - verify_stub | length == 1 and verify_stub[0].signed_in
+        fail_msg: "task: {{ verify_tasks.results[0].stdout }}; agents: {{ verify_tasks.results[1].stdout }}"
+      vars:
+        verify_task: "{{ verify_tasks.results[0].stdout | from_json }}"
+        verify_stub: "{{ (verify_tasks.results[1].stdout | from_json).agents | selectattr('name', 'equalto', 'stub')
+          | list }}"
+
     # base: the person reaches the account itself over ssh, as porelo-host does for the drive's login and the vault.
     - name: Log in over ssh as the account with the person's key, and ask Porelo for the vault
       ansible.builtin.command:
