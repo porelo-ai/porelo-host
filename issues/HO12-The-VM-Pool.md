@@ -1,6 +1,6 @@
 # HO12 — The VM Pool
 
-**Status:** Estimated.
+**Status:** Backlog.
 **Size:** L - one role here, but the pool is `porelo-machines`' to rent from, so what the role makes is a contract
 with porelo-buildtools, and its VMs need nested KVM on the host.
 
