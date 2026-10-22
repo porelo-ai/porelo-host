@@ -7,6 +7,7 @@
   become: true
   vars:
     side_effect_drive: /srv/porelo-host/drive
+    side_effect_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
   tasks:
     # The person's token for the central forge, kept aside before down unmounts the drive, to search what down leaves.
     - name: Keep the stand-in's token aside, root's alone, to search the forge's accounts for it after down
@@ -202,6 +203,7 @@
         executable: /bin/bash
       register: side_effect_pool_left
       changed_when: false
+      when: side_effect_vm_pool == 'on'
 
     - name: >-
         Assert down deleted the run key's Actions secret from the forge and left no pool VM, no pool volume, none of
@@ -216,6 +218,7 @@
           {{ (side_effect_unsynced.stdout_lines + side_effect_down.stdout_lines) | select | map('from_json')
           | selectattr('task', 'search', "down \\| Delete the run key's Actions secret from the forge")
           | rejectattr('state', 'equalto', 'started') | list }}
+      when: side_effect_vm_pool == 'on'
 
     - name: Assert down left none of the forge's secrets, nothing of it running, and no unit to start it again
       ansible.builtin.assert:

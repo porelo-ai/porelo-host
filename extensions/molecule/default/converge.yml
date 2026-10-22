@@ -9,6 +9,7 @@
     converge_tarball: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_TARBALL') }}"
     converge_account: porelo-test
     converge_packages: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_PACKAGES') }}"
+    converge_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
   tasks:
     # Whether nested virtualization reaches the Molecule VM itself, so a slow pool VM in CI can be told apart.
     - name: Read whether /dev/kvm exists on the Molecule VM
@@ -28,6 +29,13 @@
         msg: >-
           /dev/kvm={{ converge_kvm.stat.exists }},
           vmx/svm={{ converge_cpu_flags.stdout.split(':', 1) | last | split | intersect(['vmx', 'svm']) }}
+
+    - name: Say when the VM pool is left out of this run
+      ansible.builtin.debug:
+        msg: >-
+          the VM pool is left out of this run (PORELO_HOST_MOLECULE_POOL=off): its VM did not say ready on GitHub's
+          runner; build/molecule.sh runs it locally
+      when: converge_vm_pool == 'off'
 
     - name: Install Ubuntu's own ansible-core
       ansible.builtin.apt:
@@ -119,9 +127,11 @@
               porelo_host_forge: true
               # The stand-in for the central forge is a repository on the host's own forge, at a private address.
               forge_migrations_allow_local: true
+          {% if converge_vm_pool == 'on' %}
               # One pool VM, small enough for the test VM, which holds it nested.
               porelo_host_vm_pool: {systems: [ubuntu], accounts: 1}
               vm_pool_memory: 1024
+          {% endif %}
 
     # The client's stub in the place the installer puts the real one, so the role leaves it as an installed client.
     - name: Make the client's directory as the account's
@@ -410,6 +420,9 @@
                     printf '%s' "$PUBLISHER_TOKEN" | sha256sum | cut -d' ' -f1 > digest
                     printf 'user = "porelo-publisher:%s"\n' "$PUBLISHER_TOKEN" | curl -fsS -K - --upload-file digest \
                         https://10.73.0.1:3000/api/packages/porelo/generic/probe/${{ github.run_number }}/digest
+          {% endraw %}
+          {% if converge_vm_pool == 'on' %}
+          {% raw %}
                 - name: The VM pool's file holds no key and the run key comes as an Actions secret
                   env:
                     PORELO_POOL_SSH: ${{ secrets.PORELO_POOL_SSH }}
@@ -423,9 +436,10 @@
                     probe=https://10.73.0.1:3000/api/packages/porelo/generic/probe/${{ github.run_number }}
                     printf 'user = "porelo-publisher:%s"\n' "$PUBLISHER_TOKEN" | curl -fsS -K - \
                         --upload-file pool-key-digest "$probe/pool-key-digest"
+          {% endraw %}
+          {% endif %}
           WORKFLOW
           )
-          {% endraw %}
           curl -fsS -o /dev/null --cacert /etc/porelo-host/forge/ca.pem -H 'Content-Type: application/json' \
               -H @<(printf 'Authorization: token %s\n' "$(cat /home/porelo-forge/.config/porelo-forge/api.token)") \
               -X POST https://10.73.0.1:3000/api/v1/repos/porelo/stand-in/contents/.forgejo/workflows/probe.yml \

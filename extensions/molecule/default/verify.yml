@@ -8,6 +8,7 @@
     verify_version: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_VERSION') }}"
     verify_account: porelo-test
     verify_drive: /srv/porelo-host/drive
+    verify_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
   tasks:
     - name: Read which collections the host has
       ansible.builtin.command:
@@ -352,11 +353,13 @@
       changed_when: false
       failed_when: false
       no_log: true
+      when: verify_vm_pool == 'on'
 
     - name: Assert the -vvv output holds no body line of the pool's private keys
       ansible.builtin.assert:
         that: verify_pool_keys_vvv.rc == 0
         fail_msg: "{{ verify_pool_keys_vvv.stderr }}"
+      when: verify_vm_pool == 'on'
 
     # The forge role: the repository migrated from the stand-in for the central forge, with its push mirror back.
     - name: Ask the forge for the migrated repository and its push mirrors
@@ -465,7 +468,7 @@
                   podman exec forgejo forgejo admin user generate-access-token --username porelo-admin \
                   --token-name verify-$(date -u +%Y%m%dT%H%M%SZ) --scopes read:package --raw \
                   | sed 's/^/Authorization: token /') \
-              "$probe/digest" "$probe/pool-key-digest"
+              "$probe/digest"{% if verify_vm_pool == 'on' %} "$probe/pool-key-digest"{% endif %}
         executable: /bin/bash
       register: verify_publisher_digest
       changed_when: false
@@ -480,7 +483,7 @@
       ansible.builtin.assert:
         that:
           - verify_publisher_digest.rc == 0
-          - verify_publisher_digest.stdout_lines | length == 2
+          - verify_publisher_digest.stdout_lines | length == (2 if verify_vm_pool == 'on' else 1)
         fail_msg: "{{ verify_publisher_digest.stderr }}"
 
     - name: Read every 40-digit hex string in the journal, the form of Forgejo's tokens
@@ -530,16 +533,19 @@
       ansible.builtin.slurp:
         src: /etc/porelo-host/pool/pool.json
       register: verify_pool_file
+      when: verify_vm_pool == 'on'
 
     - name: Read the pool file's owner and mode
       ansible.builtin.stat:
         path: /etc/porelo-host/pool/pool.json
       register: verify_pool_file_stat
+      when: verify_vm_pool == 'on'
 
     - name: Read the pool's run key's owner and mode
       ansible.builtin.stat:
         path: /var/lib/porelo-host/pool/run-key
       register: verify_pool_key
+      when: verify_vm_pool == 'on'
 
     - name: Compute the digest of the pool's run key on the host
       ansible.builtin.shell:
@@ -550,6 +556,7 @@
       register: verify_pool_key_digest
       changed_when: false
       no_log: true
+      when: verify_vm_pool == 'on'
 
     - name: >-
         Assert the pool file names one VM with one account and no key, is mode 0644, and the run key stays root's on
@@ -577,6 +584,7 @@
           digest {{ verify_publisher_digest.stdout_lines[1] }} vs {{ verify_pool_key_digest.stdout }}
       vars:
         verify_pool: "{{ verify_pool_file.content | b64decode | from_json }}"
+      when: verify_vm_pool == 'on'
 
     - name: Ask libvirt for the pool's seed volumes and the pool VM's cdrom media
       ansible.builtin.shell:
@@ -589,11 +597,13 @@
         LC_ALL: C
       register: verify_pool_seed
       changed_when: false
+      when: verify_vm_pool == 'on'
 
     - name: Assert no seed volume stays in libvirt's pool and the pool VM has no cdrom media
       ansible.builtin.assert:
         that: verify_pool_seed.stdout | trim == ''
         fail_msg: "seed left in libvirt: {{ verify_pool_seed.stdout_lines }}"
+      when: verify_vm_pool == 'on'
 
     - name: Give the pool VM's account back after a run that left something, as itself and as root
       ansible.builtin.shell:
@@ -624,6 +634,7 @@
       failed_when: false
       vars:
         verify_pool_vm: "{{ (verify_pool_file.content | b64decode | from_json).vms[0] }}"
+      when: verify_vm_pool == 'on'
 
     # The revert must have watched for the VM's stop, not been started again and again: a service that exits at once
     # and restarts every few seconds still reverts, by its first loop, and would hide a watch that never ran.
@@ -631,18 +642,20 @@
       ansible.builtin.systemd_service:
         name: porelo-pool-revert.service
       register: verify_pool_restarts
+      when: verify_vm_pool == 'on'
 
     - name: Assert the revert ran once, watching
       ansible.builtin.assert:
         that: verify_pool_restarts.status.NRestarts == '0'
         fail_msg: "porelo-pool-revert.service was started again {{ verify_pool_restarts.status.NRestarts }} times"
+      when: verify_vm_pool == 'on'
 
     - name: Read the revert's journal, to say why the VM did not come back
       ansible.builtin.command:
         cmd: journalctl --no-pager -n 20 -u porelo-pool-revert.service
       register: verify_pool_revert_log
       changed_when: false
-      when: verify_pool_given_back.rc != 0
+      when: verify_vm_pool == 'on' and verify_pool_given_back.rc != 0
 
     - name: Assert the VM went back to its snapshot, ready, with nothing of the run on it
       ansible.builtin.assert:
@@ -653,6 +666,7 @@
         fail_msg: >-
           the give-back: {{ verify_pool_given_back.stdout }} {{ verify_pool_given_back.stderr }};
           the revert: {{ verify_pool_revert_log.stdout | default('') }}
+      when: verify_vm_pool == 'on'
 
     - name: Read the firewall's rules before an up without the key
       ansible.builtin.stat:

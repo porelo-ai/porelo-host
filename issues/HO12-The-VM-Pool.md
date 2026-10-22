@@ -87,5 +87,6 @@ deletes them with nothing left.
 
 ## To be checked
 
-- Nested KVM three levels deep, on GitHub's runner: the Molecule VM inside the runner's VM, and a pool VM inside
-  that; measured locally only two levels deep so far.
+- On GitHub's runner (AMD, nested KVM present) the pool VM gets its address but does not say ready within 15 minutes
+  (porelo-host Builds 16 and 17, 2026-10-22); the Build leaves the pool out (`PORELO_HOST_MOLECULE_POOL=off`) until that
+  is found; local Molecule runs it.

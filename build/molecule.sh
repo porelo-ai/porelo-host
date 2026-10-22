@@ -120,4 +120,5 @@ PORELO_HOST_INVENTORY=$work/target/molecule/$run/inventory.yml \
 PORELO_HOST_TARBALL=$work/target/molecule/$run/porelo-host-$version.tar.gz \
 PORELO_HOST_VERSION=$version \
 PORELO_HOST_PACKAGES=$packages \
+PORELO_HOST_MOLECULE_POOL=${PORELO_HOST_MOLECULE_POOL:-on} \
     "$root/build/tools.sh" molecule test -s "$scenario"
