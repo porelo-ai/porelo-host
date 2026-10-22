@@ -102,9 +102,9 @@ jobs:
                   set -eu
                   sudo apt-get update -qq
                   sudo apt-get install -y -qq --no-install-recommends \
-                      libvirt-daemon-system=12.0.0-1ubuntu5.5 \
-                      qemu-system-x86=1:10.2.1+ds-1ubuntu3.2 \
-                      qemu-utils=1:10.2.1+ds-1ubuntu3.2 \
+                      libvirt-daemon-system=12.0.0-1ubuntu5.6 \
+                      qemu-system-x86=1:10.2.1+ds-1ubuntu3.3 \
+                      qemu-utils=1:10.2.1+ds-1ubuntu3.3 \
                       dnsmasq-base=2.92-1ubuntu0.5 \
                       virtinst=1:5.1.0-1 \
                       xorriso=1:1.5.6-1.1ubuntu4
