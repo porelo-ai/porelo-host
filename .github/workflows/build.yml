@@ -7,10 +7,11 @@ name: Build
 on:
     push:
         branches: [main]
-        # A change only to the workflows is checked by its pull request; on its own it builds nothing.
-        paths-ignore: ['.github/**', 'porelo.yml', 'issues/**', 'doc/**', '**/*.md']
+        # A change only to porelo.yml, issues, docs or Markdown builds nothing; a workflow change builds.
+        paths-ignore: ['porelo.yml', 'issues/**', 'doc/**', '**/*.md']
     pull_request:
-        paths-ignore: ['.github/**', 'porelo.yml', 'issues/**', 'doc/**', '**/*.md']
+        paths-ignore: ['porelo.yml', 'issues/**', 'doc/**', '**/*.md']
+    workflow_dispatch:
 
 permissions:
     contents: read
