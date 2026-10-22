@@ -356,10 +356,11 @@
       changed_when: >-
         converge_up_forge.stdout is search('"state": "changed"')
 
-    # Stands in for a repository's workflow: one job on the host's runner, reaching the forge over TLS with the host's
-    # CA. Publishing waits on which credential jobs get: the run's own token may not write the registry. Committed
-    # once through the API, which starts the run.
-    - name: Commit a workflow to the migrated repository whose job reaches the forge over TLS
+    # Stands in for a repository's workflow on a task's branch nobody reviewed: one job on the host's runner, reaching
+    # the forge over TLS with the host's CA, refused by the registry with the run's own token, and publishing with the
+    # publisher's secret a package that holds the digest of that secret, never the secret. Committed once through the
+    # API, which starts the run.
+    - name: Commit to an unreviewed branch a workflow whose job reaches the forge and publishes into its registry
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
@@ -371,13 +372,29 @@
               runs-on: porelo-host
               steps:
                 - run: curl -fsS https://10.73.0.1:3000/api/v1/version
+                - name: The run's own token may not publish
+                  env:
+                    RUN_TOKEN: ${{ github.token }}
+                  run: |
+                    code=$(printf 'header = "Authorization: token %s"\n' "$RUN_TOKEN" | curl -sS -K - -o /dev/null \
+                        -w '%{http_code}' --upload-file /etc/hostname \
+                        https://10.73.0.1:3000/api/packages/porelo/generic/refused/${{ github.run_number }}/hostname)
+                    echo "the run's own token: $code"
+                    test "$code" = 401
+                - name: The publisher's secret publishes the digest of itself
+                  env:
+                    PUBLISHER_TOKEN: ${{ secrets.PORELO_PUBLISHER_TOKEN }}
+                  run: |
+                    printf '%s' "$PUBLISHER_TOKEN" | sha256sum | cut -d' ' -f1 > digest
+                    printf 'user = "porelo-publisher:%s"\n' "$PUBLISHER_TOKEN" | curl -fsS -K - --upload-file digest \
+                        https://10.73.0.1:3000/api/packages/porelo/generic/probe/${{ github.run_number }}/digest
           WORKFLOW
           )
           {% endraw %}
           curl -fsS -o /dev/null --cacert /etc/porelo-host/forge/ca.pem -H 'Content-Type: application/json' \
               -H @<(printf 'Authorization: token %s\n' "$(cat /home/porelo-forge/.config/porelo-forge/api.token)") \
               -X POST https://10.73.0.1:3000/api/v1/repos/porelo/stand-in/contents/.forgejo/workflows/probe.yml \
-              -d "{\"content\": \"$workflow\", \"message\": \"Reach the forge\"}"
+              -d "{\"content\": \"$workflow\", \"message\": \"Reach the forge\", \"new_branch\": \"task-probe\"}"
           touch /root/porelo-host-forge-workflow
         creates: /root/porelo-host-forge-workflow
         executable: /bin/bash

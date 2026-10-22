@@ -26,4 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The role `porelo.host.forge`, where the host setting `porelo_host_forge` asks for it: Forgejo with its registry and
   its runner in rootless podman under accounts of their own, HTTPS on the VPN's address alone with a CA made on the
   host, the repositories `porelo_host_forge_repositories` names migrated once with push mirrors back, the person's
-  token for the central forge read from their drive by the shell alone; stopped at `down`, keeping nothing.
+  token for the central forge read from their drive by the shell alone, and every build, an unreviewed task branch's
+  too, publishing into the registry with the token of the account `porelo-publisher`, kept as the organization's
+  Actions secret `PORELO_PUBLISHER_TOKEN` and never read out; stopped at `down`, keeping nothing.

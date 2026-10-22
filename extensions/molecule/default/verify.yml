@@ -287,6 +287,13 @@
         that: verify_daemon.status.ActiveState == 'active'
         fail_msg: "tresorit-daemon.service is {{ verify_daemon.status.ActiveState | default(verify_daemon) }}"
 
+    # Up made the publisher's token once; forgetting that it did makes the -vvv run below make it again, so that run's
+    # output is searched for a token it handled.
+    - name: Forget that the publisher's secret was set, so up with -vvv makes its token again
+      ansible.builtin.file:
+        path: /home/porelo-forge/.config/porelo-forge/publisher.set
+        state: absent
+
     # Ansible's own most talkative output of a whole up, searched for the host's private VPN key.
     - name: Run up again with Ansible's -vvv and its own output
       ansible.builtin.command:
@@ -353,9 +360,21 @@
       vars:
         verify_forge_lines: "{{ verify_forge_repo.stdout_lines | select | map('from_json') | list }}"
 
-    # A key file missing on the drive stops the vpn role before the firewall's rules are written again.
-    # The forge role's runner: the workflow converge committed runs on it and reaches the forge over TLS.
-    - name: Wait until the workflow's job has ended on the host's runner
+    # The forge role's runner and registry: the workflow converge committed to the unreviewed branch runs again for a
+    # second commit there, after the -vvv run made the publisher's token anew, so that run publishes with the new one.
+    - name: Commit again to the unreviewed branch, which runs the workflow with the publisher's new token
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          curl -fsS --cacert /etc/porelo-host/forge/ca.pem -H 'Content-Type: application/json' \
+              -H @<(printf 'Authorization: token %s\n' "$(cat /home/porelo-forge/.config/porelo-forge/api.token)") \
+              -X POST https://10.73.0.1:3000/api/v1/repos/porelo/stand-in/contents/again \
+              -d '{"content": "YWdhaW4K", "message": "Run again", "branch": "task-probe"}'
+        executable: /bin/bash
+      register: verify_forge_again
+      changed_when: true
+
+    - name: Wait until both of the branch's runs have ended on the host's runner
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
@@ -364,29 +383,106 @@
               https://10.73.0.1:3000/api/v1/repos/porelo/stand-in/actions/tasks
         executable: /bin/bash
       register: verify_forge_runs
-      until: verify_forge_runs.stdout is search('"status":"(success|failure)"')
+      until: >-
+        verify_forge_runs.rc == 0
+        and (verify_forge_runs.stdout | from_json).workflow_runs | selectattr('status', 'in', ['success', 'failure'])
+        | list | length >= 2
       retries: 40
       delay: 15
       changed_when: false
       failed_when: false
 
-    # Read only when the job did not succeed: the runner's journal on this VM says why.
-    - name: Read the runner's journal, to say why the job failed
+    # Read only when a job did not succeed: the runner's journal on this VM says why.
+    - name: Read the runner's journal, to say why a job failed
       ansible.builtin.shell:
         cmd: >-
-          set -o pipefail && journalctl --no-pager -n 40 _UID="$(id -u porelo-runner)"
-          | grep -e 'exited with status' -e 'level='
+          set -o pipefail && journalctl --no-pager -n 60 _UID="$(id -u porelo-runner)"
+          | grep -e 'exited with status' -e 'level=' -e "the run's own token"
         executable: /bin/bash
       register: verify_forge_job_log
       changed_when: false
       failed_when: false
-      when: verify_forge_runs.stdout is not search('"status":"success"')
+      when: verify_forge_failed | length > 0
+      vars:
+        verify_forge_failed: >-
+          {{ (verify_forge_runs.stdout | default('{}') | from_json).workflow_runs | default([])
+          | rejectattr('status', 'equalto', 'success') | list }}
 
-    - name: Assert the job ran on the host's runner and reached the forge over TLS with the host's CA
+    - name: >-
+        Assert both runs on the unreviewed branch reached the forge over TLS, were refused with the run's own token
+        and published with the publisher's
       ansible.builtin.assert:
-        that: verify_forge_runs.stdout is search('"status":"success"')
+        that:
+          - verify_forge_branch | length == 2
+          - verify_forge_branch | rejectattr('status', 'equalto', 'success') | list | length == 0
+          - verify_forge_branch | selectattr('head_sha', 'equalto', verify_forge_again_sha) | list | length == 1
         fail_msg: >-
           the runs: {{ verify_forge_runs.stdout }}; the runner: {{ verify_forge_job_log.stdout | default('') }}
+      vars:
+        verify_forge_branch: >-
+          {{ (verify_forge_runs.stdout | from_json).workflow_runs | selectattr('head_branch', 'equalto', 'task-probe')
+          | list }}
+        verify_forge_again_sha: "{{ (verify_forge_again.stdout | from_json).commit.sha }}"
+
+    # The second run's package holds the digest of the token the -vvv run made; the token itself is never read here.
+    # The forge's API token may not read packages, so verify makes a read:package token of the admin's for itself.
+    - name: Read the digest of the publisher's token from the package the second run published
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          cd /
+          token=$(runuser -u porelo-forge -- env XDG_RUNTIME_DIR=/run/user/$(id -u porelo-forge) \
+              podman exec forgejo forgejo admin user generate-access-token --username porelo-admin \
+              --token-name verify-$(date -u +%Y%m%dT%H%M%SZ) --scopes read:package --raw)
+          curl -fsS --cacert /etc/porelo-host/forge/ca.pem -H @<(printf 'Authorization: token %s\n' "$token") \
+              https://10.73.0.1:3000/api/packages/porelo/generic/probe/{{ verify_forge_again_run }}/digest
+        executable: /bin/bash
+      register: verify_publisher_digest
+      changed_when: false
+      vars:
+        verify_forge_again_run: >-
+          {{ ((verify_forge_runs.stdout | from_json).workflow_runs
+          | selectattr('head_sha', 'equalto', (verify_forge_again.stdout | from_json).commit.sha) | first).run_number }}
+
+    - name: Read every 40-digit hex string in the journal, the form of Forgejo's tokens
+      ansible.builtin.shell:
+        cmd: set -o pipefail && journalctl -o cat --no-pager | grep -oE '[0-9a-f]{40}' | sort -u || true
+        executable: /bin/bash
+      register: verify_journal_hex
+      changed_when: false
+      no_log: true
+
+    - name: Read every 40-digit hex string in the environment of the account's task containers
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail && podman ps -aq | xargs -r podman inspect --format {% raw %}'{{.Config.Env}}'{% endraw %}
+          | grep -oE '[0-9a-f]{40}' | sort -u || true
+        executable: /bin/bash
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      register: verify_task_hex
+      changed_when: false
+      no_log: true
+
+    # A string is the token only if its digest is the package's; a token in any other form would be no 40-digit hex.
+    - name: Assert the publisher's token is in no output of up with -vvv, in no journal line and in no task's container
+      ansible.builtin.assert:
+        that:
+          - verify_forge_token.content | b64decode | trim is match('^[0-9a-f]{40}$')
+          - verify_publisher_digest.stdout is match('^[0-9a-f]{64}$')
+          - verify_publisher_digest.stdout not in verify_hex_digests
+        fail_msg: >-
+          the publisher's token is in the -vvv output, the journal or a task's container, or Forgejo's tokens are not
+          the 40-digit hex this search looks for
+      vars:
+        verify_hex_digests: >-
+          {{ ((verify_vvv.stdout + verify_vvv.stderr) | regex_findall('[0-9a-f]{40}')
+          + verify_journal_hex.stdout_lines + verify_task_hex.stdout_lines) | unique | map('hash', 'sha256') | list }}
+      no_log: true
+
+    # A key file missing on the drive stops the vpn role before the firewall's rules are written again.
 
     - name: Read the firewall's rules before an up without the key
       ansible.builtin.stat:

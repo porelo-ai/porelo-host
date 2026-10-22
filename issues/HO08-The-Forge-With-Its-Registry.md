@@ -100,13 +100,28 @@ reaches it through the VPN, a task reaches its registry by name, and a project t
     answer per repository;
   - forgejo-runner `13.2.0`, pinned by digest, registered once with its token piped from `forgejo actions
     generate-runner-token` on standard input, a quadlet unit of `porelo-runner`; its jobs run in that account's podman,
-    get no socket of it, and trust the host's CA through the same bundle.
+    get no socket of it, and trust the host's CA through the same bundle;
+  - the account `porelo-publisher`, in a team `publishers` of the owner's organization that may write its packages and
+    nothing else, and its `write:package` token made by Forgejo's command line and piped into the organization's
+    Actions secret `PORELO_PUBLISHER_TOKEN` through the API, once per forge; the token is never read out.
 - **Molecule**, green on `8cab9fd`, 2026-10-21 21:55Z-22:04Z, with porelo `73ef80e0`'s packages: Forgejo answers through
   the VPN over TLS with the host's CA and listens on the VPN's address alone; a repository migrated from a stand-in
   central forge on the host itself (`forge_migrations_allow_local`) holds its content, is no mirror and has its push
   mirror back on no interval; the person's token appears nowhere in `ansible-playbook -vvv`'s output; a workflow
   committed to it runs on the host's runner and reaches the forge over TLS; a second `up` changes nothing. Each part
   seen red first without it: the CA and Forgejo, the migration (404), the runner (no run taken).
+- **Molecule with the publisher**, green 2026-10-22 05:25Z-05:35Z, 5/5 stages, the VM removed, porelo run 928's
+  packages:
+  - a workflow on a branch nobody reviewed runs twice on the host's runner, the second time with the token made anew
+    by an `up` under `-vvv`;
+  - each run is refused by the registry with its own token (`401`) and publishes with the secret a package that
+    holds the digest of the secret;
+  - no 40-digit hex string in that `-vvv` output, in the journal or in the environment of the account's task
+    containers has that digest.
+  - Seen red first without `publisher.yml`: both runs failed at the publish (`curl` exit 22). The search was seen red
+    on a made-up token, planted in each of the three places, and green without it; the real token is never printed.
+- **The Build's jobs on `ubuntu-26.04`**, the Molecule job's runner packages pinned to 26.04's versions, as this host
+  runs them; first read in the Build after the push.
 
 ## Read against the skills
 

@@ -1,0 +1,96 @@
+---
+# The account every build publishes its snapshots with, an unreviewed task branch's too: a member of the owner's
+# organization through a team that may write its packages and nothing else, its write:package token made by Forgejo's
+# command line and piped straight into the organization's Actions secret. The token is never read out: it stays in
+# Forgejo and the runner's jobs, and reaches no task. A run's own token cannot do it, Forgejo refusing it the
+# organization's registry.
+- name: publisher | Ask Forgejo which users it has
+  ansible.builtin.command:
+    argv: [podman, exec, forgejo, forgejo, admin, user, list]
+  become: true
+  become_user: "{{ forge_account }}"
+  environment: "{{ __forge_environment }}"
+  register: __forge_users_listed
+  changed_when: false
+  check_mode: false
+
+- name: publisher | Make the publisher, its password generated and discarded
+  ansible.builtin.shell:
+    cmd: >-
+      podman exec forgejo forgejo admin user create --username {{ __forge_publisher }}
+      --email {{ __forge_publisher }}@{{ forge_name }} --random-password --must-change-password=false > /dev/null
+  become: true
+  become_user: "{{ forge_account }}"
+  environment: "{{ __forge_environment }}"
+  when: __forge_publisher not in (__forge_users_listed.stdout_lines[1:] | map('split') | map(attribute=1) | list)
+  changed_when: true
+  no_log: true
+
+- name: publisher | Let the publisher write the organization's packages, through a team of its own
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      api() { curl -sS --cacert {{ __forge_ca_dir }}/ca.pem -H @<(printf 'Authorization: token %s\n' \
+          "$(cat {{ __forge_token }})") -H 'Content-Type: application/json' "$@"; }
+      base=https://{{ forge_address }}:{{ forge_http_port }}/api/v1
+      answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
+      changed=
+      code=$(api -o "$answer" -w '%{http_code}' \
+          "$base/orgs/{{ forge_owner }}/teams/search?q={{ __forge_publisher_team }}")
+      [ "$code" = 200 ] || { echo "Forgejo answered $code searching the organization's teams" >&2; exit 1; }
+      team=$(python3 -I -c 'import json,sys; print(next((t["id"] for t in json.load(open(sys.argv[1]))["data"] \
+          if t["name"] == sys.argv[2]), ""))' "$answer" {{ __forge_publisher_team }})
+      if [ -z "$team" ]; then
+          code=$(api -o "$answer" -w '%{http_code}' -X POST "$base/orgs/{{ forge_owner }}/teams" \
+              -d '{"name": "{{ __forge_publisher_team }}", "permission": "write", "units": ["repo.packages"],
+                   "units_map": {"repo.packages": "write"}, "includes_all_repositories": false,
+                   "can_create_org_repo": false}')
+          [ "$code" = 201 ] \
+              || { echo "Forgejo answered $code making the team {{ __forge_publisher_team }}" >&2; exit 1; }
+          team=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$answer")
+          changed=yes
+      fi
+      code=$(api -o /dev/null -w '%{http_code}' "$base/teams/$team/members/{{ __forge_publisher }}")
+      if [ "$code" = 404 ]; then
+          code=$(api -o /dev/null -w '%{http_code}' -X PUT "$base/teams/$team/members/{{ __forge_publisher }}")
+          [ "$code" = 204 ] || { echo "Forgejo answered $code adding {{ __forge_publisher }} to its team" >&2; exit 1; }
+          changed=yes
+      elif [ "$code" != 200 ]; then
+          echo "Forgejo answered $code for {{ __forge_publisher }} in its team" >&2; exit 1
+      fi
+      echo "${changed:-unchanged}"
+    executable: /bin/bash
+  register: __forge_publisher_team_made
+  changed_when: __forge_publisher_team_made.stdout == 'yes'
+
+# Once per forge: the token's name carries the time it was made, since Forgejo refuses a second token of one name, and
+# a run cut off between the token and the secret leaves an unused one, never a secret without its token. Down takes
+# the volume that holds both.
+- name: publisher | Pipe a new write:package token of the publisher into the organization's Actions secret
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      cd /
+      secret=https://{{ forge_address }}:{{ forge_http_port }}/api/v1/orgs/{{ forge_owner }}/actions/secrets
+      code=$(runuser -u {{ forge_account }} -- env XDG_RUNTIME_DIR=/run/user/{{ __forge_uid }} \
+          podman exec forgejo forgejo admin user generate-access-token --username {{ __forge_publisher }} \
+          --token-name publish-$(date -u +%Y%m%dT%H%M%SZ) --scopes write:package --raw \
+          | python3 -I -c 'import json,sys; print(json.dumps({"data": sys.stdin.read().strip()}))' \
+          | curl -sS -o /dev/null -w '%{http_code}' --cacert {{ __forge_ca_dir }}/ca.pem \
+              -H @<(printf 'Authorization: token %s\n' "$(cat {{ __forge_token }})") \
+              -H 'Content-Type: application/json' -X PUT "$secret/{{ __forge_publisher_secret }}" --data @-)
+      [ "$code" = 201 ] || [ "$code" = 204 ] \
+          || { echo "Forgejo answered $code setting the secret {{ __forge_publisher_secret }}" >&2; exit 1; }
+      touch {{ __forge_publisher_set }}
+    creates: "{{ __forge_publisher_set }}"
+    executable: /bin/bash
+  register: __forge_publisher_secret_set
+  failed_when: false
+  no_log: true
+
+# The task above hides its output, the token having passed through it; what it said on a refusal holds none of it.
+- name: publisher | Stop when Forgejo would not take the publisher's secret, with its answer
+  ansible.builtin.assert:
+    that: __forge_publisher_secret_set.rc | default(0) == 0
+    fail_msg: "{{ __forge_publisher_secret_set.stderr | default('') }}"
+    quiet: true

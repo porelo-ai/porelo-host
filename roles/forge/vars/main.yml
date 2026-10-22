@@ -12,6 +12,13 @@ __forge_environment:
 __forge_admin: porelo-admin
 __forge_token: "{{ __forge_home }}/.config/porelo-forge/api.token"
 
+# The account every build publishes with, its team in the owner's organization, the Actions secret that holds its
+# token, and the file that says the secret was set, which down removes with the volume that holds the token.
+__forge_publisher: porelo-publisher
+__forge_publisher_team: publishers
+__forge_publisher_secret: PORELO_PUBLISHER_TOKEN
+__forge_publisher_set: "{{ __forge_home }}/.config/porelo-forge/publisher.set"
+
 # Forgejo's runner, by version and digest, the newest release at least three days old when it was pinned.
 __forge_runner_image: >-
   code.forgejo.org/forgejo/runner:13.2.0@sha256:ca3d5eea46004789a175d1369eec6829d3ea9bfbe2011a06625b4bdaa55f7552
