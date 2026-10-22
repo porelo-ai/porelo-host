@@ -100,6 +100,9 @@
               porelo_host_forge: true
               # The stand-in for the central forge is a repository on the host's own forge, at a private address.
               forge_migrations_allow_local: true
+              # One pool VM, small enough for the test VM, which holds it nested.
+              porelo_host_vm_pool: {systems: [ubuntu], accounts: 1}
+              vm_pool_memory: 1024
 
     # The client's stub in the place the installer puts the real one, so the role leaves it as an installed client.
     - name: Make the client's directory as the account's
@@ -388,6 +391,19 @@
                     printf '%s' "$PUBLISHER_TOKEN" | sha256sum | cut -d' ' -f1 > digest
                     printf 'user = "porelo-publisher:%s"\n' "$PUBLISHER_TOKEN" | curl -fsS -K - --upload-file digest \
                         https://10.73.0.1:3000/api/packages/porelo/generic/probe/${{ github.run_number }}/digest
+                - name: The VM pool's file holds no key and the run key comes as an Actions secret
+                  env:
+                    PORELO_POOL_SSH: ${{ secrets.PORELO_POOL_SSH }}
+                    PUBLISHER_TOKEN: ${{ secrets.PORELO_PUBLISHER_TOKEN }}
+                  run: |
+                    grep -q '"porelo-machines-pool/1"' /etc/porelo-host/pool/pool.json
+                    ! grep -q runKey /etc/porelo-host/pool/pool.json
+                    ! grep -rq 'PRIVATE KEY' /etc/porelo-host/pool
+                    test -n "$PORELO_POOL_SSH"
+                    printf '%s' "$(printf '%s' "$PORELO_POOL_SSH")" | sha256sum | cut -d' ' -f1 > pool-key-digest
+                    probe=https://10.73.0.1:3000/api/packages/porelo/generic/probe/${{ github.run_number }}
+                    printf 'user = "porelo-publisher:%s"\n' "$PUBLISHER_TOKEN" | curl -fsS -K - \
+                        --upload-file pool-key-digest "$probe/pool-key-digest"
           WORKFLOW
           )
           {% endraw %}

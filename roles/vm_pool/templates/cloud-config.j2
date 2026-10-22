@@ -1,0 +1,11 @@
+{{ ansible_managed | comment }}
+# What a pool VM adds to its seed: the one command that gives its run account back, and the state porelo-machines
+# reads, 'ready' in the base snapshot.
+write_files:
+  - path: /usr/local/sbin/porelo-pool-give-back
+    permissions: "0755"
+    encoding: b64
+    content: {{ lookup('ansible.builtin.file', role_path ~ '/files/porelo-pool-give-back') | b64encode }}
+runcmd:
+  - [install, -d, -m, "0755", /var/lib/porelo-pool]
+  - [sh, -c, "printf 'ready\\n' > /var/lib/porelo-pool/{{ __vm_pool_account }}"]

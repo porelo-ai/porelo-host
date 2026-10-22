@@ -1,0 +1,175 @@
+---
+# One pool VM: made by porelo-vm as the collection's test VM is, its run account's state 'ready', then its base
+# snapshot taken live, which every revert goes back to. A second up finds the VM and its snapshot and makes neither.
+- name: vm | Name the VM and its directory
+  ansible.builtin.set_fact:
+    __vm_pool_name: "{{ __vm_pool_prefix }}-{{ __vm_pool_each[0] }}-{{ __vm_pool_each[1] }}"
+    __vm_pool_here: "{{ __vm_pool_dir }}/{{ __vm_pool_prefix }}-{{ __vm_pool_each[0] }}-{{ __vm_pool_each[1] }}"
+
+- name: vm | Make the VM's directory
+  ansible.builtin.file:
+    path: "{{ __vm_pool_here }}/seed"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: vm | Make the VM's host key on the host, so every connection pins it
+  ansible.builtin.command:
+    argv: [ssh-keygen, -q, -t, ed25519, -N, "", -C, "{{ __vm_pool_name }}", -f, "{{ __vm_pool_here }}/host"]
+    creates: "{{ __vm_pool_here }}/host"
+  no_log: true
+
+- name: vm | Ask libvirt whether the VM is there and whether it is running
+  ansible.builtin.command:
+    argv: [virsh, -c, "qemu:///system", domstate, "{{ __vm_pool_name }}"]
+  environment:
+    LC_ALL: C
+  register: __vm_pool_there
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: vm | Ask libvirt whether the base snapshot is there
+  ansible.builtin.command:
+    argv: [virsh, -c, "qemu:///system", snapshot-info, "{{ __vm_pool_name }}", base]
+  register: __vm_pool_snapshot
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# Anything of the VM without its base snapshot is from an earlier up that stopped midway; it is replaced whole.
+- name: vm | Delete a half-made VM that has no base snapshot
+  ansible.builtin.command:
+    argv: ["{{ __vm_pool_vm }}", delete, "{{ __vm_pool_name }}"]
+  when: __vm_pool_snapshot.rc != 0
+  changed_when: true
+
+- name: vm | Make its seed, the host key going in by the shell
+  ansible.builtin.command:
+    argv:
+      - "{{ __vm_pool_vm }}"
+      - seed
+      - "{{ __vm_pool_here }}/seed"
+      - "{{ __vm_pool_name }}"
+      - "{{ __vm_pool_account }}"
+      - "{{ __vm_pool_dir }}/run-key.pub"
+      - "{{ __vm_pool_here }}/host"
+      - "{{ __vm_pool_dir }}/cloud-config"
+  when: __vm_pool_snapshot.rc != 0
+  register: __vm_pool_seed_made
+  changed_when: true
+  failed_when: false
+  no_log: true
+
+- name: vm | Stop when the seed could not be made, with porelo-vm's answer
+  ansible.builtin.assert:
+    that: __vm_pool_seed_made.rc | default(0) == 0
+    fail_msg: "{{ __vm_pool_seed_made.stderr | default('') }}"
+    quiet: true
+
+- name: vm | Make the VM
+  vars:
+    __vm_pool_base_digest: "{{ __vm_pool_images[__vm_pool_each[0]].sha256 }}"
+  ansible.builtin.command:
+    argv:
+      - "{{ __vm_pool_vm }}"
+      - make
+      - "{{ __vm_pool_name }}"
+      - "{{ __vm_pool_prefix }}-base-{{ __vm_pool_each[0] }}-{{ __vm_pool_base_digest[:12] }}.qcow2"
+      - "{{ __vm_pool_here }}/seed"
+      - "{{ vm_pool_memory }}"
+      - "{{ vm_pool_vcpus }}"
+      - "{{ __vm_pool_images[__vm_pool_each[0]].osinfo }}"
+  when: __vm_pool_snapshot.rc != 0
+  changed_when: true
+
+- name: vm | Revert a stopped pool VM to its base snapshot before reading its address
+  ansible.builtin.command:
+    argv: [virsh, -c, "qemu:///system", snapshot-revert, "{{ __vm_pool_name }}", base, --running]
+  when: __vm_pool_snapshot.rc == 0 and __vm_pool_there.stdout | trim == 'shut off'
+  changed_when: true
+
+- name: vm | Wait for the VM's address
+  ansible.builtin.command:
+    argv: ["{{ __vm_pool_vm }}", address, "{{ __vm_pool_name }}", "300"]
+  register: __vm_pool_address
+  changed_when: false
+
+- name: vm | Read the VM's host key
+  ansible.builtin.slurp:
+    src: "{{ __vm_pool_here }}/host.pub"
+  register: __vm_pool_host_pub
+
+- name: vm | Pin the VM's host key for the host's own connection
+  ansible.builtin.copy:
+    content: "{{ __vm_pool_address.stdout }} {{ (__vm_pool_host_pub.content | b64decode).split()[:2] | join(' ') }}\n"
+    dest: "{{ __vm_pool_here }}/known_hosts"
+    owner: root
+    group: root
+    mode: "0600"
+
+# Read through the run account itself, so 'ready' also says its key and the pinned host key work.
+- name: vm | Wait until the run account says it is ready
+  ansible.builtin.command:
+    argv:
+      - ssh
+      - -n
+      - -o
+      - BatchMode=yes
+      - -o
+      - IdentitiesOnly=yes
+      - -o
+      - ConnectTimeout=5
+      - -o
+      - StrictHostKeyChecking=yes
+      - -o
+      - "UserKnownHostsFile={{ __vm_pool_here }}/known_hosts"
+      - -i
+      - "{{ __vm_pool_dir }}/run-key"
+      - "{{ __vm_pool_account }}@{{ __vm_pool_address.stdout }}"
+      - cat /var/lib/porelo-pool/{{ __vm_pool_account }}
+  register: __vm_pool_ready
+  until: __vm_pool_ready.rc == 0 and __vm_pool_ready.stdout == 'ready'
+  retries: 60
+  delay: 5
+  changed_when: false
+
+# The seed holds the VM's private host key: taken out before the snapshot, so neither the snapshot nor libvirt's
+# pool keeps a copy any member of group libvirt could read.
+- name: vm | Eject the seed and delete its volume from libvirt's pool
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      target=$(virsh -c qemu:///system domblklist {{ __vm_pool_name | quote }} --details \
+          | awk '$2 == "cdrom" {print $3}')
+      virsh -c qemu:///system change-media {{ __vm_pool_name | quote }} "$target" --eject --live --config >/dev/null
+      virsh -c qemu:///system vol-delete {{ (__vm_pool_name ~ '-seed.iso') | quote }} --pool images >/dev/null
+    executable: /bin/bash
+  environment:
+    LC_ALL: C
+  when: __vm_pool_snapshot.rc != 0
+  changed_when: true
+
+- name: vm | Delete the local seed image and user-data
+  ansible.builtin.file:
+    path: "{{ __vm_pool_here }}/seed/{{ item }}"
+    state: absent
+  loop: [seed.iso, user-data]
+  no_log: true
+
+- name: vm | Take the base snapshot, live, with the account ready
+  ansible.builtin.command:
+    argv: [virsh, -c, "qemu:///system", snapshot-create-as, "{{ __vm_pool_name }}", base, --atomic]
+  when: __vm_pool_snapshot.rc != 0
+  changed_when: true
+
+- name: vm | Keep the VM's entry for the pool file
+  ansible.builtin.set_fact:
+    __vm_pool_made: >-
+      {{ __vm_pool_made | default([]) + [{'entry': {
+           'name': __vm_pool_name,
+           'os': __vm_pool_each[0],
+           'address': __vm_pool_address.stdout,
+           'hostKey': (__vm_pool_host_pub.content | b64decode).split()[:2] | join(' '),
+           'accounts': [__vm_pool_account]}}] }}

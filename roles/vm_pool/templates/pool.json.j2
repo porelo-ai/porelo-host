@@ -1,0 +1,4 @@
+{{ {
+  "format": "porelo-machines-pool/1",
+  "vms": __vm_pool_made | map(attribute="entry") | list
+} | to_nice_json(indent=2) }}

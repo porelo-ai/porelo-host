@@ -8,6 +8,11 @@
   connection: local
   gather_facts: false
   tasks:
+    - name: Take the host's VM pool off it, before the forge whose runner rents from it
+      ansible.builtin.include_role:
+        name: porelo.host.vm_pool
+        tasks_from: down
+
     - name: Stop the host's forge, keeping nothing
       ansible.builtin.include_role:
         name: porelo.host.forge

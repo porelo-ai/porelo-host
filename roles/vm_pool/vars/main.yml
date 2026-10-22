@@ -1,0 +1,37 @@
+---
+# Each system's cloud image, by URL and the SHA-256 its distribution publishes beside it, and the name libvirt's
+# osinfo knows it by; osinfo-db as Ubuntu 26.04 ships it (0.20250606) knows neither of these releases yet.
+__vm_pool_images:
+  ubuntu:
+    url: https://cloud-images.ubuntu.com/releases/26.04/release-20260927/ubuntu-26.04-server-cloudimg-amd64.img
+    sha256: 8800651811af9a85465ad1d552add729947bb16488dddb4a9b5305a3d97332b2
+    sums: SHA256SUMS
+    osinfo: ubuntu25.10
+  fedora:
+    url: "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/\
+      Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2"
+    sha256: 28680fe5b371a5a82ebf43a31926e086a168e59949d03969c5093e7071f90b7f
+    sums: Fedora-Cloud-44-1.7-x86_64-CHECKSUM
+    osinfo: fedora42
+
+# Where the pool is kept on the host: its images, the VMs' keys and the run key, the list the revert reads, and the
+# pool file porelo-machines reads (porelo-buildtools' porelo-machines-pool/1).
+__vm_pool_dir: /var/lib/porelo-host/pool
+__vm_pool_etc: /etc/porelo-host/pool
+__vm_pool_prefix: porelo-pool
+# The one run account each pool VM holds.
+__vm_pool_account: run
+__vm_pool_tools: /usr/local/libexec/porelo-host
+__vm_pool_vm: "{{ __vm_pool_tools }}/porelo-vm"
+
+# The forge whose organization's Actions secret PORELO_POOL_SSH gives jobs the run key, never mounted as a file.
+__vm_pool_forge_url: >-
+  https://{{ forge_address | default((vpn_address | default('10.73.0.1/24')).split('/') | first) }}:{{
+  forge_http_port | default(3000) }}/api/v1
+__vm_pool_forge_org: "{{ forge_owner | default(porelo_host_forge_owner | default('porelo')) }}"
+__vm_pool_forge_ca: /etc/porelo-host/forge/ca.pem
+__vm_pool_forge_account: "{{ forge_account | default('porelo-forge') }}"
+__vm_pool_forge_home: >-
+  {{ (ansible_facts['getent_passwd'][__vm_pool_forge_account] | default([], true))[4] | default('') }}
+__vm_pool_forge_token: "{{ __vm_pool_forge_home }}/.config/porelo-forge/api.token"
+__vm_pool_secret: PORELO_POOL_SSH

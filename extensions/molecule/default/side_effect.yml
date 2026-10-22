@@ -188,6 +188,35 @@
         - /etc/porelo-host/forge/ca.key
       register: side_effect_forge_left
 
+    - name: Read which pool VMs or volumes libvirt still lists, and what of the pool's keys or unit is left
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          virsh -c qemu:///system list --all --name | grep '^porelo-pool-' || true
+          virsh -c qemu:///system vol-list images | awk '{print $1}' | grep -E '^porelo-pool-(ubuntu|fedora)-' || true
+          find /var/lib/porelo-host/pool -maxdepth 1 \
+              \( -name 'porelo-pool-*' -o -name 'run-key*' -o -name cloud-config \) 2>/dev/null || true
+          for path in /etc/porelo-host/pool /etc/systemd/system/porelo-pool-revert.service; do
+              [ ! -e "$path" ] || echo "$path"
+          done
+        executable: /bin/bash
+      register: side_effect_pool_left
+      changed_when: false
+
+    - name: >-
+        Assert down deleted the run key's Actions secret from the forge and left no pool VM, no pool volume, none of
+        the pool's keys and no revert unit
+      ansible.builtin.assert:
+        that:
+          - side_effect_pool_secret | map(attribute='state') | list == ['changed', 'ok']
+          - side_effect_pool_left.stdout | trim == ''
+        fail_msg: "after down: secret {{ side_effect_pool_secret }}; left {{ side_effect_pool_left.stdout_lines }}"
+      vars:
+        side_effect_pool_secret: >-
+          {{ (side_effect_unsynced.stdout_lines + side_effect_down.stdout_lines) | select | map('from_json')
+          | selectattr('task', 'search', "down \\| Delete the run key's Actions secret from the forge")
+          | rejectattr('state', 'equalto', 'started') | list }}
+
     - name: Assert down left none of the forge's secrets, nothing of it running, and no unit to start it again
       ansible.builtin.assert:
         that:

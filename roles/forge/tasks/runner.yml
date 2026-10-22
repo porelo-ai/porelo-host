@@ -39,6 +39,16 @@
     mode: "0644"
   notify: Restart Forgejo's runner
 
+# Made before the runner's configuration mounts it into jobs, since vm_pool runs after the forge.
+- name: runner | Make the VM pool's directory before the runner mounts it
+  ansible.builtin.file:
+    path: /etc/porelo-host/pool
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: porelo_host_vm_pool is defined
+
 - name: runner | Write the runner's configuration
   ansible.builtin.template:
     src: "{{ role_path }}/templates/runner-config.yml.j2"

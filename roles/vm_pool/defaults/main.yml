@@ -1,0 +1,9 @@
+---
+# The pool the host setting porelo_host_vm_pool asks for, from porelo-frontend's first inventory: which systems, and
+# how many run accounts each, one small VM per account. Absent, the role does not run.
+vm_pool_systems: "{{ (porelo_host_vm_pool | default({})).systems | default([]) }}"
+vm_pool_accounts: "{{ (porelo_host_vm_pool | default({})).accounts | default(0) }}"
+
+# Each pool VM, small enough for eight beside the host's own work; measured idle at 964 MiB of host memory.
+vm_pool_memory: 1536
+vm_pool_vcpus: 1

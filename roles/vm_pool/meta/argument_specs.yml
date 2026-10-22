@@ -1,0 +1,26 @@
+---
+argument_specs:
+  main:
+    short_description: >-
+      A VM per run account that porelo-machines rents from, reverted to its base snapshot after each run.
+    description:
+      - Run in up's second play where the host setting porelo_host_vm_pool asks for a pool, after the forge.
+    options:
+      vm_pool_systems:
+        type: list
+        elements: str
+        choices: [ubuntu, fedora]
+        description: The systems of the pool, ubuntu and fedora, each at most once; from porelo_host_vm_pool.
+      vm_pool_accounts:
+        type: int
+        description: The run accounts per system, 1 to 8, one small VM each; from porelo_host_vm_pool.
+      vm_pool_memory:
+        type: int
+        default: 1536
+        description: Each pool VM's memory in MiB.
+      vm_pool_vcpus:
+        type: int
+        default: 1
+        description: Each pool VM's virtual CPUs.
+  down:
+    short_description: The pool's VMs, their snapshots and keys taken off the host.

@@ -1,0 +1,273 @@
+---
+- name: Stop on a pool the host setting cannot mean
+  ansible.builtin.assert:
+    that:
+      - vm_pool_systems | length > 0
+      - vm_pool_systems | reject('in', ['ubuntu', 'fedora']) | list | length == 0
+      - vm_pool_systems | unique | list | length == vm_pool_systems | length
+      - vm_pool_accounts | string is match('^[1-8]$')
+      - porelo_host_forge | default(false) | bool
+    fail_msg: >-
+      porelo_host_vm_pool needs systems from ubuntu and fedora, each at most once, and 1 to 8 accounts, and the forge,
+      whose runner alone rents from it: {{ porelo_host_vm_pool | default('') }}
+    quiet: true
+
+# libvirt's own storage pool and NAT network, which porelo-vm makes every VM in, as the collection's test VM is.
+- name: Ask libvirt for its storage pool and its network
+  ansible.builtin.command:
+    argv: [virsh, -c, "qemu:///system", "{{ item }}-info", "{{ 'images' if item == 'pool' else 'default' }}"]
+  loop: [pool, net]
+  register: __vm_pool_libvirt
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  environment:
+    LC_ALL: C
+
+- name: Define libvirt's storage pool where it has none
+  ansible.builtin.command:
+    argv: [virsh, -c, "qemu:///system", pool-define-as, images, dir, --target, /var/lib/libvirt/images]
+  when: __vm_pool_libvirt.results[0].rc != 0
+  changed_when: true
+
+- name: Define libvirt's NAT network where it has none
+  ansible.builtin.command:
+    argv: [virsh, -c, "qemu:///system", net-define, /usr/share/libvirt/networks/default.xml]
+  when: __vm_pool_libvirt.results[1].rc != 0
+  changed_when: true
+
+- name: Start libvirt's storage pool and network, now and at every boot
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      changed=
+      for kind in pool net; do
+          [ "$kind" = pool ] && name=images || name=default
+          info=$(virsh -c qemu:///system "$kind-info" "$name")
+          if ! printf '%s\n' "$info" | grep -qE '^(State: +running|Active: +yes)'; then
+              virsh -c qemu:///system "$kind-start" "$name" >/dev/null; changed=yes
+          fi
+          if ! printf '%s\n' "$info" | grep -qE '^Autostart: +yes'; then
+              virsh -c qemu:///system "$kind-autostart" "$name" >/dev/null; changed=yes
+          fi
+      done
+      echo "${changed:-unchanged}"
+    executable: /bin/bash
+  environment:
+    LC_ALL: C
+  register: __vm_pool_started
+  changed_when: __vm_pool_started.stdout == 'yes'
+
+- name: Install what porelo-vm makes VMs with
+  ansible.builtin.apt:
+    name: [jq, virtinst, xorriso]
+    state: present
+    install_recommends: false
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Make the pool's directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ __vm_pool_tools }}", mode: "0755"}
+    - {path: "{{ __vm_pool_dir }}", mode: "0700"}
+    - {path: "{{ __vm_pool_etc }}", mode: "0755"}
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Install the pool's tools, the one code the pool and the collection's test make VMs with
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/{{ item }}"
+    dest: "{{ __vm_pool_tools }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop: [porelo-vm, porelo-pool-revert]
+  notify: Restart the pool's revert
+
+# The pin is the digest the distribution published; a pin no published list names any more is said, not used.
+- name: Read the digests each distribution publishes beside its image
+  ansible.builtin.uri:
+    url: "{{ __vm_pool_images[item].url | dirname }}/{{ __vm_pool_images[item].sums }}"
+    return_content: true
+  loop: "{{ vm_pool_systems }}"
+  register: __vm_pool_sums
+  check_mode: false
+
+- name: Stop on an image pin its distribution does not name
+  ansible.builtin.assert:
+    that: >-
+      item.content.splitlines()
+      | select('search', __vm_pool_images[item.item].url | basename | regex_escape)
+      | select('search', __vm_pool_images[item.item].sha256) | list | length == 1
+    fail_msg: >-
+      {{ __vm_pool_images[item.item].sums }} does not name {{ __vm_pool_images[item.item].sha256 }} for
+      {{ __vm_pool_images[item.item].url | basename }}
+    quiet: true
+  loop: "{{ __vm_pool_sums.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Fetch each system's cloud image by its pinned digest
+  ansible.builtin.get_url:
+    url: "{{ __vm_pool_images[item].url }}"
+    dest: "{{ __vm_pool_dir }}/{{ __vm_pool_images[item].url | basename }}"
+    checksum: "sha256:{{ __vm_pool_images[item].sha256 }}"
+    mode: "0600"
+  loop: "{{ vm_pool_systems }}"
+
+- name: Make each image a base volume of libvirt
+  ansible.builtin.command:
+    argv:
+      - "{{ __vm_pool_vm }}"
+      - base
+      - "{{ __vm_pool_dir }}/{{ __vm_pool_images[item].url | basename }}"
+      - "{{ __vm_pool_images[item].sha256 }}"
+      - "{{ __vm_pool_prefix }}-base-{{ item }}-{{ __vm_pool_images[item].sha256[:12] }}.qcow2"
+  loop: "{{ vm_pool_systems }}"
+  register: __vm_pool_base
+  changed_when: __vm_pool_base.stdout == 'made'
+
+- name: Make the run key on the host
+  ansible.builtin.command:
+    argv: [ssh-keygen, -q, -t, ed25519, -N, "", -C, porelo-pool-run, -f, "{{ __vm_pool_dir }}/run-key"]
+    creates: "{{ __vm_pool_dir }}/run-key"
+  no_log: true
+
+# Without a key, so getent keeps porelo_account in getent_passwd for the porelo role's step after this role.
+- name: Read the host's accounts, for the forge account's home
+  ansible.builtin.getent:
+    database: passwd
+
+# Sent only when the organization or the key is new, so a second up leaves the secret and reports no change; the key
+# goes from its file through jq on a pipe, and the token in a process substitution's header, neither in an argument or
+# a variable.
+- name: Send the run key into the forge organization's Actions secret
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      key={{ __vm_pool_dir }}/run-key
+      sent={{ __vm_pool_dir }}/run-key.sent
+      token={{ __vm_pool_forge_token | quote }}
+      org={{ __vm_pool_forge_org | quote }}
+      [ -r "$token" ] || { echo "no forge API token at $token" >&2; exit 1; }
+      digest=$(sha256sum "$key" | cut -d' ' -f1)
+      if [ -f "$sent" ] && [ "$(cat "$sent")" = "$org $digest" ]; then echo unchanged; exit 0; fi
+      api() { curl -sS --cacert {{ __vm_pool_forge_ca }} -H @<(printf 'Authorization: token %s\n' \
+          "$(cat "$token")") -H 'Content-Type: application/json' "$@"; }
+      # The forge makes its organization with its first repository; without either, no job could take the key yet,
+      # and nothing is marked sent, so the up after the forge made it sends the key.
+      code=$(api -o /dev/null -w '%{http_code}' "{{ __vm_pool_forge_url }}/orgs/$org")
+      if [ "$code" = 404 ] && [ {{ porelo_host_forge_repositories | default([]) | length }} -eq 0 ]; then
+          echo no-organization; exit 0
+      fi
+      [ "$code" = 200 ] || { echo "Forgejo answered $code for the organization $org" >&2; exit 1; }
+      code=$(jq -Rs '{data: .}' < "$key" \
+          | api -o /dev/null -w '%{http_code}' \
+              -X PUT "{{ __vm_pool_forge_url }}/orgs/$org/actions/secrets/{{ __vm_pool_secret }}" --data @-)
+      [ "$code" = 201 ] || [ "$code" = 204 ] \
+          || { echo "Forgejo answered $code setting the secret {{ __vm_pool_secret }}" >&2; exit 1; }
+      umask 077
+      printf '%s %s\n' "$org" "$digest" > "$sent"
+      echo sent
+    executable: /bin/bash
+  register: __vm_pool_secret_sent
+  changed_when: __vm_pool_secret_sent.stdout == 'sent'
+  failed_when: false
+  no_log: true
+
+# The task above hides its output, the key having passed through it; what it said on a refusal holds none of it.
+- name: Stop when the forge would not take the run key's secret, with its answer
+  ansible.builtin.assert:
+    that: __vm_pool_secret_sent.rc | default(0) == 0
+    fail_msg: "{{ __vm_pool_secret_sent.stderr | default('') }}"
+    quiet: true
+
+- name: Write what each pool VM adds to its seed
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/cloud-config.j2"
+    dest: "{{ __vm_pool_dir }}/cloud-config"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Start the list of pool VMs this run makes
+  ansible.builtin.set_fact:
+    __vm_pool_made: []
+
+- name: Make each pool VM, its base snapshot taken once it is ready
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/vm.yml"
+  loop: "{{ vm_pool_systems | product(range(1, vm_pool_accounts | int + 1)) | list }}"
+  loop_control:
+    loop_var: __vm_pool_each
+    label: "{{ __vm_pool_prefix }}-{{ __vm_pool_each[0] }}-{{ __vm_pool_each[1] }}"
+
+- name: Write the pool file porelo-machines reads
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/pool.json.j2"
+    dest: "{{ __vm_pool_etc }}/pool.json"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Write the list of pool VMs the revert may touch
+  ansible.builtin.copy:
+    content: "{{ __vm_pool_made | map(attribute='entry.name') | join('\n') }}\n"
+    dest: "{{ __vm_pool_etc }}/vms"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart the pool's revert
+
+- name: Read which pool VMs libvirt has
+  ansible.builtin.command:
+    argv: [virsh, -c, "qemu:///system", list, --all, --name]
+  register: __vm_pool_listed
+  changed_when: false
+  check_mode: false
+
+- name: Delete each pool VM the host setting no longer asks for
+  ansible.builtin.command:
+    argv: ["{{ __vm_pool_vm }}", delete, "{{ item }}"]
+  loop: >-
+    {{ __vm_pool_listed.stdout_lines | select('match', __vm_pool_named)
+    | reject('in', __vm_pool_made | map(attribute='entry.name') | list) | list }}
+  vars:
+    __vm_pool_named: "^{{ __vm_pool_prefix }}-(ubuntu|fedora)-[0-9]+$"
+  changed_when: true
+
+- name: Find the pool VMs' directories on the host
+  ansible.builtin.find:
+    paths: "{{ __vm_pool_dir }}"
+    patterns: "{{ __vm_pool_prefix }}-*"
+    file_type: directory
+  register: __vm_pool_dirs
+
+- name: Remove the directories of pool VMs the host setting no longer asks for
+  ansible.builtin.file:
+    path: "{{ __vm_pool_dir }}/{{ item }}"
+    state: absent
+  loop: >-
+    {{ __vm_pool_dirs.files | map(attribute='path') | map('basename')
+    | reject('in', __vm_pool_made | map(attribute='entry.name') | list) | list }}
+
+- name: Write the revert's unit
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/porelo-pool-revert.service.j2"
+    dest: /etc/systemd/system/porelo-pool-revert.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart the pool's revert
+
+- name: Run the revert now and at every boot
+  ansible.builtin.systemd_service:
+    name: porelo-pool-revert.service
+    state: started
+    enabled: true
+    daemon_reload: true

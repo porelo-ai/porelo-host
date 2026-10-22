@@ -1,0 +1,13 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Revert each pool VM a run gave back to its base snapshot
+After=libvirtd.service
+Requires=libvirtd.service
+
+[Service]
+ExecStart={{ __vm_pool_tools }}/porelo-pool-revert {{ __vm_pool_etc }}/vms
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

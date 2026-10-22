@@ -1,0 +1,85 @@
+---
+# Down takes the pool off the host and keeps nothing: the revert stopped first, so it starts no VM again, then each VM
+# with its snapshot, disk and seed by name, and the keys. The images and their base volumes stay as a cache, named by
+# their digest, as the collection's test keeps its own.
+- name: down | Stop the revert, at every boot too
+  ansible.builtin.systemd_service:
+    name: porelo-pool-revert.service
+    state: stopped
+    enabled: false
+  failed_when: false
+
+# An up that stopped before base installed libvirt leaves no virsh: command fails with ENOENT (rc 2) before it runs.
+- name: down | Read which pool VMs up made
+  ansible.builtin.command:
+    argv: [virsh, -c, "qemu:///system", list, --all, --name]
+  register: __vm_pool_listed
+  changed_when: false
+  failed_when: >-
+    __vm_pool_listed.rc != 0
+    and not (__vm_pool_listed.rc == 2 and 'Error executing command' in __vm_pool_listed.msg)
+  check_mode: false
+
+- name: down | Delete each pool VM, its snapshot, disk and seed
+  ansible.builtin.command:
+    argv: ["{{ __vm_pool_vm }}", delete, "{{ item }}"]
+  loop: "{{ __vm_pool_listed.stdout_lines | select('match', __vm_pool_named) | list }}"
+  vars:
+    __vm_pool_named: "^{{ __vm_pool_prefix }}-(ubuntu|fedora)-[0-9]+$"
+  when: __vm_pool_listed.rc == 0
+  changed_when: true
+
+- name: down | Find each pool VM's directory of keys and seed
+  ansible.builtin.find:
+    paths: "{{ __vm_pool_dir }}"
+    patterns: "{{ __vm_pool_prefix }}-*"
+    file_type: directory
+  register: __vm_pool_dirs
+
+- name: down | Read the forge's account, if up made it
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ __vm_pool_forge_account }}"
+    fail_key: false
+
+# Shell, so the forge's API token goes to curl in a process substitution's header, never in an argument or a variable.
+- name: down | Delete the run key's Actions secret from the forge, while the forge answers
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      token={{ __vm_pool_forge_token | quote }}
+      ca={{ __vm_pool_forge_ca }}
+      if [ ! -r "$token" ] || [ ! -r "$ca" ] \
+          || ! curl -fsS --cacert "$ca" "{{ __vm_pool_forge_url }}/version" >/dev/null 2>&1; then
+          echo unchanged; exit 0
+      fi
+      code=$(curl -sS -o /dev/null -w '%{http_code}' --cacert "$ca" \
+          -H @<(printf 'Authorization: token %s\n' "$(cat "$token")") \
+          -X DELETE "{{ __vm_pool_forge_url }}/orgs/{{ __vm_pool_forge_org }}/actions/secrets/{{ __vm_pool_secret }}")
+      if [ "$code" = 204 ]; then
+          echo deleted
+      elif [ "$code" = 404 ]; then
+          echo unchanged
+      else
+          echo "Forgejo answered $code deleting the secret {{ __vm_pool_secret }}" >&2; exit 1
+      fi
+    executable: /bin/bash
+  register: __vm_pool_secret_deleted
+  changed_when: __vm_pool_secret_deleted.stdout == 'deleted'
+  failed_when: false
+  no_log: true
+
+- name: down | Stop when the forge would not delete the run key's secret, with its answer
+  ansible.builtin.assert:
+    that: __vm_pool_secret_deleted.rc | default(0) == 0
+    fail_msg: "{{ __vm_pool_secret_deleted.stderr | default('') }}"
+    quiet: true
+
+- name: down | Remove the pool's keys and file
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: >-
+    {{ [__vm_pool_etc, __vm_pool_dir ~ '/run-key', __vm_pool_dir ~ '/run-key.pub', __vm_pool_dir ~ '/run-key.sent',
+        __vm_pool_dir ~ '/cloud-config', '/etc/systemd/system/porelo-pool-revert.service']
+    + (__vm_pool_dirs.files | map(attribute='path') | list) }}

@@ -1,0 +1,37 @@
+#!/bin/sh
+# Reverts each pool VM that stopped to its base snapshot and starts it again: what a run's give-back asks for by
+# powering its VM off. Runs as root on the host, outside every job, for as long as the pool is up. Reads the pool's
+# VMs from the file the role writes, so it touches no other domain. Shell, since it drives virsh.
+# usage: porelo-pool-revert <file with one VM name per line>
+set -eu
+export LIBVIRT_DEFAULT_URI=qemu:///system
+# virsh's words are read below, so they must not be translated.
+export LC_ALL=C
+[ $# -eq 1 ] || { echo "usage: porelo-pool-revert <file with one VM name per line>" >&2; exit 2; }
+list=$1
+[ -r "$list" ] || { echo "no list of pool VMs at $list" >&2; exit 1; }
+
+revert() {
+    name=$1
+    grep -Fxq -- "$name" "$list" || return 0
+    [ "$(virsh domstate "$name" 2>/dev/null)" = "shut off" ] || return 0
+    if virsh snapshot-revert "$name" base --running >/dev/null; then
+        echo "reverted $name to its base snapshot"
+    else
+        echo "could not revert $name; it stays off and is not handed out" >&2
+    fi
+}
+
+# Whatever stopped while this was not running, first.
+while read -r name; do revert "$name"; done < "$list"
+# Then every VM as it stops: virsh prints one line per lifecycle event and keeps the connection open.
+virsh event --loop --event lifecycle | while read -r line; do
+    case "$line" in
+        *"for domain '"*"': Stopped"*)
+            name=${line#*for domain \'}
+            revert "${name%%\'*}"
+            ;;
+    esac
+done
+echo "virsh event --loop ended" >&2
+exit 1

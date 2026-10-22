@@ -53,6 +53,11 @@
         name: porelo.host.forge
       when: porelo_host_forge | default(false) | bool
 
+    - name: Make the host's VM pool, where the host asks for one
+      ansible.builtin.include_role:
+        name: porelo.host.vm_pool
+      when: porelo_host_vm_pool is defined
+
     # Stops again, with the same waiting line, while an agent the tasks name is not signed in.
     - name: Install the tasks' agents and start the tasks, through Porelo's own commands
       ansible.builtin.include_role:

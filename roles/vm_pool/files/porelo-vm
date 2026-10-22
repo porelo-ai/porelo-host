@@ -1,0 +1,130 @@
+#!/bin/sh
+# Makes, finds and deletes a libvirt VM from a cloud image and a cloud-init seed: the one code the host's VM pool and
+# build/molecule.sh's test VM are both made by. Shell, since it drives virsh and virt-install where the collection runs
+# and where its test runs, and neither has Java.
+# usage: porelo-vm base <image-file> <sha256> <volume>       the image as a base volume, made once
+#        porelo-vm seed <seed-dir> <name> <account> <public-key-file> <host-key-file> [<cloud-config-part>]
+#                                                            <seed-dir>/user-data and meta-data: the account with sudo
+#                                                            and the key, the host key, and the part appended
+#        porelo-vm make <name> <volume> <seed-dir> <memory-MiB> <vcpus> <osinfo>
+#                                                            a VM on a copy-on-write disk over the base volume, its
+#                                                            seed made from <seed-dir>/user-data and meta-data
+#        porelo-vm address <name> <seconds>                  waits for the VM's address on libvirt's network
+#        porelo-vm delete <name>                             the VM, its disk and its seed, believed only as seen
+set -eu
+export LIBVIRT_DEFAULT_URI="${LIBVIRT_DEFAULT_URI:-qemu:///system}"
+# virsh's words are read below, so they must not be translated.
+export LC_ALL=C
+pool=images
+
+say() { printf '%s\n' "$*" >&2; }
+fail() { say "FAILED: $*"; exit 1; }
+name_ok() { printf '%s\n' "$1" | grep -Eqx '[A-Za-z0-9][A-Za-z0-9.-]{0,62}' || fail "'$1' is no VM name"; }
+
+base() {
+    image=$1 digest=$2 volume=$3
+    name_ok "$volume"
+    printf '%s\n' "$digest" | grep -Eqx '[0-9a-f]{64}' || fail "'$digest' is no SHA-256"
+    [ "$(sha256sum "$image" | cut -d' ' -f1)" = "$digest" ] || fail "$image does not have the digest $digest"
+    if ! virsh vol-info "$volume" --pool "$pool" >/dev/null 2>&1; then
+        virsh vol-create-as "$pool" "$volume" "$(stat -c %s "$image")" --format qcow2 >/dev/null
+        if ! virsh vol-upload "$volume" "$image" --pool "$pool"; then
+            virsh vol-delete "$volume" --pool "$pool" >/dev/null 2>&1 || true
+            fail "could not upload $image into $volume"
+        fi
+        echo made
+    fi
+}
+
+seed() {
+    dir=$1 name=$2 account=$3 key=$4 host=$5 part=${6:-}
+    name_ok "$name"
+    printf '%s\n' "$account" | grep -Eqx '[a-z_][a-z0-9_-]{0,31}' || fail "'$account' is no account name"
+    [ -r "$key" ] && [ -r "$host" ] && [ -r "$host.pub" ] || fail "no key at $key, or no host key at $host"
+    # The host key's private half goes from its file into the seed by the shell, never through a variable.
+    umask 077
+    {
+        echo '#cloud-config'
+        echo 'users:'
+        echo "  - name: $account"
+        echo '    sudo: "ALL=(ALL) NOPASSWD:ALL"'
+        echo '    shell: /bin/bash'
+        echo "    ssh_authorized_keys: [\"$(cat "$key")\"]"
+        echo 'ssh_pwauth: false'
+        echo 'ssh_deletekeys: true'
+        echo 'ssh_genkeytypes: [ed25519]'
+        echo 'ssh_keys:'
+        echo '  ed25519_private: |'
+        sed 's/^/    /' "$host"
+        echo "  ed25519_public: \"$(cat "$host.pub")\""
+        [ -z "$part" ] || cat "$part"
+    } > "$dir/user-data"
+    chmod 600 "$dir/user-data"
+    printf 'instance-id: %s\nlocal-hostname: %s\n' "$name" "$name" > "$dir/meta-data"
+}
+
+make() {
+    name=$1 volume=$2 seed=$3 memory=$4 vcpus=$5 osinfo=$6
+    name_ok "$name"
+    if virsh dominfo "$name" >/dev/null 2>&1; then fail "a VM '$name' is already there"; fi
+    [ -f "$seed/user-data" ] && [ -f "$seed/meta-data" ] || fail "$seed holds no user-data and meta-data"
+    xorriso -as mkisofs -quiet -o "$seed/seed.iso" -V cidata -J -r "$seed/user-data" "$seed/meta-data"
+    if ! {
+        virsh vol-create-as "$pool" "$name.qcow2" 20G --format qcow2 --backing-vol "$volume" \
+            --backing-vol-format qcow2 >/dev/null \
+        && virsh vol-create-as "$pool" "$name-seed.iso" "$(stat -c %s "$seed/seed.iso")" --format raw >/dev/null \
+        && virsh vol-upload "$name-seed.iso" "$seed/seed.iso" --pool "$pool" \
+        && virt-install --name "$name" --memory "$memory" --vcpus "$vcpus" --cpu host-passthrough --import \
+            --disk "vol=$pool/$name.qcow2,bus=virtio" --disk "vol=$pool/$name-seed.iso,device=cdrom" \
+            --network network=default --osinfo "$osinfo" --graphics none --noautoconsole >/dev/null
+    }; then
+        rm -f "$seed/seed.iso"
+        delete "$name"
+        fail "could not make $name ($name.qcow2, $name-seed.iso)"
+    fi
+}
+
+address() {
+    name=$1 limit=$2
+    name_ok "$name"
+    printf '%s\n' "$limit" | grep -Eqx '[0-9]+' || fail "'$limit' is no number of seconds"
+    started=$(date +%s)
+    while :; do
+        [ $(($(date +%s) - started)) -lt "$limit" ] || fail "$name got no address within $limit s"
+        [ "$(virsh domstate "$name")" = running ] || fail "$name is not running: $(virsh domstate "$name")"
+        found=$(virsh domifaddr "$name" --source lease | awk '/ipv4/ {sub("/.*", "", $4); print $4; exit}')
+        [ -z "$found" ] || { echo "$found"; return; }
+        sleep 3
+    done
+}
+
+delete() {
+    name=$1
+    name_ok "$name"
+    # Stopped before it is undefined: undefining a running domain only makes it transient, and it runs on.
+    virsh destroy "$name" >/dev/null 2>&1 || true
+    virsh undefine "$name" --snapshots-metadata >/dev/null 2>&1 || true
+    virsh vol-delete "$name.qcow2" --pool "$pool" >/dev/null 2>&1 || true
+    virsh vol-delete "$name-seed.iso" --pool "$pool" >/dev/null 2>&1 || true
+    # Believed only as seen: what libvirt still lists of it is left behind, whatever the commands answered.
+    kept="$(virsh list --all --name | grep -Fx -- "$name" || true) $(virsh vol-list "$pool" | awk '{print $1}' \
+        | grep -Fx -e "$name.qcow2" -e "$name-seed.iso" || true)"
+    if [ -n "$(printf '%s' "$kept" | tr -d ' ')" ]; then fail "LEFT BEHIND, delete by hand: $kept"; fi
+}
+
+[ $# -ge 1 ] || fail "usage: porelo-vm base|seed|make|address|delete ..."
+command=$1
+shift
+case "$command" in
+    base) [ $# -eq 3 ] || fail "usage: porelo-vm base <image-file> <sha256> <volume>"; base "$@" ;;
+    seed)
+        [ $# -ge 5 ] && [ $# -le 6 ] \
+            || fail "usage: porelo-vm seed <dir> <name> <account> <key.pub> <host-key> [<part>]"
+        seed "$@" ;;
+    make)
+        [ $# -eq 6 ] || fail "usage: porelo-vm make <name> <volume> <seed-dir> <memory-MiB> <vcpus> <osinfo>"
+        make "$@" ;;
+    address) [ $# -eq 2 ] || fail "usage: porelo-vm address <name> <seconds>"; address "$@" ;;
+    delete) [ $# -eq 1 ] || fail "usage: porelo-vm delete <name>"; delete "$@" ;;
+    *) fail "unknown command '$command': base, seed, make, address or delete" ;;
+esac

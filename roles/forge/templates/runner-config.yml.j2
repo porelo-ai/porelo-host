@@ -9,8 +9,13 @@ container:
   # Jobs get no socket of the runner's podman, so a job cannot start containers beside itself.
   docker_host: "-"
   # Jobs trust the host's CA as the forge does, to reach its registry, whichever bundle their image's tools name.
+  # Where the host has a VM pool, its file too, read-only: what porelo-machines --pool reads.
   options: >-
     --volume={{ __forge_runner_home }}/tls/ca-bundle.pem:/etc/ssl/certs/ca-certificates.crt:ro
     --env=SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
     --env=CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
-  valid_volumes: [{{ (__forge_runner_home ~ '/tls/ca-bundle.pem') | to_json }}]
+{% if porelo_host_vm_pool is defined %}
+    --volume=/etc/porelo-host/pool:/etc/porelo-host/pool:ro
+{% endif %}
+  valid_volumes: {{ ([__forge_runner_home ~ '/tls/ca-bundle.pem']
+    + (['/etc/porelo-host/pool'] if porelo_host_vm_pool is defined else [])) | to_json }}

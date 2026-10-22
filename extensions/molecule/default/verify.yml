@@ -294,12 +294,15 @@
         path: /home/porelo-forge/.config/porelo-forge/publisher.set
         state: absent
 
-    # Ansible's own most talkative output of a whole up, searched for the host's private VPN key.
+    # Ansible's own most talkative output of a whole up, searched for the host's and the pool's private keys and tokens.
     - name: Run up again with Ansible's -vvv and its own output
-      ansible.builtin.command:
-        cmd: >-
-          ansible-playbook -vvv -c local -i /root/porelo-host-inventory.yml -i /root/porelo-host-forge.yml
-          porelo.host.up
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          umask 077
+          ansible-playbook -vvv -c local -i /root/porelo-host-inventory.yml -i /root/porelo-host-forge.yml \
+              porelo.host.up 2>&1 | tee /root/porelo-host-vvv.out
+        executable: /bin/bash
       environment:
         LC_ALL: C.UTF-8
       register: verify_vvv
@@ -330,6 +333,30 @@
         fail_msg: "up with -vvv gave rc {{ verify_vvv.rc }}, or its output holds the host's private VPN key, the
           person's token for the central forge or the forge's API token"
       no_log: true
+
+    - name: Search the -vvv output for every body line of the pool's private keys
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          trap 'rm -f /root/porelo-host-vvv.out' EXIT
+          [ -s /root/porelo-host-vvv.out ] || { echo "no -vvv output at /root/porelo-host-vvv.out" >&2; exit 1; }
+          for key in /var/lib/porelo-host/pool/run-key /var/lib/porelo-host/pool/porelo-pool-ubuntu-1/host; do
+              [ "$(sed '1d;$d' "$key" | wc -l)" -gt 0 ] || { echo "no key body in $key" >&2; exit 1; }
+              if sed '1d;$d' "$key" | grep -Fq -f - /root/porelo-host-vvv.out; then
+                  echo "$key appears in up -vvv output" >&2
+                  exit 1
+              fi
+          done
+        executable: /bin/bash
+      register: verify_pool_keys_vvv
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: Assert the -vvv output holds no body line of the pool's private keys
+      ansible.builtin.assert:
+        that: verify_pool_keys_vvv.rc == 0
+        fail_msg: "{{ verify_pool_keys_vvv.stderr }}"
 
     # The forge role: the repository migrated from the stand-in for the central forge, with its push mirror back.
     - name: Ask the forge for the migrated repository and its push mirrors
@@ -424,25 +451,37 @@
           | list }}
         verify_forge_again_sha: "{{ (verify_forge_again.stdout | from_json).commit.sha }}"
 
-    # The second run's package holds the digest of the token the -vvv run made; the token itself is never read here.
-    # The forge's API token may not read packages, so verify makes a read:package token of the admin's for itself.
-    - name: Read the digest of the publisher's token from the package the second run published
+    # The second run's package holds the digests of the publisher's token the -vvv run made and of the pool's run key;
+    # neither secret is read here. The forge's API token may not read packages, so verify pipes a read:package token of
+    # the admin's straight into curl's header.
+    - name: Read the digests of the publisher's token and the pool's run key from the package the second run published
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
           cd /
-          token=$(runuser -u porelo-forge -- env XDG_RUNTIME_DIR=/run/user/$(id -u porelo-forge) \
-              podman exec forgejo forgejo admin user generate-access-token --username porelo-admin \
-              --token-name verify-$(date -u +%Y%m%dT%H%M%SZ) --scopes read:package --raw)
-          curl -fsS --cacert /etc/porelo-host/forge/ca.pem -H @<(printf 'Authorization: token %s\n' "$token") \
-              https://10.73.0.1:3000/api/packages/porelo/generic/probe/{{ verify_forge_again_run }}/digest
+          probe=https://10.73.0.1:3000/api/packages/porelo/generic/probe/{{ verify_forge_again_run }}
+          curl -fsS --cacert /etc/porelo-host/forge/ca.pem \
+              -H @<(runuser -u porelo-forge -- env XDG_RUNTIME_DIR=/run/user/$(id -u porelo-forge) \
+                  podman exec forgejo forgejo admin user generate-access-token --username porelo-admin \
+                  --token-name verify-$(date -u +%Y%m%dT%H%M%SZ) --scopes read:package --raw \
+                  | sed 's/^/Authorization: token /') \
+              "$probe/digest" "$probe/pool-key-digest"
         executable: /bin/bash
       register: verify_publisher_digest
       changed_when: false
+      failed_when: false
+      no_log: true
       vars:
         verify_forge_again_run: >-
           {{ ((verify_forge_runs.stdout | from_json).workflow_runs
           | selectattr('head_sha', 'equalto', (verify_forge_again.stdout | from_json).commit.sha) | first).run_number }}
+
+    - name: Stop when the second run's package digests could not be read, with curl's answer
+      ansible.builtin.assert:
+        that:
+          - verify_publisher_digest.rc == 0
+          - verify_publisher_digest.stdout_lines | length == 2
+        fail_msg: "{{ verify_publisher_digest.stderr }}"
 
     - name: Read every 40-digit hex string in the journal, the form of Forgejo's tokens
       ansible.builtin.shell:
@@ -471,8 +510,8 @@
       ansible.builtin.assert:
         that:
           - verify_forge_token.content | b64decode | trim is match('^[0-9a-f]{40}$')
-          - verify_publisher_digest.stdout is match('^[0-9a-f]{64}$')
-          - verify_publisher_digest.stdout not in verify_hex_digests
+          - verify_publisher_digest.stdout_lines[0] is match('^[0-9a-f]{64}$')
+          - verify_publisher_digest.stdout_lines[0] not in verify_hex_digests
         fail_msg: >-
           the publisher's token is in the -vvv output, the journal or a task's container, or Forgejo's tokens are not
           the 40-digit hex this search looks for
@@ -483,6 +522,137 @@
       no_log: true
 
     # A key file missing on the drive stops the vpn role before the firewall's rules are written again.
+
+    # The VM pool: one VM per run account, its file for porelo-machines holding no key, its run key on the host alone
+    # and reaching jobs as the forge organization's Actions secret, and a give-back that leaves nothing of the run on
+    # the VM, what the run wrote as root included.
+    - name: Read the pool file porelo-machines reads
+      ansible.builtin.slurp:
+        src: /etc/porelo-host/pool/pool.json
+      register: verify_pool_file
+
+    - name: Read the pool file's owner and mode
+      ansible.builtin.stat:
+        path: /etc/porelo-host/pool/pool.json
+      register: verify_pool_file_stat
+
+    - name: Read the pool's run key's owner and mode
+      ansible.builtin.stat:
+        path: /var/lib/porelo-host/pool/run-key
+      register: verify_pool_key
+
+    - name: Compute the digest of the pool's run key on the host
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          printf '%s' "$(cat /var/lib/porelo-host/pool/run-key)" | sha256sum | cut -d' ' -f1
+        executable: /bin/bash
+      register: verify_pool_key_digest
+      changed_when: false
+      no_log: true
+
+    - name: >-
+        Assert the pool file names one VM with one account and no key, is mode 0644, and the run key stays root's on
+        the host and reached the job as the organization's Actions secret
+      ansible.builtin.assert:
+        that:
+          - verify_pool.format == 'porelo-machines-pool/1'
+          - verify_pool.vms | length == 1
+          - verify_pool.vms[0].os == 'ubuntu'
+          - verify_pool.vms[0].accounts == ['run']
+          - verify_pool.vms[0].hostKey is match('^ssh-ed25519 ')
+          - "'admin' not in verify_pool"
+          - "'runKey' not in verify_pool"
+          - verify_pool_file_stat.stat.pw_name == 'root'
+          - verify_pool_file_stat.stat.gr_name == 'root'
+          - verify_pool_file_stat.stat.mode == '0644'
+          - verify_pool_key.stat.pw_name == 'root'
+          - verify_pool_key.stat.gr_name == 'root'
+          - verify_pool_key.stat.mode == '0600'
+          - verify_pool_key_digest.stdout is match('^[0-9a-f]{64}$')
+          - verify_publisher_digest.stdout_lines[1] == verify_pool_key_digest.stdout
+        fail_msg: >-
+          the pool file: {{ verify_pool }} ({{ verify_pool_file_stat.stat }});
+          the run key: {{ verify_pool_key.stat }};
+          digest {{ verify_publisher_digest.stdout_lines[1] }} vs {{ verify_pool_key_digest.stdout }}
+      vars:
+        verify_pool: "{{ verify_pool_file.content | b64decode | from_json }}"
+
+    - name: Ask libvirt for the pool's seed volumes and the pool VM's cdrom media
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          virsh -c qemu:///system vol-list images | awk '{print $1}' | grep '^porelo-pool-.*-seed\.iso$' || true
+          virsh -c qemu:///system domblklist porelo-pool-ubuntu-1 --details | awk '$2 == "cdrom" && $4 != "-"'
+        executable: /bin/bash
+      environment:
+        LC_ALL: C
+      register: verify_pool_seed
+      changed_when: false
+
+    - name: Assert no seed volume stays in libvirt's pool and the pool VM has no cdrom media
+      ansible.builtin.assert:
+        that: verify_pool_seed.stdout | trim == ''
+        fail_msg: "seed left in libvirt: {{ verify_pool_seed.stdout_lines }}"
+
+    - name: Give the pool VM's account back after a run that left something, as itself and as root
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          address={{ verify_pool_vm.address }}
+          printf '%s %s\n' "$address" '{{ verify_pool_vm.hostKey }}' > /root/pool-known-hosts
+          on() { ssh -n -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile=/root/pool-known-hosts -i /var/lib/porelo-host/pool/run-key run@"$address" "$@"; }
+          on 'echo a-run > ~/left-by-a-run && sudo sh -c "echo a-run > /etc/left-by-a-run"'
+          on 'sudo -n porelo-pool-give-back'
+          echo "gave back at $(date +%s)"
+          for i in $(seq 1 60); do
+              said=$(on 'cat /var/lib/porelo-pool/run' 2>/dev/null || true)
+              if [ "$said" = ready ]; then
+                  echo "ready again at $(date +%s)"
+                  on 'test -e ~/left-by-a-run && echo home: left || echo home: clean'
+                  on 'test -e /etc/left-by-a-run && echo etc: left || echo etc: clean'
+                  exit 0
+              fi
+              sleep 2
+          done
+          echo "never ready again; it last said: $said"
+          exit 1
+        executable: /bin/bash
+      register: verify_pool_given_back
+      changed_when: true
+      failed_when: false
+      vars:
+        verify_pool_vm: "{{ (verify_pool_file.content | b64decode | from_json).vms[0] }}"
+
+    # The revert must have watched for the VM's stop, not been started again and again: a service that exits at once
+    # and restarts every few seconds still reverts, by its first loop, and would hide a watch that never ran.
+    - name: Ask systemd how often the revert was started again
+      ansible.builtin.systemd_service:
+        name: porelo-pool-revert.service
+      register: verify_pool_restarts
+
+    - name: Assert the revert ran once, watching
+      ansible.builtin.assert:
+        that: verify_pool_restarts.status.NRestarts == '0'
+        fail_msg: "porelo-pool-revert.service was started again {{ verify_pool_restarts.status.NRestarts }} times"
+
+    - name: Read the revert's journal, to say why the VM did not come back
+      ansible.builtin.command:
+        cmd: journalctl --no-pager -n 20 -u porelo-pool-revert.service
+      register: verify_pool_revert_log
+      changed_when: false
+      when: verify_pool_given_back.rc != 0
+
+    - name: Assert the VM went back to its snapshot, ready, with nothing of the run on it
+      ansible.builtin.assert:
+        that:
+          - verify_pool_given_back.rc == 0
+          - "'home: clean' in verify_pool_given_back.stdout_lines"
+          - "'etc: clean' in verify_pool_given_back.stdout_lines"
+        fail_msg: >-
+          the give-back: {{ verify_pool_given_back.stdout }} {{ verify_pool_given_back.stderr }};
+          the revert: {{ verify_pool_revert_log.stdout | default('') }}
 
     - name: Read the firewall's rules before an up without the key
       ansible.builtin.stat:

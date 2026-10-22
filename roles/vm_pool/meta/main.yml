@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  author: Michael Schnell
+  description: The host's VM pool - one small VM per run account, reverted to its base snapshot after each run.
+  license: GPL-3.0-or-later
+  min_ansible_version: "2.19"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - all
+dependencies: []

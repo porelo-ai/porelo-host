@@ -1,0 +1,14 @@
+#!/bin/sh
+# Gives this pool VM's run account back: the one command the account may run as root through sudo, and it takes no
+# argument. It writes 'resetting' and powers the VM off; the host, outside every job, sees it stopped, reverts it to
+# its base snapshot - taken with 'ready' written - and starts it, so nothing a run did reaches the next.
+# porelo-machines waits until /var/lib/porelo-pool/<account> says 'ready' again. Shell, since it runs inside a pool
+# VM, which has no Java.
+set -eu
+[ $# -eq 0 ] || { echo "porelo-pool-give-back takes no argument" >&2; exit 2; }
+account=${SUDO_USER:-}
+[ -n "$account" ] || { echo "porelo-pool-give-back runs through sudo, as the run account" >&2; exit 2; }
+[ -f "/var/lib/porelo-pool/$account" ] || { echo "'$account' is no run account of this pool VM" >&2; exit 2; }
+printf 'resetting\n' > "/var/lib/porelo-pool/$account"
+# Two seconds later, so this answer reaches the caller before the VM goes down.
+systemd-run --quiet --collect --unit porelo-pool-give-back --on-active=2 /usr/bin/systemctl poweroff
