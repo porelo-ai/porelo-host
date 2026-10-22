@@ -81,7 +81,8 @@ jobs:
         needs: build
         if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
         runs-on: ubuntu-26.04
-        timeout-minutes: 20
+        # Its scenario also boots a pool VM nested below the Molecule VM, a third level of virtualization on the runner.
+        timeout-minutes: 45
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:

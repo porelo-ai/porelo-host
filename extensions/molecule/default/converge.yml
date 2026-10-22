@@ -10,6 +10,25 @@
     converge_account: porelo-test
     converge_packages: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_PACKAGES') }}"
   tasks:
+    # Whether nested virtualization reaches the Molecule VM itself, so a slow pool VM in CI can be told apart.
+    - name: Read whether /dev/kvm exists on the Molecule VM
+      ansible.builtin.stat:
+        path: /dev/kvm
+      register: converge_kvm
+
+    - name: Read the CPU's flags from /proc/cpuinfo
+      ansible.builtin.command:
+        cmd: grep -m1 '^flags' /proc/cpuinfo
+      register: converge_cpu_flags
+      changed_when: false
+      failed_when: false
+
+    - name: Print whether /dev/kvm exists and whether the CPU flags carry vmx or svm
+      ansible.builtin.debug:
+        msg: >-
+          /dev/kvm={{ converge_kvm.stat.exists }},
+          vmx/svm={{ converge_cpu_flags.stdout.split(':', 1) | last | split | intersect(['vmx', 'svm']) }}
+
     - name: Install Ubuntu's own ansible-core
       ansible.builtin.apt:
         name: ansible-core

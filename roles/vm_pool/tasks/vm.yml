@@ -131,7 +131,8 @@
       - cat /var/lib/porelo-pool/{{ __vm_pool_account }}
   register: __vm_pool_ready
   until: __vm_pool_ready.rc == 0 and __vm_pool_ready.stdout == 'ready'
-  retries: 60
+  # A VM nested where there is no KVM boots emulated and slowly; the wait still ends and fails loud.
+  retries: 180
   delay: 5
   changed_when: false
 
