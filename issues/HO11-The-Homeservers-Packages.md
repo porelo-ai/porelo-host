@@ -24,3 +24,9 @@ start, and the playbook itself starts nothing of it.
 
 - On the test VM `build/molecule.sh` makes: after `up`, both packages are installed, the unit is disabled, and the first
   `porelo task start` of a project naming the transport brings the homeserver up.
+
+## To be checked
+
+- **Which projects name the transport**: the second play's inventory, written by `porelo project inventory`, carries
+  no transport yet, so the role cannot read whether the project names `mail.transports.matrix`; that field is asked of
+  porelo's agent.

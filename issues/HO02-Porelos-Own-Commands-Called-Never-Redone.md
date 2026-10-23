@@ -46,8 +46,8 @@ run changes nothing that is already as it should be.
 - A second `up` reports `changed=0` for this role.
 - A planted key's value appears nowhere in `ansible-playbook -vvv`'s output, the host's journal, or Ansible's facts
   cache.
-- The second play on a shut vault stops before it deposits anything, naming `porelo vault unlock`; after `down`,
-  `porelo vault list` as the account shows no key.
+- The second play on a shut vault stops with `needs: ["vault"]` before it deposits anything, and the person's side
+  (`porelo-frontend`) opens the vault; after `down`, `porelo vault list` as the account shows no key.
 - A project file whose signature does not check stops the run with Porelo's own refusal, and no task is started.
 
 ## Decided
@@ -97,18 +97,6 @@ run changes nothing that is already as it should be.
   made with the operator's passphrase over stdin and open (`vault status` 0); the machine file's project followed with
   its signature checked; at `down` the vault cleared and the person's key taken off. All `OK`.
 
-## Measured
-
-In a VM of `build/molecule.sh`'s, Ubuntu 26.04, porelo `0.5.1~snapshot.312`:
-- `porelo-setup-latest.sh --user <account> --distribution snapshots` gives rc 0 twice, the account with linger and
-  subordinate ids; `porelo setup` with no terminal gives rc 0 and "vault none yet".
-- `vault status` 4, then 0 after `vault init --passphrase-stdin`, 3 after `lock`, 0 after `unlock --passphrase-stdin`.
-- `project inventory --machine-file <missing>` 66; `project following --json` `{"follows":[]}`; `task status <none>
-  --json` `"state":"absent"`, rc 0. `following --json`'s `signed_by` lists fingerprints, which the machine file's
-  `signed_by` is compared with.
-- `vault put --from-file=<path>` reads the key on the host itself. It says `stored` again for the same value, so a
-  `put` cannot yet report "unchanged"; porelo's Idea for that is Core's.
-
 - `tasks.yml`, the last part, in `up`'s second play after `project.yml`: the agent packages the inventory names
   (`agent_package`) that dpkg lacks, installed by the setup script's `--with`; `porelo agents --json` read, the play
   stopping unless it says the vault is open, and stopping with `agent-login:<agent>` for each task's agent whose
@@ -121,6 +109,40 @@ In a VM of `build/molecule.sh`'s, Ubuntu 26.04, porelo `0.5.1~snapshot.312`:
   `running` on its repository with the stub `signed_in`; side_effect reads it stopped and kept after `down`. Seen red
   first without the part: `up` ended 0 with no stop. Green on `f8df290`, 2026-10-21 18:43Z-18:52Z.
 
+- **The seventh Scaleway run (Stage A)** (collection `d765a0f`, `porelo-host` `0.5.1~snapshot.170`), `tasks.yml`'s
+  first run on a rented host: the machine file in the tresor named one task, `sluice` on `porelo-message-sluice` with
+  agent `claude`, its project followed from a bundle signed by a key made for the test; `up` stopped once for
+  `["drive","vault-new"]` and once for `["agent-login:claude"]`; the person signed `claude` in by hand over ssh with
+  `porelo vault login claude`; the third `up` installed the agent, started the task and ended 0; the agent answered
+  one read-only question in the task; a search of the task's 214 files, environment, logs and `inspect` for the token
+  shape found none (its positive control, a made-up token planted in the task, found by the same search); `down` gave
+  everything back and nothing stayed rented. The same run was rehearsed first on a local libvirt VM, all ten steps
+  green, with a made-up subscription in place of the sign-in by hand.
+
+- **The Molecule scenario's three remaining acceptance checks**: (1) the drive's key removed from the vault before
+  `up` with `-vvv`, so that run puts it again, and its value is in none of the `-vvv` output, the host's whole
+  journal, `/root/.ansible` or the account's `~/.ansible` (no fact cache is configured); (2) with the vault shut
+  (`vault status` 3) and the key removed, `up` stops with `needs: ["vault"]` and the key is not deposited; after
+  unlock the next `up` puts it; (3) a machine file whose `signed_by` names another key stops `up` with Porelo's 65,
+  "signed by …, not by …. Nothing was pinned. No inventory was written.", the stopped task stays stopped, and after
+  the file is restored `up` ends 0 and the task runs again. Green locally on the scenario, all five stages,
+  idempotence `changed=0`, 2026-10-23 06:34Z-06:50Z. Seen red first in one run with three breaks of the role, each
+  check's stop lifted for that run alone (06:52Z-07:06Z): a task printing each key's value put the value into the
+  `-vvv` output; `needs.yml` naming only `vault-new` let `up` past the shut vault with no waiting line; without
+  `project.yml`'s stop on Porelo's refusal, `up` failed later without Porelo's 65 and its words.
+
+## Measured
+
+In a VM of `build/molecule.sh`'s, Ubuntu 26.04, porelo `0.5.1~snapshot.312`:
+- `porelo-setup-latest.sh --user <account> --distribution snapshots` gives rc 0 twice, the account with linger and
+  subordinate ids; `porelo setup` with no terminal gives rc 0 and "vault none yet".
+- `vault status` 4, then 0 after `vault init --passphrase-stdin`, 3 after `lock`, 0 after `unlock --passphrase-stdin`.
+- `project inventory --machine-file <missing>` 66; `project following --json` `{"follows":[]}`; `task status <none>
+  --json` `"state":"absent"`, rc 0. `following --json`'s `signed_by` lists fingerprints, which the machine file's
+  `signed_by` is compared with.
+- `vault put --from-file=<path>` reads the key on the host itself. It says `stored` again for the same value, so a
+  `put` cannot yet report "unchanged"; porelo's Idea for that is Core's.
+
 ## Read against the skills
 
 - `ansible-good-practices`, `ansible-new-role`, `ansible-new-collection`, `ansible-new-molecule`, each `2026.824.2`.
@@ -132,11 +154,6 @@ In a VM of `build/molecule.sh`'s, Ubuntu 26.04, porelo `0.5.1~snapshot.312`:
   agents --json` does not say which agent is the default; `porelo task start` then refuses it loudly (69, nothing
   made). `up` again after `down` on the same host is not run: a host is given back after `down`. `down` stops on a
   machine file Porelo refuses with anything but 65 or 66, before the VPN and the drive go down, which is loud.
-
-## Waits for
-
-- **The Matrix transport and its homeserver**, installed where the project names them: the second play's inventory
-  carries no transport yet, so the role cannot read which; asked of porelo's agent as an issue.
 
 ## To be checked
 

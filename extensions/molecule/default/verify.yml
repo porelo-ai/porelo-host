@@ -295,6 +295,31 @@
         path: /home/porelo-forge/.config/porelo-forge/publisher.set
         state: absent
 
+    # Removing the drive's key before up with -vvv makes that run put it back while its output is searched.
+    - name: Remove the drive's key from the vault before up with -vvv
+      ansible.builtin.command:
+        cmd: porelo vault remove converge-key
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      changed_when: true
+
+    - name: Ask Porelo what the vault holds before up with -vvv
+      ansible.builtin.command:
+        cmd: porelo vault list
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      register: verify_vault_before_vvv
+      changed_when: false
+
+    - name: Assert the drive's key is not in the vault before up with -vvv
+      ansible.builtin.assert:
+        that: verify_vault_before_vvv.stdout is not search('^converge-key ', multiline=True)
+        fail_msg: "asked for converge-key to be absent from the vault, got: {{ verify_vault_before_vvv.stdout }}"
+
     # Ansible's own most talkative output of a whole up, searched for the host's and the pool's private keys and tokens.
     - name: Run up again with Ansible's -vvv and its own output
       ansible.builtin.shell:
@@ -360,6 +385,317 @@
         that: verify_pool_keys_vvv.rc == 0
         fail_msg: "{{ verify_pool_keys_vvv.stderr }}"
       when: verify_vm_pool == 'on'
+
+    # The drive's key put by up with -vvv is in no output, journal or ~/.ansible file (no fact cache is configured).
+    - name: Ask Porelo what the vault holds after up with -vvv
+      ansible.builtin.command:
+        cmd: porelo vault list
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      register: verify_vault_after_vvv
+      changed_when: false
+
+    - name: Read the drive's key, only to search the run's output for it
+      ansible.builtin.slurp:
+        src: /srv/porelo-host/drive/porelo-host/keys/converge-key
+      register: verify_drive_key
+      no_log: true
+
+    - name: Search the journal and Ansible's directories for the drive's key
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          umask 077
+          key=$(mktemp) journal=$(mktemp)
+          trap 'rm -f "$key" "$journal"' EXIT
+          tr -d '\r\n' < /srv/porelo-host/drive/porelo-host/keys/converge-key > "$key"
+          echo >> "$key"
+          [ "$(wc -c < "$key")" -gt 21 ] || { echo "key file too short" >&2; exit 1; }
+          journalctl -o cat --no-pager > "$journal"
+          # grep's 2 is a search that could not run, which must never read as clean.
+          search() {
+              rc=0
+              grep "$@" || rc=$?
+              case $rc in 0) echo found ;; 1) echo clean ;; *) echo "grep ended $rc" >&2; return 1 ;; esac
+          }
+          found=$(search -Fq -f "$key" "$journal")
+          echo "journal: $found"
+          for dir in /root/.ansible /home/{{ verify_account }}/.ansible; do
+              if [ ! -d "$dir" ]; then
+                  echo "$dir: absent"
+              else
+                  found=$(search -rFq -f "$key" "$dir")
+                  echo "$dir: $found"
+              fi
+          done
+        executable: /bin/bash
+      register: verify_drive_key_search
+      changed_when: false
+      no_log: true
+
+    - name: Assert up with -vvv put the drive's key back and left its value in no output, journal or Ansible file
+      ansible.builtin.assert:
+        that:
+          - verify_vault_after_vvv.stdout is search('^converge-key ', multiline=True)
+          - (verify_drive_key.content | b64decode | trim) | length > 20
+          - (verify_drive_key.content | b64decode | trim) not in (verify_vvv.stdout + verify_vvv.stderr)
+          - verify_drive_key_search.stdout_lines | length == 3
+          - verify_drive_key_search.stdout_lines[0] is match('journal')
+          - verify_drive_key_search.stdout_lines | reject('search', ' (clean|absent)$') | list | length == 0
+        fail_msg: >-
+          asked for converge-key in the vault and its value in no -vvv output, journal or ~/.ansible file;
+          vault list gave '{{ verify_vault_after_vvv.stdout }}',
+          in -vvv: {{ (verify_drive_key.content | b64decode | trim) in (verify_vvv.stdout + verify_vvv.stderr) }},
+          search gave {{ verify_drive_key_search.stdout_lines }}
+      no_log: true
+
+    # A shut vault stops up with needs: ["vault"] before any key from the drive is deposited into the vault.
+    - name: Remove the drive's key from the vault and lock the vault
+      ansible.builtin.command:
+        cmd: "{{ item }}"
+      loop: [porelo vault remove converge-key, porelo vault lock]
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      changed_when: true
+
+    - name: Ask Porelo whether the vault is shut
+      ansible.builtin.command:
+        cmd: porelo vault status
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      register: verify_vault_locked
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the vault is shut
+      ansible.builtin.assert:
+        that: verify_vault_locked.rc == 3
+        fail_msg: "asked porelo vault status for 3 (shut), got {{ verify_vault_locked.rc }}"
+
+    - name: Run up while the vault is shut, its steps as JSON lines
+      ansible.builtin.command:
+        cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml -i /root/porelo-host-forge.yml porelo.host.up
+      environment:
+        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
+        LC_ALL: C.UTF-8
+      register: verify_locked_up
+      changed_when: false
+      failed_when: false
+
+    - name: Unlock the vault again as the account
+      ansible.builtin.shell:
+        cmd: set -o pipefail && printf 'converge-passphrase\n' | porelo vault unlock --passphrase-stdin
+        executable: /bin/bash
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      changed_when: true
+      no_log: true
+
+    - name: Ask Porelo for the vault's status and entries after up on the shut vault
+      ansible.builtin.command:
+        cmd: "{{ item }}"
+      loop: [porelo vault status, porelo vault list]
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      register: verify_after_locked_up
+      changed_when: false
+      failed_when: false
+
+    - name: Assert up stopped for the vault alone without depositing the key, and unlock opened the vault
+      ansible.builtin.assert:
+        that:
+          - verify_locked_up.rc == 2
+          - verify_locked_waiting | length == 1
+          - verify_locked_waiting[0].needs == ['vault']
+          - verify_locked_failed | length == 0
+          - verify_after_locked_up.results[0].rc == 0
+          - verify_after_locked_up.results[1].stdout is not search('^converge-key ', multiline=True)
+        fail_msg: >-
+          up on shut vault gave rc {{ verify_locked_up.rc }} and lines {{ verify_locked_up.stdout }};
+          after unlock, vault status rc {{ verify_after_locked_up.results[0].rc }},
+          vault list '{{ verify_after_locked_up.results[1].stdout }}'
+      vars:
+        verify_locked_lines: "{{ verify_locked_up.stdout_lines | select | map('from_json') | list }}"
+        verify_locked_waiting: "{{ verify_locked_lines | selectattr('state', 'equalto', 'waiting') | list }}"
+        verify_locked_failed: "{{ verify_locked_lines | selectattr('state', 'equalto', 'failed') | list }}"
+
+    - name: Run up after unlocking the vault, its steps as JSON lines
+      ansible.builtin.command:
+        cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml -i /root/porelo-host-forge.yml porelo.host.up
+      environment:
+        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
+        LC_ALL: C.UTF-8
+      register: verify_unlocked_up
+      changed_when: >-
+        verify_unlocked_up.stdout is search('"state": "changed"')
+
+    - name: Ask Porelo what the vault holds after up on the unlocked vault
+      ansible.builtin.command:
+        cmd: porelo vault list
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      register: verify_vault_restored
+      changed_when: false
+
+    - name: Assert up after unlocking the vault put the drive's key back
+      ansible.builtin.assert:
+        that:
+          - verify_unlocked_up.rc == 0
+          - verify_vault_restored.stdout is search('^converge-key ', multiline=True)
+        fail_msg: >-
+          up after unlock gave rc {{ verify_unlocked_up.rc }};
+          asked vault list for converge-key, got '{{ verify_vault_restored.stdout }}'
+
+    # A machine file whose signature does not check stops up with Porelo's refusal, and starts no task.
+    - name: Stop the machine file's task before testing a refused signature
+      ansible.builtin.command:
+        cmd: porelo task stop porelo-converge-converge-1
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      changed_when: true
+
+    - name: Ask Porelo whether the task runs after stopping it
+      ansible.builtin.command:
+        cmd: porelo task status porelo-converge-converge-1 --json
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      register: verify_stopped_task
+      changed_when: false
+
+    - name: Assert the task is not running before testing a refused signature
+      ansible.builtin.assert:
+        that: not (verify_stopped_task.stdout | from_json).running
+        fail_msg: "asked for porelo-converge-converge-1 to be stopped, got: {{ verify_stopped_task.stdout }}"
+
+    - name: Refuse a machine file whose signature does not check, and always restore the original
+      block:
+        - name: Keep the original machine file as a backup
+          ansible.builtin.copy:
+            src: /srv/porelo-host/drive/porelo-host/machine.yml
+            dest: /root/machine.yml.bak
+            remote_src: true
+            owner: root
+            group: root
+            mode: "0600"
+
+        - name: Replace signed_by in a copy of the machine file with a throwaway ed25519 key's fingerprint
+          ansible.builtin.shell:
+            cmd: |
+              set -euo pipefail
+              tmp=$(mktemp -d)
+              trap 'rm -rf "$tmp"' EXIT
+              ssh-keygen -q -t ed25519 -N "" -C throwaway -f "$tmp/key"
+              other=$(ssh-keygen -lf "$tmp/key.pub" | cut -d' ' -f2)
+              sed "s|^  signed_by: .*|  signed_by: \"$other\"|" /root/machine.yml.bak \
+                  > /srv/porelo-host/drive/porelo-host/machine.yml
+              printf '%s\n' "$other"
+            executable: /bin/bash
+          register: verify_other_signer
+          changed_when: true
+
+        - name: Run up with the machine file naming the wrong signing key
+          ansible.builtin.command:
+            cmd: >-
+              ansible-playbook -c local -i /root/porelo-host-inventory.yml -i /root/porelo-host-forge.yml
+              porelo.host.up
+          environment:
+            ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
+            LC_ALL: C.UTF-8
+          register: verify_wrong_key_up
+          changed_when: false
+          failed_when: false
+
+        - name: Ask Porelo whether the task runs after the refused machine file
+          ansible.builtin.command:
+            cmd: porelo task status porelo-converge-converge-1 --json
+          become: true
+          become_user: "{{ verify_account }}"
+          environment:
+            XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+          register: verify_wrong_key_task
+          changed_when: false
+
+        - name: Assert up failed with Porelo's signature refusal and started no task
+          ansible.builtin.assert:
+            that:
+              - verify_wrong_key_up.rc != 0
+              - verify_wrong_key_waiting | length == 0
+              - verify_wrong_key_failed | length == 1
+              - verify_wrong_key_failed[0].msg is search('refused .* with 65 ')
+              - verify_wrong_key_failed[0].msg is search('signed by SHA256:\S+, not by '
+                ~ (verify_other_signer.stdout | trim | regex_escape)
+                ~ '\. Nothing was pinned\. No inventory was written\.')
+              - not (verify_wrong_key_task.stdout | from_json).running
+            fail_msg: >-
+              asked for up to fail with 65 and 'signed by ..., not by {{ verify_other_signer.stdout | trim }}.
+              Nothing was pinned.' and no running task; got rc {{ verify_wrong_key_up.rc }},
+              lines {{ verify_wrong_key_up.stdout }}, task {{ verify_wrong_key_task.stdout }}
+          vars:
+            verify_wrong_key_lines: "{{ verify_wrong_key_up.stdout_lines | select | map('from_json') | list }}"
+            verify_wrong_key_waiting: >-
+              {{ verify_wrong_key_lines | selectattr('state', 'equalto', 'waiting') | list }}
+            verify_wrong_key_failed: >-
+              {{ verify_wrong_key_lines | selectattr('state', 'equalto', 'failed') | list }}
+      always:
+        - name: Restore the original machine file on the drive
+          ansible.builtin.copy:
+            src: /root/machine.yml.bak
+            dest: /srv/porelo-host/drive/porelo-host/machine.yml
+            remote_src: true
+            owner: "{{ verify_account }}"
+            group: "{{ verify_account }}"
+            mode: "0644"
+
+        - name: Remove the backup of the machine file
+          ansible.builtin.file:
+            path: /root/machine.yml.bak
+            state: absent
+
+    - name: Run up again after restoring the machine file
+      ansible.builtin.command:
+        cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml -i /root/porelo-host-forge.yml porelo.host.up
+      environment:
+        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
+        LC_ALL: C.UTF-8
+      register: verify_restored_up
+      changed_when: >-
+        verify_restored_up.stdout is search('"state": "changed"')
+
+    - name: Ask Porelo whether the task runs again after restoring the machine file
+      ansible.builtin.command:
+        cmd: porelo task status porelo-converge-converge-1 --json
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      register: verify_restored_task
+      changed_when: false
+
+    - name: Assert up after restoring the machine file ended 0 and started the task again
+      ansible.builtin.assert:
+        that:
+          - verify_restored_up.rc == 0
+          - (verify_restored_task.stdout | from_json).running
+        fail_msg: >-
+          asked for up rc 0 and porelo-converge-converge-1 running;
+          got rc {{ verify_restored_up.rc }} ({{ verify_restored_up.stdout }}),
+          task {{ verify_restored_task.stdout }}
 
     # The forge role: the repository migrated from the stand-in for the central forge, with its push mirror back.
     - name: Ask the forge for the migrated repository and its push mirrors
