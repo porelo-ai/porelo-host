@@ -18,9 +18,11 @@ interface shows them and writes no text of its own for a step the collection def
   measured runs. Where it is kept and who learns it is to decide.
 - **Who writes what, agreed with porelo-frontend:**
   - this repository: the texts and durations of the collection's steps, and the step lines;
-  - porelo-frontend: the texts of `porelo-host`'s own steps before the playbook (`rent`, `ssh`, `copy`), and passing
-    on and showing both, in its issues for a host standing in Machines while it is prepared and for a start's
-    progress in words.
+  - porelo-frontend: the texts of `porelo-host`'s own steps before the playbook (`rent`, `ssh`, `copy`), written by
+    its `packages/porelo_host` into the same step lines, and showing what the lines carry in porelo-frontend
+    [F154](https://github.com/porelo-ai/porelo-frontend/blob/main/issues/README.md#f154) and
+    [F161](https://github.com/porelo-ai/porelo-frontend/blob/main/issues/README.md#f161), whose views write no step
+    text of their own.
 - **Red first:** a step with a text whose line lacks it, and a line whose version did not change.
 
 ## Acceptance
