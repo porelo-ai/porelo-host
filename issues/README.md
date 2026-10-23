@@ -39,6 +39,8 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho20"></a>[HO20](HO20-Every-Container-Of-The-Host-Fits-The-Machine.md) | M | - | The forge's and runner's quadlets, the runner's job containers and the VM pool bounded to fit a host of any size, porelo-project's [PJ68](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj68) for porelo-host. |
+| <a id="ho21"></a>[HO21](HO21-Each-Step-Says-What-It-Does-And-How-Long.md) | S | - | Each step of the collection carries a plain-words text and its usual duration, which the step lines pass on for the interface to show. |
 | <a id="ho17"></a>[HO17](HO17-The-Forges-CA-In-Porelos-Account.md) | XS | - | Role `porelo`: the host's forge CA in `~/.config/porelo/ca-certificates.pem` of Porelo's account where the forge runs, owner-only, so a task reaches the forge's API through the broker; `down` takes it out again. |
 
 ## Idea
@@ -47,7 +49,6 @@ it is left out.
 |---|---|---|---|
 | <a id="ho15"></a>[HO15](HO15-The-Host-On-Fedora.md) | - | - | The host on Fedora as on Ubuntu 26.04: SELinux, firewalld, `dnf` and a Molecule scenario on Fedora to measure. |
 | <a id="ho16"></a>[HO16](HO16-The-Persons-Drive-On-OneDrive.md) | - | - | OneDrive in Tresorit's place for the person's drive, chosen per project: client, login, encryption and sync to measure. |
-| <a id="ho20"></a>[HO20](HO20-Every-Container-Of-The-Host-Fits-The-Machine.md) | - | - | The forge's and runner's quadlets, the runner's job containers and the VM pool bounded to fit a host of any size, porelo-project's [PJ68](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj68) for porelo-host. |
 
 ## Finished
 

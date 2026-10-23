@@ -1,6 +1,8 @@
 # HO20 — Every Container Of The Host Fits The Machine
 
-**Status:** Idea.
+**Status:** Accepted.
+**Size:** M - two quadlets, the runner's job options and a check in the pool's role, each read from what the
+role writes. Built before release 0.6's sprint 4, the host's local forge.
 
 **What must be true.** Every container and VM the collection starts on a host is bounded so that it runs on a host
 of any size, from a small one to 32 cores and more: none of them reaches podman's default `pids_limit` because a pool

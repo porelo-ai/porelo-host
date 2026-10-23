@@ -17,8 +17,10 @@ its digest, so `host up` can take exactly that tarball and refuse any other befo
   `SHA256SUMS` written beside it, both attached to the GitHub release; `contents: write` in that job alone, every
   action pinned by commit.
 - **A tag whose version is not `galaxy.yml`'s** stops the workflow before anything is built, naming both.
-- **porelo-frontend's part** is its own issue: `host up` pins the digest of the release it is built against, refuses
-  a tarball that does not match, and checks it again on the host before `ansible-galaxy collection install`.
+- **porelo-frontend's part** is its own issue, porelo-frontend
+  [F137](https://github.com/porelo-ai/porelo-frontend/blob/main/issues/README.md#f137), which this one blocks: `host up`
+  brings the matching collection or fetches it from this repository's release, pins its digest, refuses a tarball that
+  does not match, and checks it again on the host before `ansible-galaxy collection install`.
 - **`doc/decisions.md`'s accepted risk for CVE-2026-89091** gains, once this is built, that a release names the
   tarball's digest and `host up` checks it.
 - **Red first:** the workflow's version check run against a tag that does not match must stop, naming both versions.
