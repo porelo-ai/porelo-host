@@ -1,6 +1,6 @@
 # HO02 — Porelo's Own Commands Called, Never Redone
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** L - one role here, but it rests on a contract with `porelo` that does not exist yet, and `up` is cut in two
 by a step the person takes by hand.
 
