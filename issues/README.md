@@ -36,6 +36,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho18"></a>[HO18](HO18-A-Failed-Loop-Says-Why.md) | - | - | A failed loop's JSON line carries its failing item's own words, as a single task's does, `no_log` still holding. |
 | <a id="ho17"></a>[HO17](HO17-The-Forges-CA-In-Porelos-Account.md) | XS | - | Role `porelo`: the host's forge CA in `~/.config/porelo/ca-certificates.pem` of Porelo's account where the forge runs, owner-only, so a task reaches the forge's API through the broker; `down` takes it out again. |
 
 ## Idea
