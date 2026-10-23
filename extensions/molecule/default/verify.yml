@@ -7,9 +7,57 @@
   vars:
     verify_version: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_VERSION') }}"
     verify_account: porelo-test
+    verify_setup_script: "{{ (lookup('ansible.builtin.file', playbook_dir
+      ~ '/../../../roles/porelo/defaults/main.yml') | from_yaml).porelo_setup_script }}"
     verify_drive: /srv/porelo-host/drive
     verify_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
   tasks:
+    - name: Read the account's id for the person's steps
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ verify_account }}"
+
+    - name: Install the stub explicitly as the person does
+      ansible.builtin.command:
+        argv: [sh, "{{ verify_setup_script }}", --user, "{{ verify_account }}",
+               --distribution, snapshots, --with, porelo-agent-stub]
+      changed_when: true
+
+    - name: Sign the stub's provider in, as the person's step does
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail && printf 'converge-not-a-key\n' | XDG_RUNTIME_DIR=/run/user/$(id -u)
+          porelo vault put anthropic
+        executable: /bin/bash
+      become: true
+      become_user: "{{ verify_account }}"
+      changed_when: true
+      no_log: true
+
+    - name: Start the task by hand as the account
+      ansible.builtin.command:
+        cmd: porelo task start converge-1 -p converge -r code --agent stub --detach --no-input
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      changed_when: true
+
+    - name: Read the task after the person's start
+      ansible.builtin.command:
+        cmd: porelo task status porelo-converge-converge-1 --json
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      register: verify_person_task
+      changed_when: false
+
+    - name: Assert the task started by hand is running
+      ansible.builtin.assert:
+        that: (verify_person_task.stdout | from_json).running
+        fail_msg: "asked for the task running after the person's start, got {{ verify_person_task.stdout }}"
+
     - name: Read which collections the host has
       ansible.builtin.command:
         cmd: ansible-galaxy collection list porelo.host --format json
@@ -559,7 +607,7 @@
           asked vault list for converge-key, got '{{ verify_vault_restored.stdout }}'
 
     # A machine file whose signature does not check stops up with Porelo's refusal, and starts no task.
-    - name: Stop the machine file's task before testing a refused signature
+    - name: Stop the task started by hand before testing a refused signature
       ansible.builtin.command:
         cmd: porelo task stop porelo-converge-converge-1
       become: true
@@ -677,7 +725,7 @@
       changed_when: >-
         verify_restored_up.stdout is search('"state": "changed"')
 
-    - name: Ask Porelo whether the task runs again after restoring the machine file
+    - name: Ask Porelo whether up left the task stopped after restoring the machine file
       ansible.builtin.command:
         cmd: porelo task status porelo-converge-converge-1 --json
       become: true
@@ -687,15 +735,24 @@
       register: verify_restored_task
       changed_when: false
 
-    - name: Assert up after restoring the machine file ended 0 and started the task again
+    - name: Assert up after restoring the machine file ended 0 and left the task stopped
       ansible.builtin.assert:
         that:
           - verify_restored_up.rc == 0
-          - (verify_restored_task.stdout | from_json).running
+          - not (verify_restored_task.stdout | from_json).running
         fail_msg: >-
-          asked for up rc 0 and porelo-converge-converge-1 running;
+          asked for up rc 0 and porelo-converge-converge-1 stopped;
           got rc {{ verify_restored_up.rc }} ({{ verify_restored_up.stdout }}),
           task {{ verify_restored_task.stdout }}
+
+    - name: Start the task again by hand after up left it stopped
+      ansible.builtin.command:
+        cmd: porelo task start converge-1 -p converge -r code --agent stub --detach --no-input
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      changed_when: true
 
     # The forge role: the repository migrated from the stand-in for the central forge, with its push mirror back.
     - name: Ask the forge for the migrated repository and its push mirrors
@@ -1077,7 +1134,7 @@
         verify_follows: "{{ (verify_project.results[0].stdout | from_json).follows
           | selectattr('name', 'equalto', 'converge') | list }}"
 
-    - name: Ask Porelo for the machine file's task, and which agents are signed in
+    - name: Ask Porelo for the task started by hand, and which agents are signed in
       ansible.builtin.command:
         cmd: "{{ item }}"
       loop: [porelo task status porelo-converge-converge-1 --json, porelo agents --json]
@@ -1088,7 +1145,7 @@
       register: verify_tasks
       changed_when: false
 
-    - name: Assert the machine file's task runs on its repository, with the stub signed in
+    - name: Assert the task started by hand runs on its repository, with the stub signed in
       ansible.builtin.assert:
         that:
           - verify_task.running

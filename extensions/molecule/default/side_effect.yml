@@ -9,6 +9,46 @@
     side_effect_drive: /srv/porelo-host/drive
     side_effect_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
   tasks:
+    - name: Read the account's id before down
+      ansible.builtin.getent:
+        database: passwd
+        key: porelo-test
+
+    - name: Read whether verify left the task running
+      ansible.builtin.command:
+        cmd: porelo task status porelo-converge-converge-1 --json
+      become: true
+      become_user: porelo-test
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd']['porelo-test'][1] }}"
+      register: side_effect_before_task
+      changed_when: false
+
+    - name: Start the task by hand if verify left it stopped
+      ansible.builtin.command:
+        cmd: porelo task start converge-1 -p converge -r code --agent stub --detach --no-input
+      become: true
+      become_user: porelo-test
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd']['porelo-test'][1] }}"
+      when: not (side_effect_before_task.stdout | from_json).running
+      changed_when: true
+
+    - name: Read the task before down to check the shutdown guard has a running task
+      ansible.builtin.command:
+        cmd: porelo task status porelo-converge-converge-1 --json
+      become: true
+      become_user: porelo-test
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd']['porelo-test'][1] }}"
+      register: side_effect_running_task
+      changed_when: false
+
+    - name: Assert the task started by hand is running before down
+      ansible.builtin.assert:
+        that: (side_effect_running_task.stdout | from_json).running
+        fail_msg: "asked for a running task before down, got {{ side_effect_running_task.stdout }}"
+
     # The person's token for the central forge, kept aside before down unmounts the drive, to search what down leaves.
     - name: Keep the stand-in's token aside, root's alone, to search the forge's accounts for it after down
       ansible.builtin.copy:
@@ -39,6 +79,23 @@
       register: side_effect_unsynced
       changed_when: true
       failed_when: false
+
+    - name: Read every running container after down with the unsynced drive
+      ansible.builtin.command:
+        argv: [podman, ps, --format, "{% raw %}{{.Names}}{% endraw %}"]
+      become: true
+      become_user: porelo-test
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd']['porelo-test'][1] }}"
+      register: side_effect_unsynced_containers
+      changed_when: false
+
+    - name: Assert down stopped every container before it reached the unsynced drive
+      ansible.builtin.assert:
+        that: side_effect_unsynced_containers.stdout_lines | length == 0
+        fail_msg: >-
+          asked for no running container after down, got {{ side_effect_unsynced_containers.stdout_lines }};
+          down rc {{ side_effect_unsynced.rc }}: {{ side_effect_unsynced.stdout }}
 
     - name: Read whether the drive is still mounted after it
       ansible.builtin.command:
@@ -71,8 +128,31 @@
         ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
         LC_ALL: C.UTF-8
       register: side_effect_down
+      failed_when: false
       changed_when: >-
         side_effect_down.stdout is search('"state": "changed"')
+
+    - name: Read every running container of the account after down
+      ansible.builtin.command:
+        argv: [podman, ps, --format, "{% raw %}{{.Names}}{% endraw %}"]
+      become: true
+      become_user: porelo-test
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd']['porelo-test'][1] }}"
+      register: side_effect_running_containers
+      changed_when: false
+
+    - name: Assert down left no running container of the account
+      ansible.builtin.assert:
+        that: side_effect_running_containers.stdout_lines | length == 0
+        fail_msg: >-
+          asked for no running container after down, got {{ side_effect_running_containers.stdout_lines }};
+          down rc {{ side_effect_down.rc }}: {{ side_effect_down.stdout }}
+
+    - name: Assert down succeeded
+      ansible.builtin.assert:
+        that: side_effect_down.rc == 0
+        fail_msg: "asked for down rc 0, got {{ side_effect_down.rc }}: {{ side_effect_down.stdout }}"
 
     - name: Read whether the drive's folder is still mounted
       ansible.builtin.command:
@@ -131,7 +211,7 @@
         that: side_effect_vault.rc == 4
         fail_msg: "after down, porelo vault status gave {{ side_effect_vault.rc }}: {{ side_effect_vault.stdout }}"
 
-    - name: Ask Porelo whether the machine file's task still runs
+    - name: Ask Porelo whether the task started by hand still runs
       ansible.builtin.command:
         cmd: porelo task status porelo-converge-converge-1 --json
       become: true

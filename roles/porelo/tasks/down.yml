@@ -8,6 +8,11 @@
     key: "{{ porelo_account }}"
     fail_key: false
 
+- name: down | Read whether Porelo is installed
+  ansible.builtin.stat:
+    path: /usr/bin/porelo
+  register: __porelo_binary
+
 - name: down | Ask Porelo whether the account has a vault
   ansible.builtin.command:
     cmd: porelo vault status
@@ -20,43 +25,37 @@
   check_mode: false
   when: ansible_facts['getent_passwd'][porelo_account] is not none
 
-# vault clear refuses past a running task that holds a token from the vault, so the machine file's tasks stop first;
-# a task the person started by hand still stops it, named by Porelo. Without the machine file there is nothing of up's.
-- name: down | Ask Porelo for the machine file's tasks
-  ansible.builtin.command:
-    cmd: porelo project inventory --machine-file {{ porelo_machine_file }}
-  become: true
-  become_user: "{{ porelo_account }}"
-  environment: "{{ __porelo_user_environment }}"
-  register: __porelo_inventory
-  changed_when: false
-  failed_when: __porelo_inventory.rc not in [0, 65, 66]
-  check_mode: false
-  when: __porelo_vault.rc | default(-1) in [0, 3]
+- name: down | Stop on an unexpected vault status where Porelo is installed
+  ansible.builtin.assert:
+    that: __porelo_vault.rc in [0, 3, 4]
+    fail_msg: "porelo vault status returned {{ __porelo_vault.rc }}: {{ __porelo_vault.stderr }}"
+    quiet: true
+  when:
+    - __porelo_binary.stat.exists
+    - ansible_facts['getent_passwd'][porelo_account] is not none
 
-- name: down | Ask Porelo whether each of them runs
-  ansible.builtin.command:
-    argv: [porelo, task, status, "{{ item.container }}", --json]
-  loop: "{{ __porelo_host.porelo_tasks | default([]) if __porelo_inventory.rc | default(-1) == 0 else [] }}"
-  loop_control:
-    label: "{{ item.name }}"
-  become: true
-  become_user: "{{ porelo_account }}"
-  environment: "{{ __porelo_user_environment }}"
-  register: __porelo_task_status
-  changed_when: false
-  check_mode: false
+- name: down | Read whether the account has a runtime directory
+  ansible.builtin.stat:
+    path: "/run/user/{{ ansible_facts['getent_passwd'][porelo_account][1] }}"
+  register: __porelo_runtime
+  when: ansible_facts['getent_passwd'][porelo_account] is not none
 
-- name: down | Stop each task that runs; its container and workspace stay
+# A running task can hold a vault token, so every task must stop before its vault is cleared.
+- name: down | Stop every running task of the account; its containers and workspaces stay
   ansible.builtin.command:
-    argv: [porelo, task, stop, "{{ item }}"]
-  loop: "{{ __porelo_tasks_running if __porelo_task_status.results is defined else [] }}"
+    argv: [porelo, task, stop, --all]
   become: true
   become_user: "{{ porelo_account }}"
   environment: "{{ __porelo_user_environment }}"
+  register: __porelo_stop_all
   changed_when: true
+  failed_when: __porelo_stop_all.rc != 0
+  # With no linger yet no task can have run, and rootless podman needs the runtime directory.
+  when: >-
+    __porelo_vault.rc | default(-1) in [0, 3]
+    or (__porelo_vault.rc | default(-1) == 4 and (__porelo_runtime.stat.isdir | default(false)))
 
-# 0 open, 3 shut; a shut vault is cleared unread, since no one at down opens it and its keys are the drive's.
+# A shut vault is cleared unread, since no one at down opens it and its keys are the drive's.
 - name: down | Clear the vault, its cached passphrase and its shares
   ansible.builtin.command:
     argv: "{{ ['porelo', 'vault', 'clear', '--yes'] + (['--force'] if __porelo_vault.rc == 3 else []) }}"

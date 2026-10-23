@@ -28,9 +28,9 @@
 
 - name: project | Stop on an inventory of a version this role does not know
   ansible.builtin.assert:
-    that: __porelo_second.all.vars.porelo_inventory_version == 1
+    that: __porelo_second.all.vars.porelo_inventory_version == 2
     fail_msg: >-
-      Porelo wrote inventory version {{ __porelo_second.all.vars.porelo_inventory_version }}, this role reads 1
+      Porelo wrote inventory version {{ __porelo_second.all.vars.porelo_inventory_version }}, this role reads 2
     quiet: true
 
 - name: project | Ask Porelo which entries the vault holds, by name

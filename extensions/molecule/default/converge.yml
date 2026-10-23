@@ -8,6 +8,10 @@
   vars:
     converge_tarball: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_TARBALL') }}"
     converge_account: porelo-test
+    converge_setup_script: "{{ (lookup('ansible.builtin.file', playbook_dir
+      ~ '/../../../roles/porelo/defaults/main.yml') | from_yaml).porelo_setup_script }}"
+    converge_repository_url: "{{ (lookup('ansible.builtin.file', playbook_dir
+      ~ '/../../../roles/porelo/defaults/main.yml') | from_yaml).porelo_repository_url }}"
     converge_packages: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_PACKAGES') }}"
     converge_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
   tasks:
@@ -233,8 +237,6 @@
               echo '  name: converge'
               echo "  url: \"$HOME/converge-project\""
               echo "  signed_by: \"$signer\""
-              echo 'tasks:'
-              echo '  - { name: converge-1, repository: code, agent: stub, package: porelo-agent-stub }'
               echo 'keys:'
               echo '  - { name: converge-key, path: keys/converge-key }'
           } > "$drive/machine.yml"
@@ -265,54 +267,119 @@
       become: true
       become_user: "{{ converge_account }}"
 
-    # Once, before the agent's sign-in: the vault is open but holds no credential for the stub's provider.
-    - name: Read whether the up before the agent's sign-in ran
-      ansible.builtin.stat:
-        path: /root/porelo-host-sign-in-up.lines
-      register: converge_sign_in_seen
-
-    - name: Run up before the agent's sign-in
-      when: not converge_sign_in_seen.stat.exists
+    - name: Run up on the host itself, as host up does, its steps as JSON lines
       ansible.builtin.command:
         cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.up
       environment:
         ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
         LC_ALL: C.UTF-8
-      register: converge_sign_in_up
-      changed_when: true
-      failed_when: false
+      register: converge_up
+      changed_when: >-
+        converge_up.stdout is search('"state": "changed"')
 
-    - name: Assert that up stopped for the stub's sign-in alone, and started no task
-      ansible.builtin.assert:
-        that:
-          - converge_sign_in_up.rc == 2
-          - converge_sign_in_waiting | length == 1
-          - converge_sign_in_waiting[0].needs == ['agent-login:stub']
-          - converge_sign_in_failed | length == 0
-        fail_msg: "that up gave rc {{ converge_sign_in_up.rc }} and these lines: {{ converge_sign_in_up.stdout }}"
-      vars:
-        converge_sign_in_lines: "{{ converge_sign_in_up.stdout_lines | select | map('from_json') | list }}"
-        converge_sign_in_waiting: "{{ converge_sign_in_lines | selectattr('state', 'equalto', 'waiting') | list }}"
-        converge_sign_in_failed: "{{ converge_sign_in_lines | selectattr('state', 'equalto', 'failed') | list }}"
-      when: not converge_sign_in_seen.stat.exists
-
-    # The container's name as the second play's inventory gives it: porelo-<project>-<task>.
-    - name: Ask Porelo whether the task runs before the sign-in
+    - name: Read every container of the account after up
       ansible.builtin.shell:
-        cmd: XDG_RUNTIME_DIR=/run/user/$(id -u) porelo task status porelo-converge-converge-1 --json
+        cmd: XDG_RUNTIME_DIR=/run/user/$(id -u) podman ps --all --format {% raw %}'{{.Names}}'{% endraw %}
       become: true
       become_user: "{{ converge_account }}"
-      register: converge_before_sign_in
+      register: converge_containers_after_up
       changed_when: false
-      when: not converge_sign_in_seen.stat.exists
 
-    - name: Assert no task was started before the sign-in
+    - name: Assert no task was started after up
       ansible.builtin.assert:
-        that: (converge_before_sign_in.stdout | from_json).state == 'absent'
-        fail_msg: "the task is there before the sign-in: {{ converge_before_sign_in.stdout }}"
-      when: not converge_sign_in_seen.stat.exists
+        that: converge_containers_after_up.stdout_lines | length == 0
+        fail_msg: "containers are there after up: {{ converge_containers_after_up.stdout_lines }}"
 
-    - name: Ask dpkg whether the Matrix transport and homeserver packages are installed before the sign-in
+    - name: Read the offered packages after up
+      ansible.builtin.command:
+        argv: [sh, "{{ converge_setup_script }}", --user, "{{ converge_account }}",
+               --distribution, snapshots, --list, --json]
+      register: converge_offered
+      changed_when: false
+
+    - name: Ask dpkg whether every offered agent is installed
+      ansible.builtin.command:
+        argv: "{{ ['dpkg-query', '-W', '-f', '${Package} ${db:Status-Status}\n'] + converge_agent_names }}"
+      register: converge_agents_installed
+      changed_when: false
+      failed_when: converge_agents_installed.rc not in [0, 1]
+      vars:
+        converge_agent_names: "{{ (converge_offered.stdout | from_json).packages
+          | selectattr('kind', 'equalto', 'agent') | map(attribute='name') | list }}"
+      when: converge_agent_names | length > 0
+
+    - name: Assert every offered agent is installed and the catalogue has agents
+      ansible.builtin.assert:
+        that:
+          - converge_agents | length > 0
+          - converge_agents_installed.stdout_lines | default([]) | sort
+            == converge_agents | map('regex_replace', '$', ' installed') | sort
+        fail_msg: >-
+          asked for a nonempty list of installed agents {{ converge_agents }},
+          got {{ converge_agents_installed.stdout_lines | default([]) }}
+      vars:
+        converge_agents: "{{ (converge_offered.stdout | from_json).packages
+          | selectattr('kind', 'equalto', 'agent') | map(attribute='name') | list }}"
+
+    - name: Read every provider of porelo-agent from apt's reverse provides
+      ansible.builtin.command:
+        argv: [apt-cache, showpkg, porelo-agent]
+      environment:
+        LC_ALL: C
+      register: converge_agent_providers
+      changed_when: false
+
+    - name: Assert the offered agents are exactly apt's reverse providers
+      ansible.builtin.assert:
+        that:
+          - converge_providers | length > 0
+          - converge_providers | reject('match', '^[a-z0-9][a-z0-9+.-]+$') | list | length == 0
+          - converge_providers | sort == (converge_offered.stdout | from_json).packages
+            | selectattr('kind', 'equalto', 'agent') | map(attribute='name') | unique | sort
+        fail_msg: >-
+          asked for the catalogue's agents to equal apt's reverse providers;
+          got apt {{ converge_agent_providers.stdout }}, catalogue {{ converge_offered.stdout }}
+      vars:
+        converge_providers: "{{ converge_agent_providers.stdout.split('Reverse Provides:')[-1].splitlines()
+          | map('trim') | select | map('split') | map('first') | unique | list }}"
+
+    # A foreign provider would be installed as root, so check the source of its candidate version too.
+    - name: Read each agent provider's candidate origin
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          apt-cache policy {{ item | quote }} | awk '
+              $1 == "Candidate:" { candidate=$2 }
+              $1 == "***" { selected=($2 == candidate); next }
+              NF == 2 && $2 ~ /^[0-9]+$/ { selected=($1 == candidate); next }
+              selected && $1 ~ /^[0-9]+$/ && NF >= 3 { print $2 }
+          '
+        executable: /bin/bash
+      loop: "{{ converge_agent_providers.stdout.split('Reverse Provides:')[-1].splitlines()
+        | map('trim') | select | map('split') | map('first') | unique | list }}"
+      environment:
+        LC_ALL: C
+      register: converge_agent_origins
+      changed_when: false
+
+    - name: Assert each agent candidate comes only from Porelo's source
+      ansible.builtin.assert:
+        that: item.stdout_lines | unique | list == [converge_repository_url]
+        fail_msg: >-
+          asked for {{ item.item }} candidate origin {{ converge_repository_url }},
+          got {{ item.stdout_lines | default([]) }} ({{ item.stderr }})
+      loop: "{{ converge_agent_origins.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Print the installation time measured around the complete successful up
+      ansible.builtin.debug:
+        msg: >-
+          installation time measured around the complete up, including its other steps:
+          {{ converge_up.delta }} ({{ converge_up.start }} to {{ converge_up.end }})
+        verbosity: 0
+
+    - name: Ask dpkg whether the Matrix transport and homeserver packages are installed after up
       ansible.builtin.command:
         argv:
           - dpkg-query
@@ -325,9 +392,8 @@
       register: converge_matrix_packages
       changed_when: false
       failed_when: false
-      when: not converge_sign_in_seen.stat.exists
 
-    - name: Ask systemd whether the homeserver unit is enabled or active before the sign-in
+    - name: Ask systemd whether the homeserver unit is enabled or active after up
       ansible.builtin.shell:
         cmd: >-
           XDG_RUNTIME_DIR=/run/user/$(id -u)
@@ -335,13 +401,12 @@
       loop: [is-enabled, is-active]
       become: true
       become_user: "{{ converge_account }}"
-      register: converge_homeserver_before_sign_in
+      register: converge_homeserver_after_up
       changed_when: false
       failed_when: false
-      when: not converge_sign_in_seen.stat.exists
 
     - name: >-
-        Assert both Matrix packages are installed and the homeserver unit is disabled and inactive before the sign-in
+        Assert both Matrix packages are installed and the homeserver unit is disabled and inactive after up
       ansible.builtin.assert:
         that:
           - converge_matrix_packages.rc == 0
@@ -349,52 +414,18 @@
               'porelo-matrix-homeserver install ok installed',
               'porelo-message-transport-matrix install ok installed',
             ]
-          - converge_homeserver_before_sign_in.results[0].stdout == 'disabled'
-          - converge_homeserver_before_sign_in.results[1].stdout == 'inactive'
+          - converge_homeserver_after_up.results[0].stdout == 'disabled'
+          - converge_homeserver_after_up.results[1].stdout == 'inactive'
         fail_msg: >-
           asked dpkg for porelo-message-transport-matrix and porelo-matrix-homeserver 'install ok installed'
           and systemctl --user for disabled and inactive, got dpkg rc {{ converge_matrix_packages.rc }}
           {{ converge_matrix_packages.stdout_lines }} ({{ converge_matrix_packages.stderr }}),
-          is-enabled '{{ converge_homeserver_before_sign_in.results[0].stdout }}'
-          ({{ converge_homeserver_before_sign_in.results[0].stderr }}),
-          is-active '{{ converge_homeserver_before_sign_in.results[1].stdout }}'
-          ({{ converge_homeserver_before_sign_in.results[1].stderr }})
-      when: not converge_sign_in_seen.stat.exists
+          is-enabled '{{ converge_homeserver_after_up.results[0].stdout }}'
+          ({{ converge_homeserver_after_up.results[0].stderr }}),
+          is-active '{{ converge_homeserver_after_up.results[1].stdout }}'
+          ({{ converge_homeserver_after_up.results[1].stderr }})
 
-    - name: Keep that up's lines, so it runs once
-      ansible.builtin.copy:
-        dest: /root/porelo-host-sign-in-up.lines
-        content: "{{ converge_sign_in_up.stdout }}\n"
-        owner: root
-        group: root
-        mode: "0600"
-      when: not converge_sign_in_seen.stat.exists
-
-    # The person's sign-in, as porelo-frontend gives it, stands in by a key the stub's provider would refuse: whether
-    # it is signed in is what the vault holds, not whether the provider takes it.
-    - name: Sign the stub's provider in, as the person's step does
-      ansible.builtin.shell:
-        cmd: >-
-          set -o pipefail && printf 'converge-not-a-key\n' | XDG_RUNTIME_DIR=/run/user/$(id -u)
-          porelo vault put anthropic
-        executable: /bin/bash
-      become: true
-      become_user: "{{ converge_account }}"
-      changed_when: true
-      when: not converge_sign_in_seen.stat.exists
-
-    - name: Run up on the host itself, as host up does, its steps as JSON lines
-      ansible.builtin.command:
-        cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.up
-      environment:
-        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
-        LC_ALL: C.UTF-8
-      register: converge_up
-      changed_when: >-
-        converge_up.stdout is search('"state": "changed"')
-
-    # Stands in for the central forge and the person's token for it: a user of the host's own forge with a public
-    # repository, its token in the file on the drive where the person puts theirs. Made once, after the forge is up.
+    # The central forge's stand-in needs the host's forge to be up first.
     - name: Make the stand-in for the central forge, its repository and the person's token for it
       ansible.builtin.shell:
         cmd: |

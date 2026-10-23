@@ -23,6 +23,23 @@ when a task needs it; `down` stops every running task of the account before the 
 - **Red first**: side_effect against today's `down`, which stops only the machine file's tasks, with a task started by
   hand left running.
 
+## Built
+
+- The role reads inventory version 2 and installs every missing agent of the setup script's `--list --json`,
+  stopping when it lists none, with the project's transport and homeserver packages; it keeps the stop unless the
+  vault reads open, starts no task and has no sign-in stop. `down` stops on a `vault status` other than 0, 3 or 4
+  where Porelo is installed, runs `porelo task stop --all` where a task can have run, and only then clears the vault.
+  The scenario checks, after `up`, no container of the account, every catalogue agent installed by dpkg and the
+  list not empty, each provider's candidate from Porelo's source, and the homeserver still disabled; verify installs
+  the stub, signs it in and starts its task by hand; after `down`, no running container of the account.
+- Green on the test VM with porelo [B258](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b258)'s
+  packages handed over (`3ff8994e`, `0.5.1~snapshot.934+local`), 2026-10-23 11:12Z-11:29Z, all five stages, idempotence `changed=0`. The first `up` took 3 min 30 s with every agent of the
+  catalogue installed, the second 55 s, so installing them costs about 2 min 35 s on a new host (inferred from the two
+  runs). Seen red first: with `down`'s stop of every task skipped, side_effect found a running container of the
+  account after `down` (11:30Z-11:47Z).
+- **Declined:** a test of `porelo task stop --all` ending 70: no container can be made to survive it honestly in the
+  scenario, and `vault clear` refusing past a running task holding a token is the guard behind it.
+
 ## Acceptance
 
 - After `up` on the test VM: every agent package of Porelo's repository is installed, no task exists, and no waiting

@@ -58,8 +58,7 @@
         name: porelo.host.vm_pool
       when: porelo_host_vm_pool is defined
 
-    # Stops again, with the same waiting line, while an agent the tasks name is not signed in.
-    - name: Install the tasks' agents and start the tasks, through Porelo's own commands
+    - name: Install every offered agent and the project's transports, through Porelo's setup script
       ansible.builtin.include_role:
         name: porelo.host.porelo
         tasks_from: tasks

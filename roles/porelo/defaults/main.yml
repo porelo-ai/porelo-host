@@ -15,6 +15,6 @@ porelo_repository_url: https://fuinorg.jfrog.io/artifactory/porelo-dist-deb
 # Porelo's setup script, as the package porelo ships it; it makes the account with its linger and subordinate ids.
 porelo_setup_script: /usr/share/porelo/setup/porelo-setup.sh
 
-# The person's machine file on their drive, which names the project, its signing key, the tasks and the keys; Porelo
+# The person's machine file on their drive, which names the project, its signing key and the keys; Porelo
 # reads it, never this role (porelo's doc/hosts.md).
 porelo_machine_file: /srv/porelo-host/drive/porelo-host/machine.yml

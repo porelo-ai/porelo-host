@@ -3,14 +3,16 @@
 Porelo on the host, everything through Porelo's own commands: Porelo installed from its repository by its pinned key and
 its setup script run for the account (`tasks_from: install`), `porelo setup` and `porelo vault status` naming
 `vault-new` or `vault` in `porelo_host_needs` while the vault is missing or shut, the machine file's keys deposited from
-the drive into the vault and its project followed by its signature (`tasks_from: project`), and the packages the tasks
-need installed, a stop with `agent-login:<agent>` for each agent whose sign-in the vault lacks, and the tasks started
-(`tasks_from: tasks`). Where the project names transports, the role installs their packages and, for `matrix`,
-`porelo-matrix-homeserver` through Porelo's setup script, enabling nothing: the transport's `setup` enables and starts
-the homeserver at the first task start.
+the drive into the vault and its project followed by its signature (`tasks_from: project`), and every agent offered by
+Porelo's repository installed (`tasks_from: tasks`). The machine file holds only `project` and `keys`; the role reads
+Porelo's inventory version 2. `up` starts no task and does not stop for an agent's sign-in: the person starts tasks
+and signs an agent in when needed. Where the project names transports, the role installs their packages and, for
+`matrix`, `porelo-matrix-homeserver` through Porelo's setup script, enabling nothing: the transport's `setup` enables
+and starts the homeserver at the first task start.
 
-At `down` (`tasks_from: down`), the machine file's running tasks are stopped, keeping their containers and workspaces,
-and the vault is cleared (`porelo vault clear --yes`).
+At `down` (`tasks_from: down`), `porelo task stop --all` stops every running task of the account, keeping their
+containers and workspaces, before the vault is cleared (`porelo vault clear --yes`). If a task survives, `down` fails
+with Porelo's words and leaves the vault in place.
 
 ## Requirements
 

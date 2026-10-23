@@ -6,15 +6,11 @@ __porelo_host: "{{ __porelo_second.all.hosts.localhost }}"
 __porelo_followed: "{{ (__porelo_following.stdout | from_json).follows
   | selectattr('name', 'equalto', __porelo_host.porelo_project.name) | list }}"
 __porelo_transports: "{{ __porelo_host.porelo_transports | default([]) }}"
-__porelo_task_packages: "{{ ((__porelo_host.porelo_tasks | default([]) | selectattr('agent_package', 'defined')
-  | map(attribute='agent_package') | list) + (__porelo_transports | map(attribute='package') | list)
+__porelo_task_packages: "{{ (((__porelo_setup_packages.stdout | from_json).packages
+  | selectattr('kind', 'equalto', 'agent') | selectattr('installed', 'equalto', false)
+  | map(attribute='name') | list) + (__porelo_transports | map(attribute='package') | list)
   + (['porelo-matrix-homeserver'] if 'matrix' in (__porelo_transports | map(attribute='scheme')) else []))
   | unique | list }}"
 # dpkg-query prints "<package> installed" for an installed one and nothing on stdout for one it does not know.
 __porelo_task_packages_missing: "{{ __porelo_task_packages | difference(__porelo_task_packages_installed.stdout_lines
   | default([]) | select('match', '^\\S+ installed$') | map('split') | map('first') | list) }}"
-__porelo_task_agents: "{{ __porelo_host.porelo_tasks | default([]) | selectattr('agent', 'defined')
-  | map(attribute='agent') | unique | list }}"
-__porelo_agents_known: "{{ (__porelo_agents.stdout | from_json).agents }}"
-__porelo_tasks_running: "{{ __porelo_task_status.results | map(attribute='stdout') | map('from_json')
-  | selectattr('running') | map(attribute='name') | list }}"

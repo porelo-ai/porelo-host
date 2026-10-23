@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `up` installs every agent Porelo's repository offers and starts no task, with no stop for a sign-in; `down` stops
+  every running task of the account before clearing the vault.
 - `porelo.host.lines`: a failed step's line carries the command's own words, a loop's by each failed item, cut to
   their tail; a task with `no_log` stays hidden.
 
@@ -25,9 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   libvirt's groups.
 - The role `porelo.host.porelo`, everything through Porelo's own commands: Porelo installed by its pinned key with
   its setup script, `porelo setup`, a stop while the vault is missing or shut, the machine file's keys put into the
-  vault and its project followed by its signature, the tasks' agents installed, a stop with `agent-login:<agent>`
-  for each agent whose sign-in the vault lacks, and the tasks started; at `down`, the tasks stopped and the vault
-  cleared.
+  vault and its project followed by its signature, every offered agent installed without starting a task or stopping
+  for a sign-in; at `down`, every running task of the account stopped and the vault cleared.
 - The role `porelo.host.forge`, where the host setting `porelo_host_forge` asks for it: Forgejo with its registry and
   its runner in rootless podman under accounts of their own, HTTPS on the VPN's address alone with a CA made on the
   host, the repositories `porelo_host_forge_repositories` names migrated once with push mirrors back, the person's

@@ -15,6 +15,7 @@ says why.
 | Tresorit's installer | Run only when signed under a pinned CA, whose fingerprint was read from the installer itself. | [Why](#tresorits-installer) |
 | Ubuntu's `ansible-core` and CVE-2026-89091 | An accepted risk: the one tarball the host installs is the collection's own. | [Why](#ubuntus-ansible-core-and-cve-2026-89091) |
 | The changelog | `CHANGELOG.md`, Keep a Changelog, as in every Porelo repository; no `antsibull-changelog`. | [Why](#the-changelog) |
+| An agent is installed from Porelo's catalogue as it is | Every package named as kind `agent` is installed; the catalogue reads every apt source on the host. | [Why](#an-agent-is-installed-from-porelos-catalogue-as-it-is) |
 
 ## The Ansible tools
 
@@ -103,3 +104,16 @@ Galaxy, or Ubuntu shipping a fixed `ansible-core`, which the host then takes as 
 
 One form of changelog across the repositories: entries go under `[Unreleased]` in the same commit as the change.
 `antsibull-changelog` would be a second form beside it.
+
+## An agent is installed from Porelo's catalogue as it is
+
+**What holds.** The role installs every package the setup script's catalogue names as kind `agent`. The catalogue
+reads every apt source on the host.
+
+**The exposure.** A package in another source on the host that declares `Provides: porelo-agent` is included.
+
+**Why it stays.** On a host, porelo-host itself writes the sources: Ubuntu's archive and Porelo's pinned one.
+Predicting apt's choice from `apt-cache policy` was shown unsound.
+
+**What would change the answer.** Porelo's catalogue binding the install to its own source, after which the role
+needs no change.
