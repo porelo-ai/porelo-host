@@ -1,6 +1,6 @@
 # HO19 — The Machine Installs Its Agents And Starts No Task
 
-**Status:** Implementing; blocked by porelo [B258](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b258).
+**Status:** Review.
 **Size:** M - the `porelo` role's task part and `down`, and the Molecule scenario's flow from converge to side_effect.
 
 **What must be true.** `up` installs every agent Porelo's repository offers and starts no task, with no stop for an
