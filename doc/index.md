@@ -13,8 +13,8 @@ empty; once the drive is synced and the vault is open, it runs `vpn` (WireGuard 
 by `wg` itself, and nftables leaving only ssh and the VPN on the public interfaces), `porelo`'s project part (keys from
 the drive into the vault, `project follow --signed-by`), `forge` and `vm_pool` where the host settings ask for them,
 and `porelo`'s agents part (every offered agent and the project's transport packages installed, with no task started
-or stop for a sign-in). A second `up` runs both plays from the top and changes only what differs, so resuming is
-idempotence, with no marker file of the playbook's own.
+or stop for a sign-in). A second `up` runs both plays from the top and changes only what differs, read from the
+commands' own exit codes and `--json` output, so resuming is idempotence, with no marker file of the playbook's own.
 
 **`porelo.host.down`, the other way round.** Takes the VM pool and the forge off the host, stops every running task
 of the account with `porelo task stop --all` and clears

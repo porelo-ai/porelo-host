@@ -16,6 +16,7 @@ says why.
 | Ubuntu's `ansible-core` and CVE-2026-89091 | An accepted risk: the one tarball the host installs is the collection's own. | [Why](#ubuntus-ansible-core-and-cve-2026-89091) |
 | The changelog | `CHANGELOG.md`, Keep a Changelog, as in every Porelo repository; no `antsibull-changelog`. | [Why](#the-changelog) |
 | An agent is installed from Porelo's catalogue as it is | Every package named as kind `agent` is installed; the catalogue reads every apt source on the host. | [Why](#an-agent-is-installed-from-porelos-catalogue-as-it-is) |
+| Porelo's setup script | It comes in the `porelo` package from Porelo's apt repository, which the role adds by its pinned fingerprint. | [Why](#porelos-setup-script) |
 
 ## The Ansible tools
 
@@ -117,3 +118,9 @@ Predicting apt's choice from `apt-cache policy` was shown unsound.
 
 **What would change the answer.** Porelo's catalogue binding the install to its own source, after which the role
 needs no change.
+
+## Porelo's setup script
+
+The role adds Porelo's apt repository only once the downloaded signing key has the fingerprint Porelo's
+`getting-started.md` pins, installs `porelo` from it, and runs `/usr/share/porelo/setup/porelo-setup.sh` from that
+package for the account and the extra packages, rather than fetching an unpinned script or keeping a copy here.
