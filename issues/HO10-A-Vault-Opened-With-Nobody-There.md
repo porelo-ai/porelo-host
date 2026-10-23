@@ -1,6 +1,6 @@
 # HO10 — A Vault Opened With Nobody There
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** XS - the playbook only checks that the vault is open and stops if not; opening it is the caller's, through
 Porelo's command.
 
