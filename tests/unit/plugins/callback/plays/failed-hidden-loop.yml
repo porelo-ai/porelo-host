@@ -1,0 +1,11 @@
+---
+- name: Command failure details
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Fail a hidden loop
+        ansible.builtin.shell: "printf 'planted-%s-secret\\n' loop >&2; exit 69"
+        changed_when: false
+        loop: [public, secret]
+        no_log: true

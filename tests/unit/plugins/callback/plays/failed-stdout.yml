@@ -1,0 +1,9 @@
+---
+- name: Command failure details
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Fail with stdout
+        ansible.builtin.shell: "printf 'planted-%s-reason\\n' stdout; exit 1"
+        changed_when: false

@@ -1,0 +1,10 @@
+---
+- name: Command failure details
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Fail many labeled items
+        ansible.builtin.shell: "printf '%02000d' 0 >&2; printf 'planted-%s-reason\\n' tail >&2; exit 69"
+        changed_when: false
+        loop: [one, two, three, four, five, six, seven, eight]

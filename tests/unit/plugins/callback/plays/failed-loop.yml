@@ -1,0 +1,12 @@
+---
+- name: Command failure details
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Fail a labeled item
+        ansible.builtin.shell: "printf 'planted-%s-reason\\n' loop >&2; exit 69"
+        changed_when: false
+        loop: [repository]
+        loop_control:
+            label: 'label-{{ item }}'

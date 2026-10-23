@@ -1,0 +1,9 @@
+---
+- name: Command failure details
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Fail with a long message
+        ansible.builtin.fail:
+            msg: "{{ 'x' * 6000 }}"

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `porelo.host.lines`: a failed step's line carries the command's own words, a loop's by each failed item, cut to
+  their tail; a task with `no_log` stays hidden.
+
 ### Added
 
 - The collection `porelo.host`, built with `ansible-galaxy collection build` into a tarball that holds only what it

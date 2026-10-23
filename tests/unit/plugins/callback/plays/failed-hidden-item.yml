@@ -1,0 +1,15 @@
+---
+- name: Command failure details
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Fail a loop with a hidden item
+        ansible.builtin.shell: |
+            if [ "{{ item }}" = secret ]; then
+                printf 'planted-%s-secret\n' loop >&2
+                exit 69
+            fi
+        changed_when: false
+        loop: [public, secret]
+        no_log: "{{ item == 'secret' }}"

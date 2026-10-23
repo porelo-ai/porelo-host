@@ -92,7 +92,7 @@
   changed_when: __forge_migrated.stdout == 'yes'
   failed_when: false
 
-# A loop's failure says only that an item failed; the person needs Forgejo's own answer for each repository.
+# Collect failures to stop once with every repository's answer named; Ansible already runs every loop item.
 - name: repositories | Stop on a repository Forgejo would not take, with its answer
   ansible.builtin.assert:
     that: __forge_migrated.results | rejectattr('rc', 'equalto', 0) | list | length == 0

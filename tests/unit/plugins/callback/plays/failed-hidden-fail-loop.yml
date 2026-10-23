@@ -1,0 +1,11 @@
+---
+- name: Command failure details
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Fail a hidden module loop
+        ansible.builtin.fail:
+            msg: "{{ 'planted-' ~ 'loop-fail' }}"
+        loop: [secret]
+        no_log: true

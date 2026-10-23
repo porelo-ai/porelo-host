@@ -14,6 +14,13 @@ and read the run from its standard output, one JSON object per line, in place of
 A handler's lines are a task's. A meta task, such as `meta: flush_handlers`, writes no line, since Ansible reports no end
 for it.
 
+A failed step's `msg` carries, after Ansible's words, the command's own words (stderr, else stdout), and for a loop
+each failed item's by its label. Each command's words are cut to their last 1000 characters, with a leading "…"
+when cut. Each loop entry, label and words together, is at most 1000 characters; long labels are shortened and
+words retain their tail with a leading "…". The whole `msg` is at most 4000 characters: a single result keeps the
+command's words and shortens Ansible's message to the space left; a loop counts any omitted items. `no_log` hides
+as before.
+
 A failure a task ignores ends as `ok`, its `msg` beginning with "failed and ignored". A host Ansible cannot reach ends
 the task as `failed`, its `msg` beginning with "unreachable". A task with `no_log` never has its message written:
 Ansible hides it before the callback sees it, and the callback writes "hidden, the task has no_log" where it can

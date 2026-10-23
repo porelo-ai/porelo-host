@@ -1,0 +1,9 @@
+---
+- name: Command failure details
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Fail with long stderr
+        ansible.builtin.shell: "printf '%03000d' 0 >&2; printf 'planted-%s-reason\\n' stderr >&2; exit 1"
+        changed_when: false

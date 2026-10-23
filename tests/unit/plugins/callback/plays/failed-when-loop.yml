@@ -1,0 +1,16 @@
+---
+- name: Command failure details
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Fail only the rejected exit code
+        ansible.builtin.shell: "printf 'planted-%s-reason\\n' conditional >&2; exit {{ item.rc }}"
+        register: answer
+        changed_when: false
+        failed_when: answer.rc not in [0, 1]
+        loop:
+            - {label: accepted-exit-one, rc: 1}
+            - {label: rejected-exit-three, rc: 3}
+        loop_control:
+            label: "{{ item.label }}"

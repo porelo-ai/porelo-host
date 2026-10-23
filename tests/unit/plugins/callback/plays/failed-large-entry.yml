@@ -1,0 +1,12 @@
+---
+- name: Command failure details
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Fail with a huge label and message
+        ansible.builtin.fail:
+            msg: "{{ 'x' * 6000 ~ 'planted-' ~ 'entry-reason' }}"
+        loop: [repository]
+        loop_control:
+            label: "{{ 'label-' ~ 'y' * 6000 }}"

@@ -13,6 +13,7 @@ description:
     a task's; a meta task writes none, since Ansible ends it with no result.
   - A failed task tagged C(porelo_host_waiting) gives C(waiting) with the C(needs) its message names, the stop where
     the person's step comes.
+  - A failed line's C(msg) includes command stderr, else stdout, with failed loop items labeled and output bounded.
   - A task with C(no_log) never has its message written.
 requirements:
   - Set as the stdout callback, C(ANSIBLE_STDOUT_CALLBACK=porelo.host.lines).
@@ -49,10 +50,61 @@ class CallbackModule(CallbackBase):
         self._line(play=self._play, task=result._task.get_name().strip(), state=state, msg=msg)
 
     @staticmethod
-    def _message(result):
-        if result._result.get("_ansible_no_log") or result._task.no_log:
-            return HIDDEN
-        return str(result._result.get("msg", ""))
+    def _words(data):
+        words = str(data.get("stderr") or "").strip() or str(data.get("stdout") or "").strip()
+        return "…" + words[-1000:] if len(words) > 1000 else words
+
+    @staticmethod
+    def _failed(item):
+        # A loop's item result carries no failed key: failed_when's own answer, else its rc or an exception it raised.
+        if "failed_when_result" in item:
+            return bool(item["failed_when_result"])
+        return bool(item.get("failed")) or item.get("rc", 0) != 0 or "exception" in item
+
+    @classmethod
+    def _message(cls, result, prefix=""):
+        data = result._result
+        if result._task.no_log or data.get("_ansible_no_log") or "censored" in data:
+            return prefix + HIDDEN
+        msg = prefix + str(data.get("msg", ""))
+        items = data.get("results")
+        if not isinstance(items, list):
+            words = cls._words(data)
+            if words and (words not in msg or len(msg) > 4000):
+                remaining = 4000 - len(words) - 2
+                if len(msg) > remaining:
+                    msg = msg[: remaining - 1] + "…"
+                return msg + ": " + words
+            return msg if len(msg) <= 4000 else msg[:3999] + "…"
+
+        details = []
+        for item in items:
+            # Hidden items must be handled before failure detection to avoid reading their details.
+            if item.get("_ansible_no_log") or "censored" in item:
+                details.append("an item hidden, it has no_log")
+            elif cls._failed(item):
+                words = cls._words(item) or str(item.get("msg", ""))
+                label = str(item.get("_ansible_item_label", "an item"))
+                if len(label) > 500:
+                    label = label[:499] + "…"
+                remaining = 1000 - len(label) - 2
+                if len(words) > remaining:
+                    words = "…" + words[-(remaining - 1) :]
+                details.append(label + ": " + words)
+        count = len(details)
+        while True:
+            dropped = count - len(details)
+            suffix = [f"and {dropped} more items failed"] if dropped else []
+            tail = "; ".join(details + suffix)
+            message = msg + (": " + tail if tail else "")
+            if len(message) <= 4000:
+                return message
+            if details:
+                details.pop()
+            elif tail:
+                return msg[: 4000 - len(tail) - 4] + "…: " + tail
+            else:
+                return msg[:3999] + "…"
 
     def v2_playbook_on_play_start(self, play):
         self._play = play.get_name().strip()
@@ -74,14 +126,14 @@ class CallbackModule(CallbackBase):
 
     def v2_runner_on_failed(self, result, ignore_errors=False):
         if ignore_errors:
-            self._step(result, "ok", "failed and ignored: " + self._message(result))
+            self._step(result, "ok", self._message(result, "failed and ignored: "))
         elif WAITING_TAG in result._task.tags:
             self._line(state="waiting", needs=self._needs(result))
         else:
             self._step(result, "failed", self._message(result))
 
     def v2_runner_on_unreachable(self, result):
-        self._step(result, "failed", "unreachable: " + self._message(result))
+        self._step(result, "failed", self._message(result, "unreachable: "))
 
     @staticmethod
     def _needs(result):
