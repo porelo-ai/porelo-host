@@ -1,6 +1,6 @@
 # HO18 — A Failed Loop Says Why
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** S - one callback, real-playbook regression tests, and its message contract documentation.
 
 **What must be true.** When a step fails, the line `porelo.host.lines` writes for it carries why, in the failing
