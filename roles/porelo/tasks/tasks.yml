@@ -1,23 +1,25 @@
 ---
-# up's second play, after project.yml: the agents the machine file's tasks name installed through Porelo's setup
-# script, a stop for each agent whose sign-in the vault lacks, then each task started that is not running. Whether an
-# agent is signed in and whether a task runs are read from Porelo each time, never kept by the role.
-- name: tasks | Ask dpkg which of the tasks' agent packages are installed
+# up's second play, after project.yml: the packages the tasks need (their agents, the project's transports and Matrix's
+# homeserver) installed through Porelo's setup script, a stop for each agent whose sign-in the vault lacks, then each
+# task started that is not running. Whether an agent is signed in and whether a task runs are read from Porelo each
+# time, never kept by the role.
+- name: tasks | Ask dpkg which of the packages the tasks need are installed
   ansible.builtin.command:
-    argv: "{{ ['dpkg-query', '-W', '-f', '${Package} ${db:Status-Status}\n'] + __porelo_agent_packages }}"
-  register: __porelo_agent_installed
+    argv: "{{ ['dpkg-query', '-W', '-f', '${Package} ${db:Status-Status}\n'] + __porelo_task_packages }}"
+  register: __porelo_task_packages_installed
   changed_when: false
   # 1 names a package dpkg does not know; any other answer would make every package look missing.
-  failed_when: __porelo_agent_installed.rc not in [0, 1]
+  failed_when: __porelo_task_packages_installed.rc not in [0, 1]
   check_mode: false
-  when: __porelo_agent_packages | length > 0
+  when: __porelo_task_packages | length > 0
 
-- name: tasks | Install the missing agent packages through Porelo's setup script
+# The homeserver is a disabled user unit; the transport's setup enables and starts it at the first task start.
+- name: tasks | Install the missing packages the tasks need through Porelo's setup script
   ansible.builtin.command:
     argv: "{{ ['sh', porelo_setup_script, '--user', porelo_account, '--distribution', porelo_distribution]
-      + (['--with'] | product(__porelo_agent_missing) | flatten) }}"
+      + (['--with'] | product(__porelo_task_packages_missing) | flatten) }}"
   changed_when: true
-  when: __porelo_agent_missing | length > 0
+  when: __porelo_task_packages_missing | length > 0
 
 - name: tasks | Ask Porelo which agents are installed and whether the vault holds their sign-ins
   ansible.builtin.command:

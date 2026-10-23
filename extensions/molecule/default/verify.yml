@@ -1100,6 +1100,65 @@
         verify_stub: "{{ (verify_tasks.results[1].stdout | from_json).agents | selectattr('name', 'equalto', 'stub')
           | list }}"
 
+    # The first task start of a project naming the Matrix transport enabled and started the account's homeserver.
+    - name: Ask systemd whether the homeserver unit is enabled and active after the task started
+      ansible.builtin.command:
+        argv: [systemctl, --user, "{{ item }}", porelo-matrix-homeserver]
+      loop: [is-enabled, is-active]
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      register: verify_homeserver_unit
+      changed_when: false
+      failed_when: false
+
+    - name: Read the homeserver's port from the configuration the transport wrote
+      ansible.builtin.slurp:
+        src: /home/{{ verify_account }}/.config/porelo/matrix/homeserver.conf
+      register: verify_homeserver_conf
+
+    - name: Ask the homeserver on loopback for the Matrix client versions it serves
+      ansible.builtin.uri:
+        url: http://127.0.0.1:{{ verify_homeserver_port }}/_matrix/client/versions
+        return_content: true
+      become: true
+      become_user: "{{ verify_account }}"
+      register: verify_homeserver_versions
+      until: >-
+        verify_homeserver_versions.status | default(0) == 200
+        and verify_homeserver_versions.json is defined
+        and verify_homeserver_versions.json.versions is defined
+      retries: 60
+      delay: 3
+      changed_when: false
+      failed_when: false
+      vars:
+        verify_homeserver_port: >-
+          {{ (verify_homeserver_conf.content | b64decode).splitlines()
+          | select('match', '^PORELO_MATRIX_PORT=[0-9]+$') | map('split', '=') | map('last') | first | default('') }}
+
+    - name: Assert the homeserver unit is enabled and active and answers with Matrix's versions on its port
+      ansible.builtin.assert:
+        that:
+          - verify_homeserver_unit.results[0].stdout == 'enabled'
+          - verify_homeserver_unit.results[1].stdout == 'active'
+          - verify_homeserver_port is match('^[0-9]+$')
+          - verify_homeserver_versions.status | default(0) == 200
+          - verify_homeserver_versions.json is defined
+          - verify_homeserver_versions.json.versions | default([]) | length > 0
+        fail_msg: >-
+          asked for porelo-matrix-homeserver enabled and active and 200 with versions from
+          http://127.0.0.1:{{ verify_homeserver_port }}/_matrix/client/versions;
+          got is-enabled '{{ verify_homeserver_unit.results[0].stdout }}',
+          is-active '{{ verify_homeserver_unit.results[1].stdout }}',
+          uri status {{ verify_homeserver_versions.status | default('none') }}:
+          {{ verify_homeserver_versions.content | default(verify_homeserver_versions.msg | default('')) }}
+      vars:
+        verify_homeserver_port: >-
+          {{ (verify_homeserver_conf.content | b64decode).splitlines()
+          | select('match', '^PORELO_MATRIX_PORT=[0-9]+$') | map('split', '=') | map('last') | first | default('') }}
+
     # base: the person reaches the account itself over ssh, as porelo-host does for the drive's login and the vault.
     - name: Log in over ssh as the account with the person's key, and ask Porelo for the vault
       ansible.builtin.command:

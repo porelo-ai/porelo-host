@@ -148,6 +148,24 @@
           - (side_effect_task.stdout | from_json).state != 'absent'
         fail_msg: "after down, porelo task status gave {{ side_effect_task.stdout }}"
 
+    - name: Ask systemd whether the homeserver unit is still active after down
+      ansible.builtin.command:
+        argv: [systemctl, --user, is-active, porelo-matrix-homeserver]
+      become: true
+      become_user: porelo-test
+      environment:
+        XDG_RUNTIME_DIR: /run/user/1001
+      register: side_effect_homeserver
+      changed_when: false
+      failed_when: false
+
+    - name: Assert down left the homeserver unit not active
+      ansible.builtin.assert:
+        that: side_effect_homeserver.stdout != 'active'
+        fail_msg: >-
+          asked for porelo-matrix-homeserver not to be active after down,
+          got '{{ side_effect_homeserver.stdout }}' (rc {{ side_effect_homeserver.rc }})
+
     - name: Try the person's key as the account after down
       ansible.builtin.command:
         argv: [ssh, -o, BatchMode=yes, -o, IdentitiesOnly=yes, -o, StrictHostKeyChecking=accept-new,

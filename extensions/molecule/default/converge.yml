@@ -221,6 +221,7 @@
           printf 'project:\n  name: "converge"\n  security_class: "offline"\nimage:\n  base_image: "ubuntu:24.04"\n' \
               > project.yml
           printf 'repositories:\n  code:\n    description: "Kept on this machine alone"\n' >> project.yml
+          printf 'mail:\n  transports:\n    matrix: {}\n' >> project.yml
           git add project.yml
           git -c user.name=converge -c user.email=converge@example.invalid -c gpg.format=ssh \
               -c user.signingkey="$HOME/.ssh/converge-signer.pub" commit -q -S -m "The run's project"
@@ -309,6 +310,55 @@
       ansible.builtin.assert:
         that: (converge_before_sign_in.stdout | from_json).state == 'absent'
         fail_msg: "the task is there before the sign-in: {{ converge_before_sign_in.stdout }}"
+      when: not converge_sign_in_seen.stat.exists
+
+    - name: Ask dpkg whether the Matrix transport and homeserver packages are installed before the sign-in
+      ansible.builtin.command:
+        argv:
+          - dpkg-query
+          - -W
+          - -f=${Package} ${Status}\n
+          - porelo-message-transport-matrix
+          - porelo-matrix-homeserver
+      become: true
+      become_user: "{{ converge_account }}"
+      register: converge_matrix_packages
+      changed_when: false
+      failed_when: false
+      when: not converge_sign_in_seen.stat.exists
+
+    - name: Ask systemd whether the homeserver unit is enabled or active before the sign-in
+      ansible.builtin.shell:
+        cmd: >-
+          XDG_RUNTIME_DIR=/run/user/$(id -u)
+          systemctl --user {{ item }} porelo-matrix-homeserver
+      loop: [is-enabled, is-active]
+      become: true
+      become_user: "{{ converge_account }}"
+      register: converge_homeserver_before_sign_in
+      changed_when: false
+      failed_when: false
+      when: not converge_sign_in_seen.stat.exists
+
+    - name: >-
+        Assert both Matrix packages are installed and the homeserver unit is disabled and inactive before the sign-in
+      ansible.builtin.assert:
+        that:
+          - converge_matrix_packages.rc == 0
+          - converge_matrix_packages.stdout_lines | sort == [
+              'porelo-matrix-homeserver install ok installed',
+              'porelo-message-transport-matrix install ok installed',
+            ]
+          - converge_homeserver_before_sign_in.results[0].stdout == 'disabled'
+          - converge_homeserver_before_sign_in.results[1].stdout == 'inactive'
+        fail_msg: >-
+          asked dpkg for porelo-message-transport-matrix and porelo-matrix-homeserver 'install ok installed'
+          and systemctl --user for disabled and inactive, got dpkg rc {{ converge_matrix_packages.rc }}
+          {{ converge_matrix_packages.stdout_lines }} ({{ converge_matrix_packages.stderr }}),
+          is-enabled '{{ converge_homeserver_before_sign_in.results[0].stdout }}'
+          ({{ converge_homeserver_before_sign_in.results[0].stderr }}),
+          is-active '{{ converge_homeserver_before_sign_in.results[1].stdout }}'
+          ({{ converge_homeserver_before_sign_in.results[1].stderr }})
       when: not converge_sign_in_seen.stat.exists
 
     - name: Keep that up's lines, so it runs once

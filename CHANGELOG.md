@@ -39,3 +39,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runner's jobs and its run key kept on the host alone and handed to jobs as the forge organization's Actions secret
   `PORELO_POOL_SSH`, and each VM reverted on the host to its live base snapshot when `sudo porelo-pool-give-back`
   powers it off; at `down`, the secret and the VMs with their snapshots, disks, seeds, keys and file deleted.
+- In `porelo.host.porelo`, the transports a project names and Matrix's homeserver installed through Porelo's setup
+  script, enabling nothing.

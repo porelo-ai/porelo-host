@@ -12,7 +12,8 @@ export LIBVIRT_DEFAULT_URI=qemu:///system
 export LC_ALL=C
 pool=images
 prefix=porelo-host-molecule
-run=$(date -u +%Y%m%dT%H%M%SZ)-$$
+# Lower case: the VM's name is its host name, which Porelo hands the Matrix transport as a machine name it takes only so.
+run=$(date -u +%Y%m%dt%H%M%Sz)-$$
 name=$prefix-$run
 dir=$root/target/molecule/$run
 cache=$HOME/.porelo/cache
