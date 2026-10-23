@@ -16,7 +16,7 @@ variable or a log.
   again.
 - **What changes here**: the stop's line names that command in the form the caller runs it, besides the `ssh -t` one
   a person types; nothing in the playbook reads, holds or passes the passphrase.
-- **Red first**: the second play against a shut vault must stop before it deposits anything; already [HO09](README.md#ho09)'s test.
+- **Red first**: the second play against a shut vault must stop before it deposits anything; already [HO02](README.md#ho02)'s test.
 
 ## Acceptance
 

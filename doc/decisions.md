@@ -9,6 +9,7 @@ says why.
 | Where the collection ships | A tarball attached to the repository's GitHub releases; Ansible Galaxy later. | [Why](#where-the-collection-ships) |
 | The systems | Ubuntu 26.04 at first; another system is an issue of its own. | [Why](#the-systems) |
 | Where the playbook runs | On the host itself, with Ubuntu's own `ansible-core` and `-c local`. | [Why](#where-the-playbook-runs) |
+| The order of `up` and `down` | The drive comes before the VPN, around one stop for the person; the store's last copy is to come before `vault clear`. | [Why](#the-order-of-up-and-down) |
 | Where the VM test runs | On a libvirt VM per run everywhere: here, in the GitHub Build and in the Forgejo build. | [Why](#where-the-vm-test-runs) |
 | `ansible-test sanity` | Not run yet, though the collection holds Python; it comes in its own pinned container. | [Why](#ansible-test-sanity) |
 | Tresorit's installer | Run only when signed under a pinned CA, whose fingerprint was read from the installer itself. | [Why](#tresorits-installer) |
@@ -39,6 +40,15 @@ variables in each role and a Molecule scenario, so it is an issue of its own rat
 `ansible-core` from Ubuntu's packages and runs the playbook there with `-c local`. The person's computer needs only ssh
 and `host up`, on Linux and Windows alike: on Windows Ansible's control node does not run, and on neither can podman
 be assumed. The `ansible-core` the host's Ubuntu carries is therefore the version the collection is held to.
+
+## The order of `up` and `down`
+
+The drive comes before the VPN because the host's WireGuard key lies on the drive, and so the person has one stop for
+both the Tresorit login and the vault; until the VPN is up, the host is reached over its public ssh only. At `down`,
+`porelo vault clear` on an account with its own homeserver also runs the transport's `clear`, which removes the
+homeserver's database volume, its port, its registration token and its poll positions. So the store, which no role
+keeps yet, is to take its last copy before `vault clear`, and at `up` to be restored before the first
+`porelo task start`, which would otherwise make a fresh homeserver.
 
 ## Where the VM test runs
 

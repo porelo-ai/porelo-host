@@ -21,7 +21,9 @@ only one accepted.
 
 **What the scenario does** is what `host up` does on a host: Ubuntu's own `ansible-core`, the collection installed from
 its tarball, and `porelo.host.up` run on the machine itself with `-c local`. A second converge must change nothing,
-and `verify` reads on the machine what `up` promises.
+and `verify` reads on the machine what `up` promises. A stub of `tresorit-cli` stands in for Tresorit's client,
+answering as the client does, so the `drive` role's steps around it run in the Build; Tresorit itself is met only at a
+real `up`.
 
 **In the Build** the same script runs on GitHub's runner, after the linters and the tarball, on `main` and on the
 project's own pull requests: about three minutes, the runner adding libvirt by pinned versions first.
