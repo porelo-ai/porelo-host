@@ -9,6 +9,9 @@ setup`, deposits the keys, follows the project and starts its tasks, each only t
 token or passphrase passes through the inventory, a variable, a fact, a register or a task's output, and a second
 run changes nothing that is already as it should be.
 
+Starting the machine file's tasks at `up`, and its stop for an agent's sign-in, are replaced by
+[HO19](README.md#ho19): `up` installs the agents and starts no task.
+
 ## Plan
 
 - **One role, `porelo`**, its components as task files in the order [PJ40](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj40) sets: `install.yml` (the package by

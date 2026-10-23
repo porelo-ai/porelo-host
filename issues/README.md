@@ -37,6 +37,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho19"></a>[HO19](HO19-The-Machine-Installs-Its-Agents-And-Starts-No-Task.md) | M | porelo, the machine file's agents | `up` installs the agents the machine file names and starts no task, no stop for a sign-in; `down` stops every running task before `vault clear`. |
 | <a id="ho17"></a>[HO17](HO17-The-Forges-CA-In-Porelos-Account.md) | XS | - | Role `porelo`: the host's forge CA in `~/.config/porelo/ca-certificates.pem` of Porelo's account where the forge runs, owner-only, so a task reaches the forge's API through the broker; `down` takes it out again. |
 
 ## Idea
