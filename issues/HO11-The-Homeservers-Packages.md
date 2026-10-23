@@ -1,6 +1,6 @@
 # HO11 — The Homeserver's Packages
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** S - two packages installed in `tasks.yml` of the `porelo` role, and the scenario gains a checkpoint before the
 sign-in and a real homeserver start.
 

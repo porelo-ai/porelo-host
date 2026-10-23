@@ -15,6 +15,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho11"></a>[HO11](HO11-The-Homeservers-Packages.md) | S | - | The Matrix transport's and homeserver's packages installed, nothing enabled; the first task start brings the homeserver up. |
 | <a id="ho02"></a>[HO02](HO02-Porelos-Own-Commands-Called-Never-Redone.md) | L | - | Role `porelo`: the package, the account, `porelo setup`, keys from the drive into `porelo vault put` on the host, `follow --signed-by`, `task start`; idempotent by Porelo's own answers, no secret through Ansible; `up` pauses for the person to open the vault. |
 
 ## Implementing
@@ -22,7 +23,6 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho19"></a>[HO19](HO19-The-Machine-Installs-Its-Agents-And-Starts-No-Task.md) | M | porelo [B258](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b258) | `up` installs every agent Porelo's repository offers and starts no task, no stop for a sign-in; `down` stops every running task before `vault clear`. |
-| <a id="ho11"></a>[HO11](HO11-The-Homeservers-Packages.md) | S | - | The Matrix transport's and homeserver's packages installed, nothing enabled; the first task start brings the homeserver up. |
 | <a id="ho18"></a>[HO18](HO18-A-Failed-Loop-Says-Why.md) | S | - | A failed step's JSON line carries the command's own words, a loop's by each failed item, `no_log` still holding. |
 | <a id="ho08"></a>[HO08](HO08-The-Forge-With-Its-Registry.md) | L | porelo [B233](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b233), porelo [B234](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b234) (tasks' side only) | Role `forge`: Forgejo and its runner in rootless podman under two accounts of their own, on the VPN and the tasks' address only, its registry over TLS from a CA made on the host, the project's repositories migrated from the central forge with push mirrors, credentials made and kept on the host, every build publishing with a publisher's token kept as an Actions secret; run where the host setting `porelo_host_forge` asks for it. |
 | <a id="ho12"></a>[HO12](HO12-The-VM-Pool.md) | L | porelo-buildtools [BT24](https://github.com/porelo-ai/porelo-buildtools/blob/main/issues/README.md#bt24) | Role `vm_pool`: VMs with run accounts `porelo-machines` rents from, made by the same code as the test VM, deleted by name at `down`. |
