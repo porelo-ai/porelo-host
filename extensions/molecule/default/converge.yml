@@ -246,15 +246,16 @@
       become_user: "{{ converge_account }}"
 
     # The person's step for the vault, as porelo-frontend gives it: the passphrase on porelo's stdin, as the account.
+    # On stdin and under no_log: in a command line Ansible would log the passphrase into the journal.
     - name: Make the account's vault, as the person's step does
       ansible.builtin.shell:
-        cmd: >-
-          set -o pipefail && printf 'converge-passphrase\n' | XDG_RUNTIME_DIR=/run/user/$(id -u)
-          porelo vault init --passphrase-stdin
+        cmd: XDG_RUNTIME_DIR=/run/user/$(id -u) porelo vault init --passphrase-stdin
+        stdin: converge-passphrase
         creates: /home/{{ converge_account }}/.local/share/porelo/vault.bin
         executable: /bin/bash
       become: true
       become_user: "{{ converge_account }}"
+      no_log: true
 
     # The person's step, as porelo-frontend gives it: the password on the client's stdin, run as the account.
     - name: Log the client in, as the person's step does

@@ -7,6 +7,7 @@
   vars:
     verify_version: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_VERSION') }}"
     verify_account: porelo-test
+    verify_vault_passphrase: converge-passphrase
     verify_setup_script: "{{ (lookup('ansible.builtin.file', playbook_dir
       ~ '/../../../roles/porelo/defaults/main.yml') | from_yaml).porelo_setup_script }}"
     verify_drive: /srv/porelo-host/drive
@@ -499,6 +500,97 @@
           search gave {{ verify_drive_key_search.stdout_lines }}
       no_log: true
 
+    # A vault passphrase leaked by up must be caught in its output, the whole journal and persistent host files.
+    - name: Search for the vault passphrase with protected temporary files
+      vars:
+        verify_account_home: "{{ ansible_facts['getent_passwd'][verify_account][4] }}"
+      block:
+        - name: Create a private directory for the passphrase search
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: porelo-passphrase-search-
+          register: verify_passphrase_files
+
+        - name: Write the passphrase search pattern privately
+          ansible.builtin.copy:
+            content: "{{ verify_vault_passphrase }}\n"
+            dest: "{{ verify_passphrase_files.path }}/pattern"
+            mode: '0600'
+          no_log: true
+
+        - name: Write the registered verbose output privately for the search
+          ansible.builtin.copy:
+            content: "{{ verify_vvv.stdout }}\n{{ verify_vvv.stderr }}"
+            dest: "{{ verify_passphrase_files.path }}/verbose"
+            mode: '0600'
+          no_log: true
+
+        - name: Search the verbose output, journal and host files for the passphrase
+          ansible.builtin.shell:
+            cmd: |
+              set -euo pipefail
+              umask 077
+              work={{ verify_passphrase_files.path | quote }}
+              pattern="$work/pattern"
+              [ -s "$pattern" ] || { echo "empty passphrase pattern" >&2; exit 1; }
+              journalctl -o cat --no-pager > "$work/journal"
+              search() {
+                  rc=0
+                  grep -rFq -f "$pattern" -- "$1" || rc=$?
+                  case $rc in 0) echo found ;; 1) echo clean ;; *) echo "grep ended $rc" >&2; return 1 ;; esac
+              }
+              echo "/root/.ansible/tmp: excluded"
+              echo "{{ verify_account_home }}/.ansible/tmp: excluded"
+              result=$(search "$work/verbose")
+              echo "up -vvv: $result"
+              result=$(search "$work/journal")
+              echo "journal: $result"
+              # One grep per batch of files, not per file: the account's container storage holds very many.
+              for dir in /root /home /srv/porelo-host /etc /var/log; do
+                  : > "$work/hits"; : > "$work/errors"
+                  find "$dir" \( -path /root/.ansible/tmp \
+                      -o -path {{ (verify_account_home ~ '/.ansible/tmp') | quote }} \) \
+                      -prune -o -type f -print0 2> "$work/find-errors" |
+                      xargs -0 -r grep -lF -D skip -f "$pattern" -- > "$work/hits" 2> "$work/errors" || true
+                  # A file grep could not read is a search that did not run, never a clean one.
+                  [ ! -s "$work/errors" ] && [ ! -s "$work/find-errors" ] ||
+                      { echo "grep or find could not read under $dir" >&2; exit 1; }
+                  if [ -s "$work/hits" ]; then echo "$dir: found"; else echo "$dir: clean"; fi
+              done
+            executable: /bin/bash
+          register: verify_passphrase_search
+          changed_when: false
+          failed_when: false
+          no_log: true
+      always:
+        - name: Remove the passphrase search's private directory
+          ansible.builtin.file:
+            path: "{{ verify_passphrase_files.path }}"
+            state: absent
+          when: verify_passphrase_files.path is defined
+
+    - name: Assert the passphrase appears in no verbose output, journal or persistent host file
+      ansible.builtin.assert:
+        that:
+          - verify_passphrase_search.rc == 0
+          - verify_passphrase_search.stdout_lines == verify_passphrase_expected
+        fail_msg: >-
+          passphrase search expected every place clean; found in
+          {{ verify_passphrase_search.stdout_lines | select('search', ': found$') | list }};
+          search rc {{ verify_passphrase_search.rc }}, places checked {{ verify_passphrase_search.stdout_lines }}
+        success_msg: "{{ verify_passphrase_search.stdout_lines }}"
+      vars:
+        verify_passphrase_expected:
+          - '/root/.ansible/tmp: excluded'
+          - "{{ ansible_facts['getent_passwd'][verify_account][4] }}/.ansible/tmp: excluded"
+          - 'up -vvv: clean'
+          - 'journal: clean'
+          - '/root: clean'
+          - '/home: clean'
+          - '/srv/porelo-host: clean'
+          - '/etc: clean'
+          - '/var/log: clean'
+
     # A shut vault stops up with needs: ["vault"] before any key from the drive is deposited into the vault.
     - name: Remove the drive's key from the vault and lock the vault
       ansible.builtin.command:
@@ -537,9 +629,9 @@
       failed_when: false
 
     - name: Unlock the vault again as the account
-      ansible.builtin.shell:
-        cmd: set -o pipefail && printf 'converge-passphrase\n' | porelo vault unlock --passphrase-stdin
-        executable: /bin/bash
+      ansible.builtin.command:
+        cmd: porelo vault unlock --passphrase-stdin
+        stdin: "{{ verify_vault_passphrase }}"
       become: true
       become_user: "{{ verify_account }}"
       environment:
