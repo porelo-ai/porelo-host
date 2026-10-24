@@ -28,6 +28,7 @@ interface shows them and writes no text of its own for a step the collection def
   untemplated, as the playbook wrote it, and adds `text` and `seconds` to that task's `started` line. A string `text`
   and a non-negative integer `seconds` pass; anything else is left out, never guessed, so a mistyped block shows as a
   step without words, which the test of the playbooks below catches. A task without the block gives today's line.
+- **The texts are English only.** A key to translate them by would be another added field, not part of this issue.
 - **The version stays 1:** `doc/lines.md` says an added field keeps it. A program tells a step from a role's inner task
   by `text` being there; the inner tasks' lines that follow belong to the step before them.
 - **The durations** are written by hand from a measured Molecule run of `up` and `down` on the test VM, rounded up to
@@ -50,11 +51,6 @@ interface shows them and writes no text of its own for a step the collection def
 - Each of the sixteen steps of `up` and `down` gives a `started` line with its `text` and `seconds`, read in a
   Molecule run's output.
 - A task without the block, and every inner task of a role, still gives the line it gives today, with `v` 1.
-
-## Open questions
-
-- **Are the step texts English only?** The interface may show another language; then either the collection carries a
-  text per language, or the interface translates by a key the line carries. English only keeps this issue S.
 
 ## To be checked
 

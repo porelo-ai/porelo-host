@@ -39,7 +39,7 @@ it is left out.
 
 | # | Size | Blocked by | Open questions | What it covers |
 |---|---|---|---|---|
-| <a id="ho21"></a>[HO21](HO21-Each-Step-Says-What-It-Does-And-How-Long.md) | S | - | 1 | Each of the playbooks' sixteen steps carries a plain-words text and its usual duration as its own variables, which its `started` line passes on for the interface to show, `v` staying 1. |
+| <a id="ho21"></a>[HO21](HO21-Each-Step-Says-What-It-Does-And-How-Long.md) | S | - | 0 | Each of the playbooks' sixteen steps carries a plain-words text and its usual duration as its own variables, which its `started` line passes on for the interface to show, `v` staying 1. |
 
 ## Accepted
 
