@@ -57,11 +57,23 @@ provider and from a company's own tooling, outside the interface.
   The providers come by `tofu init` from the registry, checked against the lock file's hashes.
 - **`down`'s last step:** with the module, `porelo-host down` plays `porelo.host.down` first and keeps the host when
   the play does not finish, as today; only a finished play, or `--give-back-anyway`, runs `tofu destroy`.
-- **The state, encrypted with the administrator:** OpenTofu's own state encryption, `aes_gcm` with a `pbkdf2` key
-  from a passphrase, `enforced`, so a plain state is refused. The configuration comes from the environment
-  (`TF_ENCRYPTION`), never a file or a command line; the Scaleway key reaches the provider as `SCW_SECRET_KEY` in the
-  environment, read from the administrator's store. The state holds the host's private key and the server's id, so
-  it is never committed and never leaves the administrator's machine unencrypted.
+- **The state, decided:** it lies in the person's drive (today a Tresorit tresor), in a folder per project,
+  encrypted by OpenTofu's own state encryption, `aes_gcm` with a `pbkdf2` key, `enforced` so a plain state is
+  refused. Its passphrase lives in the system's secret store (Secret Service, Keychain, Credential Manager) beside the
+  Scaleway key, and reaches `tofu` only in `TF_ENCRYPTION`; never a file, an argument or the tresor. On another
+  computer the passphrase is entered once, into that computer's store. The state holds the host's private key and
+  the server's id, so it never lies anywhere unencrypted.
+- **Two computers on one state:** OpenTofu's local lock does not reach across a synced folder, so `porelo-host` guards
+  it itself, at the provider, which every computer sees at once: before `apply`, a server carrying the project's tag
+  that the state does not hold refuses `up`, naming it ("another computer rents this project's host, or this
+  computer's drive is not synced yet"); `tofu` never rents a second one. A copy of the state that the drive's client
+  made in a conflict (a file beside it named as a conflict) refuses both `up` and `down` until a person keeps one. A
+  lease file beside the state, naming the computer and the time, makes a second `up` during the first say whose it
+  is, but the provider's tag is the guard.
+- **A drive not synced yet:** a state missing or older than the provider says is caught the same way: `up` finds a
+  tagged server the state lacks and refuses, and `down` with no server in the state but a tagged one at the provider
+  refuses rather than giving back nothing, both naming the drive. Nothing is rented or destroyed on a state the
+  provider contradicts.
 - **Pinned:** `required_version` to one OpenTofu version; the `scaleway/scaleway` and `hashicorp/tls` providers by
   exact version, with `.terraform.lock.hcl` committed holding their hashes for `linux_amd64`, `darwin_arm64` and
   `windows_amd64`. The operator installs that OpenTofu version from its release, checked against its published
@@ -84,8 +96,6 @@ provider and from a company's own tooling, outside the interface.
 
 ## Open questions
 
-- **Where the state and its passphrase live:** a directory per project on the administrator's computer and the
-  passphrase in the administrator's password store (proposed), or the state in the operator's tresor?
 - **The one real `apply`/`destroy`:** may it rent one Elastic Metal for about an hour, and in which Scaleway project?
 
 ## To be checked
@@ -93,3 +103,4 @@ provider and from a company's own tooling, outside the interface.
 - That `scaleway_baremetal_server` takes a cloud-config and tags as the API does, and that its create waits for the
   install to complete; read in the pinned provider's documentation and its source.
 - The current OpenTofu release whose state encryption and mocked providers in `tofu test` are both available.
+- How Tresorit's client names a conflict copy, so the refusal finds it; measured with two clients on one tresor.
