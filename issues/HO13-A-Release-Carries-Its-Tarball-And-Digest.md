@@ -1,6 +1,6 @@
 # HO13 — A Release Carries Its Tarball And Digest
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** S - one workflow on a tag, and the tarball and its digest attached; no role changes. The check on the
 person's computer is porelo-frontend's.
 
