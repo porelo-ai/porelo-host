@@ -1,21 +1,39 @@
 # HO21 — Each Step Says What It Does And How Long
 
-**Status:** Accepted.
-**Size:** S - a text and a duration per step in the collection, and two fields in the step lines; the interface's
-part is porelo-frontend's.
+**Status:** Analyzed.
+**Size:** S - two fields on a step's `started` line read from the playbook task's own variables, a text and a
+duration on each of the playbooks' sixteen steps, tests and the contract's page; no role changes.
 
 **What must be true.** Every step a person waits on while `up` or `down` runs carries a text in plain words, such as
 "Installing Porelo and the agents", and how long it usually takes. The step lines `porelo-host` reads carry both. The
 interface shows them and writes no text of its own for a step the collection defines.
 
-## Plan, nothing decided
+## Plan
 
-- **Where the texts live:** in the collection, beside the steps they name, so a step and its words change in one
-  commit. One text per step a person notices, a role or a block of tasks, not one per Ansible task.
-- **The step lines:** `plugins/callback/lines.py` adds the text and the usual duration to a step's `started` line,
-  as fields of the same JSON line, its version raised. A step without a text passes as today.
-- **The usual duration:** first a value per step written by hand from today's measured runs; later one learned from
-  measured runs. Where it is kept and who learns it is to decide.
+- **A step is a task of the playbook itself**, not of a role: `up` has ten, `down` six, each an `include_role` whose
+  own tasks give lines too. Today `up`'s first play runs `porelo.host.base` under `roles:`, which gives no step of its
+  own; it becomes an `include_role` task like the others, so every role runs under one step.
+- **The words live on the step, as its variables**, so a step and its words change in one commit:
+
+      - name: Install Porelo and run its setup script for the account
+        ansible.builtin.include_role: ...
+        vars:
+          porelo_host_step:
+            text: Installing Porelo
+            seconds: 90
+
+  `playbooks/up.yml` and `playbooks/down.yml` gain one such block per step. A role's inner task carries none, nor
+  does `up`'s stop for the person, which gives its waiting line.
+- **The line:** `plugins/callback/lines.py`'s `v2_playbook_on_task_start` reads `task.vars["porelo_host_step"]`
+  untemplated, as the playbook wrote it, and adds `text` and `seconds` to that task's `started` line. A string `text`
+  and a non-negative integer `seconds` pass; anything else is left out, never guessed, so a mistyped block shows as a
+  step without words, which the test of the playbooks below catches. A task without the block gives today's line.
+- **The version stays 1:** `doc/lines.md` says an added field keeps it. A program tells a step from a role's inner task
+  by `text` being there; the inner tasks' lines that follow belong to the step before them.
+- **The durations** are written by hand from a measured Molecule run of `up` and `down` on the test VM, rounded up to
+  ten seconds; learning them from runs is not part of this issue.
+- **`doc/lines.md`** shows the `started` line with both fields and says which tasks carry them; the changelog gains the
+  entry under *Added*.
 - **Who writes what, agreed with porelo-frontend:**
   - this repository: the texts and durations of the collection's steps, and the step lines;
   - porelo-frontend: the texts of `porelo-host`'s own steps before the playbook (`rent`, `ssh`, `copy`), written by
@@ -23,10 +41,23 @@ interface shows them and writes no text of its own for a step the collection def
     [F154](https://github.com/porelo-ai/porelo-frontend/blob/main/issues/README.md#f154) and
     [F161](https://github.com/porelo-ai/porelo-frontend/blob/main/issues/README.md#f161), whose views write no step
     text of their own.
-- **Red first:** a step with a text whose line lacks it, and a line whose version did not change.
+- **Red first**, in `tests/unit/plugins/callback/test_lines.py` with a play of its own: a task with the block whose
+  `started` line lacks `text` and `seconds`; a block with a wrong type that still gives a field; and a test that loads
+  `playbooks/up.yml` and `playbooks/down.yml` and fails on a step of the playbook without a valid block.
 
 ## Acceptance
 
-- Each step a person waits on during `up` and `down` shows its text and usual duration in the step lines, read in a
+- Each of the sixteen steps of `up` and `down` gives a `started` line with its `text` and `seconds`, read in a
   Molecule run's output.
-- A step without a text still gives the line it gives today.
+- A task without the block, and every inner task of a role, still gives the line it gives today, with `v` 1.
+
+## Open questions
+
+- **Are the step texts English only?** The interface may show another language; then either the collection carries a
+  text per language, or the interface translates by a key the line carries. English only keeps this issue S.
+
+## To be checked
+
+- How a step's duration is measured in a Molecule run: the lines carry no time, so either the run's output is
+  timestamped as it is read, or a timing callback runs beside `porelo.host.lines`, if the tools image carries one.
+- That `task.vars` holds an `include_role` task's `vars:` untemplated at task start on the host's `ansible-core`.
