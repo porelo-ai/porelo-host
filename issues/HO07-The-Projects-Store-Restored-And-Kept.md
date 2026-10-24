@@ -2,8 +2,9 @@
 
 **Status:** Backlog; blocked by porelo-project [PJ45](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj45), and by
 porelo-message-matrix [MX24](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx24), and by
-porelo [B231](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b231), and by porelo-message-matrix's
-issue that a backup is its own (a late completion or a second backup into the same directory loses messages).
+porelo [B231](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b231), and by porelo-message-matrix
+[MX39](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx39)
+(a late completion or a second backup into the same directory loses messages).
 **Size:** L - one role, a script and a timer here, but every entry's copy and restore is another repository's command,
 and the round trip is measured on a rented host.
 
