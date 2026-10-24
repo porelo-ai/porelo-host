@@ -80,8 +80,9 @@ provider and from a company's own tooling, outside the interface.
   checksum; nothing here installs it.
 - **Tests without renting first:** `tofu fmt -check`, `tofu validate` and `tofu test` with mocked providers, holding
   the tags, the cloud-config's host key, the outputs and the refusal of a missing offer or key; in the Build from a
-  pinned OpenTofu image, as the Ansible tools run from theirs. **One real `apply` and `destroy` on the operator's word
-  only**, a rented Elastic Metal for about an hour, its cost named before.
+  pinned OpenTofu image, as the Ansible tools run from theirs. **One real rent, decided in principle:** one Elastic
+  Metal for about an hour, once the module is built and green without renting; the Scaleway project and the moment
+  are the operator's word then, asked in the channel with the plan (what runs, how long, how nothing is left).
 - **Built by** Codex `gpt-6.1-sol` `high` from this plan, the module and its tests here, the driving in
   porelo-frontend's own issue; the state's encryption and the handling of the two secrets
   reviewed by Codex `xhigh`.
@@ -93,10 +94,6 @@ provider and from a company's own tooling, outside the interface.
 - On the operator's word: `porelo-host up` rents one machine through the module and brings it up, `porelo-host down`
   sets it down and destroys it, and the Scaleway project lists nothing of it afterwards.
 - The state on disk reads as encrypted, and OpenTofu refuses it without the passphrase.
-
-## Open questions
-
-- **The one real `apply`/`destroy`:** may it rent one Elastic Metal for about an hour, and in which Scaleway project?
 
 ## To be checked
 
