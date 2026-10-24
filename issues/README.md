@@ -11,15 +11,6 @@ channel.
 Its prefix is `HO`. *Open questions*, in *Analyzed* only, counts what waits on the operator. A group with nothing in
 it is left out.
 
-## Review
-
-| # | Size | Blocked by | What it covers |
-|---|---|---|---|
-| <a id="ho18"></a>[HO18](HO18-A-Failed-Loop-Says-Why.md) | S | - | A failed step's JSON line carries the command's own words, a loop's by each failed item, `no_log` still holding. |
-| <a id="ho10"></a>[HO10](HO10-A-Vault-Opened-With-Nobody-There.md) | XS | - | `up` to the end with the vault opened by the caller over ssh with the passphrase on standard input; the playbook only checks and stops. |
-| <a id="ho19"></a>[HO19](HO19-The-Machine-Installs-Its-Agents-And-Starts-No-Task.md) | M | - | `up` installs every agent Porelo's repository offers and starts no task, no stop for a sign-in; `down` stops every running task before `vault clear`. |
-| <a id="ho11"></a>[HO11](HO11-The-Homeservers-Packages.md) | S | - | The Matrix transport's and homeserver's packages installed, nothing enabled; the first task start brings the homeserver up. |
-
 ## Implementing
 
 | # | Size | Blocked by | What it covers |
@@ -54,6 +45,10 @@ it is left out.
 
 | # | Title | What was built |
 |---|---|---|
+| <a id="ho19"></a>HO19 | The Machine Installs Its Agents And Starts No Task | `up` installs every package Porelo's setup script names as an agent, and the project's transports, without starting a task or stopping for a sign-in; `down` stops every running task of the account before `vault clear`. |
+| <a id="ho18"></a>HO18 | A Failed Loop Says Why | A failed step's JSON line carries the command's own words after Ansible's, a loop's by each failed item's label, cut to their tail within fixed bounds, and a task with `no_log` stays hidden. |
+| <a id="ho11"></a>HO11 | The Homeserver's Packages | `up` installs the Matrix transport's and homeserver's packages with the agents and enables nothing; the first task start brings the homeserver up. |
+| <a id="ho10"></a>HO10 | A Vault Opened With Nobody There | `up` runs to the end with the vault opened beforehand by the caller over ssh, the passphrase on standard input; the playbook only reads `porelo vault status` and stops, and the Molecule scenario searches its output, the journal and the host's files for the secret. |
 | <a id="ho01"></a>HO01 | The Collection's Skeleton | `porelo.host` builds into a tarball checked to hold only what it ships, and its Build runs the documents' checks, yamllint and ansible-lint from one image pinned by digest. |
 | <a id="ho03"></a>HO03 | Molecule Tests On A Throwaway VM | `build/molecule.sh` tests the roles on a libvirt VM made and deleted for each run, here and in the Build on GitHub's runner, leaving nothing after a failure or an interrupt. |
 | <a id="ho04"></a>HO04 | The Host's Base: Packages, KVM, Podman | The role `porelo.host.base` installs the packages, KVM with libvirt and podman, stopping on a CPU without virtualization first, and puts Porelo's account into KVM's and libvirt's groups. |
