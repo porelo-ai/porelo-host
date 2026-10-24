@@ -31,7 +31,7 @@ it is left out.
 
 | # | Size | Blocked by | Open questions | What it covers |
 |---|---|---|---|---|
-| <a id="ho20"></a>[HO20](HO20-Every-Container-Of-The-Host-Fits-The-Machine.md) | M | - | 2 | The forge's and runner's quadlets, the runner's job containers and the VM pool bounded to fit a host of any size, porelo-project's [PJ68](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj68) for porelo-host. |
+| <a id="ho20"></a>[HO20](HO20-Every-Container-Of-The-Host-Fits-The-Machine.md) | M | - | 0 | The forge's and runner's quadlets, the runner's job containers and the VM pool bounded to fit a host of any size, porelo-project's [PJ68](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj68) for porelo-host. |
 
 ## Accepted
 

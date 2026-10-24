@@ -23,7 +23,8 @@ porelo-project [PJ68](https://github.com/porelo-ai/porelo-project/blob/main/issu
   delegated; `OMP_NUM_THREADS=<n>` makes `nproc` read `<n>`, and a JVM reads the CPU quota itself. Open files are
   524288 already. So a job is bounded by quota and told its cores by `OMP_NUM_THREADS`, as porelo's tasks are.
 - **A job, like a task:** `container.options` gains `--cpus=4 --memory=8g --pids-limit=2048 --env=OMP_NUM_THREADS=4`,
-  porelo's fixed defaults for a task, so a build sees four cores on any host and stays below its 2048 processes.
+  porelo's fixed defaults for a task, not read from the host's size, so a build sees four cores on any host and stays
+  below its 2048 processes.
 - **The forge and the runner's daemon:** `PidsLimit=`, `Memory=` and `CPUQuota=` in each quadlet, fixed values
   (forge `PidsLimit=1024`, `Memory=2G`; runner daemon `PidsLimit=256`, `Memory=512M`): their Go runtimes take a
   thread per core, far below those.
@@ -31,7 +32,8 @@ porelo-project [PJ68](https://github.com/porelo-ai/porelo-project/blob/main/issu
   the forge's two accounts, and stops `up` naming the account and the controller when `cpu`, `memory` or `pids` is
   missing, since without them every bound above is silently ignored.
 - **The pool:** before it makes its VMs, `vm_pool` reads `MemTotal` and stops `up` when the pool's memory
-  (`accounts × vm_pool_memory`) is more than half of it, naming both.
+  (`accounts × vm_pool_memory`) is more than half of it, naming both; the forge, one job and porelo's tasks, each
+  bounded, share the other half.
 - **Red first, in Molecule's verify:** each bound read back from the quadlet and the runner's config the role wrote,
   and from `podman inspect` of the running forge; the controller check run against an account given a drop-in that
   leaves `pids` out, which must stop `up` naming it; the pool's check against a pool sized past the test VM's memory.
@@ -43,13 +45,6 @@ porelo-project [PJ68](https://github.com/porelo-ai/porelo-project/blob/main/issu
   `podman inspect`, and `nproc` in a job reads 4.
 - `up` stops naming the account and the controller when `pids` is not delegated, and naming the pool's and the host's
   memory when the pool is too large.
-
-## Open questions
-
-- **Are a job's bounds porelo's fixed task defaults** (4 CPUs, 8 GB, 2048 processes), or read from the host's size?
-  Proposed: fixed, as the operator chose for porelo's tasks, so a job behaves the same on every host.
-- **What does the pool's check count?** Proposed: the pool's own VMs against half of the host's memory, leaving the
-  other half to the forge, one job and porelo's tasks, which are bounded themselves.
 
 ## To be checked
 
