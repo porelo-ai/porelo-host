@@ -1,6 +1,6 @@
 # HO21 — Each Step Says What It Does And How Long
 
-**Status:** Analyzed.
+**Status:** Estimated.
 **Size:** S - two fields on a step's `started` line read from the playbook task's own variables, a text and a
 duration on each of the playbooks' sixteen steps, tests and the contract's page; no role changes.
 
