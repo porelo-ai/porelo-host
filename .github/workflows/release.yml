@@ -1,0 +1,119 @@
+# A release carries the one tarball built for its tag and its digest, so host up can refuse any other file.
+# The tag must match the collection's plain release version, read first from its version line and then from the
+# tarball's name, before anything is attached; the digest names this build, since a rebuild may differ in its bytes.
+# Separate jobs keep the publishing token away from the checkout, build tools, and fetched actions.
+name: Release
+
+on:
+    push:
+        tags: ['v*']
+
+permissions:
+    contents: read
+
+jobs:
+    build:
+        runs-on: ubuntu-26.04
+        timeout-minutes: 20
+        outputs:
+            version: ${{ steps.version.outputs.version }}
+            artifact: ${{ steps.upload.outputs.artifact-id }}
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+
+            - name: The tag matches the collection's release version
+              id: version
+              env:
+                  TAG: ${{ github.ref_name }}
+              run: |
+                  set -eu
+                  version=$(awk '
+                      /^version[[:blank:]]*:/ {
+                          count++
+                          value = $0
+                          sub(/^version[[:blank:]]*:[[:blank:]]*/, "", value)
+                          sub(/[[:blank:]]+#.*$/, "", value)
+                          sub(/[[:space:]]+$/, "", value)
+                      }
+                      END {
+                          if (count != 1) {
+                              printf "::error::galaxy.yml has %d version: lines, not one\n", count > "/dev/stderr"
+                              exit 1
+                          }
+                          print value
+                      }
+                  ' galaxy.yml)
+                  if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                      echo "::error::tag $TAG: galaxy.yml's version $version is not a plain MAJOR.MINOR.PATCH"
+                      exit 1
+                  fi
+                  if [ "$TAG" != "v$version" ]; then
+                      echo "::error::tag $TAG does not match galaxy.yml's version $version"
+                      exit 1
+                  fi
+                  echo "VERSION=$version" >> "$GITHUB_ENV"
+                  echo "version=$version" >> "$GITHUB_OUTPUT"
+
+            - name: The tarball, holding only what the collection ships
+              run: |
+                  set -eu
+                  build/tools.sh ansible-galaxy collection build --output-path target
+                  build/check-tarball.sh target/porelo-host-*.tar.gz
+                  [ -f "target/porelo-host-$VERSION.tar.gz" ] || {
+                      echo "::error::expected target/porelo-host-$VERSION.tar.gz"
+                      exit 1
+                  }
+
+            - name: The digest next to the tarball
+              run: |
+                  set -eu
+                  cd target
+                  sha256sum "porelo-host-$VERSION.tar.gz" > SHA256SUMS
+                  sha256sum -c SHA256SUMS
+
+            - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+              id: upload
+              with:
+                  name: release
+                  path: |
+                      target/porelo-host-${{ env.VERSION }}.tar.gz
+                      target/SHA256SUMS
+                  if-no-files-found: error
+                  retention-days: 1
+
+    publish:
+        needs: build
+        runs-on: ubuntu-26.04
+        timeout-minutes: 20
+        permissions:
+            contents: write
+            actions: read
+        steps:
+            - name: The release with its tarball and digest
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  TAG: ${{ github.ref_name }}
+                  VERSION: ${{ needs.build.outputs.version }}
+                  ARTIFACT: ${{ needs.build.outputs.artifact }}
+              run: |
+                  set -eu
+                  # By the id this attempt's build uploaded: a re-run keeps an earlier attempt's under the same name.
+                  [[ "$ARTIFACT" =~ ^[0-9]+$ ]] || { echo "::error::no artifact id: $ARTIFACT"; exit 1; }
+                  gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT/zip" > release.zip
+                  mkdir release
+                  unzip -q release.zip -d release
+                  cd release
+                  sha256sum -c SHA256SUMS
+                  shopt -s nullglob dotglob
+                  files=(*)
+                  [ "${#files[@]}" -eq 2 ] && [ -f "porelo-host-$VERSION.tar.gz" ] && [ -f SHA256SUMS ] \
+                      && [ ! -L "porelo-host-$VERSION.tar.gz" ] && [ ! -L SHA256SUMS ] || {
+                      echo "::error::expected only porelo-host-$VERSION.tar.gz and SHA256SUMS in release; found:"
+                      printf '    %s\n' "${files[@]}"
+                      exit 1
+                  }
+                  gh release create "$TAG" "porelo-host-$VERSION.tar.gz" SHA256SUMS \
+                      -R "$GITHUB_REPOSITORY" --verify-tag --title "porelo.host $VERSION" \
+                      --notes "See [CHANGELOG.md]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$TAG/CHANGELOG.md)."

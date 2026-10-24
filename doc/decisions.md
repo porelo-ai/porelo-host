@@ -14,6 +14,7 @@ says why.
 | `ansible-test sanity` | Not run yet, though the collection holds Python; it comes in its own pinned container. | [Why](#ansible-test-sanity) |
 | Tresorit's installer | Run only when signed under a pinned CA, whose fingerprint was read from the installer itself. | [Why](#tresorits-installer) |
 | Ubuntu's `ansible-core` and CVE-2026-89091 | An accepted risk: the one tarball the host installs is the collection's own. | [Why](#ubuntus-ansible-core-and-cve-2026-89091) |
+| The release's publish job unpacks the build's artifact | An accepted risk: `unzip` parses an archive the build job made, beside the token that writes the release. | [Why](#the-releases-publish-job-unpacks-the-builds-artifact) |
 | The changelog | `CHANGELOG.md`, Keep a Changelog, as in every Porelo repository; no `antsibull-changelog`. | [Why](#the-changelog) |
 | An agent is installed from Porelo's catalogue as it is | Every package named as kind `agent` is installed; the catalogue reads every apt source on the host. | [Why](#an-agent-is-installed-from-porelos-catalogue-as-it-is) |
 | Porelo's setup script | It comes in the `porelo` package from Porelo's apt repository, which the role adds by its pinned fingerprint. | [Why](#porelos-setup-script) |
@@ -96,10 +97,27 @@ runs exactly that command, as root, on the host.
 
 **Why it stays.** The one tarball the host installs is this collection's own, built by `ansible-galaxy collection
 build` from a clean clone at a pushed commit and refused by `build/check-tarball.sh` if it holds a dot file or
-anything outside the paths the collection ships. A crafted tarball would have to be ours.
+anything outside the paths the collection ships. A crafted tarball would have to be ours. Each release attaches
+that tarball with a `SHA256SUMS` naming its digest, built once by the release workflow, so a person's `host up` can
+take exactly the release's own file and refuse any other.
 
 **What would change the answer.** A tarball from anywhere but this repository's release, an install from Ansible
 Galaxy, or Ubuntu shipping a fixed `ansible-core`, which the host then takes as it is.
+
+## The release's publish job unpacks the build's artifact
+
+**The exposure.** `.github/workflows/release.yml`'s job `publish` holds the token that writes the release. It runs
+`unzip` on the artifact its job `build` uploaded, and `build` runs a checkout, the tools image and a fetched action. A
+`build` made to do harm shapes that archive, so only an unknown flaw in `unzip`'s parsing would let it run code
+beside the token.
+
+**Why it stays.** The job runs nothing of the artifact: it checks `SHA256SUMS`, refuses anything but the tarball and
+that file, and attaches them; `check-actions` holds the job to runner commands, four env names and expressions only in
+`env` and `if`. Downloading the artifact without unpacking it would take an action fetched beside the token, which is
+the exposure the split into two jobs removes.
+
+**What would change the answer.** A known flaw in Ubuntu's `unzip` that runs code from an archive, or a way to fetch
+the artifact's files one by one with `gh` alone.
 
 ## The changelog
 
