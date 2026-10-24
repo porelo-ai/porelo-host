@@ -34,15 +34,29 @@ provider and from a company's own tooling, outside the interface.
     the offer and Ubuntu 26.04 and refuse when absent or out of stock; `scaleway_iam_ssh_key` looks up the person's
     key; `scaleway_baremetal_server` with the cloud-config, the two tags and the key;
   - outputs: `address` (the first IPv4), `host_key` (`ssh-ed25519 <base64>`), `server_id`.
-- **The hand-over to the host's own part:** the administrator runs `tofu apply`, then
-  `porelo-host up --given <address> --host-key "<host_key>"`, an option `porelo-host` already has for a machine one
-  has. So nothing of porelo-frontend changes for `up`. Giving back is `porelo-host down --given`, which works today
-  (`GivenMachine` plays `porelo.host.down` on the given address and gives nothing back itself), then `tofu destroy`,
-  which waits until the server is gone; `tofu plan -detailed-exitcode` then reading no change is the check that
-  nothing is left. `down --given`'s last step still reads `give-back` done, and when its play does not finish it says
-  the host is kept and billed and offers `--give-back-anyway`, which gives nothing back either: the module's README
-  says that then the administrator runs `tofu destroy` only once the play has finished, or knowingly with the host's
-  data lost.
+- **Driven by `porelo-host`, decided:** `porelo-host up` rents through the module and then sets the host up, and
+  `porelo-host down` sets it down and then runs `tofu destroy`, one command each as today. `--given ADDRESS
+  --host-key` stays for a machine one has, which `tofu` never touches. porelo-frontend's counterpart, replacing
+  `packages/porelo_host`'s own Scaleway calls, is its own issue, named here once it is filed.
+- **The contract `porelo-host` reads**, which changes only with both repositories:
+  - inputs as `TF_VAR_project`, `TF_VAR_scaleway_project_id`, `TF_VAR_zone`, `TF_VAR_offer`,
+    `TF_VAR_ssh_public_key` in `tofu`'s environment;
+  - the secrets only in that environment: `SCW_SECRET_KEY` (with `SCW_ACCESS_KEY`) and the state's encryption in
+    `TF_ENCRYPTION`, never an argument or a file;
+  - the calls: `tofu -chdir=<module> init -input=false -lockfile=readonly`, then `apply -input=false -auto-approve`,
+    then `output -json`; at `down`, `destroy -input=false -auto-approve`, then `plan -detailed-exitcode` reading no
+    change as the check that nothing is left;
+  - outputs, read from `tofu output -json`: `address` (the first IPv4), `host_key` (`ssh-ed25519 <base64>`), trusted
+    as today's tag, and `server_id`;
+  - a second `up` finds the server in the state and changes nothing, as today's find by tag does.
+- **How the module reaches the administrator's computer:** in the release beside the collection's tarball, as
+  `porelo-host-tofu-<version>.tar.gz` holding `tofu/scaleway/` with its `.terraform.lock.hcl`, under the same
+  `SHA256SUMS`; `porelo-host` takes the release's own file and refuses any other, as it does the collection.
+- **Which `tofu` runs:** `porelo-host` finds `tofu` on `PATH` and refuses it, before anything is rented, unless
+  `tofu version -json` names the one version the module pins; the module's `required_version` refuses any other too.
+  The providers come by `tofu init` from the registry, checked against the lock file's hashes.
+- **`down`'s last step:** with the module, `porelo-host down` plays `porelo.host.down` first and keeps the host when
+  the play does not finish, as today; only a finished play, or `--give-back-anyway`, runs `tofu destroy`.
 - **The state, encrypted with the administrator:** OpenTofu's own state encryption, `aes_gcm` with a `pbkdf2` key
   from a passphrase, `enforced`, so a plain state is refused. The configuration comes from the environment
   (`TF_ENCRYPTION`), never a file or a command line; the Scaleway key reaches the provider as `SCW_SECRET_KEY` in the
@@ -56,22 +70,20 @@ provider and from a company's own tooling, outside the interface.
   the tags, the cloud-config's host key, the outputs and the refusal of a missing offer or key; in the Build from a
   pinned OpenTofu image, as the Ansible tools run from theirs. **One real `apply` and `destroy` on the operator's word
   only**, a rented Elastic Metal for about an hour, its cost named before.
-- **Shipped** in the release beside the collection's tarball, its files under the same `SHA256SUMS`.
-- **Built by** Codex `gpt-6.1-sol` `high` from this plan; the state's encryption and the handling of the two secrets
+- **Built by** Codex `gpt-6.1-sol` `high` from this plan, the module and its tests here, the driving in
+  porelo-frontend's own issue; the state's encryption and the handling of the two secrets
   reviewed by Codex `xhigh`.
 - **Red first:** `tofu test` against a module without the project tag, and with a plain state accepted.
 
 ## Acceptance
 
 - `tofu test` passes without renting, and fails on a module that drops the project tag or the host key's tag.
-- On the operator's word: `tofu apply` rents one machine, `porelo-host up --given` with its outputs brings it up,
-  `porelo-host down` and `tofu destroy` give it back, and the Scaleway project lists nothing of it afterwards.
+- On the operator's word: `porelo-host up` rents one machine through the module and brings it up, `porelo-host down`
+  sets it down and destroys it, and the Scaleway project lists nothing of it afterwards.
 - The state on disk reads as encrypted, and OpenTofu refuses it without the passphrase.
 
 ## Open questions
 
-- **Who runs it:** the administrator apart, with `porelo-host up --given` after it (proposed), or `porelo-host up`
-  calling `tofu` itself, which ties the interface to OpenTofu being installed?
 - **Where the state and its passphrase live:** a directory per project on the administrator's computer and the
   passphrase in the administrator's password store (proposed), or the state in the operator's tresor?
 - **The one real `apply`/`destroy`:** may it rent one Elastic Metal for about an hour, and in which Scaleway project?
