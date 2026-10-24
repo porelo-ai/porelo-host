@@ -31,8 +31,10 @@ names every step of the run ahead with its text and duration, so the interface s
   and a non-negative integer `seconds` pass; anything else is left out, never guessed, so a mistyped block shows as a
   step without words, which the test of the playbooks below catches. A task without the block gives today's line.
 - **The run ahead:** before the first step's `started` line, the callback writes one line
-  `{"v": 1, "state": "plan", "steps": [{"text": "…", "seconds": …}, …]}`: every step of the playbook's plays that
-  carries the block, in order, a step under `when:` (the forge, the pool) only where the host settings ask for it. It
+  `{"v": 1, "state": "plan", "steps": [{"task": "…", "text": "…", "seconds": …}, …]}`, in `up` and in `down` alike:
+  every step of the playbook's plays that carries the block, in order, a step under `when:` (the forge, the pool) only
+  where the host settings ask for it. `task` is the name its `started` line will carry, so a reader matches a step by
+  name, never by position; a step without a usual duration leaves `seconds` out. It
   is an added kind of line, so `v` stays 1; `doc/lines.md` says a reader skips a `state` it does not know. A resumed
   `up` runs from the top and ends what is done quickly, so the total is an upper bound. The line's form is agreed with
   porelo-frontend for [F154](https://github.com/porelo-ai/porelo-frontend/blob/main/issues/README.md#f154).
