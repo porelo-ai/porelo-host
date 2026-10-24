@@ -36,9 +36,13 @@ provider and from a company's own tooling, outside the interface.
   - outputs: `address` (the first IPv4), `host_key` (`ssh-ed25519 <base64>`), `server_id`.
 - **The hand-over to the host's own part:** the administrator runs `tofu apply`, then
   `porelo-host up --given <address> --host-key "<host_key>"`, an option `porelo-host` already has for a machine one
-  has. So nothing of porelo-frontend changes for `up`. Giving back is `porelo-host down`, its play first, then
-  `tofu destroy`, which waits until the server is gone; `tofu plan -detailed-exitcode` then reading no change is the
-  check that nothing is left.
+  has. So nothing of porelo-frontend changes for `up`. Giving back is `porelo-host down --given`, which works today
+  (`GivenMachine` plays `porelo.host.down` on the given address and gives nothing back itself), then `tofu destroy`,
+  which waits until the server is gone; `tofu plan -detailed-exitcode` then reading no change is the check that
+  nothing is left. `down --given`'s last step still reads `give-back` done, and when its play does not finish it says
+  the host is kept and billed and offers `--give-back-anyway`, which gives nothing back either: the module's README
+  says that then the administrator runs `tofu destroy` only once the play has finished, or knowingly with the host's
+  data lost.
 - **The state, encrypted with the administrator:** OpenTofu's own state encryption, `aes_gcm` with a `pbkdf2` key
   from a passphrase, `enforced`, so a plain state is refused. The configuration comes from the environment
   (`TF_ENCRYPTION`), never a file or a command line; the Scaleway key reaches the provider as `SCW_SECRET_KEY` in the
@@ -76,6 +80,4 @@ provider and from a company's own tooling, outside the interface.
 
 - That `scaleway_baremetal_server` takes a cloud-config and tags as the API does, and that its create waits for the
   install to complete; read in the pinned provider's documentation and its source.
-- Whether `porelo-host down` works with `--given`, or finds the server only by its tag at Scaleway; asked of Agent
-  Frontend.
 - The current OpenTofu release whose state encryption and mocked providers in `tofu test` are both available.
