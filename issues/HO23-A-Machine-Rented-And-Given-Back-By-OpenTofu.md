@@ -37,7 +37,8 @@ provider and from a company's own tooling, outside the interface.
 - **Driven by `porelo-host`, decided:** `porelo-host up` rents through the module and then sets the host up, and
   `porelo-host down` sets it down and then runs `tofu destroy`, one command each as today. `--given ADDRESS
   --host-key` stays for a machine one has, which `tofu` never touches. porelo-frontend's counterpart, replacing
-  `packages/porelo_host`'s own Scaleway calls, is its own issue, named here once it is filed.
+  `packages/porelo_host`'s own Scaleway calls by a provider that drives `tofu`, is its issue "A Host Rented Through
+  OpenTofu", linked here once its row is on porelo-frontend's main.
 - **The contract `porelo-host` reads**, which changes only with both repositories:
   - inputs as `TF_VAR_project`, `TF_VAR_scaleway_project_id`, `TF_VAR_zone`, `TF_VAR_offer`,
     `TF_VAR_ssh_public_key` in `tofu`'s environment;
