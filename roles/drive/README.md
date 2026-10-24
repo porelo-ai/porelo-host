@@ -1,18 +1,24 @@
 # drive
 
-The person's drive on the host: one folder, read and written, on a filesystem of its own that is mounted `noexec`,
-`nosuid` and `nodev`, so nothing synced into it can be started. The filesystem lives in a sparse file and is mounted
-by a systemd mount unit, so it comes back at every boot. Tresorit's client is installed for the account from
-Tresorit's own installer, which runs only once `porelo.host.tresorit_installer` found it signed under the pinned CA.
-Its daemon runs as a user unit of the account, `tresorit-daemon.service`, kept running by the account's linger and
-started again after a crash.
+The person's drive on the host, by a contract that names no provider: one folder, read and written, on a filesystem
+of its own mounted `noexec`, `nosuid` and `nodev`, so nothing synced into it can be started; the need `drive` while
+the person has not logged the provider's client in; the person's folder synced down before `up` goes on, and synced
+up before `down` takes it away. **Tresorit is the one provider the role implements today.**
 
-While the client is logged out, the role adds `drive` to `porelo_host_needs`, and `up`'s second play stops for the
-person's login. Logged in, it syncs `drive_tresor` into the folder, stops every other sync the client has, and waits
-until the tresor reads `idle` with nothing left. `down` waits the same way, then stops the sync, logs out with
-`--unlink` so the host leaves no device on the person's account, stops the daemon and unmounts the folder. `tasks_from: down` takes it down, last at `down`.
+**The provider-neutral part.** The filesystem lives in a sparse file and is mounted by a systemd mount unit, so it
+comes back at every boot. While the client is logged out, the role adds `drive` to `porelo_host_needs`, and `up`'s
+second play stops for the person's login. Logged in, it syncs the person's folder in and waits until nothing is left;
+`down` waits the same way, then logs the client out so the host leaves no device on the person's account, and
+unmounts the folder. `tasks_from: down` takes it down, last at `down`.
 
-**The person's login**, as client 3.5.1300.4870 takes it in a terminal on the host, as the account with
+**Tresorit's own part.** The client is installed for the account from Tresorit's own installer
+(`drive_installer_url`), which runs only once `porelo.host.tresorit_installer` found it signed under the pinned CA
+(`drive_installer_ca_sha256`). Its daemon runs as a user unit of the account, `tresorit-daemon.service`, kept running
+by the account's linger and started again after a crash. The person's folder is the tresor `drive_tresor`: the role
+stops every other sync the client has, takes the tresor as synced once it reads `idle` with nothing left, and logs out
+with `--unlink`.
+
+**The person's login to Tresorit**, as client 3.5.1300.4870 takes it in a terminal on the host, as the account with
 `XDG_RUNTIME_DIR` set: `tresorit-cli login --email <e-mail> --password-on-stdin`. `--email` and a password option are
 compulsory, so the client never asks for the e-mail itself. It asks `Password:` without echo, then, where the account
 has two-factor on, `Enter your one-time password: `, which echoes as typed. Success prints nothing. `tresorit-cli -p

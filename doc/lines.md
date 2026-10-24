@@ -31,7 +31,7 @@ with one line in place of a failure:
 
     {"v": 1, "state": "waiting", "needs": ["drive", "vault-new"]}
 
-`needs` names what is missing: `drive` when the person's drive is not logged in or not synced, `vault-new` when the
+`needs` names what is missing: `drive` when the person has not logged the drive's client in, `vault-new` when the
 account has no vault yet, `vault` when its vault is shut. `up` installs agents without stopping for their sign-ins
 and starts no task. `ansible-playbook` itself exits 2 on a waiting stop, as on any failure,
 so a program tells the stop from a failure by this line, never by the exit code. A second `up` after the person's step

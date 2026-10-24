@@ -6,7 +6,8 @@ Brings a Porelo project up on a server and takes it down again, owned or rented 
 **`porelo.host.up`, in two plays around the person's step.** The first play runs `base` (packages, KVM with libvirt,
 podman), `porelo`'s install and setup script (which makes Porelo's account with linger and subordinate ids), `base`'s
 account part (the account in `kvm` and `libvirt`, and the person's ssh key on the account for the stop), `drive` (the
-`noexec` folder, Tresorit's client and daemon, and syncing the person's tresor when logged in), and `porelo setup` with
+`noexec` folder, and the drive's client syncing the person's folder when logged in: Tresorit's, the one provider
+implemented today), and `porelo setup` with
 `porelo vault status`. Each role that needs the person's step adds what is missing (`drive`, `vault-new` or `vault`) to
 `porelo_host_needs`. The second play stops first with a [waiting line](lines.md) while `porelo_host_needs` is not
 empty; once the drive is synced and the vault is open, it runs `vpn` (WireGuard with the host's key read from the drive
