@@ -1,6 +1,6 @@
 # HO25 — The Stop Asks Again Until It Is Done
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** S - one shell script the porelo role installs, its Molecule test and the contract's page; porelo-frontend's
 side is one call.
 

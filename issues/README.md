@@ -15,6 +15,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho25"></a>[HO25](HO25-The-Stop-Asks-Again-Until-It-Is-Done.md) | S | - | At `up`'s stop, a script on the host asks a mistyped Tresorit login or vault passphrase again in the same terminal until it succeeds or the person cancels, with exits the interface reads. |
 | <a id="ho21"></a>[HO21](HO21-Each-Step-Says-What-It-Does-And-How-Long.md) | S | - | Each of the playbooks' sixteen steps carries a plain-words text and its usual duration as its own variables, which its `started` line passes on for the interface to show, `v` staying 1. |
 | <a id="ho13"></a>[HO13](HO13-A-Release-Carries-Its-Tarball-And-Digest.md) | S | - | A release attaches the collection's tarball and its `SHA256SUMS`, so `host up` can refuse any other; the check itself is porelo-frontend's. |
 
@@ -22,7 +23,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho25"></a>[HO25](HO25-The-Stop-Asks-Again-Until-It-Is-Done.md) | S | - | At `up`'s stop, a script on the host asks a mistyped Tresorit login or vault passphrase again in the same terminal until it succeeds or the person cancels, with exits the interface reads. |
 | <a id="ho08"></a>[HO08](HO08-The-Forge-With-Its-Registry.md) | L | porelo [B233](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b233), porelo [B234](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b234) (tasks' side only) | Role `forge`: Forgejo and its runner in rootless podman under two accounts of their own, on the VPN and the tasks' address only, its registry over TLS from a CA made on the host, the project's repositories migrated from the central forge with push mirrors, credentials made and kept on the host, every build publishing with a publisher's token kept as an Actions secret; run where the host setting `porelo_host_forge` asks for it. |
 | <a id="ho12"></a>[HO12](HO12-The-VM-Pool.md) | L | porelo-buildtools [BT24](https://github.com/porelo-ai/porelo-buildtools/blob/main/issues/README.md#bt24) | Role `vm_pool`: VMs with run accounts `porelo-machines` rents from, made by the same code as the test VM, deleted by name at `down`. |
 
