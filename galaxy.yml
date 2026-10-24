@@ -2,7 +2,7 @@
 # The collection's identity. Its version follows Porelo's, since its roles call Porelo's commands.
 namespace: porelo
 name: host
-version: 0.5.1-snapshot
+version: 0.5.1
 readme: README.md
 authors:
   - Michael Schnell <michael@fuin.org>
