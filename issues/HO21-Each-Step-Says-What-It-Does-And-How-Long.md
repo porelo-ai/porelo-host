@@ -1,12 +1,14 @@
 # HO21 — Each Step Says What It Does And How Long
 
 **Status:** Backlog.
-**Size:** S - two fields on a step's `started` line read from the playbook task's own variables, a text and a
-duration on each of the playbooks' sixteen steps, tests and the contract's page; no role changes.
+**Size:** S - two fields on a step's `started` line and one line of the whole run ahead, read from the playbook
+tasks' own variables, a text and a duration on each of the playbooks' sixteen steps, tests and the contract's page; no
+role changes.
 
 **What must be true.** Every step a person waits on while `up` or `down` runs carries a text in plain words, such as
 "Installing Porelo and the agents", and how long it usually takes. The step lines `porelo-host` reads carry both. The
-interface shows them and writes no text of its own for a step the collection defines.
+interface shows them and writes no text of its own for a step the collection defines. Before the first step, one line
+names every step of the run ahead with its text and duration, so the interface shows the whole run's time left.
 
 ## Plan
 
@@ -28,6 +30,12 @@ interface shows them and writes no text of its own for a step the collection def
   untemplated, as the playbook wrote it, and adds `text` and `seconds` to that task's `started` line. A string `text`
   and a non-negative integer `seconds` pass; anything else is left out, never guessed, so a mistyped block shows as a
   step without words, which the test of the playbooks below catches. A task without the block gives today's line.
+- **The run ahead:** before the first step's `started` line, the callback writes one line
+  `{"v": 1, "state": "plan", "steps": [{"text": "…", "seconds": …}, …]}`: every step of the playbook's plays that
+  carries the block, in order, a step under `when:` (the forge, the pool) only where the host settings ask for it. It
+  is an added kind of line, so `v` stays 1; `doc/lines.md` says a reader skips a `state` it does not know. A resumed
+  `up` runs from the top and ends what is done quickly, so the total is an upper bound. The line's form is agreed with
+  porelo-frontend for [F154](https://github.com/porelo-ai/porelo-frontend/blob/main/issues/README.md#f154).
 - **The texts are English only.** A key to translate them by would be another added field, not part of this issue.
 - **The version stays 1:** `doc/lines.md` says an added field keeps it. A program tells a step from a role's inner task
   by `text` being there; the inner tasks' lines that follow belong to the step before them.
@@ -42,7 +50,8 @@ interface shows them and writes no text of its own for a step the collection def
     [F154](https://github.com/porelo-ai/porelo-frontend/blob/main/issues/README.md#f154) and
     [F161](https://github.com/porelo-ai/porelo-frontend/blob/main/issues/README.md#f161), whose views write no step
     text of their own.
-- **Red first**, in `tests/unit/plugins/callback/test_lines.py` with a play of its own: a task with the block whose
+- **Red first**, in `tests/unit/plugins/callback/test_lines.py` with a play of its own: a run whose first line is not
+  the `plan` line naming its steps in order, a step under a false `when:` listed; a task with the block whose
   `started` line lacks `text` and `seconds`; a block with a wrong type that still gives a field; and a test that loads
   `playbooks/up.yml` and `playbooks/down.yml` and fails on a step of the playbook without a valid block.
 
@@ -53,6 +62,10 @@ interface shows them and writes no text of its own for a step the collection def
 - A task without the block, and every inner task of a role, still gives the line it gives today, with `v` 1.
 
 ## To be checked
+
+- How the callback reads the steps and decides their `when:` before the first task runs: from the plays at
+  `v2_playbook_on_start` with the play's variables, or from one first task of `up` that gathers the blocks into a fact
+  the callback writes; measured on the host's `ansible-core`.
 
 - How a step's duration is measured in a Molecule run: the lines carry no time, so either the run's output is
   timestamped as it is read, or a timing callback runs beside `porelo.host.lines`, if the tools image carries one.
