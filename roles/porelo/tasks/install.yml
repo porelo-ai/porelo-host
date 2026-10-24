@@ -53,6 +53,14 @@
     state: present
     update_cache: true
 
+- name: install | Install the person's stop command
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/porelo-host-stop"
+    dest: /usr/local/bin/porelo-host-stop
+    owner: root
+    group: root
+    mode: "0755"
+
 # The script says "already" for each part it finds as it should be, and prints no summary of its own yet (porelo's
 # own Idea, beside "vault put" saying unchanged): nothing changed when the repository's two parts and the account's
 # three say so.

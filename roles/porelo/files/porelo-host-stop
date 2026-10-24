@@ -1,0 +1,113 @@
+#!/bin/bash
+# The person's step at up's stop, run in their terminal on the host: each login and passphrase asked again in place
+# until it is done or cancelled, so a typo never costs a whole up run. The client and the vault read the secrets.
+set -u
+
+cancel() {
+    printf '\n%s\n' 'Cancelled; the host waits at this stop. Running up again comes back here.'
+    exit 75
+}
+
+wrong_call() {
+    printf '%s\n' "porelo-host-stop: $1" >&2
+    exit 64
+}
+
+require_command() {
+    command -v "$1" >/dev/null 2>&1 || {
+        printf '%s\n' "porelo-host-stop: $1 is not found on PATH" >&2
+        exit 69
+    }
+}
+
+try_again() {
+    printf 'Try again? [Y/n] '
+    IFS= read -r answer || cancel
+    case "$answer" in n|N) cancel ;; esac
+}
+
+ask_email() {
+    while :; do
+        if [ -n "$email" ]; then
+            printf 'E-mail [%s]: ' "$email"
+        else
+            printf 'E-mail: '
+        fi
+        IFS= read -r entered || cancel
+        candidate=${entered:-$email}
+        if [[ $candidate =~ $email_pattern ]]; then
+            email=$candidate
+            return
+        fi
+        printf '%s\n' 'Enter a plain e-mail address.'
+    done
+}
+
+trap cancel INT
+drive=false
+vault_new=false
+vault=false
+email_given=false
+email=
+email_pattern='^[A-Za-z0-9][A-Za-z0-9._+-]*@[A-Za-z0-9]+([.-][A-Za-z0-9]+)*\.[A-Za-z]{2,}$'
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --email)
+            [ "$#" -ge 2 ] || wrong_call '--email needs an address'
+            email=$2
+            email_given=true
+            shift 2
+            ;;
+        drive) drive=true; shift ;;
+        vault-new) vault_new=true; shift ;;
+        vault) vault=true; shift ;;
+        *) wrong_call "unknown need or option: $1" ;;
+    esac
+done
+
+if "$email_given" && ! "$drive"; then
+    wrong_call '--email is allowed only with drive'
+fi
+if ! "$drive" && ! "$vault_new" && ! "$vault"; then
+    wrong_call 'at least one need is required: drive, vault-new, vault'
+fi
+
+if "$drive"; then
+    require_command tresorit-cli
+fi
+if "$vault_new" || "$vault"; then
+    require_command porelo
+fi
+if [ "${XDG_RUNTIME_DIR+x}" != x ]; then
+    require_command id
+    account_id=$(id -u) || {
+        printf '%s\n' 'porelo-host-stop: cannot read the account id' >&2
+        exit 69
+    }
+    export XDG_RUNTIME_DIR=/run/user/"$account_id"
+fi
+
+if "$drive"; then
+    while :; do
+        ask_email
+        printf '%s\n' 'Type your Tresorit password and Enter, then the one-time code when it is asked; the code shows as you type it.'
+        if tresorit-cli login --email "$email" --password-on-stdin; then
+            break
+        fi
+        try_again
+    done
+fi
+if "$vault_new"; then
+    until porelo vault init; do
+        try_again
+    done
+fi
+if "$vault"; then
+    until porelo vault unlock; do
+        try_again
+    done
+fi
+
+printf '%s\n' "The host's stop is done; close this terminal, and setup goes on."
+exit 0

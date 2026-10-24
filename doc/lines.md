@@ -65,5 +65,15 @@ and starts no task. `ansible-playbook` itself exits 2 on a waiting stop, as on a
 so a program tells the stop from a failure by this line, never by the exit code. A second `up` after the person's step
 runs both plays from the top; what is done is done, so it goes on where it stopped.
 
+The person runs `porelo-host-stop [--email ADDRESS] NEED...` in a terminal as the account on the host, with the needs
+as `up` names them. `drive` asks for the e-mail, with the given address as a default kept by Enter, then lets
+Tresorit ask for its password. `--email` is allowed only with `drive`. `vault-new` asks for a new vault passphrase
+twice; `vault` asks for the existing passphrase to unlock it. The drive runs before the vault. A failed attempt
+shows the command's error and asks `Try again? [Y/n]`; retrying the drive asks for the e-mail again.
+
+The command exits 0 when every named need is done, 75 on `n`, `N` or Ctrl+C, 64 for a wrong call, and 69 when a
+required command is missing. Its last line on success is "The host's stop is done; close this terminal, and setup
+goes on." On cancellation it is "Cancelled; the host waits at this stop. Running up again comes back here."
+
 **The version.** `v` is the contract's version. An added field or state keeps it; a field that changes or goes away
 raises it. A reader skips a `state` it does not know, as it skips a field.

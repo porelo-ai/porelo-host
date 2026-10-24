@@ -18,6 +18,35 @@
         database: passwd
         key: "{{ verify_account }}"
 
+    - name: Read the person's stop command and its permissions
+      ansible.builtin.stat:
+        path: /usr/local/bin/porelo-host-stop
+      register: verify_host_stop
+
+    # A malformed call must refuse before it can ask for credentials.
+    - name: Ask the stop command to refuse an unknown need as the account
+      ansible.builtin.command:
+        argv: [/usr/local/bin/porelo-host-stop, nonsense]
+      become: true
+      become_user: "{{ verify_account }}"
+      register: verify_host_stop_refusal
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the stop command is root's executable and refuses the unknown need
+      ansible.builtin.assert:
+        that:
+          - verify_host_stop.stat.exists
+          - verify_host_stop.stat.isreg | default(false)
+          - verify_host_stop.stat.uid | default(-1) == 0
+          - verify_host_stop.stat.mode | default('') == '0755'
+          - verify_host_stop_refusal.rc == 64
+          - "'nonsense' in verify_host_stop_refusal.stderr"
+        fail_msg: >-
+          asked for /usr/local/bin/porelo-host-stop as root's regular file with mode 0755 and nonsense refused with 64;
+          got stat {{ verify_host_stop.stat }}, rc {{ verify_host_stop_refusal.rc }}:
+          {{ verify_host_stop_refusal.stdout }} {{ verify_host_stop_refusal.stderr }}
+
     - name: Install the stub explicitly as the person does
       ansible.builtin.command:
         argv: [sh, "{{ verify_setup_script }}", --user, "{{ verify_account }}",

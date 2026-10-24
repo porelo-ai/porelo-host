@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `porelo-host-stop` completes the host's drive login and vault step in the person's terminal, asking again after
+  a failed attempt until it succeeds or the person cancels.
+
 ## [0.5.1] - 2026-10-24
 
 ### Changed

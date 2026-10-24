@@ -28,6 +28,7 @@ login)
     [ "${2:-}" = --email ] && [ "${4:-}" = --password-on-stdin ] || error CLIUsage "stub takes --email <a> --password-on-stdin"
     IFS= read -r password || error CLILoginFailed "no password"
     [ -n "$password" ] || error CLILoginFailed "empty password"
+    [ "$password" != wrong ] || error CLIBadPasswordOrEmail "Bad password or email"
     echo "$3" > "$state/login" ;;
 logout)
     rm -f "$state/login" "$state/sync" "$state/polls"
