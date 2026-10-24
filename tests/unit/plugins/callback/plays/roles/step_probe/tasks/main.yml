@@ -1,0 +1,4 @@
+---
+- name: Do inner work
+  ansible.builtin.debug:
+      msg: nothing

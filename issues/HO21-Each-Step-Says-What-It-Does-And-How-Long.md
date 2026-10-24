@@ -1,6 +1,6 @@
 # HO21 — Each Step Says What It Does And How Long
 
-**Status:** Backlog.
+**Status:** Implementing.
 **Size:** S - two fields on a step's `started` line and one line of the whole run ahead, read from the playbook
 tasks' own variables, a text and a duration on each of the playbooks' sixteen steps, tests and the contract's page; no
 role changes.
@@ -41,8 +41,11 @@ names every step of the run ahead with its text and duration, so the interface s
 - **The texts are English only.** A key to translate them by would be another added field, not part of this issue.
 - **The version stays 1:** `doc/lines.md` says an added field keeps it. A program tells a step from a role's inner task
   by `text` being there; the inner tasks' lines that follow belong to the step before them.
-- **The durations** are written by hand from a measured Molecule run of `up` and `down` on the test VM, rounded up to
-  ten seconds; learning them from runs is not part of this issue.
+- **The durations** are written by hand from a measured Molecule run of `up` and `down` on the test VM, each step's
+  first run that does its work, rounded up to ten seconds; learning them from runs is not part of this issue.
+  Measured on 2026-10-24 with the scenario's stand-ins (the drive's client, an empty project): the host's packages
+  83 s, Porelo 45 s, the drive 13 s, the forge 13 s, every other step under 10 s. A real host's first `up` downloads
+  more and takes longer; the values are the usual duration of a step that finds little to do.
 - **`doc/lines.md`** shows the `started` line with both fields and says which tasks carry them; the changelog gains the
   entry under *Added*.
 - **Who writes what, agreed with porelo-frontend:**
@@ -62,13 +65,3 @@ names every step of the run ahead with its text and duration, so the interface s
 - Each of the sixteen steps of `up` and `down` gives a `started` line with its `text` and `seconds`, read in a
   Molecule run's output.
 - A task without the block, and every inner task of a role, still gives the line it gives today, with `v` 1.
-
-## To be checked
-
-- How the callback reads the steps and decides their `when:` before the first task runs: from the plays at
-  `v2_playbook_on_start` with the play's variables, or from one first task of `up` that gathers the blocks into a fact
-  the callback writes; measured on the host's `ansible-core`.
-
-- How a step's duration is measured in a Molecule run: the lines carry no time, so either the run's output is
-  timestamped as it is read, or a timing callback runs beside `porelo.host.lines`, if the tools image carries one.
-- That `task.vars` holds an `include_role` task's `vars:` untemplated at task start on the host's `ansible-core`.

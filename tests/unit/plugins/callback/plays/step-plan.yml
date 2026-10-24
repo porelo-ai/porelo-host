@@ -1,0 +1,39 @@
+---
+- name: First described play
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Start the first play
+        ansible.builtin.debug:
+            msg: nothing
+        vars:
+            porelo_host_step: {text: Preparing the host, seconds: 10}
+      - name: Include a described role
+        ansible.builtin.include_role:
+            name: step_probe
+        vars:
+            porelo_host_step: {text: Installing Porelo, seconds: 90}
+
+- name: Second described play
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+      step_is_enabled: '{{ include_optional_step }}'
+  tasks:
+      - name: Start the second play
+        ansible.builtin.debug:
+            msg: nothing
+        vars:
+            porelo_host_step: {text: Finishing the host, seconds: 20}
+      - name: Run the optional step
+        ansible.builtin.debug:
+            msg: nothing
+        when:
+            - step_is_enabled | bool
+            - inventory_step_enabled
+            - task_step_enabled
+        vars:
+            task_step_enabled: true
+            porelo_host_step: {text: Starting the forge, seconds: 30}

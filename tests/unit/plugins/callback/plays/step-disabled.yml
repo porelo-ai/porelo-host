@@ -1,0 +1,12 @@
+---
+- name: Disabled steps
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Skip a described step
+        ansible.builtin.debug:
+            msg: nothing
+        when: false
+        vars:
+            porelo_host_step: {text: Starting the forge, seconds: 30}

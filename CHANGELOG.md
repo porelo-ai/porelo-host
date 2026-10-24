@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `porelo.host.lines`: a step's own words and usual duration on its `started` line, and one plan of the described
+  steps across all plays before the run, leaving out steps whose conditions are false.
 - A release made from a tag `v<version>` attaches the collection's tarball and a `SHA256SUMS` naming its digest; a tag
   that is not `galaxy.yml`'s plain version stops it before anything is attached.
 - The collection `porelo.host`, built with `ansible-galaxy collection build` into a tarball that holds only what it

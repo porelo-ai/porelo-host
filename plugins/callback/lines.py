@@ -11,6 +11,13 @@ description:
   - Writes one JSON object per line to stdout instead of Ansible's text, so a program reads each step's state.
   - A task's start gives C(started); its end gives C(ok), C(changed), C(skipped) or C(failed). A handler's lines are
     a task's; a meta task writes none, since Ansible ends it with no result.
+  - A task's own C(vars.porelo_host_step) adds its string C(text) and non-negative integer C(seconds) to C(started),
+    as written, without templating. A boolean is no duration; invalid seconds are omitted, invalid text omits both.
+  - Before the first task, one C(plan) line lists the described steps of all plays in order, with their task names.
+    Its C(steps) entries carry C(task), C(text) and optional C(seconds); C(task) matches the C(started) line's name.
+    Conditions use the run's inventory, play, task and extra variables; false steps are omitted. A condition Ansible
+    cannot decide yet leaves the step listed with C(when=true).
+  - A reader skips a C(state) it does not know, as it skips a field. Added states and fields keep version 1.
   - A failed task tagged C(porelo_host_waiting) gives C(waiting) with the C(needs) its message names, the stop where
     the person's step comes.
   - A failed line's C(msg) includes command stderr, else stdout, with failed loop items labeled and output bounded.
@@ -21,8 +28,11 @@ requirements:
 
 import json
 import sys
+from collections.abc import Mapping
 
+from ansible.errors import AnsibleError
 from ansible.plugins.callback import CallbackBase
+from ansible.template import Templar
 
 VERSION = 1
 WAITING_TAG = "porelo_host_waiting"
@@ -40,6 +50,8 @@ class CallbackModule(CallbackBase):
     def __init__(self):
         super().__init__()
         self._play = ""
+        self._playbook = None
+        self._planned = False
 
     def _line(self, **fields):
         sys.stdout.write(json.dumps({"v": VERSION, **fields}, sort_keys=True) + "\n")
@@ -106,14 +118,67 @@ class CallbackModule(CallbackBase):
             else:
                 return msg[:3999] + "…"
 
+    @staticmethod
+    def _description(task):
+        """Reads only the task's own untemplated step fields."""
+        step = task.vars.get("porelo_host_step")
+        if not isinstance(step, Mapping) or not isinstance(step.get("text"), str):
+            return {}
+        fields = {"text": step["text"]}
+        seconds = step.get("seconds")
+        if isinstance(seconds, int) and not isinstance(seconds, bool) and seconds >= 0:
+            fields["seconds"] = seconds
+        return fields
+
+    @staticmethod
+    def _included(play, task):
+        """Decides a step's conditions with the variables available before the run."""
+        manager = play.get_variable_manager()
+        loader = play.get_loader()
+        templar = Templar(loader=loader, variables=manager.get_vars(play=play))
+        hosts = manager._inventory.get_hosts(templar.template(play.hosts), ignore_restrictions=True)
+        for host in hosts:
+            templar = Templar(loader=loader, variables=manager.get_vars(play=play, host=host, task=task))
+            if all(templar.evaluate_conditional(condition) for condition in task.when):
+                return True
+        return False
+
+    def _plan(self):
+        """Lists described tasks across every play before any task starts."""
+        steps = []
+        described = False
+        for play in self._playbook.get_plays():
+            for block in play.pre_tasks + play.tasks + play.post_tasks:
+                for task in block.get_tasks():
+                    fields = self._description(task)
+                    if not fields or task.action in META_ACTIONS:
+                        continue
+                    described = True
+                    try:
+                        if not self._included(play, task):
+                            continue
+                    except AnsibleError:
+                        # A later task may supply a condition's value, so the plan must not promise its omission.
+                        fields["when"] = True
+                    steps.append({"task": task.get_name().strip(), **fields})
+        if described:
+            self._line(state="plan", steps=steps)
+
+    def v2_playbook_on_start(self, playbook):
+        self._playbook = playbook
+        self._planned = False
+
     def v2_playbook_on_play_start(self, play):
         self._play = play.get_name().strip()
+        if not self._planned:
+            self._plan()
+            self._planned = True
 
     def v2_playbook_on_task_start(self, task, is_conditional):
         # Ansible gives a meta task such as flush_handlers no result, so its start would stand without an end.
         if task.action in META_ACTIONS:
             return
-        self._line(play=self._play, task=task.get_name().strip(), state="started", msg="")
+        self._line(play=self._play, task=task.get_name().strip(), state="started", msg="", **self._description(task))
 
     def v2_playbook_on_handler_task_start(self, task):
         self.v2_playbook_on_task_start(task, False)

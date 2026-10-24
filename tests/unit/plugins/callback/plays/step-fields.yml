@@ -1,0 +1,86 @@
+---
+- name: Step fields
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+      porelo_host_step: {text: Inherited words, seconds: 999}
+  tasks:
+      - name: Describe a step
+        ansible.builtin.debug:
+            msg: nothing
+        vars:
+            porelo_host_step: {text: Installing Porelo, seconds: 90}
+      - name: Keep raw text
+        ansible.builtin.debug:
+            msg: nothing
+        vars:
+            porelo_host_step: {text: '{{ step_secret }}', seconds: 10}
+      - name: Reject negative seconds
+        ansible.builtin.debug:
+            msg: nothing
+        vars:
+            porelo_host_step: {text: A step, seconds: -1}
+      - name: Reject boolean seconds
+        ansible.builtin.debug:
+            msg: nothing
+        vars:
+            porelo_host_step: {text: A step, seconds: true}
+      - name: Reject string seconds
+        ansible.builtin.debug:
+            msg: nothing
+        vars:
+            porelo_host_step: {text: A step, seconds: '10'}
+      - name: Reject decimal seconds
+        ansible.builtin.debug:
+            msg: nothing
+        vars:
+            porelo_host_step: {text: A step, seconds: 1.5}
+      - name: Reject null seconds
+        ansible.builtin.debug:
+            msg: nothing
+        vars:
+            porelo_host_step: {text: A step, seconds: null}
+      - name: Omit missing seconds
+        ansible.builtin.debug:
+            msg: nothing
+        vars:
+            porelo_host_step: {text: A step}
+      - name: Keep raw seconds
+        ansible.builtin.debug:
+            msg: nothing
+        vars:
+            porelo_host_step: {text: A step, seconds: '{{ 10 }}'}
+      - name: Allow zero seconds
+        ansible.builtin.debug:
+            msg: nothing
+        vars:
+            porelo_host_step: {text: A step, seconds: 0}
+      - name: Reject missing text
+        ansible.builtin.debug:
+            msg: nothing
+        vars:
+            porelo_host_step: {seconds: 10}
+      - name: Reject numeric text
+        ansible.builtin.debug:
+            msg: nothing
+        vars:
+            porelo_host_step: {text: 42, seconds: 10}
+      - name: Reject boolean text
+        ansible.builtin.debug:
+            msg: nothing
+        vars:
+            porelo_host_step: {text: false, seconds: 10}
+      - name: Reject null text
+        ansible.builtin.debug:
+            msg: nothing
+        vars:
+            porelo_host_step: {text: null, seconds: 10}
+      - name: Reject a nonmapping block
+        ansible.builtin.debug:
+            msg: nothing
+        vars:
+            porelo_host_step: [A step, 10]
+      - name: Stay unchanged
+        ansible.builtin.debug:
+            msg: nothing

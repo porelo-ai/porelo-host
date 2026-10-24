@@ -122,8 +122,12 @@
         state: absent
 
     - name: Run down on the host itself, as host down does, its steps as JSON lines
-      ansible.builtin.command:
-        cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.down
+      # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail && ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.down
+          | tee >(while IFS= read -r l; do printf '%(%s)T %s\n' -1 "$l"; done > /root/timed-4-down.lines)
+        executable: /bin/bash
       environment:
         ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
         LC_ALL: C.UTF-8
@@ -131,6 +135,39 @@
       failed_when: false
       changed_when: >-
         side_effect_down.stdout is search('"state": "changed"')
+
+    # The steps' durations as this run measured them, from each step's start to the next line after its last; read by
+    # hand into the playbooks' porelo_host_step blocks, nothing asserted.
+    - name: Read how long each step of up and down took
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import glob, json
+            for path in sorted(glob.glob("/root/timed-*.lines")):
+                rows = []
+                for line in open(path):
+                    stamp, _, text = line.partition(" ")
+                    try:
+                        data = json.loads(text)
+                    except ValueError:
+                        continue
+                    rows.append((int(stamp), data))
+                current = None
+                for at, data in rows:
+                    if data.get("state") == "started" and "text" in data:
+                        if current:
+                            print(path, current[1], at - current[0], sep="\t")
+                        current = (at, data["text"])
+                if current and rows:
+                    print(path, current[1], rows[-1][0] - current[0], sep="\t")
+      register: side_effect_durations
+      changed_when: false
+
+    - name: Show how long each step took
+      ansible.builtin.debug:
+        var: side_effect_durations.stdout_lines
 
     - name: Read every running container of the account after down
       ansible.builtin.command:
@@ -314,6 +351,7 @@
       vars:
         side_effect_pool_secret: >-
           {{ (side_effect_unsynced.stdout_lines + side_effect_down.stdout_lines) | select | map('from_json')
+          | selectattr('task', 'defined')
           | selectattr('task', 'search', "down \\| Delete the run key's Actions secret from the forge")
           | rejectattr('state', 'equalto', 'started') | list }}
       when: side_effect_vm_pool == 'on'

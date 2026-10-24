@@ -6,27 +6,49 @@
   hosts: localhost
   connection: local
   gather_facts: false
-  roles:
-    - porelo.host.base
   tasks:
+    - name: Install the host's packages, KVM and podman
+      ansible.builtin.include_role:
+        name: porelo.host.base
+      vars:
+        porelo_host_step:
+          text: Installing the host's packages
+          seconds: 90
+
     # Porelo's package and its setup script, which makes the account base's next part reads.
     - name: Install Porelo and run its setup script for the account
       ansible.builtin.include_role:
         name: porelo.host.porelo
         tasks_from: install
+      vars:
+        porelo_host_step:
+          text: Installing Porelo
+          seconds: 50
 
     - name: Let Porelo's account open KVM and libvirt
       ansible.builtin.include_role:
         name: porelo.host.base
         tasks_from: account
+      vars:
+        porelo_host_step:
+          text: Setting up Porelo's account
+          seconds: 10
 
     - name: Give the person's drive its folder
       ansible.builtin.include_role:
         name: porelo.host.drive
+      vars:
+        porelo_host_step:
+          text: Setting up the drive
+          seconds: 20
 
     - name: Run Porelo's setup, and ask whether the vault is open
       ansible.builtin.include_role:
         name: porelo.host.porelo
+      vars:
+        porelo_host_step:
+          text: Setting up Porelo
+          seconds: 10
 
 - name: Bring the host up from the person's step
   hosts: localhost
@@ -42,23 +64,43 @@
     - name: Let the person reach the host through their VPN alone
       ansible.builtin.include_role:
         name: porelo.host.vpn
+      vars:
+        porelo_host_step:
+          text: Opening the VPN
+          seconds: 10
 
     - name: Put the keys into the vault and follow the project, through Porelo's own commands
       ansible.builtin.include_role:
         name: porelo.host.porelo
         tasks_from: project
+      vars:
+        porelo_host_step:
+          text: Loading the keys and following the project
+          seconds: 10
 
     - name: Run the host's forge on the VPN's address, where the host asks for one
       ansible.builtin.include_role:
         name: porelo.host.forge
+      vars:
+        porelo_host_step:
+          text: Starting the forge
+          seconds: 20
       when: porelo_host_forge | default(false) | bool
 
     - name: Make the host's VM pool, where the host asks for one
       ansible.builtin.include_role:
         name: porelo.host.vm_pool
+      vars:
+        porelo_host_step:
+          text: Making the virtual machines
+          seconds: 10
       when: porelo_host_vm_pool is defined
 
     - name: Install every offered agent and the project's transports, through Porelo's setup script
       ansible.builtin.include_role:
         name: porelo.host.porelo
         tasks_from: tasks
+      vars:
+        porelo_host_step:
+          text: Installing the agents
+          seconds: 10

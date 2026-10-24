@@ -1,0 +1,15 @@
+---
+- name: A later condition
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Supply a later value
+        ansible.builtin.set_fact:
+            later_step_enabled: true
+      - name: Use the later value
+        ansible.builtin.debug:
+            msg: nothing
+        when: later_step_enabled
+        vars:
+            porelo_host_step: {text: Finishing the host, seconds: 10}

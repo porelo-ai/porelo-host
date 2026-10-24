@@ -166,8 +166,12 @@
 
     - name: Run up before the person's login, as the first host up does
       when: not converge_first_seen.stat.exists
-      ansible.builtin.command:
-        cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.up
+      # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail && ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.up
+          | tee >(while IFS= read -r l; do printf '%(%s)T %s\n' -1 "$l"; done > /root/timed-1-first-up.lines)
+        executable: /bin/bash
       environment:
         ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
         LC_ALL: C.UTF-8
@@ -269,8 +273,12 @@
       become_user: "{{ converge_account }}"
 
     - name: Run up on the host itself, as host up does, its steps as JSON lines
-      ansible.builtin.command:
-        cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.up
+      # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail && ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.up
+          | tee >(while IFS= read -r l; do printf '%(%s)T %s\n' -1 "$l"; done > /root/timed-2-up.lines)
+        executable: /bin/bash
       environment:
         ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
         LC_ALL: C.UTF-8
@@ -461,8 +469,13 @@
                   url: https://10.73.0.1:3000/central/stand-in.git
 
     - name: Run up with the forge's repositories, its steps as JSON lines
-      ansible.builtin.command:
-        cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml -i /root/porelo-host-forge.yml porelo.host.up
+      # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail && ansible-playbook -c local -i /root/porelo-host-inventory.yml
+          -i /root/porelo-host-forge.yml porelo.host.up
+          | tee >(while IFS= read -r l; do printf '%(%s)T %s\n' -1 "$l"; done > /root/timed-3-up-forge.lines)
+        executable: /bin/bash
       environment:
         ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
         LC_ALL: C.UTF-8

@@ -12,28 +12,52 @@
       ansible.builtin.include_role:
         name: porelo.host.vm_pool
         tasks_from: down
+      vars:
+        porelo_host_step:
+          text: Removing the virtual machines
+          seconds: 10
 
     - name: Stop the host's forge, keeping nothing
       ansible.builtin.include_role:
         name: porelo.host.forge
         tasks_from: down
+      vars:
+        porelo_host_step:
+          text: Stopping the forge
+          seconds: 10
 
     - name: Take the vault off the host
       ansible.builtin.include_role:
         name: porelo.host.porelo
         tasks_from: down
+      vars:
+        porelo_host_step:
+          text: Taking the vault off the host
+          seconds: 10
 
     - name: Take the VPN down
       ansible.builtin.include_role:
         name: porelo.host.vpn
         tasks_from: down
+      vars:
+        porelo_host_step:
+          text: Closing the VPN
+          seconds: 10
 
     - name: Take the person's drive down, last
       ansible.builtin.include_role:
         name: porelo.host.drive
         tasks_from: down
+      vars:
+        porelo_host_step:
+          text: Syncing and closing the drive
+          seconds: 10
 
     - name: Take the person's key off the account, after the drive
       ansible.builtin.include_role:
         name: porelo.host.base
         tasks_from: down
+      vars:
+        porelo_host_step:
+          text: Removing the access key
+          seconds: 10
