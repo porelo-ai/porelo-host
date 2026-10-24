@@ -12,6 +12,13 @@ person's login. Logged in, it syncs `drive_tresor` into the folder, stops every 
 until the tresor reads `idle` with nothing left. `down` waits the same way, then stops the sync, logs out with
 `--unlink` so the host leaves no device on the person's account, stops the daemon and unmounts the folder. `tasks_from: down` takes it down, last at `down`.
 
+**The person's login**, as client 3.5.1300.4870 takes it in a terminal on the host, as the account with
+`XDG_RUNTIME_DIR` set: `tresorit-cli login --email <e-mail> --password-on-stdin`. `--email` and a password option are
+compulsory, so the client never asks for the e-mail itself. It asks `Password:` without echo, then, where the account
+has two-factor on, `Enter your one-time password: `, which echoes as typed. Success prints nothing. `tresorit-cli -p
+status` then names the e-mail under `Logged in as:`, and `-` after `logout`, which also prints nothing and leaves the
+daemon running.
+
 ## Requirements
 
 Ubuntu 26.04, run as root on the host itself (`-c local`), after Porelo's setup script made the account.
