@@ -32,6 +32,46 @@ argument_specs:
         type: str
         default: porelo-host
         description: The runner's name on the forge.
+      forge_cpus:
+        type: int
+        default: 2
+        description: Forgejo's CPU time quota in cores, for serving requests and repositories.
+      forge_memory:
+        type: str
+        default: 2G
+        description: Forgejo's memory limit, in podman's size notation.
+      forge_pids_limit:
+        type: int
+        default: 1024
+        description: Forgejo's maximum number of processes and threads.
+      forge_runner_cpus:
+        type: int
+        default: 1
+        description: The runner daemon's CPU time quota in cores, for coordinating its one job.
+      forge_runner_memory:
+        type: str
+        default: 512M
+        description: The runner daemon's memory limit, in podman's size notation.
+      forge_runner_pids_limit:
+        type: int
+        default: 256
+        description: The runner daemon's maximum number of processes and threads.
+      forge_job_cpus:
+        type: int
+        default: 4
+        description: Each job container's CPU time quota in cores.
+      forge_job_memory:
+        type: str
+        default: 8g
+        description: Each job container's memory limit, in podman's size notation.
+      forge_job_pids_limit:
+        type: int
+        default: 2048
+        description: Each job container's maximum number of processes and threads.
+      forge_job_omp_num_threads:
+        type: int
+        default: 4
+        description: OMP_NUM_THREADS in each job container, so nproc reports its bounded core count.
       forge_runner_labels:
         type: list
         elements: str

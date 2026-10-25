@@ -1,6 +1,6 @@
 # HO20 — Every Container Of The Host Fits The Machine
 
-**Status:** Backlog, by the operator's decision of 2026-10-25.
+**Status:** Implementing.
 **Size:** M - two quadlets, the runner's job options, a check of the account's delegated controllers in `base`, and
 one in the pool's role, each read in Molecule from what the role writes. Built before release 0.6's sprint 4, the
 host's local forge.
@@ -25,6 +25,7 @@ porelo-project [PJ68](https://github.com/porelo-ai/porelo-project/blob/main/issu
 - **A job, like a task:** `container.options` gains `--cpus=4 --memory=8g --pids-limit=2048 --env=OMP_NUM_THREADS=4`,
   porelo's fixed defaults for a task, not read from the host's size, so a build sees four cores on any host and stays
   below its 2048 processes.
+  The job image's `nproc` (BusyBox) ignores `OMP_NUM_THREADS`, so a job reads the variable and its cgroup's `cpu.max`.
 - **The forge and the runner's daemon:** `PidsLimit=`, `Memory=` and `CPUQuota=` in each quadlet, fixed values
   (forge `PidsLimit=1024`, `Memory=2G`; runner daemon `PidsLimit=256`, `Memory=512M`): their Go runtimes take a
   thread per core, far below those.
@@ -42,7 +43,7 @@ porelo-project [PJ68](https://github.com/porelo-ai/porelo-project/blob/main/issu
 ## Acceptance
 
 - On the test VM, the forge's and the runner's containers and a job's container report the bounds above in
-  `podman inspect`, and `nproc` in a job reads 4.
+  `podman inspect`, and a job reads `OMP_NUM_THREADS=4` and a `cpu.max` of four cores.
 - `up` stops naming the account and the controller when `pids` is not delegated, and naming the pool's and the host's
   memory when the pool is too large.
 

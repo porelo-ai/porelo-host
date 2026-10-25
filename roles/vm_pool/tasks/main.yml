@@ -12,6 +12,9 @@
       whose runner alone rents from it: {{ porelo_host_vm_pool | default('') }}
     quiet: true
 
+- name: Check the pool's memory before changing libvirt or making VMs
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/memory.yml"
+
 # libvirt's own storage pool and NAT network, which porelo-vm makes every VM in, as the collection's test VM is.
 - name: Ask libvirt for its storage pool and its network
   ansible.builtin.command:

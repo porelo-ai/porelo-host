@@ -2,6 +2,17 @@
 - name: Make the forge's accounts
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/accounts.yml"
 
+# Base runs before these accounts exist, so their managers are checked here before either container starts.
+- name: Check the controllers of the forge's accounts
+  ansible.builtin.include_role:
+    name: porelo.host.base
+    tasks_from: controllers
+  vars:
+    base_account: "{{ __forge_controller_account }}"
+  loop: ["{{ forge_account }}", "{{ forge_runner_account }}"]
+  loop_control:
+    loop_var: __forge_controller_account
+
 - name: Make the host's CA and the forge's certificate
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/tls.yml"
 

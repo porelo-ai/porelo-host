@@ -499,6 +499,18 @@
               runs-on: porelo-host
               steps:
                 - run: curl -fsS https://10.73.0.1:3000/api/v1/version
+                - name: The job stays within its CPU, memory and process bounds
+                  run: |
+                    cores=${OMP_NUM_THREADS:-unset}
+                    pids=$(cat /sys/fs/cgroup/pids.max)
+                    memory=$(cat /sys/fs/cgroup/memory.max)
+                    cpu=$(cat /sys/fs/cgroup/cpu.max)
+                    echo "OMP_NUM_THREADS=$cores pids.max=$pids memory.max=$memory cpu.max=$cpu"
+                    test "$cores" = 4
+                    test "$pids" = 2048
+                    test "$memory" = 8589934592
+                    set -- $cpu
+                    test "$1" != max && test "$1" -eq "$((4 * $2))"
                 - name: The run's own token may not publish
                   env:
                     RUN_TOKEN: ${{ github.token }}

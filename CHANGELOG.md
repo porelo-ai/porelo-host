@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Fixed CPU, memory and process bounds for Forgejo, its runner daemon and jobs; `up` refuses accounts missing
+  delegated controllers and VM pools that would use more than half the host's memory.
 - The forge's CA is installed in Porelo's account for the broker and tasks, preserving the person's certificates;
   `down` removes the forge's trust from both files.
 - The forge answers on port 443 of the host's loopback, for tasks, and of the VPN's address, through a root-owned

@@ -7,6 +7,10 @@ host setting `porelo_host_vm_pool` asks for it, after the forge; the run key sta
 and reaches jobs only as the forge organization's Actions secret `PORELO_POOL_SSH`. At `down`, the secret and the VMs
 with their snapshots and keys are deleted.
 
+Before changing libvirt or making VMs, the role checks that the total memory for every system and account fits in
+half of the host's `MemTotal`; the refusal names both amounts. The `memory` entry point runs this check alone with
+`vm_pool_systems`, `vm_pool_accounts` and `vm_pool_memory` (MiB per VM).
+
 A run account gives itself back with `sudo porelo-pool-give-back`, the one command that takes no argument: its VM
 powers off, and `porelo-pool-revert` on the host, outside every job, reverts it to the base snapshot taken live with
 the account ready, so nothing a run did - as root through the package manager too - reaches the next. The VMs are

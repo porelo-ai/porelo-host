@@ -22,5 +22,21 @@ argument_specs:
         type: int
         default: 1
         description: Each pool VM's virtual CPUs.
+  memory:
+    short_description: Refuse a pool whose VMs would take more than half the host's total memory.
+    options:
+      vm_pool_systems:
+        type: list
+        elements: str
+        required: true
+        description: The systems with one VM per account each.
+      vm_pool_accounts:
+        type: int
+        required: true
+        description: The number of VMs per system.
+      vm_pool_memory:
+        type: int
+        default: 1536
+        description: Each pool VM's memory in MiB.
   down:
     short_description: The pool's VMs, their snapshots and keys taken off the host.

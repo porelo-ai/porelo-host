@@ -7,6 +7,9 @@ StartLimitIntervalSec=0
 [Container]
 Image={{ __forge_runner_image }}
 ContainerName=forgejo-runner
+PidsLimit={{ forge_runner_pids_limit }}
+Memory={{ forge_runner_memory }}
+PodmanArgs=--cpus={{ forge_runner_cpus }}
 UserNS=keep-id:uid=1000,gid=1000
 Volume=%h/runner:/data
 Volume=%h/tls:/tls:ro

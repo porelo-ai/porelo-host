@@ -7,6 +7,9 @@ StartLimitIntervalSec=0
 [Container]
 Image={{ __forge_image }}
 ContainerName=forgejo
+PidsLimit={{ forge_pids_limit }}
+Memory={{ forge_memory }}
+PodmanArgs=--cpus={{ forge_cpus }}
 UserNS=keep-id:uid=1000,gid=1000
 PublishPort={{ forge_address }}:{{ forge_http_port }}:3000
 PublishPort={{ forge_address }}:{{ forge_ssh_port }}:2222

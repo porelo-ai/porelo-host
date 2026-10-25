@@ -13,11 +13,17 @@
       ~ '/../../../roles/porelo/defaults/main.yml') | from_yaml).porelo_setup_script }}"
     verify_drive: /srv/porelo-host/drive
     verify_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
+    verify_container_bounds:
+      - {account: porelo-forge, container: forgejo, pids: 1024, memory: 2G, bytes: 2147483648, cpus: 2}
+      - {account: porelo-runner, container: forgejo-runner, pids: 256, memory: 512M, bytes: 536870912, cpus: 1}
   tasks:
     - name: Read the account's id for the person's steps
       ansible.builtin.getent:
         database: passwd
         key: "{{ verify_account }}"
+
+    - name: Verify the containers' resource bounds and the host's refusals
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/resources.yml"
 
     # Missing trust strands the broker and tasks; writable trust lets another account choose their CAs.
     - name: Read the account's CA files and their permissions after up

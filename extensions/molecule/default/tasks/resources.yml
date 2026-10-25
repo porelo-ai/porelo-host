@@ -1,0 +1,243 @@
+---
+# Without bounds, a forge or job can exhaust the host; checking files alone would miss ignored runtime options.
+- name: Read the quadlets written for the forge and the runner
+  ansible.builtin.slurp:
+    src: "/home/{{ item.account }}/.config/containers/systemd/{{ item.container }}.container"
+  loop: "{{ verify_container_bounds }}"
+  loop_control:
+    label: "{{ item.container }}"
+  register: verify_quadlets
+
+- name: Assert each quadlet sets its process, memory and CPU bounds
+  ansible.builtin.assert:
+    that:
+      - "('PidsLimit=' ~ item.item.pids) in verify_quadlet_lines"
+      - "('Memory=' ~ item.item.memory) in verify_quadlet_lines"
+      - "('PodmanArgs=--cpus=' ~ item.item.cpus) in verify_quadlet_lines"
+    fail_msg: >-
+      asked {{ item.item.container }} for PidsLimit={{ item.item.pids }}, Memory={{ item.item.memory }}
+      and --cpus={{ item.item.cpus }}; got {{ verify_quadlet_lines }}
+  vars:
+    verify_quadlet_lines: "{{ (item.content | b64decode).splitlines() }}"
+  loop: "{{ verify_quadlets.results }}"
+  loop_control:
+    label: "{{ item.item.container }}"
+
+# The shell finds the runtime directory as the container's account, without replacing Porelo's getent facts.
+- name: Inspect the running forge and runner as their accounts
+  ansible.builtin.shell:
+    cmd: >-
+      XDG_RUNTIME_DIR=/run/user/$(id -u) podman inspect --format
+      {% raw %}'{"running":{{.State.Running}},"resources":{{json .HostConfig}}}'{% endraw %}
+      {{ item.container | quote }}
+  become: true
+  become_user: "{{ item.account }}"
+  loop: "{{ verify_container_bounds }}"
+  loop_control:
+    label: "{{ item.container }}"
+  register: verify_container_inspect
+  changed_when: false
+
+- name: Assert the running containers enforce every quadlet bound
+  ansible.builtin.assert:
+    that:
+      - verify_container.running
+      - verify_container.resources.PidsLimit == item.item.pids
+      - verify_container.resources.Memory == item.item.bytes
+      - verify_container.resources.CpuPeriod > 0
+      - verify_container.resources.CpuQuota == item.item.cpus * verify_container.resources.CpuPeriod
+    fail_msg: >-
+      asked running {{ item.item.container }} for {{ item.item.pids }} processes,
+      {{ item.item.bytes }} bytes and {{ item.item.cpus }} CPUs; got {{ verify_container }}
+  vars:
+    verify_container: "{{ item.stdout | from_json }}"
+  loop: "{{ verify_container_inspect.results }}"
+  loop_control:
+    label: "{{ item.item.container }}"
+
+- name: Read the runner's written job configuration
+  ansible.builtin.slurp:
+    src: /home/porelo-runner/runner/config.yml
+  register: verify_runner_config
+
+- name: Assert jobs get the four resource options exactly once
+  ansible.builtin.assert:
+    that:
+      - verify_job_options | select('match', '^--(cpus=|memory=|pids-limit=|env=OMP_NUM_THREADS=)') | sort
+        == ['--cpus=4', '--env=OMP_NUM_THREADS=4', '--memory=8g', '--pids-limit=2048']
+    fail_msg: >-
+      asked for --cpus=4 --memory=8g --pids-limit=2048 --env=OMP_NUM_THREADS=4;
+      got {{ verify_job_options }}
+  vars:
+    verify_job_options: "{{ (verify_runner_config.content | b64decode | from_yaml).container.options.split() }}"
+
+# A separate account lets the test restart its manager without stopping the running forge or Porelo's tasks.
+- name: Read whether the controller probe's account already exists
+  ansible.builtin.command:
+    argv: [id, -u, porelo-controller-probe]
+  register: verify_controller_account_before
+  changed_when: false
+  failed_when: verify_controller_account_before.rc not in [0, 1]
+
+- name: Refuse to replace an existing controller probe account
+  ansible.builtin.assert:
+    that: verify_controller_account_before.rc == 1
+    fail_msg: asked for no porelo-controller-probe account before the test, but one already exists
+
+- name: Refuse a missing delegated controller and restore the account's manager
+  block:
+    - name: Make the controller probe's account
+      ansible.builtin.user:
+        name: porelo-controller-probe
+        create_home: true
+        shell: /usr/sbin/nologin
+      register: verify_controller_account
+
+    - name: Start the probe account's manager with the normal delegation
+      ansible.builtin.systemd_service:
+        name: "user@{{ verify_controller_account.uid }}.service"
+        state: started
+
+    - name: Check the probe account accepts the normal delegation
+      ansible.builtin.include_role:
+        name: porelo.host.base
+        tasks_from: controllers
+      vars:
+        base_account: porelo-controller-probe
+
+    - name: Read whether the probe manager already has drop-ins
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/user@{{ verify_controller_account.uid }}.service.d"
+      register: verify_controller_dropins_before
+
+    - name: Refuse to replace existing drop-ins of the probe manager
+      ansible.builtin.assert:
+        that: not verify_controller_dropins_before.stat.exists
+        fail_msg: >-
+          asked for no user@{{ verify_controller_account.uid }}.service.d before the test, but it already exists
+
+    - name: Make the probe manager's drop-in directory
+      ansible.builtin.file:
+        path: "/etc/systemd/system/user@{{ verify_controller_account.uid }}.service.d"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      register: verify_controller_dropin_directory
+
+    - name: Leave pids out of the probe manager's delegation
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/user@{{ verify_controller_account.uid }}.service.d/verify-controllers.conf"
+        content: "[Service]\nDelegate=\nDelegate=cpu memory\n"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Restart the probe manager with the restricted delegation
+      ansible.builtin.systemd_service:
+        name: "user@{{ verify_controller_account.uid }}.service"
+        state: restarted
+        daemon_reload: true
+
+    - name: Start with no controller refusal observed
+      ansible.builtin.set_fact:
+        verify_controller_refused: false
+
+    - name: Run only the controller check against the restricted account
+      block:
+        - name: Check the account whose manager has no pids controller
+          ansible.builtin.include_role:
+            name: porelo.host.base
+            tasks_from: controllers
+          vars:
+            base_account: porelo-controller-probe
+      rescue:
+        - name: Assert the refusal names the account and its missing controller
+          ansible.builtin.assert:
+            that:
+              - "'porelo-controller-probe' in ansible_failed_result.msg"
+              - "'missing delegated controllers: pids' in ansible_failed_result.msg"
+            fail_msg: >-
+              asked for porelo-controller-probe refused for missing pids; got {{ ansible_failed_result }}
+
+        - name: Keep the controller refusal observed
+          ansible.builtin.set_fact:
+            verify_controller_refused: true
+
+    - name: Assert the controller check refused the account
+      ansible.builtin.assert:
+        that: verify_controller_refused
+        fail_msg: asked the controller check to refuse porelo-controller-probe without pids, but it accepted it
+  always:
+    # A handler would not run after a failure; the probe's drop-in must go whatever happened.
+    - name: Remove the probe manager's drop-in directory  # noqa: no-handler
+      ansible.builtin.file:
+        path: "/etc/systemd/system/user@{{ verify_controller_account.uid }}.service.d"
+        state: absent
+      when: verify_controller_dropin_directory.changed | default(false)
+
+    - name: Stop the probe manager and reload its normal definition
+      ansible.builtin.systemd_service:
+        name: "user@{{ verify_controller_account.uid }}.service"
+        state: stopped
+        daemon_reload: true
+      when: verify_controller_account.uid is defined
+
+    - name: Remove the probe account and its home
+      ansible.builtin.user:
+        name: porelo-controller-probe
+        state: absent
+        remove: true
+      when: verify_controller_account.uid is defined
+
+# No libvirt call is needed to prove an oversized pool would be refused before making VMs.
+- name: Read the test host's memory for an oversized pool
+  ansible.builtin.slurp:
+    src: /proc/meminfo
+  register: verify_meminfo
+
+- name: Keep the measured host memory and start with no pool refusal observed
+  ansible.builtin.set_fact:
+    verify_host_memory_kib: >-
+      {{ (verify_meminfo.content | b64decode | regex_findall('(?m)^MemTotal:\s+([0-9]+) kB$') | first) | int }}
+    verify_pool_refused: false
+
+- name: Check a pool just within half of the host's memory
+  ansible.builtin.include_role:
+    name: porelo.host.vm_pool
+    tasks_from: memory
+  vars:
+    vm_pool_systems: [ubuntu]
+    vm_pool_accounts: 1
+    vm_pool_memory: "{{ verify_host_memory_kib // 2048 }}"
+
+- name: Run only the memory check against a pool larger than the host
+  vars:
+    verify_pool_memory_mib: "{{ verify_host_memory_kib // 1024 + 1 }}"
+  block:
+    - name: Check a pool whose one VM exceeds the host's memory
+      ansible.builtin.include_role:
+        name: porelo.host.vm_pool
+        tasks_from: memory
+      vars:
+        vm_pool_systems: [ubuntu]
+        vm_pool_accounts: 1
+        vm_pool_memory: "{{ verify_pool_memory_mib }}"
+  rescue:
+    - name: Assert the refusal names the pool memory and host memory
+      ansible.builtin.assert:
+        that:
+          - "('pool memory ' ~ (verify_pool_memory_mib * 1024) ~ ' KiB') in ansible_failed_result.msg"
+          - "('host memory ' ~ verify_host_memory_kib ~ ' KiB') in ansible_failed_result.msg"
+        fail_msg: >-
+          asked for pool memory {{ verify_pool_memory_mib * 1024 }} KiB refused against
+          host memory {{ verify_host_memory_kib }} KiB; got {{ ansible_failed_result }}
+
+    - name: Keep the oversized pool refusal observed
+      ansible.builtin.set_fact:
+        verify_pool_refused: true
+
+- name: Assert the memory check refused the oversized pool
+  ansible.builtin.assert:
+    that: verify_pool_refused
+    fail_msg: asked the memory check to refuse a pool larger than the host, but it accepted it

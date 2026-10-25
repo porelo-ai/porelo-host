@@ -1,0 +1,31 @@
+---
+# The account must exist first; id reads its uid without replacing the getent facts other roles keep.
+- name: controllers | Read the account's uid
+  ansible.builtin.command:
+    argv: [id, -u, "{{ base_account }}"]
+  register: __base_controller_uid
+  changed_when: false
+  check_mode: false
+
+- name: controllers | Stop on an account id systemd cannot mean
+  ansible.builtin.assert:
+    that: __base_controller_uid.stdout is match('^[0-9]+$')
+    fail_msg: "asked for {{ base_account }}'s numeric uid, got {{ __base_controller_uid.stdout }}"
+    quiet: true
+
+- name: controllers | Read the controllers delegated to the account's manager
+  ansible.builtin.command:
+    argv: [systemctl, show, "user@{{ __base_controller_uid.stdout }}.service", -p, DelegateControllers, --value]
+  register: __base_controllers
+  changed_when: false
+  check_mode: false
+
+- name: controllers | Stop when rootless containers cannot enforce their bounds
+  ansible.builtin.assert:
+    that: __base_missing_controllers | length == 0
+    fail_msg: >-
+      {{ base_account }} missing delegated controllers: {{ __base_missing_controllers | join(', ') }};
+      asked user@{{ __base_controller_uid.stdout }}.service for cpu memory pids, got {{ __base_controllers.stdout }}
+    quiet: true
+  vars:
+    __base_missing_controllers: "{{ ['cpu', 'memory', 'pids'] | difference(__base_controllers.stdout.split()) | sort }}"

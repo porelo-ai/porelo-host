@@ -12,6 +12,20 @@ forge_name: forge.porelo.internal
 forge_http_port: 3000
 forge_ssh_port: 2222
 
+# Forgejo serves requests and repositories on two CPUs; the runner daemon coordinates one separately bounded job.
+forge_cpus: 2
+forge_memory: 2G
+forge_pids_limit: 1024
+forge_runner_cpus: 1
+forge_runner_memory: 512M
+forge_runner_pids_limit: 256
+
+# A job gets the same fixed bounds as a Porelo task, whichever host runs it.
+forge_job_cpus: 4
+forge_job_memory: 8g
+forge_job_pids_limit: 2048
+forge_job_omp_num_threads: 4
+
 # The repositories migrated once from the central forge into the owner's organization, each {name, url}, and that
 # owner; from porelo-frontend's first inventory. A url is https:// with no user in it, which the role checks too.
 forge_repositories: "{{ porelo_host_forge_repositories | default([]) }}"

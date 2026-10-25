@@ -13,7 +13,7 @@ Ubuntu 26.04, run as root on the host itself (`-c local`). A CPU with virtualiza
 | Variable | Default | What it is |
 |---|---|---|
 | `base_packages` | `[acl, ca-certificates, curl, git]` | Packages beside KVM's and podman's. |
-| `base_account` | `{{ porelo_host_account }}` | The account Porelo's tasks run as; for `tasks_from: account`. |
+| `base_account` | `{{ porelo_host_account }}` | An existing account; for `tasks_from: account` or `controllers`. |
 
 ## Example
 
@@ -34,6 +34,9 @@ Ubuntu 26.04, run as root on the host itself (`-c local`). A CPU with virtualiza
 tasks run in it too, so the checks hold; a check run is not tested yet. **Rollback** is not offered: the packages
 and the group memberships stay; the host is given back whole. The account's linger and its subuid and subgid ranges
 are made by Porelo's setup script, and this role only checks them, stopping when one is missing.
+The account part also checks its user manager's delegated `cpu`, `memory` and `pids` controllers. The `controllers`
+entry point makes the same read-only check for any existing `base_account`; the forge calls it after making its
+two accounts, before starting their containers.
 
 ## License
 

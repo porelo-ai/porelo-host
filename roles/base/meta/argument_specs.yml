@@ -13,7 +13,7 @@ argument_specs:
   account:
     short_description: Porelo's account in KVM's and libvirt's groups.
     description:
-      - Run after Porelo's setup script made the account; checks its linger and subordinate ids, makes neither.
+      - Run after Porelo's setup script made the account; checks its linger, subordinate ids and delegated controllers.
     options:
       base_account:
         type: str
@@ -23,6 +23,13 @@ argument_specs:
         type: str
         default: ""
         description: The person's public ssh key, from porelo_host_authorized_key, let in as the account.
+  controllers:
+    short_description: Refuse an account without the delegated controllers its container bounds need.
+    options:
+      base_account:
+        type: str
+        required: true
+        description: An existing account whose user manager must delegate cpu, memory and pids.
   down:
     short_description: The person's key taken off the account, last at down.
     options:

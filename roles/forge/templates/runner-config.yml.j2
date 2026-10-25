@@ -11,6 +11,8 @@ container:
   # Jobs trust the host's CA as the forge does, to reach its registry, whichever bundle their image's tools name.
   # Where the host has a VM pool, its file too, read-only: what porelo-machines --pool reads.
   options: >-
+    --cpus={{ forge_job_cpus }} --memory={{ forge_job_memory }} --pids-limit={{ forge_job_pids_limit }}
+    --env=OMP_NUM_THREADS={{ forge_job_omp_num_threads }}
     --volume={{ __forge_runner_home }}/tls/ca-bundle.pem:/etc/ssl/certs/ca-certificates.crt:ro
     --env=SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
     --env=CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt

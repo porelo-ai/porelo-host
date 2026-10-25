@@ -1,6 +1,6 @@
 ---
 # Run once Porelo's setup script has made the account, with its linger and its subuid and subgid ranges; this part
-# only adds the account to KVM's and libvirt's groups, and checks what the script promised rather than redoing it.
+# adds the account to KVM's and libvirt's groups, and checks what the script promised rather than redoing it.
 - name: account | Read the account Porelo's setup made
   ansible.builtin.getent:
     database: passwd
@@ -41,6 +41,9 @@
       {{ base_account }} lacks linger ({{ __base_linger.stat.exists }}) or subuid and subgid ranges
       ({{ __base_subids.stdout_lines }}), which Porelo's setup script gives an account it makes
     quiet: true
+
+- name: account | Check the controllers before Porelo can start containers
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/controllers.yml"
 
 # The person reaches the account itself over ssh: porelo's own way to open its vault (doc/hosts.md), and the way
 # porelo-host logs the drive in. Their one key is added, and nothing else of the file is touched.

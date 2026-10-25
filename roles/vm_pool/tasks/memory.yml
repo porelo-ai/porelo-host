@@ -1,0 +1,32 @@
+---
+- name: memory | Read the host's total memory before any VM is made
+  ansible.builtin.slurp:
+    src: /proc/meminfo
+  register: __vm_pool_meminfo
+  check_mode: false
+
+- name: memory | Stop unless the host reports its memory and each VM has a positive size
+  ansible.builtin.assert:
+    that:
+      - __vm_pool_memtotal | length == 1
+      - __vm_pool_memtotal | first | int > 0
+      - vm_pool_memory | int > 0
+    fail_msg: >-
+      asked /proc/meminfo for one positive MemTotal in kB and for positive VM memory in MiB;
+      got MemTotal={{ __vm_pool_memtotal }}, vm_pool_memory={{ vm_pool_memory }}
+    quiet: true
+  vars:
+    __vm_pool_memtotal: "{{ __vm_pool_meminfo.content | b64decode | regex_findall('(?m)^MemTotal:\\s+([0-9]+) kB$') }}"
+
+- name: memory | Stop when the pool would take more than half the host's memory
+  ansible.builtin.assert:
+    that: __vm_pool_memory_kib | int <= (__vm_pool_host_memory_kib | int) // 2
+    fail_msg: >-
+      pool memory {{ __vm_pool_memory_kib }} KiB exceeds half of host memory {{ __vm_pool_host_memory_kib }} KiB
+      ({{ (__vm_pool_host_memory_kib | int) // 2 }} KiB); {{ vm_pool_systems | length }} systems x
+      {{ vm_pool_accounts }} accounts x {{ vm_pool_memory }} MiB
+    quiet: true
+  vars:
+    __vm_pool_host_memory_kib: >-
+      {{ (__vm_pool_meminfo.content | b64decode | regex_findall('(?m)^MemTotal:\s+([0-9]+) kB$') | first) | int }}
+    __vm_pool_memory_kib: "{{ vm_pool_systems | length * (vm_pool_accounts | int) * (vm_pool_memory | int) * 1024 }}"
