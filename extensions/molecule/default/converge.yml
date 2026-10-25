@@ -479,6 +479,7 @@
               porelo_host_forge_repositories:
                 - name: stand-in
                   url: https://10.73.0.1:3000/central/stand-in.git
+              porelo_host_forge_agents: [probe]
       when: converge_forge == 'on'
 
     - name: Run up with the forge's repositories, its steps as JSON lines
@@ -496,6 +497,19 @@
       changed_when: >-
         converge_up_forge.stdout is search('"state": "changed"')
       when: converge_forge == 'on'
+
+    # A digest kept before idempotence catches an up that replaces a working credential.
+    - name: Keep the agent's first token file digest before the second up
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          umask 077
+          sha256sum /etc/porelo-host/forge/agents/probe.token > /root/porelo-host-agent-probe.sha256.new
+          mv /root/porelo-host-agent-probe.sha256.new /root/porelo-host-agent-probe.sha256
+        creates: /root/porelo-host-agent-probe.sha256
+        executable: /bin/bash
+      when: converge_forge == 'on'
+      no_log: true
 
     # An unreviewed branch must still publish snapshots and run a GitHub workflow without enabling release publishing.
     - name: Commit to an unreviewed branch a workflow whose job reaches the forge and publishes into its registry

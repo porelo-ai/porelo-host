@@ -70,7 +70,8 @@
   register: __forge_down
   changed_when: __forge_down.stdout == 'yes'
 
-- name: down | Remove the host's CA for the forge
+- name: down | Remove the host's CA and the agents' token directory for the forge
   ansible.builtin.file:
     path: "{{ __forge_ca_dir }}"
     state: absent
+  no_log: true

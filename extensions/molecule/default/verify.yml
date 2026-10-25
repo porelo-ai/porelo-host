@@ -508,6 +508,10 @@
         that: verify_daemon.status.ActiveState == 'active'
         fail_msg: "tresorit-daemon.service is {{ verify_daemon.status.ActiveState | default(verify_daemon) }}"
 
+    - name: Verify the agent's credential and its repository access after idempotence
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_agents.yml"
+      when: verify_forge == 'on'
+
     # Up made the publisher's token once; forgetting that it did makes the -vvv run below make it again, so that run's
     # output is searched for a token it handled.
     - name: Forget that the publisher's secret was set, so up with -vvv makes its token again
@@ -555,6 +559,24 @@
       register: verify_vvv
       changed_when: false
       no_log: true
+
+    - name: Check up with -vvv kept the agent's first token file
+      ansible.builtin.command:
+        cmd: sha256sum --check /root/porelo-host-agent-probe.sha256
+      register: verify_agent_vvv_retained
+      changed_when: false
+      failed_when: false
+      no_log: true
+      when: verify_forge == 'on'
+
+    - name: Assert up with -vvv kept the agent's first token file
+      ansible.builtin.assert:
+        that: verify_agent_vvv_retained.rc == 0
+        fail_msg: >-
+          asked for the agent's token file digest to match before and after up with -vvv,
+          got rc {{ verify_agent_vvv_retained.rc }}:
+          {{ verify_agent_vvv_retained.stdout }} {{ verify_agent_vvv_retained.stderr }}
+      when: verify_forge == 'on'
 
     - name: Read the person's token for the central forge, only to search the run's output for it
       ansible.builtin.slurp:
@@ -1286,16 +1308,40 @@
       no_log: true
       when: verify_forge == 'on'
 
-    # A string is the token only if its digest is the package's; a token in any other form would be no 40-digit hex.
-    - name: Assert the publisher's token is in no output of up with -vvv, in no journal line and in no task's container
+    - name: Read only the agent token's digest after checking the form the leak search looks for
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -I
+          - -c
+          - |
+            import hashlib, re
+            from pathlib import Path
+            path = Path('/etc/porelo-host/forge/agents/probe.token')
+            if not re.fullmatch(rb'[0-9a-f]{40}\n?', path.read_bytes()):
+                raise SystemExit('asked for a 40-digit hex agent token, got another form')
+            print(hashlib.sha256(path.read_bytes().strip()).hexdigest())
+      register: verify_agent_digest
+      changed_when: false
+      no_log: true
+      when: verify_forge == 'on'
+
+    # A candidate is a token only if its digest matches; the raw agent token never reaches an Ansible variable.
+    - name: Assert the publisher and agent tokens are in no verbose output, journal line or task container
       ansible.builtin.assert:
         that:
           - verify_forge_token.content | b64decode | trim is match('^[0-9a-f]{40}$')
           - verify_publisher_digest.stdout_lines[0] is match('^[0-9a-f]{64}$')
           - verify_publisher_digest.stdout_lines[0] not in verify_hex_digests
+          - verify_agent_digest.stdout is match('^[0-9a-f]{64}$')
+          - verify_agent_digest.stdout not in verify_hex_digests
         fail_msg: >-
-          the publisher's token is in the -vvv output, the journal or a task's container, or Forgejo's tokens are not
-          the 40-digit hex this search looks for
+          asked for 40-digit hex tokens with no digest matching a candidate in verbose output, the journal or tasks;
+          got admin form {{ verify_forge_token.content | b64decode | trim is match('^[0-9a-f]{40}$') }},
+          publisher digest form {{ verify_publisher_digest.stdout_lines[0] is match('^[0-9a-f]{64}$') }},
+          agent digest form {{ verify_agent_digest.stdout is match('^[0-9a-f]{64}$') }},
+          publisher match {{ verify_publisher_digest.stdout_lines[0] in verify_hex_digests }},
+          agent match {{ verify_agent_digest.stdout in verify_hex_digests }}
       vars:
         verify_hex_digests: >-
           {{ ((verify_vvv.stdout + verify_vvv.stderr) | regex_findall('[0-9a-f]{40}')

@@ -30,6 +30,15 @@ token of the account `porelo-publisher`, whose team may write the organization's
 own token is refused there. The token is made inside Forgejo's container and never read out, so it stays with the
 forge and the runner's jobs and reaches no task.
 
+`porelo_host_forge_agents` supplies `forge_agents`, a list of unique lower case names matching
+`^[a-z][a-z0-9-]{0,30}$`, default `[]`. With repositories configured, each gets a Forgejo account `agent-<name>`
+and membership in the owner's `agents` team: write access to code, pulls and issues on all its repositories,
+read access to actions and packages, and no repository creation. Each token has scopes
+`write:repository,read:package,read:organization` and stays in `/etc/porelo-host/forge/agents/<name>.token`,
+root:root `0600`, in a root:root `0700` directory. Up keeps an existing token file and makes a missing one;
+removing a name from the inventory leaves its account and token alone. Down removes the token directory with
+the forge's CA and volumes.
+
 `forge_variables` defaults to `PORELO_PUBLISH: "false"`, `JF_URL: "https://jfrog.invalid"`, `PORELO_DEPLOY_PROFILE:
 forge-release` and `MAVEN_SNAPSHOTS_URL`, the forge's own Maven registry; GitHub holds the same names with its values.
 `forge_placeholder_secrets` defaults to `[JF_ACCESS_TOKEN]`; missing secrets get `porelo-host-placeholder`,

@@ -32,3 +32,14 @@ logged or written anywhere but a file only root on the host reads.
 ## Decided
 
 - **QH28 (a):** the agents' accounts are a task of the role, not typed by hand (the operator's decision).
+
+## Built
+
+- `roles/forge/tasks/agents.yml` as planned, run after `publisher.yml`; the names are checked before any reaches a
+  command or a path, and every task near a token carries `no_log`.
+- **Molecule with the forge**, green on the code of this commit, 2026-10-25 16:56Z-17:10Z, 5/5 stages, the VM
+  removed: `agent-probe` is in team `agents`; its file is root's, `0600`, in a `0700` directory; a clone pushes a
+  branch to `porelo/stand-in` with its token and is refused on `central/stand-in`; the file's digest is the same after
+  the second and the `-vvv` `up`; the token's digest is in no `-vvv` output, journal line or task container.
+- Seen red first only with fixtures outside the VM: without the token file and with the central push allowed, the same
+  assertions fail; a planted token fails the digest search. A VM run without `agents.yml` was not made.

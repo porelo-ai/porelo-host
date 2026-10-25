@@ -105,6 +105,13 @@ argument_specs:
           MAVEN_SNAPSHOTS_URL: "https://{{ forge_address }}:{{ forge_http_port }}/api/packages/{{ forge_owner }}/maven"
         description: >-
           Nonsecret organization Actions variables; uppercase names and nonempty string values, only with repositories.
+      forge_agents:
+        type: list
+        elements: str
+        default: []
+        description: >-
+          Unique agent names matching ^[a-z][a-z0-9-]{0,30}$, from porelo_host_forge_agents, only with repositories.
+          Each gets agent-<name> in the agents team and a root-only token at /etc/porelo-host/forge/agents/<name>.token.
       forge_placeholder_secrets:
         type: list
         elements: str

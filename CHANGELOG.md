@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The forge gives configured agents their own accounts, repository write access and root-only token files kept across up.
 - The forge's runner offers `ubuntu-24.04` and `ubuntu-26.04` labels on a pinned act image and fetches actions from
   github.com by their workflow pins. It sets the organization's Actions variables `PORELO_PUBLISH` to `false`,
   `PORELO_DEPLOY_PROFILE` to `forge-release` and `MAVEN_SNAPSHOTS_URL` to the forge's Maven registry, with a placeholder

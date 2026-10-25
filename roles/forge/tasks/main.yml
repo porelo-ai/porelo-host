@@ -32,3 +32,7 @@
 - name: Let every build publish into the registry with the publisher's secret
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/publisher.yml"
   when: forge_repositories | length > 0
+
+- name: Make the agents' forge accounts and their credentials on the host
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/agents.yml"
+  when: forge_repositories | length > 0

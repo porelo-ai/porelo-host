@@ -391,10 +391,12 @@
         - /home/porelo-forge/.config/porelo-forge/api.token
         - /home/porelo-runner/runner/.runner
         - /etc/porelo-host/forge/ca.key
+        - /etc/porelo-host/forge/agents
         - /etc/systemd/system/porelo-forge-https.socket
         - /etc/systemd/system/porelo-forge-https.service
       register: side_effect_forge_left
       when: side_effect_forge == 'on'
+      no_log: true
 
     - name: Ask systemd whether either forge HTTPS unit is still loaded after down
       ansible.builtin.command:

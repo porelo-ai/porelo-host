@@ -1,0 +1,135 @@
+---
+# Absence from the inventory never deletes an account or its credential, since it may still hold work.
+- name: agents | Check the list of agents before any name reaches a command or path
+  ansible.builtin.assert:
+    that:
+      - forge_agents is sequence and forge_agents is not string and forge_agents is not mapping
+      - forge_agents | unique | list | length == forge_agents | length
+    fail_msg: "asked for a list of unique agent names, got {{ forge_agents }}"
+    quiet: true
+
+- name: agents | Check each agent's name before it reaches a command or path
+  ansible.builtin.assert:
+    that: item is string and item is match('^[a-z][a-z0-9-]{0,30}\Z')
+    fail_msg: "asked for a lower case agent name matching ^[a-z][a-z0-9-]{0,30}$, got {{ item }}"
+    quiet: true
+  loop: "{{ forge_agents }}"
+
+- name: agents | Make the configured agents where the owner's organization exists
+  when: forge_agents | length > 0
+  block:
+    - name: agents | Ask Forgejo which users it has
+      ansible.builtin.command:
+        argv: [podman, exec, forgejo, forgejo, admin, user, list]
+      become: true
+      become_user: "{{ forge_account }}"
+      environment: "{{ __forge_environment }}"
+      register: __forge_agents_users_listed
+      changed_when: false
+      check_mode: false
+
+    - name: agents | Make each agent, its password generated and discarded
+      ansible.builtin.shell:
+        cmd: >-
+          podman exec forgejo forgejo admin user create --username agent-{{ item }}
+          --email agent-{{ item }}@{{ forge_name }} --random-password --must-change-password=false > /dev/null
+      become: true
+      become_user: "{{ forge_account }}"
+      environment: "{{ __forge_environment }}"
+      loop: "{{ forge_agents }}"
+      when: ('agent-' ~ item) not in
+        (__forge_agents_users_listed.stdout_lines[1:] | map('split') | map(attribute=1) | list)
+      changed_when: true
+      no_log: true
+
+    - name: agents | Let the agents write the organization's repositories through their team
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          api() { curl -sS --max-time 10 --cacert {{ __forge_ca_dir }}/ca.pem \
+              -H @<(sed 's/^/Authorization: token /' {{ __forge_token }}) \
+              -H 'Content-Type: application/json' "$@"; }
+          base=https://{{ forge_address }}:{{ forge_http_port }}/api/v1
+          answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
+          changed=
+          code=$(api -o "$answer" -w '%{http_code}' "$base/orgs/{{ forge_owner }}/teams/search?q=agents")
+          [ "$code" = 200 ] \
+              || { echo "asked to search {{ forge_owner }}'s teams with HTTP 200, got HTTP $code" >&2; exit 1; }
+          team=$(python3 -I -c 'import json,sys; print(next((int(t["id"]) \
+              for t in json.load(open(sys.argv[1]))["data"] if t["name"] == "agents"), ""))' "$answer")
+          if [ -z "$team" ]; then
+              code=$(api -o "$answer" -w '%{http_code}' -X POST "$base/orgs/{{ forge_owner }}/teams" \
+                  -d '{"name": "agents", "permission": "write", "includes_all_repositories": true,
+                       "can_create_org_repo": false,
+                       "units": ["repo.code", "repo.pulls", "repo.issues", "repo.actions", "repo.packages"],
+                       "units_map": {"repo.code": "write", "repo.pulls": "write", "repo.issues": "write",
+                                     "repo.actions": "read", "repo.packages": "read"}}')
+              [ "$code" = 201 ] \
+                  || { echo "asked to create team agents with HTTP 201, got HTTP $code" >&2; exit 1; }
+              team=$(python3 -I -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["id"]))' "$answer")
+              changed=yes
+          fi
+          for name in {{ forge_agents | map('quote') | join(' ') }}; do
+              member="$base/teams/$team/members/agent-$name"
+              code=$(api -o /dev/null -w '%{http_code}' "$member")
+              if [ "$code" = 404 ]; then
+                  code=$(api -o /dev/null -w '%{http_code}' -X PUT "$member")
+                  [ "$code" = 204 ] \
+                      || { echo "asked to add agent-$name to agents with HTTP 204, got HTTP $code" >&2; exit 1; }
+                  code=$(api -o /dev/null -w '%{http_code}' "$member")
+                  changed=yes
+              fi
+              [ "$code" = 200 ] \
+                  || { echo "asked for agent-$name in agents with HTTP 200, got HTTP $code" >&2; exit 1; }
+          done
+          echo "${changed:-unchanged}"
+        executable: /bin/bash
+      register: __forge_agents_team_made
+      changed_when: __forge_agents_team_made.stdout | default('') == 'yes'
+      failed_when: false
+      no_log: true
+
+    - name: agents | Stop when Forgejo would not take the team or its members, with its answer
+      ansible.builtin.assert:
+        that: __forge_agents_team_made.rc | default(0) == 0
+        fail_msg: "{{ __forge_agents_team_made.stderr | default('') }}"
+        quiet: true
+
+    - name: agents | Make the directory root alone reads the agents' credentials from
+      ansible.builtin.file:
+        path: "{{ __forge_ca_dir }}/agents"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      no_log: true
+
+    # A fresh token name lets a missing file be recovered even if an interrupted up left a token in Forgejo.
+    - name: agents | Write each missing token straight into its root-only file
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          cd /
+          umask 077
+          new=$(mktemp {{ __forge_ca_dir }}/agents/{{ item }}.token.XXXXXX)
+          trap 'rm -f "$new"' EXIT
+          runuser -u {{ forge_account }} -- env XDG_RUNTIME_DIR=/run/user/{{ __forge_uid }} \
+              podman exec forgejo forgejo admin user generate-access-token --username agent-{{ item }} \
+              --token-name porelo-host-${new##*.} --scopes write:repository,read:package,read:organization --raw \
+              > "$new"
+          [ -s "$new" ] || { echo "asked for a token for agent-{{ item }}, got an empty file" >&2; exit 1; }
+          mv "$new" {{ __forge_ca_dir }}/agents/{{ item }}.token
+        creates: "{{ __forge_ca_dir }}/agents/{{ item }}.token"
+        executable: /bin/bash
+      loop: "{{ forge_agents }}"
+      no_log: true
+
+    - name: agents | Keep each token file owned and readable by root alone
+      ansible.builtin.file:
+        path: "{{ __forge_ca_dir }}/agents/{{ item }}.token"
+        state: file
+        owner: root
+        group: root
+        mode: "0600"
+      loop: "{{ forge_agents }}"
+      no_log: true

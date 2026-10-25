@@ -31,6 +31,9 @@ forge_job_omp_num_threads: 4
 forge_repositories: "{{ porelo_host_forge_repositories | default([]) }}"
 forge_owner: "{{ porelo_host_forge_owner | default('porelo') }}"
 
+# Each agent gets a forge account and a token kept on the host, only where the owner's repositories are configured.
+forge_agents: "{{ porelo_host_forge_agents | default([]) }}"
+
 # Workflows differ between the forges only by variables; GitHub enables publishing with the same variable set true.
 forge_variables:
   PORELO_PUBLISH: "false"
