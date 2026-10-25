@@ -1,6 +1,6 @@
 # HO17 — The Forge's CA In Porelo's Account
 
-**Status:** Analyzed.
+**Status:** Backlog, by the operator's decision of 2026-10-25.
 **Size:** XS - one task file in the `porelo` role and its removal at `down`; the two files' paths are agreed with
 porelo's [B234](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b234), no contract of its own.
 
