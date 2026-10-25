@@ -18,3 +18,9 @@
   become: true
   become_user: "{{ forge_runner_account }}"
   environment: "{{ __forge_runner_environment }}"
+
+- name: Restart the forge's HTTPS socket
+  ansible.builtin.systemd_service:
+    name: porelo-forge-https.socket
+    state: restarted
+    daemon_reload: true

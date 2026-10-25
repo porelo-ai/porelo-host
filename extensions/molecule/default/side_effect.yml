@@ -49,6 +49,15 @@
         that: (side_effect_running_task.stdout | from_json).running
         fail_msg: "asked for a running task before down, got {{ side_effect_running_task.stdout }}"
 
+    # Checking both ends prevents a teardown test from passing when up never installed the proxy.
+    - name: Read the forge's HTTPS units before down
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/systemd/system/porelo-forge-https.socket
+        - /etc/systemd/system/porelo-forge-https.service
+      register: side_effect_forge_https_before
+
     # The person's token for the central forge, kept aside before down unmounts the drive, to search what down leaves.
     - name: Keep the stand-in's token aside, root's alone, to search the forge's accounts for it after down
       ansible.builtin.copy:
@@ -322,7 +331,27 @@
         - /home/porelo-forge/.config/porelo-forge/api.token
         - /home/porelo-runner/runner/.runner
         - /etc/porelo-host/forge/ca.key
+        - /etc/systemd/system/porelo-forge-https.socket
+        - /etc/systemd/system/porelo-forge-https.service
       register: side_effect_forge_left
+
+    - name: Ask systemd whether either forge HTTPS unit is still loaded after down
+      ansible.builtin.command:
+        argv: [systemctl, show, --property=LoadState, --value, porelo-forge-https.socket, porelo-forge-https.service]
+      register: side_effect_forge_https_loaded
+      changed_when: false
+      failed_when: false
+
+    - name: Assert down removed both HTTPS units that up installed
+      ansible.builtin.assert:
+        that:
+          - side_effect_forge_https_before['results'] | selectattr('stat.exists') | list | length == 2
+          - side_effect_forge_https_loaded['stdout_lines'] | select | list == ['not-found', 'not-found']
+        fail_msg: >-
+          asked for both forge HTTPS units before down and neither loaded afterward;
+          before {{ side_effect_forge_https_before['results'] | selectattr('stat.exists')
+          | map(attribute='item') | list }}, after rc {{ side_effect_forge_https_loaded['rc'] }}:
+          {{ side_effect_forge_https_loaded['stdout'] }} {{ side_effect_forge_https_loaded['stderr'] }}
 
     - name: Read which pool VMs or volumes libvirt still lists, and what of the pool's keys or unit is left
       ansible.builtin.shell:

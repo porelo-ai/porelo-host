@@ -2,6 +2,32 @@
 # Down takes the forge off the host and keeps nothing: Forgejo's volumes hold the person's token for the central forge
 # in each push mirror, so they go with the API token, the runner's registration and the CA; the accounts' linger goes
 # too, so nothing of the forge starts again at the next boot. The next up makes all of it again and migrates anew.
+- name: down | Read which HTTPS units up installed
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ item }}"
+  loop: [porelo-forge-https.socket, porelo-forge-https.service]
+  register: __forge_down_https_units
+
+- name: down | Stop and disable the HTTPS socket and proxy before Forgejo
+  ansible.builtin.systemd_service:
+    name: "{{ item['item'] }}"
+    state: stopped
+    enabled: false
+  loop: "{{ __forge_down_https_units['results'] | selectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item['item'] }}"
+
+- name: down | Remove both HTTPS units
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}"
+    state: absent
+  loop: [porelo-forge-https.socket, porelo-forge-https.service]
+
+- name: down | Reload systemd after removing the HTTPS units
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: __forge_down_https_units['results'] | selectattr('stat.exists') | list | length > 0
+
 - name: down | Read which of the forge's accounts up made
   ansible.builtin.command:
     argv: [getent, passwd, "{{ item }}"]

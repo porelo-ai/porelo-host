@@ -21,7 +21,7 @@ Environment=FORGEJO__server__PROTOCOL=https
 Environment=FORGEJO__server__CERT_FILE=/tls/forge.pem
 Environment=FORGEJO__server__KEY_FILE=/tls/forge.key
 Environment=FORGEJO__server__DOMAIN={{ forge_name }}
-Environment=FORGEJO__server__ROOT_URL=https://{{ forge_name }}:{{ forge_http_port }}/
+Environment=FORGEJO__server__ROOT_URL=https://{{ forge_name }}/
 Environment=FORGEJO__server__SSH_PORT={{ forge_ssh_port }}
 Environment=FORGEJO__migrations__ALLOW_LOCALNETWORKS={{ forge_migrations_allow_local | string | lower }}
 # The system's CAs and the host's in one bundle, for Forgejo itself and for the git it runs.

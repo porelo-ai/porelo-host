@@ -264,8 +264,45 @@
         fail_msg: >-
           through the VPN: rc {{ verify_vpn_reach.rc }}, {{ verify_vpn_reach.stdout }} {{ verify_vpn_reach.stderr }}
 
-    # The forge role: Forgejo's API through the VPN over TLS, trusting the host's CA alone, and nothing of it listening
-    # anywhere but on the VPN's address - the firewall would hide a wider binding from the public side.
+    # A missing loopback endpoint strands tasks; a missing VPN endpoint strands the person using the forge's URLs.
+    # uri cannot pin a name to an address as --resolve does, which the certificate's name needs.
+    - name: Reach Forgejo by name on loopback port 443, trusting only the host's CA
+      ansible.builtin.command:  # noqa: command-instead-of-module
+        cmd: >-
+          curl -fsS --max-time 10 --noproxy '*' --cacert /etc/porelo-host/forge/ca.pem
+          --resolve forge.porelo.internal:443:127.0.0.1 -o /dev/null -w '%{http_code}'
+          https://forge.porelo.internal/api/v1/version
+      register: verify_forge_loopback
+      changed_when: false
+      failed_when: false
+
+    - name: Assert Forgejo answers by name on loopback port 443 with the host's certificate
+      ansible.builtin.assert:
+        that: verify_forge_loopback['rc'] == 0 and verify_forge_loopback['stdout'] == '200'
+        fail_msg: >-
+          asked https://forge.porelo.internal/api/v1/version through 127.0.0.1:443 for 200;
+          got rc {{ verify_forge_loopback['rc'] }}, {{ verify_forge_loopback['stdout'] }}
+          {{ verify_forge_loopback['stderr'] }}
+
+    - name: Reach Forgejo by name on VPN port 443 from the test peer
+      ansible.builtin.command:
+        cmd: >-
+          ip netns exec verify-peer curl -fsS --max-time 10 --noproxy '*'
+          --cacert /etc/porelo-host/forge/ca.pem --resolve forge.porelo.internal:443:10.73.0.1
+          -o /dev/null -w '%{http_code}' https://forge.porelo.internal/api/v1/version
+      register: verify_forge_https_peer
+      changed_when: false
+      failed_when: false
+
+    - name: Assert Forgejo answers by name on VPN port 443 with the host's certificate
+      ansible.builtin.assert:
+        that: verify_forge_https_peer['rc'] == 0 and verify_forge_https_peer['stdout'] == '200'
+        fail_msg: >-
+          asked https://forge.porelo.internal/api/v1/version through the test peer's VPN for 200;
+          got rc {{ verify_forge_https_peer['rc'] }}, {{ verify_forge_https_peer['stdout'] }}
+          {{ verify_forge_https_peer['stderr'] }}
+
+    # The runner and existing clients still use the original VPN port.
     - name: Reach Forgejo's API through the VPN over TLS, trusting only the host's CA
       ansible.builtin.command:
         cmd: >-
@@ -283,15 +320,14 @@
 
     - name: Read where Forgejo's ports listen
       ansible.builtin.command:
-        cmd: ss -Hltn '( sport = :3000 or sport = :2222 )'
+        cmd: ss -Hltn '( sport = :443 or sport = :3000 or sport = :2222 )'
       register: verify_forge_listen
       changed_when: false
 
-    - name: Assert Forgejo's ports listen on the VPN's address alone
+    - name: Assert Forgejo listens on loopback and VPN port 443 and keeps its original VPN ports
       ansible.builtin.assert:
         that:
-          - verify_forge_ports | length == 2
-          - verify_forge_ports | reject('match', '^10\.73\.0\.1:') | list | length == 0
+          - verify_forge_ports | sort == ['10.73.0.1:2222', '10.73.0.1:3000', '10.73.0.1:443', '127.0.0.1:443']
         fail_msg: "Forgejo listens on: {{ verify_forge_listen.stdout_lines }}"
       vars:
         verify_forge_ports: "{{ verify_forge_listen.stdout_lines | map('split') | map(attribute=3) | list }}"
@@ -304,20 +340,24 @@
       delegate_to: localhost
       become: false
 
-    - name: Reach the same service on the public address, from where Molecule connects
+    - name: Try the service and forge ports on the public address, from where Molecule connects
       ansible.builtin.wait_for:
         host: "{{ ansible_host }}"
-        port: 8080
+        port: "{{ item }}"
         timeout: 5
+      loop: [8080, 3000, 2222, 443]
       delegate_to: localhost
       become: false
       register: verify_public_reach
       failed_when: false
 
-    - name: Assert the public address refuses the service
+    - name: Assert the public address refuses the service and every forge port
       ansible.builtin.assert:
-        that: verify_public_reach.msg is defined and verify_public_reach.msg is search('Timeout')
-        fail_msg: "{{ ansible_host }}:8080 answered on the public address: {{ verify_public_reach }}"
+        that: item['msg'] is defined and item['msg'] is search('Timeout')
+        fail_msg: "asked {{ ansible_host }}:{{ item['item'] }} to refuse connections; got {{ item }}"
+      loop: "{{ verify_public_reach['results'] }}"
+      loop_control:
+        label: "{{ item['item'] }}"
 
     - name: Read the host's private key's value, only to search the run's lines for it
       ansible.builtin.slurp:
@@ -894,6 +934,7 @@
         that:
           - verify_forge_repo.rc == 0
           - not verify_forge_lines[0].mirror
+          - verify_forge_lines[0]['clone_url'] == 'https://forge.porelo.internal/porelo/stand-in.git'
           - verify_forge_lines[1] | length == 1
           - verify_forge_lines[1][0].remote_address == 'https://10.73.0.1:3000/central/stand-in.git'
           - verify_forge_lines[1][0].interval in ['0s', '0']
@@ -976,8 +1017,9 @@
         cmd: |
           set -euo pipefail
           cd /
-          probe=https://10.73.0.1:3000/api/packages/porelo/generic/probe/{{ verify_forge_again_run }}
-          curl -fsS --cacert /etc/porelo-host/forge/ca.pem \
+          probe=https://forge.porelo.internal/api/packages/porelo/generic/probe/{{ verify_forge_again_run }}
+          curl -fLsS --max-time 30 --noproxy '*' --cacert /etc/porelo-host/forge/ca.pem \
+              --resolve forge.porelo.internal:443:127.0.0.1 \
               -H @<(runuser -u porelo-forge -- env XDG_RUNTIME_DIR=/run/user/$(id -u porelo-forge) \
                   podman exec forgejo forgejo admin user generate-access-token --username porelo-admin \
                   --token-name verify-$(date -u +%Y%m%dT%H%M%SZ) --scopes read:package --raw \
