@@ -15,16 +15,11 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho26"></a>[HO26](HO26-Each-Agents-Own-Forge-Account.md) | S | - | Role `forge`: each agent `porelo_host_forge_agents` names gets an account in team `agents`, which writes the organization's repositories, and a token written only into a root-only file on the host. |
 | <a id="ho08"></a>[HO08](HO08-The-Forge-With-Its-Registry.md) | L | - | Role `forge`: Forgejo and its runner in rootless podman under two accounts of their own, on the VPN and the tasks' address only, its registry over TLS from a CA made on the host, the project's repositories migrated from the central forge without push mirrors, credentials made and kept on the host, every build publishing with a publisher's token kept as an Actions secret, GitHub's workflows running 1:1 on its runner; run where the host setting `porelo_host_forge` asks for it. |
 | <a id="ho17"></a>[HO17](HO17-The-Forges-CA-In-Porelos-Account.md) | XS | - | Role `porelo`: the host's forge CA in `~/.config/porelo/ca-certificates.pem` (the broker) and alone in `task-ca-certificates.pem` (tasks) of Porelo's account where the forge runs, owner-only; `down` takes it out of both. |
 | <a id="ho20"></a>[HO20](HO20-Every-Container-Of-The-Host-Fits-The-Machine.md) | M | - | The forge's and runner's quadlets, the runner's job containers and the VM pool bounded to fit a host of any size, porelo-project's [PJ68](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj68) for porelo-host. |
 | <a id="ho12"></a>[HO12](HO12-The-VM-Pool.md) | L | - | Role `vm_pool`: VMs with run accounts `porelo-machines` rents from, made by the same code as the test VM, deleted by name at `down`. |
-
-## Implementing
-
-| # | Size | Blocked by | What it covers |
-|---|---|---|---|
-| <a id="ho26"></a>[HO26](HO26-Each-Agents-Own-Forge-Account.md) | S | - | Role `forge`: each agent `porelo_host_forge_agents` names gets an account in team `agents`, which writes the organization's repositories, and a token written only into a root-only file on the host. |
 
 ## Backlog
 

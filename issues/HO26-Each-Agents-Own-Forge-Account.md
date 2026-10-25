@@ -1,6 +1,6 @@
 # HO26 — Each Agent's Own Forge Account
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** S - one task file of the role `forge` and its Molecule checks; the token never leaves a root-only file on
 the host.
 
