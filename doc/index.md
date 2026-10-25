@@ -17,6 +17,11 @@ and `porelo`'s agents part (every offered agent and the project's transport pack
 or stop for a sign-in). A second `up` runs both plays from the top and changes only what differs, read from the
 commands' own exit codes and `--json` output, so resuming is idempotence, with no marker file of the playbook's own.
 
+Where the host runs a forge, `~/.config/porelo/ca-certificates.pem` of Porelo's account keeps the forge's CA in a
+marked block beside the person's certificates, and `~/.config/porelo/task-ca-certificates.pem` holds that CA alone;
+both are mode `0600` in the account's `0700` Porelo configuration directory. `down` removes the marked block and the
+task CA file, and removes the account's CA bundle if only whitespace remains.
+
 **`porelo.host.down`, the other way round.** Takes the VM pool and the forge off the host, stops every running task
 of the account with `porelo task stop --all` and clears
 the vault (`porelo vault clear --yes`), stops the VPN, waits for the drive to finish syncing before logging the client

@@ -15,6 +15,11 @@ tasks and signs an agent in when needed. Where the project names transports, the
 `matrix`, `porelo-matrix-homeserver` through Porelo's setup script, enabling nothing: the transport's `setup` enables
 and starts the homeserver at the first task start.
 
+Where `porelo_host_forge` is true, `~/.config/porelo/ca-certificates.pem` holds the forge's CA in a marked block beside
+the person's own certificates, and `~/.config/porelo/task-ca-certificates.pem` holds the forge's CA alone; both are
+owned by the account with mode `0600`, in its `0700` Porelo configuration directory. `down` removes that block and the
+task CA file, and removes the account's CA bundle if only whitespace remains.
+
 At `down` (`tasks_from: down`), `porelo task stop --all` stops every running task of the account, keeping their
 containers and workspaces, before the vault is cleared (`porelo vault clear --yes`, with `--force` on a shut vault). If
 a task survives, `down` fails with Porelo's words and leaves the vault in place.

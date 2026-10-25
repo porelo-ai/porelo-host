@@ -7,6 +7,7 @@
   vars:
     verify_version: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_VERSION') }}"
     verify_account: porelo-test
+    verify_porelo_config: "{{ ansible_facts['getent_passwd'][verify_account][4] }}/.config/porelo"
     verify_vault_passphrase: converge-passphrase
     verify_setup_script: "{{ (lookup('ansible.builtin.file', playbook_dir
       ~ '/../../../roles/porelo/defaults/main.yml') | from_yaml).porelo_setup_script }}"
@@ -17,6 +18,51 @@
       ansible.builtin.getent:
         database: passwd
         key: "{{ verify_account }}"
+
+    # Missing trust strands the broker and tasks; writable trust lets another account choose their CAs.
+    - name: Read the account's CA files and their permissions after up
+      ansible.builtin.stat:
+        path: "{{ verify_porelo_config }}/{{ item }}"
+      loop: [ca-certificates.pem, task-ca-certificates.pem]
+      register: verify_ca_files
+
+    - name: Assert both CA files belong to the account with mode 0600
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.isreg | default(false)
+          - item.stat.pw_name | default('') == verify_account
+          - item.stat.mode | default('') == '0600'
+        fail_msg: "asked for {{ item.item }} owned by {{ verify_account }} with mode 0600, got {{ item.stat }}"
+      loop: "{{ verify_ca_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Read the forge's CA and the account's two CA files after up
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /etc/porelo-host/forge/ca.pem
+        - "{{ verify_porelo_config }}/ca-certificates.pem"
+        - "{{ verify_porelo_config }}/task-ca-certificates.pem"
+      register: verify_ca_contents
+
+    - name: Assert the account trusts exactly one forge CA block and tasks get the CA alone
+      ansible.builtin.assert:
+        that:
+          - verify_ca is search('-----BEGIN CERTIFICATE-----')
+          - verify_host_ca | regex_findall('(?m)^# BEGIN porelo-host forge CA$') | length == 1
+          - verify_host_ca | regex_findall('(?m)^# END porelo-host forge CA$') | length == 1
+          - verify_host_ca | regex_findall('(?ms)^# BEGIN porelo-host forge CA\n(.*?)^# END porelo-host forge CA$')
+            == [verify_ca]
+          - verify_ca_contents.results[2].content == verify_ca_contents.results[0].content
+        fail_msg: >-
+          asked for one marked block holding the forge's CA and an identical task CA file;
+          forge {{ verify_ca }}, account {{ verify_host_ca }},
+          task {{ verify_ca_contents.results[2].content | b64decode }}
+      vars:
+        verify_ca: "{{ verify_ca_contents.results[0].content | b64decode }}"
+        verify_host_ca: "{{ verify_ca_contents.results[1].content | b64decode }}"
 
     - name: Read the person's stop command and its permissions
       ansible.builtin.stat:
@@ -876,6 +922,24 @@
             path: /root/machine.yml.bak
             state: absent
 
+    # Replacing the bundle would silently discard certificates the person already trusts.
+    - name: Read the system's CA bundle for a certificate of the person's own
+      ansible.builtin.slurp:
+        src: /etc/ssl/certs/ca-certificates.crt
+      register: verify_system_ca
+
+    - name: Put a certificate of the person's own beside the forge's block before another up
+      ansible.builtin.copy:
+        dest: "{{ verify_porelo_config }}/ca-certificates.pem"
+        content: "{{ verify_ca_contents.results[1].content | b64decode }}{{ verify_person_ca }}"
+        owner: "{{ verify_account }}"
+        group: "{{ verify_account }}"
+        mode: "0600"
+      vars:
+        verify_person_ca: >-
+          {{ verify_system_ca.content | b64decode
+          | regex_search('(?s)-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----\n') }}
+
     - name: Run up again after restoring the machine file
       ansible.builtin.command:
         cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml -i /root/porelo-host-forge.yml porelo.host.up
@@ -885,6 +949,34 @@
       register: verify_restored_up
       changed_when: >-
         verify_restored_up.stdout is search('"state": "changed"')
+
+    - name: Read both CA files after another up
+      ansible.builtin.slurp:
+        src: "{{ verify_porelo_config }}/{{ item }}"
+      loop: [ca-certificates.pem, task-ca-certificates.pem]
+      register: verify_ca_after_up
+
+    - name: Assert another up kept the person's certificate beside one forge block and changed no trust task
+      ansible.builtin.assert:
+        that:
+          - verify_person_ca is search('-----BEGIN CERTIFICATE-----')
+          - verify_person_ca != verify_ca_contents.results[0].content | b64decode
+          - verify_ca_after_up.results[0].content | b64decode
+            == (verify_ca_contents.results[1].content | b64decode) ~ verify_person_ca
+          - verify_ca_after_up.results[1].content == verify_ca_contents.results[0].content
+          - verify_trust_steps | length > 0
+          - verify_trust_steps | rejectattr('state', 'equalto', 'ok') | list | length == 0
+        fail_msg: >-
+          asked for the original forge block and the person's certificate unchanged, the task CA alone,
+          and every trust task unchanged; account {{ verify_ca_after_up.results[0].content | b64decode }},
+          task {{ verify_ca_after_up.results[1].content | b64decode }}, trust steps {{ verify_trust_steps }}
+      vars:
+        verify_person_ca: >-
+          {{ verify_system_ca.content | b64decode
+          | regex_search('(?s)-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----\n') }}
+        verify_trust_steps: >-
+          {{ verify_restored_up.stdout_lines | select | map('from_json') | selectattr('task', 'defined')
+          | selectattr('task', 'search', 'trust [|]') | rejectattr('state', 'equalto', 'started') | list }}
 
     - name: Ask Porelo whether up left the task stopped after restoring the machine file
       ansible.builtin.command:

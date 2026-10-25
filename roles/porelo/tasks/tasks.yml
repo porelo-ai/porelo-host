@@ -49,3 +49,7 @@
     that: (__porelo_agents.stdout | from_json).vault == 'open'
     fail_msg: "porelo agents --json reads the vault {{ (__porelo_agents.stdout | from_json).vault }}, not open"
     quiet: true
+
+- name: tasks | Trust the host's forge for the account and its tasks
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/trust.yml"
+  when: porelo_host_forge | default(false) | bool

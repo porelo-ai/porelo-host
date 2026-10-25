@@ -14,6 +14,29 @@
         database: passwd
         key: porelo-test
 
+    # Check installed trust before removal, so cleanup cannot pass when up left no trust to remove.
+    - name: Read both CA files before down
+      ansible.builtin.slurp:
+        src: "{{ ansible_facts['getent_passwd']['porelo-test'][4] }}/.config/porelo/{{ item }}"
+      loop: [ca-certificates.pem, task-ca-certificates.pem]
+      register: side_effect_ca_before
+
+    - name: Assert down has forge trust to remove and the person's certificate to keep
+      ansible.builtin.assert:
+        that:
+          - side_effect_ca_before.results[1].content | b64decode is search('-----BEGIN CERTIFICATE-----')
+          - side_effect_host_ca | regex_findall('(?m)^# BEGIN porelo-host forge CA$') | length == 1
+          - side_effect_host_ca | regex_findall('(?m)^# END porelo-host forge CA$') | length == 1
+          - side_effect_person_ca is search('-----BEGIN CERTIFICATE-----')
+        fail_msg: >-
+          asked for forge trust in both files and the person's certificate outside the marked block;
+          account {{ side_effect_host_ca }}, task {{ side_effect_ca_before.results[1].content | b64decode }}
+      vars:
+        side_effect_host_ca: "{{ side_effect_ca_before.results[0].content | b64decode }}"
+        side_effect_person_ca: >-
+          {{ side_effect_host_ca
+          | regex_replace('(?ms)^# BEGIN porelo-host forge CA\n.*?^# END porelo-host forge CA\n?', '') }}
+
     - name: Read whether verify left the task running
       ansible.builtin.command:
         cmd: porelo task status porelo-converge-converge-1 --json
@@ -199,6 +222,31 @@
       ansible.builtin.assert:
         that: side_effect_down.rc == 0
         fail_msg: "asked for down rc 0, got {{ side_effect_down.rc }}: {{ side_effect_down.stdout }}"
+
+    - name: Read whether the task's CA file is left after down
+      ansible.builtin.stat:
+        path: "{{ ansible_facts['getent_passwd']['porelo-test'][4] }}/.config/porelo/task-ca-certificates.pem"
+      register: side_effect_task_ca
+
+    - name: Read the person's CA bundle after down
+      ansible.builtin.slurp:
+        src: "{{ ansible_facts['getent_passwd']['porelo-test'][4] }}/.config/porelo/ca-certificates.pem"
+      register: side_effect_ca_after
+
+    - name: Assert down removed task trust and only the forge's marked block from the person's bundle
+      ansible.builtin.assert:
+        that:
+          - not side_effect_task_ca.stat.exists
+          - "'porelo-host forge CA' not in (side_effect_ca_after.content | b64decode)"
+          - side_effect_ca_after.content | b64decode == side_effect_person_ca
+        fail_msg: >-
+          asked for no task CA and only the person's certificates left;
+          task file {{ side_effect_task_ca.stat }}, account {{ side_effect_ca_after.content | b64decode }},
+          expected {{ side_effect_person_ca }}
+      vars:
+        side_effect_person_ca: >-
+          {{ side_effect_ca_before.results[0].content | b64decode
+          | regex_replace('(?ms)^# BEGIN porelo-host forge CA\n.*?^# END porelo-host forge CA\n?', '') }}
 
     - name: Read whether the drive's folder is still mounted
       ansible.builtin.command:

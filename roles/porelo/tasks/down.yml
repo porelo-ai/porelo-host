@@ -64,3 +64,37 @@
   environment: "{{ __porelo_user_environment }}"
   when: __porelo_vault.rc | default(-1) in [0, 3]
   changed_when: true
+
+- name: down | Take the host's forge trust out of the account
+  when: ansible_facts['getent_passwd'][porelo_account] is not none
+  block:
+    - name: down | Read whether the account's CA bundle exists
+      ansible.builtin.stat:
+        path: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo/ca-certificates.pem"
+      register: __porelo_ca_bundle
+
+    - name: down | Remove only the forge's marked CA block
+      ansible.builtin.blockinfile:
+        path: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo/ca-certificates.pem"
+        marker: "# {mark} porelo-host forge CA"
+        state: absent
+      when: __porelo_ca_bundle.stat.exists
+
+    - name: down | Read what remains of the account's CA bundle
+      ansible.builtin.slurp:
+        src: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo/ca-certificates.pem"
+      register: __porelo_ca_remaining
+      when: __porelo_ca_bundle.stat.exists
+
+    - name: down | Remove the CA bundle if no certificates remain
+      ansible.builtin.file:
+        path: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo/ca-certificates.pem"
+        state: absent
+      when:
+        - __porelo_ca_bundle.stat.exists
+        - __porelo_ca_remaining.content | b64decode | trim == ''
+
+    - name: down | Remove the tasks' CA file
+      ansible.builtin.file:
+        path: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo/task-ca-certificates.pem"
+        state: absent

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The forge's CA is installed in Porelo's account for the broker and tasks, preserving the person's certificates;
+  `down` removes the forge's trust from both files.
 - The forge answers on port 443 of the host's loopback, for tasks, and of the VPN's address, through a root-owned
   socket that forwards to rootless Forgejo; its URLs carry `https://forge.porelo.internal/` with no port.
 

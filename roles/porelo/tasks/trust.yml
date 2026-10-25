@@ -1,0 +1,38 @@
+---
+- name: trust | Read the account's home
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ porelo_account }}"
+
+- name: trust | Make the account's Porelo configuration directory
+  ansible.builtin.file:
+    path: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo"
+    state: directory
+    owner: "{{ porelo_account }}"
+    group: "{{ porelo_account }}"
+    mode: "0700"
+
+- name: trust | Read the forge's CA on the host
+  ansible.builtin.slurp:
+    src: /etc/porelo-host/forge/ca.pem
+  register: __porelo_forge_ca
+
+# The person's other certificates stay outside the block, including when the host's CA is renewed.
+- name: trust | Add the forge's CA to the account's trusted certificates
+  ansible.builtin.blockinfile:
+    path: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo/ca-certificates.pem"
+    marker: "# {mark} porelo-host forge CA"
+    block: "{{ __porelo_forge_ca.content | b64decode }}"
+    create: true
+    owner: "{{ porelo_account }}"
+    group: "{{ porelo_account }}"
+    mode: "0600"
+
+- name: trust | Give tasks the forge's CA alone
+  ansible.builtin.copy:
+    src: /etc/porelo-host/forge/ca.pem
+    dest: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo/task-ca-certificates.pem"
+    remote_src: true
+    owner: "{{ porelo_account }}"
+    group: "{{ porelo_account }}"
+    mode: "0600"
