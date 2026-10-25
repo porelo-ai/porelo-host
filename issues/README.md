@@ -11,14 +11,6 @@ channel.
 Its prefix is `HO`. *Open questions*, in *Analyzed* only, counts what waits on the operator. A group with nothing in
 it is left out.
 
-## Review
-
-| # | Size | Blocked by | What it covers |
-|---|---|---|---|
-| <a id="ho25"></a>[HO25](HO25-The-Stop-Asks-Again-Until-It-Is-Done.md) | S | - | At `up`'s stop, a script on the host asks a mistyped Tresorit login or vault passphrase again in the same terminal until it succeeds or the person cancels, with exits the interface reads. |
-| <a id="ho21"></a>[HO21](HO21-Each-Step-Says-What-It-Does-And-How-Long.md) | S | - | Each of the playbooks' sixteen steps carries a plain-words text and its usual duration as its own variables, which its `started` line passes on for the interface to show, `v` staying 1. |
-| <a id="ho13"></a>[HO13](HO13-A-Release-Carries-Its-Tarball-And-Digest.md) | S | - | A release attaches the collection's tarball and its `SHA256SUMS`, so `host up` can refuse any other; the check itself is porelo-frontend's. |
-
 ## Implementing
 
 | # | Size | Blocked by | What it covers |
@@ -54,6 +46,9 @@ it is left out.
 
 | # | Title | What was built |
 |---|---|---|
+| <a id="ho25"></a>HO25 | The Stop Asks Again Until It Is Done | At `up`'s stop, `porelo-host-stop` asks a mistyped Tresorit login or vault passphrase again in the same terminal until it succeeds or the person cancels, with exits the interface reads. |
+| <a id="ho21"></a>HO21 | Each Step Says What It Does And How Long | Each of the playbooks' sixteen steps carries a plain-words text and its usual duration as its own variables, which its `started` line passes on after a plan line of the run ahead, `v` staying 1. |
+| <a id="ho13"></a>HO13 | A Release Carries Its Tarball And Digest | A release attaches the collection's tarball and its `SHA256SUMS`, stopping before anything is attached if the tag is not `galaxy.yml`'s plain version, so `host up` can refuse any other. |
 | <a id="ho19"></a>HO19 | The Machine Installs Its Agents And Starts No Task | `up` installs every package Porelo's setup script names as an agent, and the project's transports, without starting a task or stopping for a sign-in; `down` stops every running task of the account before `vault clear`. |
 | <a id="ho18"></a>HO18 | A Failed Loop Says Why | A failed step's JSON line carries the command's own words after Ansible's, a loop's by each failed item's label, cut to their tail within fixed bounds, and a task with `no_log` stays hidden. |
 | <a id="ho11"></a>HO11 | The Homeserver's Packages | `up` installs the Matrix transport's and homeserver's packages with the agents and enables nothing; the first task start brings the homeserver up. |
