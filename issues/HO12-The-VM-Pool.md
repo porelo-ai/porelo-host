@@ -71,6 +71,16 @@ deletes them with nothing left.
   root into `/etc`, a give-back brought the VM back `ready` with both gone; the revert ran once, watching, never started
   again. After the two `down`s of the test (the first stopping at the unsynced drive), the forge's Actions secret
   `PORELO_POOL_SSH` was deleted exactly once, and no pool VM, volume, seed, key, directory or unit is left.
+- **Molecule**, green, 5 of 5 stages, on this machine, 2026-10-25 09:31Z-09:50Z, 18.4 min, with `porelo-machines` built
+  from porelo-buildtools `3bf62cf` (the
+  [BT24](https://github.com/porelo-ai/porelo-buildtools/blob/main/issues/README.md#bt24) commit that provisions a pool
+  lease as root through `sudo -n`) and handed over by a SHA-256 manifest checked on the host and again on the test VM:
+  - a renter that returned its lease normally, and one killed with SIGKILL while holding it, each left a file in the
+    run account's home and one written as root in `/etc`; the next rental of the same VM and account found neither;
+  - `porelo-machines acceptance --pool /etc/porelo-host/pool/pool.json` installed published Porelo, made its
+    unprivileged `acceptance` account and ran a leg in it; the next rental found that account gone;
+  - after `down`, the libvirt listings (read first, so a failed query cannot pass as empty) showed no pool VM or
+    volume, and the test VM, its disk and its seed were gone.
 - **Seen red first**, each break restored, 2026-10-22 14:53Z-15:39Z, in runs with faults put in: a line of the run key
   in the `-vvv` output (the check named only the key file, never the key), and `down` deleting another secret name (both
   `down`s reported unchanged). Earlier red runs caught the job's digest of the secret against the host's key (the forge
@@ -78,6 +88,9 @@ deletes them with nothing left.
   podman when it was `0640` for the runner's group; the VM never coming back `ready` with the revert taking no snapshot;
   and `virsh event --all --event lifecycle`, which virsh refuses at once, starting the revert again 83 times. That last
   fault was in the first green run too, hidden by the revert's first loop; the check on its restarts now finds it.
+  2026-10-25 09:51Z-10:08Z, with `porelo-machines` built without the reset of an account a killed renter left dirty,
+  the normal return stayed clean and the rental after the SIGKILL found both files, failing the check; the break was in
+  a copy of the source only.
 
 ## Acceptance
 

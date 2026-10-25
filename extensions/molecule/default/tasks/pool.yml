@@ -1,0 +1,83 @@
+---
+# An unavailable reset can leak both an account's files and changes made as root into a later run.
+- name: pool | Make the acceptance tooling directory
+  ansible.builtin.file:
+    path: /root/pool-acceptance
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: pool | Copy the checked runtime JARs and their manifest onto the Molecule VM
+  ansible.builtin.copy:
+    src: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MACHINES') }}/"
+    dest: /root/pool-acceptance/machines/
+    owner: root
+    group: root
+    mode: "0600"
+    directory_mode: "0700"
+
+# The separately supplied manifest digest covers the source revision and every runtime dependency.
+- name: pool | Check the tooling digests again before executing anything from the bundle
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      test "$(sha256sum SHA256SUMS | cut -d' ' -f1)" = {{ verify_machines_sha256 | quote }}
+      sha256sum --check --strict SHA256SUMS
+      cat revision
+    chdir: /root/pool-acceptance/machines
+    executable: /bin/bash
+  vars:
+    verify_machines_sha256: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MACHINES_SHA256') }}"
+  changed_when: false
+
+- name: pool | Install Ubuntu's Java to bootstrap the pinned JDK
+  ansible.builtin.apt:
+    name: openjdk-25-jre-headless
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# This command verifies the JDK archive against the digest the handed-over tooling pins.
+- name: pool | Install the JDK pinned by porelo-machines
+  ansible.builtin.command:
+    argv: [/usr/bin/java, -cp, "/root/pool-acceptance/machines/*", org.fuin.porelo.machines.Main,
+           jdk, --into, /root/pool-acceptance/jdk]
+    creates: /root/pool-acceptance/jdk/bin/java
+
+- name: pool | Copy the rental checks and the unprivileged acceptance leg
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/files/{{ item }}"
+    dest: "/root/pool-acceptance/{{ item }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: [PoolAcceptance.java, pool-acceptance.sh]
+
+# Compiled against the same checked JARs that the CLI leg uses, without copying LocalPool's implementation.
+- name: pool | Compile the real-pool rental checks
+  ansible.builtin.command:
+    argv: [/root/pool-acceptance/jdk/bin/javac, -cp, "/root/pool-acceptance/machines/*",
+           -d, /root/pool-acceptance, /root/pool-acceptance/PoolAcceptance.java]
+  changed_when: true
+
+# Only the command environment takes the existing run key; Ansible never reads its contents.
+- name: pool | Rent after a normal return and a killed renter, then run the real CLI acceptance leg
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      export XDG_STATE_HOME=/root/pool-acceptance/state
+      export PORELO_POOL_SSH
+      PORELO_POOL_SSH="$(cat /var/lib/porelo-host/pool/run-key)"
+      java=/root/pool-acceptance/jdk/bin/java
+      cp='/root/pool-acceptance/machines/*:/root/pool-acceptance'
+      pool=/etc/porelo-host/pool/pool.json
+      timeout --kill-after=15s 10m "$java" -cp "$cp" PoolAcceptance "$pool" /root/pool-acceptance
+      timeout --kill-after=15s 10m "$java" -cp "$cp" org.fuin.porelo.machines.Main acceptance \
+          --pool "$pool" --os ubuntu --package porelo --script /root/pool-acceptance/pool-acceptance.sh --for 10
+      timeout --kill-after=15s 5m "$java" -cp "$cp" PoolAcceptance "$pool" /root/pool-acceptance clean
+    executable: /bin/bash
+  register: verify_pool_given_back
+  changed_when: true
+  failed_when: false
+  no_log: true

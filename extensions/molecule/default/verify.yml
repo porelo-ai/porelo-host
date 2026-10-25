@@ -1259,35 +1259,8 @@
         fail_msg: "seed left in libvirt: {{ verify_pool_seed.stdout_lines }}"
       when: verify_vm_pool == 'on'
 
-    - name: Give the pool VM's account back after a run that left something, as itself and as root
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          address={{ verify_pool_vm.address }}
-          printf '%s %s\n' "$address" '{{ verify_pool_vm.hostKey }}' > /root/pool-known-hosts
-          on() { ssh -n -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes \
-              -o UserKnownHostsFile=/root/pool-known-hosts -i /var/lib/porelo-host/pool/run-key run@"$address" "$@"; }
-          on 'echo a-run > ~/left-by-a-run && sudo sh -c "echo a-run > /etc/left-by-a-run"'
-          on 'sudo -n porelo-pool-give-back'
-          echo "gave back at $(date +%s)"
-          for i in $(seq 1 60); do
-              said=$(on 'cat /var/lib/porelo-pool/run' 2>/dev/null || true)
-              if [ "$said" = ready ]; then
-                  echo "ready again at $(date +%s)"
-                  on 'test -e ~/left-by-a-run && echo home: left || echo home: clean'
-                  on 'test -e /etc/left-by-a-run && echo etc: left || echo etc: clean'
-                  exit 0
-              fi
-              sleep 2
-          done
-          echo "never ready again; it last said: $said"
-          exit 1
-        executable: /bin/bash
-      register: verify_pool_given_back
-      changed_when: true
-      failed_when: false
-      vars:
-        verify_pool_vm: "{{ (verify_pool_file.content | b64decode | from_json).vms[0] }}"
+    - name: Verify the pool through porelo-machines, including a forcibly killed renter
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/pool.yml"
       when: verify_vm_pool == 'on'
 
     # The revert must have watched for the VM's stop, not been started again and again: a service that exits at once
@@ -1311,12 +1284,14 @@
       changed_when: false
       when: verify_vm_pool == 'on' and verify_pool_given_back.rc != 0
 
-    - name: Assert the VM went back to its snapshot, ready, with nothing of the run on it
+    - name: Assert normal and killed renters leave nothing, and the real acceptance leg passes and is removed
       ansible.builtin.assert:
         that:
           - verify_pool_given_back.rc == 0
-          - "'home: clean' in verify_pool_given_back.stdout_lines"
-          - "'etc: clean' in verify_pool_given_back.stdout_lines"
+          - "'normal return: home and /etc clean in the next rental' in verify_pool_given_back.stdout_lines"
+          - "'killed renter: home and /etc clean in the next rental' in verify_pool_given_back.stdout_lines"
+          - "'pool acceptance leg passed' in verify_pool_given_back.stdout_lines"
+          - "'CLI leg returned: acceptance account and run data absent' in verify_pool_given_back.stdout_lines"
         fail_msg: >-
           the give-back: {{ verify_pool_given_back.stdout }} {{ verify_pool_given_back.stderr }};
           the revert: {{ verify_pool_revert_log.stdout | default('') }}

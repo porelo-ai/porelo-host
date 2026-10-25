@@ -405,8 +405,10 @@
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
-          virsh -c qemu:///system list --all --name | grep '^porelo-pool-' || true
-          virsh -c qemu:///system vol-list images | awk '{print $1}' | grep -E '^porelo-pool-(ubuntu|fedora)-' || true
+          domains=$(virsh -c qemu:///system list --all --name)
+          volumes=$(virsh -c qemu:///system vol-list images | awk 'NR > 2 {print $1}')
+          printf '%s\n' "$domains" | grep '^porelo-pool-' || true
+          printf '%s\n' "$volumes" | grep -E '^porelo-pool-(ubuntu|fedora)-' || true
           find /var/lib/porelo-host/pool -maxdepth 1 \
               \( -name 'porelo-pool-*' -o -name 'run-key*' -o -name cloud-config \) 2>/dev/null || true
           for path in /etc/porelo-host/pool /etc/systemd/system/porelo-pool-revert.service; do

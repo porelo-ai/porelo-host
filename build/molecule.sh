@@ -23,10 +23,39 @@ vm=$root/roles/vm_pool/files/porelo-vm
 say() { printf '%s\n' "$*" >&2; }
 fail() { say "FAILED: $*"; exit 1; }
 
+# --- the acceptance tooling, handed over from a checked build -------------------------------------------------------
+pool_check=${PORELO_HOST_MOLECULE_POOL:-on}
+case "$pool_check" in on|off) ;; *) fail 'PORELO_HOST_MOLECULE_POOL must be on or off' ;; esac
+machines=
+if [ "$pool_check" = on ]; then
+    machines=${PORELO_HOST_MACHINES:?set PORELO_HOST_MACHINES to the checked runtime JAR directory}
+    machines_digest=${PORELO_HOST_MACHINES_SHA256:?set PORELO_HOST_MACHINES_SHA256 to its manifest SHA-256}
+    printf '%s\n' "$machines_digest" | grep -Eqx '[0-9a-f]{64}' || fail 'no SHA-256 for the tooling manifest'
+    [ "$(sha256sum "$machines/SHA256SUMS" | cut -d' ' -f1)" = "$machines_digest" ] \
+        || fail 'the tooling manifest does not have the supplied SHA-256'
+    # Only flat JAR names and the source revision: no path from a manifest may escape its input directory.
+    if grep -Ev '^[0-9a-f]{64}  ([A-Za-z0-9][A-Za-z0-9._+-]*\.jar|revision)$' "$machines/SHA256SUMS"; then
+        fail 'the tooling manifest must name only runtime JARs and revision'
+    fi
+    (
+        cd "$machines"
+        for file in ./*.jar revision; do
+            [ -f "$file" ] && [ ! -L "$file" ] || fail "no regular tooling input: $file"
+            [ "$(awk -v name="${file#./}" '$2 == name {n++} END {print n+0}' SHA256SUMS)" = 1 ] \
+                || fail "the tooling manifest must cover $file exactly once"
+        done
+        sha256sum --check --strict SHA256SUMS || exit 1
+        grep -Eqx '[0-9a-f]{40}' revision || fail 'no source commit in tooling revision'
+    ) || fail 'the acceptance tooling did not pass its digest checks'
+    say "pool acceptance tooling from source commit $(cat "$machines/revision")"
+fi
+
 # --- refuse leftovers -----------------------------------------------------------------------------------------------
-left=$(virsh list --all --name | grep "^$prefix-" || true)
-left="$left$(virsh vol-list "$pool" | awk '{print $1}' | grep "^$prefix-" || true)"
-[ -z "$left" ] || { say "REFUSED: an earlier run left these; delete them first:"; printf '    %s\n' $left >&2; exit 1; }
+domains=$(virsh list --all --name) || fail 'could not list libvirt domains'
+volumes=$(virsh vol-list "$pool") || fail 'could not list libvirt volumes'
+volumes=$(printf '%s\n' "$volumes" | awk 'NR > 2 {print $1}')
+left=$(printf '%s\n%s\n' "$domains" "$volumes" | grep "^$prefix-" || true)
+[ -z "$left" ] || { say "REFUSED: an earlier run left these; delete them first:"; printf '    %s\n' "$left" >&2; exit 1; }
 
 # --- clean up exactly what this run made ----------------------------------------------------------------------------
 made=
@@ -36,6 +65,12 @@ cleanup() {
     rm -rf "$dir"
     if [ -n "$made" ]; then
         "$vm" delete "$name" || exit 1
+        domains=$(virsh list --all --name) || exit 1
+        volumes=$(virsh vol-list "$pool") || exit 1
+        volumes=$(printf '%s\n' "$volumes" | awk 'NR > 2 {print $1}')
+        left=$(printf '%s\n%s\n' "$domains" "$volumes" \
+            | grep -Fx -e "$name" -e "$name.qcow2" -e "$name-seed.iso" || true)
+        [ -z "$left" ] || { say "LEFT BEHIND, delete by hand: $left"; exit 1; }
         say "removed what run $run made: $name, its disk and its seed; libvirt lists none of them"
     fi
     exit $status
@@ -63,6 +98,11 @@ base=porelo-host-base-$(printf '%s' "$digest" | cut -c1-12).qcow2
 # --- the run's keys and seed -----------------------------------------------------------------------------------------
 mkdir -p "$dir"
 chmod 700 "$dir"
+if [ "$pool_check" = on ]; then
+    mkdir "$dir/machines"
+    cp "$machines"/*.jar "$machines/revision" "$machines/SHA256SUMS" "$dir/machines/"
+    machines=/work/ansible_collections/porelo/host/target/molecule/$run/machines
+fi
 ssh-keygen -q -t ed25519 -N '' -C "$name" -f "$dir/id_ed25519"
 ssh-keygen -q -t ed25519 -N '' -C "$name" -f "$dir/host_ed25519"
 "$vm" seed "$dir" "$name" molecule "$dir/id_ed25519.pub" "$dir/host_ed25519"
@@ -121,5 +161,6 @@ PORELO_HOST_INVENTORY=$work/target/molecule/$run/inventory.yml \
 PORELO_HOST_TARBALL=$work/target/molecule/$run/porelo-host-$version.tar.gz \
 PORELO_HOST_VERSION=$version \
 PORELO_HOST_PACKAGES=$packages \
-PORELO_HOST_MOLECULE_POOL=${PORELO_HOST_MOLECULE_POOL:-on} \
+PORELO_HOST_MACHINES=$machines \
+PORELO_HOST_MOLECULE_POOL=$pool_check \
     "$root/build/tools.sh" molecule test -s "$scenario"
