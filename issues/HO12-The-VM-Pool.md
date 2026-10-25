@@ -1,7 +1,6 @@
 # HO12 — The VM Pool
 
-**Status:** Implementing; its acceptance blocked by porelo-buildtools
-[BT24](https://github.com/porelo-ai/porelo-buildtools/blob/main/issues/README.md#bt24).
+**Status:** Review.
 **Size:** L - one role here, but the pool is `porelo-machines`' to rent from, so what the role makes is a contract
 with porelo-buildtools, and its VMs need nested KVM on the host.
 
