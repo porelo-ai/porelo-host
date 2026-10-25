@@ -1,6 +1,6 @@
 # HO22 — Ssh Reached Only Through The VPN Once It Is Up
 
-**Status:** Idea.
+**Status:** Accepted.
 
 **What must be true.** Once `up` has brought the VPN up, the host's ssh answers only on the VPN's address; its public
 address offers the VPN's UDP port alone. Before that, ssh on the public address is the one way in, since `up` needs it

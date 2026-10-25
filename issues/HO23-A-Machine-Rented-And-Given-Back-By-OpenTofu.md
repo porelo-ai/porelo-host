@@ -1,6 +1,6 @@
 # HO23 — A Machine Rented And Given Back By OpenTofu
 
-**Status:** Analyzed.
+**Status:** Estimated.
 **Size:** L - a new tool in this repository (an OpenTofu module, its pins and its tests), the state's encryption, and
 a hand-over to porelo-frontend's `porelo-host` that crosses repositories; Scaleway first, Hetzner later on the same
 pattern.
