@@ -1,6 +1,6 @@
 # HO08 — The Forge With Its Registry
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** L - one role, but three accounts kept apart, a certificate the tasks trust, the repositories seeded from the
 central forge without push mirrors, and a runner that may use KVM; it grew from M once read against
 [PJ39](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj39)'s shape.
