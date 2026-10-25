@@ -13,6 +13,8 @@
       ~ '/../../../roles/porelo/defaults/main.yml') | from_yaml).porelo_setup_script }}"
     verify_drive: /srv/porelo-host/drive
     verify_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
+    verify_forge: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_FORGE', default='on') }}"
+    verify_forge_inventory: "{{ '-i /root/porelo-host-forge.yml' if verify_forge == 'on' else '' }}"
     verify_container_bounds:
       - {account: porelo-forge, container: forgejo, pids: 1024, memory: 2G, bytes: 2147483648, cpus: 2}
       - {account: porelo-runner, container: forgejo-runner, pids: 256, memory: 512M, bytes: 536870912, cpus: 1}
@@ -21,6 +23,38 @@
       ansible.builtin.getent:
         database: passwd
         key: "{{ verify_account }}"
+
+    - name: Verify a host without the forge holds none of it
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_absent.yml"
+      when: verify_forge == 'off'
+
+    - name: Start with no absence check refusal observed
+      ansible.builtin.set_fact:
+        verify_forge_absence_refused: false
+      when: verify_forge == 'on'
+
+    - name: Prove the absence check refuses a host that has the forge
+      when: verify_forge == 'on'
+      block:
+        - name: Run the absence check against the running forge
+          ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_absent.yml"
+      rescue:
+        - name: Assert the absence assertion itself refused the installed forge
+          ansible.builtin.assert:
+            that: ansible_failed_task.name == 'Assert the host holds none of the forge'
+            fail_msg: >-
+              asked for the forge absence assertion to fail, got {{ ansible_failed_task.name }}:
+              {{ ansible_failed_result }}
+
+        - name: Keep the absence check refusal observed
+          ansible.builtin.set_fact:
+            verify_forge_absence_refused: true
+
+    - name: Assert the absence check went red with the forge installed
+      ansible.builtin.assert:
+        that: verify_forge_absence_refused
+        fail_msg: asked the absence check to refuse an installed forge, got no refusal
+      when: verify_forge == 'on'
 
     - name: Verify the containers' resource bounds and the host's refusals
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/resources.yml"
@@ -31,6 +65,7 @@
         path: "{{ verify_porelo_config }}/{{ item }}"
       loop: [ca-certificates.pem, task-ca-certificates.pem]
       register: verify_ca_files
+      when: verify_forge == 'on'
 
     - name: Assert both CA files belong to the account with mode 0600
       ansible.builtin.assert:
@@ -43,6 +78,7 @@
       loop: "{{ verify_ca_files.results }}"
       loop_control:
         label: "{{ item.item }}"
+      when: verify_forge == 'on'
 
     - name: Read the forge's CA and the account's two CA files after up
       ansible.builtin.slurp:
@@ -52,6 +88,7 @@
         - "{{ verify_porelo_config }}/ca-certificates.pem"
         - "{{ verify_porelo_config }}/task-ca-certificates.pem"
       register: verify_ca_contents
+      when: verify_forge == 'on'
 
     - name: Assert the account trusts exactly one forge CA block and tasks get the CA alone
       ansible.builtin.assert:
@@ -69,6 +106,7 @@
       vars:
         verify_ca: "{{ verify_ca_contents.results[0].content | b64decode }}"
         verify_host_ca: "{{ verify_ca_contents.results[1].content | b64decode }}"
+      when: verify_forge == 'on'
 
     - name: Read the person's stop command and its permissions
       ansible.builtin.stat:
@@ -139,6 +177,10 @@
       ansible.builtin.assert:
         that: (verify_person_task.stdout | from_json).running
         fail_msg: "asked for the task running after the person's start, got {{ verify_person_task.stdout }}"
+
+    - name: Verify the task reaches only its declared host service with its own trust store
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_task.yml"
+      when: verify_forge == 'on'
 
     - name: Read which collections the host has
       ansible.builtin.command:
@@ -327,6 +369,7 @@
       register: verify_forge_loopback
       changed_when: false
       failed_when: false
+      when: verify_forge == 'on'
 
     - name: Assert Forgejo answers by name on loopback port 443 with the host's certificate
       ansible.builtin.assert:
@@ -335,6 +378,7 @@
           asked https://forge.porelo.internal/api/v1/version through 127.0.0.1:443 for 200;
           got rc {{ verify_forge_loopback['rc'] }}, {{ verify_forge_loopback['stdout'] }}
           {{ verify_forge_loopback['stderr'] }}
+      when: verify_forge == 'on'
 
     - name: Reach Forgejo by name on VPN port 443 from the test peer
       ansible.builtin.command:
@@ -345,6 +389,7 @@
       register: verify_forge_https_peer
       changed_when: false
       failed_when: false
+      when: verify_forge == 'on'
 
     - name: Assert Forgejo answers by name on VPN port 443 with the host's certificate
       ansible.builtin.assert:
@@ -353,6 +398,7 @@
           asked https://forge.porelo.internal/api/v1/version through the test peer's VPN for 200;
           got rc {{ verify_forge_https_peer['rc'] }}, {{ verify_forge_https_peer['stdout'] }}
           {{ verify_forge_https_peer['stderr'] }}
+      when: verify_forge == 'on'
 
     # The runner and existing clients still use the original VPN port.
     - name: Reach Forgejo's API through the VPN over TLS, trusting only the host's CA
@@ -363,18 +409,21 @@
       register: verify_forge_api
       changed_when: false
       failed_when: false
+      when: verify_forge == 'on'
 
     - name: Assert Forgejo answers through the VPN with the host's certificate
       ansible.builtin.assert:
         that: verify_forge_api.rc == 0 and (verify_forge_api.stdout | from_json).version is defined
         fail_msg: "Forgejo through the VPN: rc {{ verify_forge_api.rc }}, {{ verify_forge_api.stdout }}
           {{ verify_forge_api.stderr }}"
+      when: verify_forge == 'on'
 
     - name: Read where Forgejo's ports listen
       ansible.builtin.command:
         cmd: ss -Hltn '( sport = :443 or sport = :3000 or sport = :2222 )'
       register: verify_forge_listen
       changed_when: false
+      when: verify_forge == 'on'
 
     - name: Assert Forgejo listens on loopback and VPN port 443 and keeps its original VPN ports
       ansible.builtin.assert:
@@ -383,6 +432,7 @@
         fail_msg: "Forgejo listens on: {{ verify_forge_listen.stdout_lines }}"
       vars:
         verify_forge_ports: "{{ verify_forge_listen.stdout_lines | map('split') | map(attribute=3) | list }}"
+      when: verify_forge == 'on'
 
     - name: Reach ssh on the public address, from where Molecule connects
       ansible.builtin.wait_for:
@@ -397,7 +447,7 @@
         host: "{{ ansible_host }}"
         port: "{{ item }}"
         timeout: 5
-      loop: [8080, 3000, 2222, 443]
+      loop: "{{ [8080, 3000, 2222, 443] if verify_forge == 'on' else [8080] }}"
       delegate_to: localhost
       become: false
       register: verify_public_reach
@@ -464,6 +514,7 @@
       ansible.builtin.file:
         path: /home/porelo-forge/.config/porelo-forge/publisher.set
         state: absent
+      when: verify_forge == 'on'
 
     # Removing the drive's key before up with -vvv makes that run put it back while its output is searched.
     - name: Remove the drive's key from the vault before up with -vvv
@@ -496,7 +547,7 @@
         cmd: |
           set -euo pipefail
           umask 077
-          ansible-playbook -vvv -c local -i /root/porelo-host-inventory.yml -i /root/porelo-host-forge.yml \
+          ansible-playbook -vvv -c local -i /root/porelo-host-inventory.yml {{ verify_forge_inventory }} \
               porelo.host.up 2>&1 | tee /root/porelo-host-vvv.out
         executable: /bin/bash
       environment:
@@ -510,22 +561,26 @@
         src: /srv/porelo-host/drive/porelo-host/forge-central.token
       register: verify_central_token
       no_log: true
+      when: verify_forge == 'on'
 
     - name: Read the forge's API token, only to search the run's output for it
       ansible.builtin.slurp:
         src: /home/porelo-forge/.config/porelo-forge/api.token
       register: verify_forge_token
       no_log: true
+      when: verify_forge == 'on'
 
     - name: Assert up with -vvv ran, and its output holds no trace of the host's private key or either token
       ansible.builtin.assert:
         that:
           - verify_vvv.rc == 0
           - (verify_host_key.content | b64decode | trim) not in (verify_vvv.stdout + verify_vvv.stderr)
-          - (verify_central_token.content | b64decode | trim) | length > 20
-          - (verify_central_token.content | b64decode | trim) not in (verify_vvv.stdout + verify_vvv.stderr)
-          - (verify_forge_token.content | b64decode | trim) | length > 20
-          - (verify_forge_token.content | b64decode | trim) not in (verify_vvv.stdout + verify_vvv.stderr)
+          - verify_forge != 'on' or (verify_central_token.content | b64decode | trim) | length > 20
+          - verify_forge != 'on' or (verify_central_token.content | b64decode | trim)
+            not in (verify_vvv.stdout + verify_vvv.stderr)
+          - verify_forge != 'on' or (verify_forge_token.content | b64decode | trim) | length > 20
+          - verify_forge != 'on' or (verify_forge_token.content | b64decode | trim)
+            not in (verify_vvv.stdout + verify_vvv.stderr)
         fail_msg: "up with -vvv gave rc {{ verify_vvv.rc }}, or its output holds the host's private VPN key, the
           person's token for the central forge or the forge's API token"
       no_log: true
@@ -741,7 +796,8 @@
 
     - name: Run up while the vault is shut, its steps as JSON lines
       ansible.builtin.command:
-        cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml -i /root/porelo-host-forge.yml porelo.host.up
+        cmd: >-
+          ansible-playbook -c local -i /root/porelo-host-inventory.yml {{ verify_forge_inventory }} porelo.host.up
       environment:
         ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
         LC_ALL: C.UTF-8
@@ -792,7 +848,8 @@
 
     - name: Run up after unlocking the vault, its steps as JSON lines
       ansible.builtin.command:
-        cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml -i /root/porelo-host-forge.yml porelo.host.up
+        cmd: >-
+          ansible-playbook -c local -i /root/porelo-host-inventory.yml {{ verify_forge_inventory }} porelo.host.up
       environment:
         ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
         LC_ALL: C.UTF-8
@@ -873,7 +930,7 @@
         - name: Run up with the machine file naming the wrong signing key
           ansible.builtin.command:
             cmd: >-
-              ansible-playbook -c local -i /root/porelo-host-inventory.yml -i /root/porelo-host-forge.yml
+              ansible-playbook -c local -i /root/porelo-host-inventory.yml {{ verify_forge_inventory }}
               porelo.host.up
           environment:
             ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
@@ -933,6 +990,7 @@
       ansible.builtin.slurp:
         src: /etc/ssl/certs/ca-certificates.crt
       register: verify_system_ca
+      when: verify_forge == 'on'
 
     - name: Put a certificate of the person's own beside the forge's block before another up
       ansible.builtin.copy:
@@ -945,10 +1003,12 @@
         verify_person_ca: >-
           {{ verify_system_ca.content | b64decode
           | regex_search('(?s)-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----\n') }}
+      when: verify_forge == 'on'
 
     - name: Run up again after restoring the machine file
       ansible.builtin.command:
-        cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml -i /root/porelo-host-forge.yml porelo.host.up
+        cmd: >-
+          ansible-playbook -c local -i /root/porelo-host-inventory.yml {{ verify_forge_inventory }} porelo.host.up
       environment:
         ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
         LC_ALL: C.UTF-8
@@ -961,6 +1021,7 @@
         src: "{{ verify_porelo_config }}/{{ item }}"
       loop: [ca-certificates.pem, task-ca-certificates.pem]
       register: verify_ca_after_up
+      when: verify_forge == 'on'
 
     - name: Assert another up kept the person's certificate beside one forge block and changed no trust task
       ansible.builtin.assert:
@@ -983,6 +1044,7 @@
         verify_trust_steps: >-
           {{ verify_restored_up.stdout_lines | select | map('from_json') | selectattr('task', 'defined')
           | selectattr('task', 'search', 'trust [|]') | rejectattr('state', 'equalto', 'started') | list }}
+      when: verify_forge == 'on'
 
     - name: Ask Porelo whether up left the task stopped after restoring the machine file
       ansible.builtin.command:
@@ -1013,7 +1075,7 @@
         XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
       changed_when: true
 
-    # The forge role: the repository migrated from the stand-in for the central forge, with its push mirror back.
+    # The forge role: the repository migrated with its content, no mirror, and no push mirror.
     - name: Ask the forge for the migrated repository and its push mirrors
       ansible.builtin.shell:
         cmd: |
@@ -1021,27 +1083,37 @@
           api() { curl -fsS --cacert /etc/porelo-host/forge/ca.pem -H @<(printf 'Authorization: token %s\n' \
               "$(cat /home/porelo-forge/.config/porelo-forge/api.token)") "$@"; }
           base=https://10.73.0.1:3000/api/v1/repos/porelo/stand-in
-          api "$base" && echo && api "$base/push_mirrors" && echo && api "$base/contents/README.md"
+          api "$base" && echo && api "$base/push_mirrors" && echo && api "$base/contents/README.md" \
+              && echo && api https://10.73.0.1:3000/api/v1/orgs/porelo/actions/variables/PORELO_PUBLISH \
+              && echo && api https://10.73.0.1:3000/api/v1/orgs/porelo/actions/variables/JF_URL \
+              && echo && api https://10.73.0.1:3000/api/v1/orgs/porelo/actions/secrets
         executable: /bin/bash
       register: verify_forge_repo
+      no_log: true
       changed_when: false
       failed_when: false
+      when: verify_forge == 'on'
 
-    - name: Assert the repository was migrated with its content, as no mirror, its push mirror back on no interval
+    - name: Assert the repository has its content and no mirrors and the organization's publishing settings exist
       ansible.builtin.assert:
         that:
           - verify_forge_repo.rc == 0
           - not verify_forge_lines[0].mirror
           - verify_forge_lines[0]['clone_url'] == 'https://forge.porelo.internal/porelo/stand-in.git'
-          - verify_forge_lines[1] | length == 1
-          - verify_forge_lines[1][0].remote_address == 'https://10.73.0.1:3000/central/stand-in.git'
-          - verify_forge_lines[1][0].interval in ['0s', '0']
-          - not verify_forge_lines[1][0].sync_on_commit
+          - verify_forge_lines[1] == []
           - verify_forge_lines[2].name == 'README.md'
-        fail_msg: "the forge's repository: rc {{ verify_forge_repo.rc }}, {{ verify_forge_repo.stdout }}
-          {{ verify_forge_repo.stderr }}"
+          - verify_forge_lines[3].name == 'PORELO_PUBLISH'
+          - verify_forge_lines[3].data == 'false'
+          - verify_forge_lines[4].name == 'JF_URL'
+          - verify_forge_lines[4].data == 'https://jfrog.invalid'
+          - "'JF_ACCESS_TOKEN' in (verify_forge_lines[5] | map(attribute='name') | list)"
+        fail_msg: >-
+          asked for the repository migrated with its content, no mirror, no push mirror, PORELO_PUBLISH=false,
+          JF_URL=https://jfrog.invalid and secret name JF_ACCESS_TOKEN;
+          got rc {{ verify_forge_repo.rc }}: {{ verify_forge_repo.stdout }} {{ verify_forge_repo.stderr }}
       vars:
         verify_forge_lines: "{{ verify_forge_repo.stdout_lines | select | map('from_json') | list }}"
+      when: verify_forge == 'on'
 
     # The forge role's runner and registry: the workflow converge committed to the unreviewed branch runs again for a
     # second commit there, after the -vvv run made the publisher's token anew, so that run publishes with the new one.
@@ -1055,57 +1127,104 @@
               -d '{"content": "YWdhaW4K", "message": "Run again", "branch": "task-probe"}'
         executable: /bin/bash
       register: verify_forge_again
+      no_log: true
       changed_when: true
+      when: verify_forge == 'on'
 
-    - name: Wait until both of the branch's runs have ended on the host's runner
+    # The first GitHub-shaped job pulls the large act image before it can start.
+    - name: Wait until both jobs of each branch run have ended on the host's runner
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
-          curl -fsS --cacert /etc/porelo-host/forge/ca.pem \
+          curl -fsS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem \
               -H @<(printf 'Authorization: token %s\n' "$(cat /home/porelo-forge/.config/porelo-forge/api.token)") \
               https://10.73.0.1:3000/api/v1/repos/porelo/stand-in/actions/tasks
         executable: /bin/bash
       register: verify_forge_runs
+      no_log: true
       until: >-
-        verify_forge_runs.rc == 0
-        and (verify_forge_runs.stdout | from_json).workflow_runs | selectattr('status', 'in', ['success', 'failure'])
-        | list | length >= 2
-      retries: 40
+        verify_forge_runs.rc != 0
+        or verify_forge_branch | selectattr('status', 'in', ['failure', 'cancelled', 'skipped']) | list | length > 0
+        or verify_forge_branch | selectattr('status', 'equalto', 'success') | list | length == 4
+      retries: 80
       delay: 15
       changed_when: false
       failed_when: false
+      vars:
+        verify_forge_branch: >-
+          {{ (verify_forge_runs.stdout | from_json).workflow_runs
+          | selectattr('head_branch', 'equalto', 'task-probe') | list }}
+      when: verify_forge == 'on'
+
+    - name: Assert the branch's tasks could be read before checking their results
+      ansible.builtin.assert:
+        that: verify_forge_runs.rc == 0
+        fail_msg: >-
+          asked Actions tasks for JSON, got rc {{ verify_forge_runs.rc }}:
+          {{ verify_forge_runs.stdout }} {{ verify_forge_runs.stderr }}
+      when: verify_forge == 'on'
 
     # Read only when a job did not succeed: the runner's journal on this VM says why.
     - name: Read the runner's journal, to say why a job failed
       ansible.builtin.shell:
         cmd: >-
-          set -o pipefail && journalctl --no-pager -n 60 _UID="$(id -u porelo-runner)"
+          set -o pipefail && journalctl --no-pager -n 400 _UID="$(id -u porelo-runner)"
           | grep -e 'exited with status' -e 'level=' -e "the run's own token"
         executable: /bin/bash
       register: verify_forge_job_log
       changed_when: false
       failed_when: false
-      when: verify_forge_failed | length > 0
+      when: verify_forge == 'on' and verify_forge_failed | length > 0
       vars:
         verify_forge_failed: >-
           {{ (verify_forge_runs.stdout | default('{}') | from_json).workflow_runs | default([])
           | rejectattr('status', 'equalto', 'success') | list }}
 
+    # The journal holds only the runner's own lines; a step's output is in Forgejo's job logs, which mask secrets.
+    - name: Read the tail of each job's own log, to say why a job failed
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          logs=$(mktemp -d) && trap 'rm -rf "$logs"' EXIT
+          cd / && sudo -u porelo-forge XDG_RUNTIME_DIR="/run/user/$(id -u porelo-forge)" \
+              podman exec forgejo tar -C /var/lib/gitea -cf - actions_log | tar -xf - -C "$logs"
+          find "$logs" -type f | sort | while read -r f; do
+              echo "== ${f#"$logs"/}"
+              case "$f" in *.zst) zstd -qdc "$f" ;; *) cat "$f" ;; esac | tail -n 40
+          done
+        executable: /bin/bash
+      register: verify_forge_job_steps
+      changed_when: false
+      failed_when: false
+      when: verify_forge == 'on' and verify_forge_failed | length > 0
+      vars:
+        verify_forge_failed: >-
+          {{ (verify_forge_runs.stdout | default('{}') | from_json).workflow_runs | default([])
+          | rejectattr('status', 'equalto', 'success') | list }}
+
+    - name: Show the tail of each job's own log
+      ansible.builtin.debug:
+        msg: "{{ verify_forge_job_steps.stdout_lines + verify_forge_job_steps.stderr_lines }}"
+      when: verify_forge_job_steps.stdout_lines is defined
+
     - name: >-
-        Assert both runs on the unreviewed branch reached the forge over TLS, were refused with the run's own token
-        and published with the publisher's
+        Assert each job succeeded in both branch runs, reaching the forge, publishing snapshots and checking out code
       ansible.builtin.assert:
         that:
           - verify_forge_branch | length == 2
+          - verify_forge_branch | map(attribute='run_number') | unique | list | length == 2
           - verify_forge_branch | rejectattr('status', 'equalto', 'success') | list | length == 0
           - verify_forge_branch | selectattr('head_sha', 'equalto', verify_forge_again_sha) | list | length == 1
         fail_msg: >-
-          the runs: {{ verify_forge_runs.stdout }}; the runner: {{ verify_forge_job_log.stdout | default('') }}
+          asked {{ item }} to succeed in both branch runs, including {{ verify_forge_again_sha }};
+          got {{ verify_forge_runs.stdout }}; the runner: {{ verify_forge_job_log.stdout | default('') }}
       vars:
         verify_forge_branch: >-
           {{ (verify_forge_runs.stdout | from_json).workflow_runs | selectattr('head_branch', 'equalto', 'task-probe')
-          | list }}
+          | selectattr('name', 'equalto', item) | list }}
         verify_forge_again_sha: "{{ (verify_forge_again.stdout | from_json).commit.sha }}"
+      loop: [probe, github-shape]
+      when: verify_forge == 'on'
 
     # The second run's package holds the digests of the publisher's token the -vvv run made and of the pool's run key;
     # neither secret is read here. The forge's API token may not read packages, so verify pipes a read:package token of
@@ -1131,7 +1250,9 @@
       vars:
         verify_forge_again_run: >-
           {{ ((verify_forge_runs.stdout | from_json).workflow_runs
+          | selectattr('name', 'equalto', 'probe')
           | selectattr('head_sha', 'equalto', (verify_forge_again.stdout | from_json).commit.sha) | first).run_number }}
+      when: verify_forge == 'on'
 
     - name: Stop when the second run's package digests could not be read, with curl's answer
       ansible.builtin.assert:
@@ -1139,6 +1260,7 @@
           - verify_publisher_digest.rc == 0
           - verify_publisher_digest.stdout_lines | length == (2 if verify_vm_pool == 'on' else 1)
         fail_msg: "{{ verify_publisher_digest.stderr }}"
+      when: verify_forge == 'on'
 
     - name: Read every 40-digit hex string in the journal, the form of Forgejo's tokens
       ansible.builtin.shell:
@@ -1147,6 +1269,7 @@
       register: verify_journal_hex
       changed_when: false
       no_log: true
+      when: verify_forge == 'on'
 
     - name: Read every 40-digit hex string in the environment of the account's task containers
       ansible.builtin.shell:
@@ -1161,6 +1284,7 @@
       register: verify_task_hex
       changed_when: false
       no_log: true
+      when: verify_forge == 'on'
 
     # A string is the token only if its digest is the package's; a token in any other form would be no 40-digit hex.
     - name: Assert the publisher's token is in no output of up with -vvv, in no journal line and in no task's container
@@ -1177,6 +1301,11 @@
           {{ ((verify_vvv.stdout + verify_vvv.stderr) | regex_findall('[0-9a-f]{40}')
           + verify_journal_hex.stdout_lines + verify_task_hex.stdout_lines) | unique | map('hash', 'sha256') | list }}
       no_log: true
+      when: verify_forge == 'on'
+
+    - name: Verify a plain push refuses when the central forge moved and keeps its work
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_push.yml"
+      when: verify_forge == 'on'
 
     # A key file missing on the drive stops the vpn role before the firewall's rules are written again.
 

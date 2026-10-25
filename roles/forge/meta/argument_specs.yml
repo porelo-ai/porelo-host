@@ -80,7 +80,9 @@ argument_specs:
         type: list
         elements: dict
         default: []
-        description: The repositories migrated once from the central forge, from porelo_host_forge_repositories.
+        description: >-
+          The repositories migrated once from the central forge, with no push mirrors,
+          from porelo_host_forge_repositories.
         options:
           name:
             type: str
@@ -94,10 +96,25 @@ argument_specs:
         type: str
         default: porelo
         description: The organization the repositories are migrated into, from porelo_host_forge_owner.
+      forge_variables:
+        type: dict
+        default:
+          PORELO_PUBLISH: "false"
+          JF_URL: "https://jfrog.invalid"
+          PORELO_DEPLOY_PROFILE: forge-release
+          MAVEN_SNAPSHOTS_URL: "https://{{ forge_address }}:{{ forge_http_port }}/api/packages/{{ forge_owner }}/maven"
+        description: >-
+          Nonsecret organization Actions variables; uppercase names and nonempty string values, only with repositories.
+      forge_placeholder_secrets:
+        type: list
+        elements: str
+        default: [JF_ACCESS_TOKEN]
+        description: >-
+          Organization Actions secret names created with porelo-host-placeholder only when absent; existing values stay.
       forge_central_token_path:
         type: path
         default: /srv/porelo-host/drive/porelo-host/forge-central.token
-        description: The person's token for the central forge on their drive, never read by the role.
+        description: The person's token for migration from the central forge on their drive, read only by the shell.
       forge_migrations_allow_local:
         type: bool
         default: false

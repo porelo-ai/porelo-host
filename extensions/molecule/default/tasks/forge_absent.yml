@@ -1,0 +1,75 @@
+---
+# A disabled forge must leave no service or image that could run outside the person's choice.
+- name: Ask whether either forge account exists
+  ansible.builtin.command:
+    argv: [getent, passwd, "{{ item }}"]
+  loop: [porelo-forge, porelo-runner]
+  register: forge_absent_accounts
+  changed_when: false
+  failed_when: forge_absent_accounts.rc not in [0, 2]
+
+- name: Read whether the forge's homes, trust, units or enablement links exist
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - /home/porelo-forge
+    - /home/porelo-runner
+    - /etc/porelo-host/forge
+    - /home/porelo-forge/.config/containers/systemd/forgejo.container
+    - /home/porelo-forge/.config/containers/systemd/forgejo-runner.container
+    - /home/porelo-runner/.config/containers/systemd/forgejo.container
+    - /home/porelo-runner/.config/containers/systemd/forgejo-runner.container
+    - /home/porelo-runner/.config/systemd/user/sockets.target.wants/podman.socket
+    - /var/lib/systemd/linger/porelo-forge
+    - /var/lib/systemd/linger/porelo-runner
+    - /etc/systemd/system/porelo-forge-https.socket
+    - /etc/systemd/system/porelo-forge-https.service
+    - /etc/systemd/system/sockets.target.wants/porelo-forge-https.socket
+  register: forge_absent_paths
+
+- name: Read whether any generated forge unit or its enablement link exists
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import glob, json, os
+        patterns = [
+            "/run/user/*/systemd/generator*/forgejo*.service",
+            "/run/user/*/systemd/generator*/*.wants/forgejo*.service",
+            "/run/user/*/systemd/generator*/*.requires/forgejo*.service",
+        ]
+        print(json.dumps(sorted({p for pattern in patterns for p in glob.glob(pattern) if os.path.lexists(p)})))
+  register: forge_absent_generated
+  changed_when: false
+
+- name: Read every image in Porelo's account's podman
+  ansible.builtin.command:
+    argv: [podman, images, --format, "{% raw %}{{.Repository}}{% endraw %}"]
+  become: true
+  become_user: porelo-test
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd']['porelo-test'][1] }}"
+  register: forge_absent_images
+  changed_when: false
+
+- name: Read whether any forge port listens
+  ansible.builtin.command:
+    cmd: ss -Hltn '( sport = :3000 or sport = :2222 or sport = :443 )'
+  register: forge_absent_ports
+  changed_when: false
+
+- name: Assert the host holds none of the forge
+  ansible.builtin.assert:
+    that:
+      - forge_absent_accounts.results | map(attribute='rc') | list == [2, 2]
+      - forge_absent_paths.results | selectattr('stat.exists') | list | length == 0
+      - forge_absent_generated.stdout | from_json | length == 0
+      - forge_absent_images.stdout_lines | select('search', '/forgejo/(forgejo|runner)$') | list | length == 0
+      - forge_absent_ports.stdout | trim == ''
+    fail_msg: >-
+      asked for no forge accounts, paths, generated units, images or listeners;
+      accounts {{ forge_absent_accounts.results | map(attribute='stdout') | list }},
+      paths {{ forge_absent_paths.results | selectattr('stat.exists') | map(attribute='item') | list }},
+      generated {{ forge_absent_generated.stdout }}, images {{ forge_absent_images.stdout_lines }},
+      listeners {{ forge_absent_ports.stdout_lines }}

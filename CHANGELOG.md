@@ -7,8 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- The forge no longer configures push mirrors to the central forge, since they force-push and can erase its commits.
+
 ### Added
 
+- The forge's runner offers `ubuntu-24.04` and `ubuntu-26.04` labels on a pinned act image and fetches actions from
+  github.com by their workflow pins. It sets the organization's Actions variables `PORELO_PUBLISH` to `false`,
+  `PORELO_DEPLOY_PROFILE` to `forge-release` and `MAVEN_SNAPSHOTS_URL` to the forge's Maven registry, with a placeholder
+  `JF_URL` and a placeholder `JF_ACCESS_TOKEN` secret created only when absent; every job's JDK trusts the host's CA
+  through a read-only passwordless PKCS12 store set by `JAVA_TOOL_OPTIONS`; the runner offers the pinned Temurin 25 as
+  `JAVA_HOME_25_X64`, as GitHub's image does.
 - Fixed CPU, memory and process bounds for Forgejo, its runner daemon and jobs; `up` refuses accounts missing
   delegated controllers and VM pools that would use more than half the host's memory.
 - The forge's CA is installed in Porelo's account for the broker and tasks, preserving the person's certificates;

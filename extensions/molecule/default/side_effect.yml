@@ -8,6 +8,7 @@
   vars:
     side_effect_drive: /srv/porelo-host/drive
     side_effect_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
+    side_effect_forge: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_FORGE', default='on') }}"
   tasks:
     - name: Read the account's id before down
       ansible.builtin.getent:
@@ -20,6 +21,7 @@
         src: "{{ ansible_facts['getent_passwd']['porelo-test'][4] }}/.config/porelo/{{ item }}"
       loop: [ca-certificates.pem, task-ca-certificates.pem]
       register: side_effect_ca_before
+      when: side_effect_forge == 'on'
 
     - name: Assert down has forge trust to remove and the person's certificate to keep
       ansible.builtin.assert:
@@ -36,6 +38,7 @@
         side_effect_person_ca: >-
           {{ side_effect_host_ca
           | regex_replace('(?ms)^# BEGIN porelo-host forge CA\n.*?^# END porelo-host forge CA\n?', '') }}
+      when: side_effect_forge == 'on'
 
     - name: Read whether verify left the task running
       ansible.builtin.command:
@@ -80,6 +83,7 @@
         - /etc/systemd/system/porelo-forge-https.socket
         - /etc/systemd/system/porelo-forge-https.service
       register: side_effect_forge_https_before
+      when: side_effect_forge == 'on'
 
     # The person's token for the central forge, kept aside before down unmounts the drive, to search what down leaves.
     - name: Keep the stand-in's token aside, root's alone, to search the forge's accounts for it after down
@@ -90,6 +94,8 @@
         owner: root
         group: root
         mode: "0600"
+      when: side_effect_forge == 'on'
+      no_log: true
 
     # First a down whose drive never reads synced: it must stop on the drive, saying what would be lost, and keep it.
     - name: Keep the stub's tresor syncing
@@ -227,11 +233,13 @@
       ansible.builtin.stat:
         path: "{{ ansible_facts['getent_passwd']['porelo-test'][4] }}/.config/porelo/task-ca-certificates.pem"
       register: side_effect_task_ca
+      when: side_effect_forge == 'on'
 
     - name: Read the person's CA bundle after down
       ansible.builtin.slurp:
         src: "{{ ansible_facts['getent_passwd']['porelo-test'][4] }}/.config/porelo/ca-certificates.pem"
       register: side_effect_ca_after
+      when: side_effect_forge == 'on'
 
     - name: Assert down removed task trust and only the forge's marked block from the person's bundle
       ansible.builtin.assert:
@@ -247,6 +255,7 @@
         side_effect_person_ca: >-
           {{ side_effect_ca_before.results[0].content | b64decode
           | regex_replace('(?ms)^# BEGIN porelo-host forge CA\n.*?^# END porelo-host forge CA\n?', '') }}
+      when: side_effect_forge == 'on'
 
     - name: Read whether the drive's folder is still mounted
       ansible.builtin.command:
@@ -362,6 +371,8 @@
       register: side_effect_forge_token
       changed_when: false
       failed_when: false
+      no_log: true
+      when: side_effect_forge == 'on'
 
     - name: Ask which processes the forge's accounts still run
       ansible.builtin.command:
@@ -369,6 +380,7 @@
       register: side_effect_forge_processes
       changed_when: false
       failed_when: false
+      when: side_effect_forge == 'on'
 
     - name: Read what of the forge's units and secrets is left
       ansible.builtin.stat:
@@ -382,6 +394,7 @@
         - /etc/systemd/system/porelo-forge-https.socket
         - /etc/systemd/system/porelo-forge-https.service
       register: side_effect_forge_left
+      when: side_effect_forge == 'on'
 
     - name: Ask systemd whether either forge HTTPS unit is still loaded after down
       ansible.builtin.command:
@@ -389,6 +402,7 @@
       register: side_effect_forge_https_loaded
       changed_when: false
       failed_when: false
+      when: side_effect_forge == 'on'
 
     - name: Assert down removed both HTTPS units that up installed
       ansible.builtin.assert:
@@ -400,6 +414,7 @@
           before {{ side_effect_forge_https_before['results'] | selectattr('stat.exists')
           | map(attribute='item') | list }}, after rc {{ side_effect_forge_https_loaded['rc'] }}:
           {{ side_effect_forge_https_loaded['stdout'] }} {{ side_effect_forge_https_loaded['stderr'] }}
+      when: side_effect_forge == 'on'
 
     - name: Read which pool VMs or volumes libvirt still lists, and what of the pool's keys or unit is left
       ansible.builtin.shell:
@@ -445,3 +460,4 @@
           after down, the person's token is in {{ side_effect_forge_token.stdout_lines }};
           running: {{ side_effect_forge_processes.stdout_lines }};
           left: {{ side_effect_forge_left.results | selectattr('stat.exists') | map(attribute='item') | list }}
+      when: side_effect_forge == 'on'

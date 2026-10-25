@@ -7,6 +7,7 @@
   loop_control:
     label: "{{ item.container }}"
   register: verify_quadlets
+  when: verify_forge == 'on'
 
 - name: Assert each quadlet sets its process, memory and CPU bounds
   ansible.builtin.assert:
@@ -22,6 +23,7 @@
   loop: "{{ verify_quadlets.results }}"
   loop_control:
     label: "{{ item.item.container }}"
+  when: verify_forge == 'on'
 
 # The shell finds the runtime directory as the container's account, without replacing Porelo's getent facts.
 - name: Inspect the running forge and runner as their accounts
@@ -37,6 +39,7 @@
     label: "{{ item.container }}"
   register: verify_container_inspect
   changed_when: false
+  when: verify_forge == 'on'
 
 - name: Assert the running containers enforce every quadlet bound
   ansible.builtin.assert:
@@ -54,22 +57,45 @@
   loop: "{{ verify_container_inspect.results }}"
   loop_control:
     label: "{{ item.item.container }}"
+  when: verify_forge == 'on'
 
 - name: Read the runner's written job configuration
   ansible.builtin.slurp:
     src: /home/porelo-runner/runner/config.yml
   register: verify_runner_config
+  when: verify_forge == 'on'
 
-- name: Assert jobs get the four resource options exactly once
+- name: Assert jobs get the four resource options, the Java trust store and the JDK exactly once
   ansible.builtin.assert:
     that:
       - verify_job_options | select('match', '^--(cpus=|memory=|pids-limit=|env=OMP_NUM_THREADS=)') | sort
         == ['--cpus=4', '--env=OMP_NUM_THREADS=4', '--memory=8g', '--pids-limit=2048']
+      - verify_job_options | select('match', '^--volume=.*/tls/ca-bundle[.]p12:') | list
+        == ['--volume=/home/porelo-runner/tls/ca-bundle.p12:/etc/ssl/certs/porelo-host-java.p12:ro']
+      - verify_job_options | select('match', '^--env=JAVA_TOOL_OPTIONS=') | list
+        == ['--env=JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=/etc/ssl/certs/porelo-host-java.p12']
+      - verify_job_configuration.options.count('--env=JAVA_TOOL_OPTIONS=') == 1
+      - verify_job_configuration.valid_volumes | select('equalto', '/home/porelo-runner/tls/ca-bundle.p12') | list
+        == ['/home/porelo-runner/tls/ca-bundle.p12']
+      - verify_job_options | select('match', '^--volume=/opt/porelo-host/jdk-') | list
+        == ['--volume=' ~ verify_job_jdk_dir ~ ':/opt/porelo-jdk-25:ro']
+      - verify_job_options | select('match', '^--env=JAVA_HOME_25_X64=') | list
+        == ['--env=JAVA_HOME_25_X64=/opt/porelo-jdk-25']
+      - verify_job_configuration.options.count('--env=JAVA_HOME_25_X64=') == 1
+      - verify_job_configuration.valid_volumes | select('equalto', verify_job_jdk_dir) | list
+        == [verify_job_jdk_dir]
     fail_msg: >-
-      asked for --cpus=4 --memory=8g --pids-limit=2048 --env=OMP_NUM_THREADS=4;
-      got {{ verify_job_options }}
+      asked for --cpus=4 --memory=8g --pids-limit=2048 --env=OMP_NUM_THREADS=4 and one read-only Java PKCS12
+      mount allowed in valid_volumes, with the trust store in JAVA_TOOL_OPTIONS, and one read-only JDK
+      mount allowed in valid_volumes at /opt/porelo-jdk-25 with JAVA_HOME_25_X64 set to that path;
+      got {{ verify_job_configuration }}
   vars:
-    verify_job_options: "{{ (verify_runner_config.content | b64decode | from_yaml).container.options.split() }}"
+    verify_job_configuration: "{{ (verify_runner_config.content | b64decode | from_yaml).container }}"
+    verify_job_options: "{{ verify_job_configuration.options.split() }}"
+    verify_job_jdk_dir: "/opt/porelo-host/jdk-{{ verify_job_jdk.version }}"
+    verify_job_jdk: "{{ (lookup('ansible.builtin.file', playbook_dir
+      ~ '/../../../roles/forge/vars/main.yml') | from_yaml).__forge_runner_jdk }}"
+  when: verify_forge == 'on'
 
 # A separate account lets the test restart its manager without stopping the running forge or Porelo's tasks.
 - name: Read whether the controller probe's account already exists

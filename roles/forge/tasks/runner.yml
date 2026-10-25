@@ -13,6 +13,91 @@
     __forge_runner_uid: "{{ __forge_users.results[1].uid }}"
     __forge_runner_home: "{{ __forge_users.results[1].home }}"
 
+- name: runner | Read whether the pinned JDK's directory is there
+  ansible.builtin.stat:
+    path: "{{ __forge_runner_jdk_dir }}"
+  register: __forge_runner_jdk_before
+
+- name: runner | Read whether the pinned JDK holds Java
+  ansible.builtin.stat:
+    path: "{{ __forge_runner_jdk_dir }}/bin/java"
+  register: __forge_runner_java_before
+
+- name: runner | Refuse an existing JDK directory without Java
+  ansible.builtin.assert:
+    that:
+      - not __forge_runner_jdk_before.stat.exists or
+        (__forge_runner_jdk_before.stat.isdir | default(false) and
+        __forge_runner_java_before.stat.isreg | default(false))
+    fail_msg: >-
+      asked for no {{ __forge_runner_jdk_dir }} or a directory holding bin/java;
+      got directory {{ __forge_runner_jdk_before.stat }} and Java {{ __forge_runner_java_before.stat }}
+
+- name: runner | Make the host's directory for the pinned JDK
+  ansible.builtin.file:
+    path: /opt/porelo-host
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: runner | Fetch the JDK once and check its pinned digest before unpacking
+  ansible.builtin.get_url:
+    url: "{{ __forge_runner_jdk.url }}"
+    dest: "{{ __forge_runner_jdk_dir }}.tar.gz"
+    checksum: "sha256:{{ __forge_runner_jdk.sha256 }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: not __forge_runner_jdk_before.stat.exists
+
+- name: runner | Make the pinned JDK's directory
+  ansible.builtin.file:
+    path: "{{ __forge_runner_jdk_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: runner | Unpack the checked JDK into its versioned directory
+  ansible.builtin.unarchive:
+    src: "{{ __forge_runner_jdk_dir }}.tar.gz"
+    dest: "{{ __forge_runner_jdk_dir }}"
+    remote_src: true
+    extra_opts: [--strip-components=1]
+    owner: root
+    group: root
+    mode: "u=rwX,go=rX"
+  when: not __forge_runner_jdk_before.stat.exists
+
+- name: runner | Remove the JDK's archive once it is unpacked
+  ansible.builtin.file:
+    path: "{{ __forge_runner_jdk_dir }}.tar.gz"
+    state: absent
+
+- name: runner | Keep the JDK readable by every account and writable by root alone
+  ansible.builtin.file:
+    path: "{{ __forge_runner_jdk_dir }}"
+    state: directory
+    recurse: true
+    owner: root
+    group: root
+    mode: "u=rwX,go=rX"
+
+- name: runner | Read Java after unpacking the pinned JDK
+  ansible.builtin.stat:
+    path: "{{ __forge_runner_jdk_dir }}/bin/java"
+  register: __forge_runner_java
+
+- name: runner | Refuse a pinned JDK without an executable Java
+  ansible.builtin.assert:
+    that:
+      - __forge_runner_java.stat.isreg | default(false)
+      - __forge_runner_java.stat.executable | default(false)
+    fail_msg: >-
+      asked for an executable {{ __forge_runner_jdk_dir }}/bin/java after unpacking the pinned JDK;
+      got {{ __forge_runner_java.stat }}
+
 - name: runner | Make the runner's directories
   ansible.builtin.file:
     path: "{{ item.path }}"
@@ -37,6 +122,47 @@
     owner: "{{ forge_runner_account }}"
     group: "{{ forge_runner_account }}"
     mode: "0644"
+  notify: Restart Forgejo's runner
+
+- name: runner | Read OpenSSL's version before making Java's trust store
+  ansible.builtin.command:
+    argv: [openssl, version]
+  register: __forge_openssl
+  changed_when: false
+  check_mode: false
+
+- name: runner | Refuse OpenSSL without support for Java's trusted certificates
+  ansible.builtin.assert:
+    that:
+      - __forge_openssl.stdout is match('^OpenSSL [0-9]+[.][0-9]+[.][0-9]+ ')
+      - __forge_openssl_version is version('3.2.0', '>=')
+    fail_msg: >-
+      asked for OpenSSL 3.2.0 or newer to export Java's trusted certificates with -jdktrust;
+      got {{ __forge_openssl.stdout }}
+  vars:
+    __forge_openssl_version: "{{ (__forge_openssl.stdout | regex_findall('[0-9]+[.][0-9]+[.][0-9]+') | first)
+      | default('0.0.0') }}"
+
+# JDK 18+ reads trusted certificates without a password when neither certificate encryption nor a MAC is used.
+- name: runner | Make Java's trust store from the runner's bundle whenever it changes
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      tls={{ (__forge_runner_home ~ '/tls') | quote }}
+      if [ -f "$tls/ca-bundle.p12" ] && ! [ "$tls/ca-bundle.pem" -nt "$tls/ca-bundle.p12" ]; then
+          echo unchanged; exit 0
+      fi
+      store=$(mktemp "$tls/ca-bundle.p12.XXXXXX")
+      trap 'rm -f "$store"' EXIT
+      openssl pkcs12 -export -nokeys -jdktrust anyExtendedKeyUsage -certpbe NONE -nomac -passout pass: \
+          -in "$tls/ca-bundle.pem" -out "$store"
+      chown {{ (forge_runner_account ~ ':' ~ forge_runner_account) | quote }} "$store"
+      chmod 0644 "$store"
+      mv -f "$store" "$tls/ca-bundle.p12"
+      echo made
+    executable: /bin/bash
+  register: __forge_runner_java_trust
+  changed_when: __forge_runner_java_trust.stdout == 'made'
   notify: Restart Forgejo's runner
 
 # Made before the runner's configuration mounts it into jobs, since vm_pool runs after the forge.
@@ -125,3 +251,7 @@
   become: true
   become_user: "{{ forge_runner_account }}"
   environment: "{{ __forge_runner_environment }}"
+
+# Configured labels override those kept in .runner and are declared when the daemon starts.
+- name: runner | Apply changed labels and configuration before the runner is used
+  ansible.builtin.meta: flush_handlers

@@ -25,7 +25,7 @@
 - name: Make the forge's admin and its API token
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/admin.yml"
 
-- name: Migrate the repositories once, with their push mirrors
+- name: Migrate the repositories once from the central forge
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/repositories.yml"
   when: forge_repositories | length > 0
 

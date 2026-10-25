@@ -27,11 +27,22 @@ forge_job_pids_limit: 2048
 forge_job_omp_num_threads: 4
 
 # The repositories migrated once from the central forge into the owner's organization, each {name, url}, and that
-# owner; from porelo-frontend's first inventory. A url is https:// with no user in it, which the role checks too.
+# owner; from porelo-frontend's first inventory. No push mirrors are configured. A url is https:// with no user in it.
 forge_repositories: "{{ porelo_host_forge_repositories | default([]) }}"
 forge_owner: "{{ porelo_host_forge_owner | default('porelo') }}"
 
-# The person's token for the central forge, on their drive; the role checks it is there and never reads it.
+# Workflows differ between the forges only by variables; GitHub enables publishing with the same variable set true.
+forge_variables:
+  PORELO_PUBLISH: "false"
+  # The Actions variables API requires a nonempty value, so this URL cannot name a real service.
+  JF_URL: https://jfrog.invalid
+  # Snapshots go to the forge's own Maven registry, at the address a job reaches; GitHub's names Sonatype's.
+  PORELO_DEPLOY_PROFILE: forge-release
+  MAVEN_SNAPSHOTS_URL: "https://{{ forge_address }}:{{ forge_http_port }}/api/packages/{{ forge_owner }}/maven"
+
+forge_placeholder_secrets: [JF_ACCESS_TOKEN]
+
+# The person's token for migration from the central forge, on their drive; only the shell reads it into the request.
 forge_central_token_path: /srv/porelo-host/drive/porelo-host/forge-central.token
 
 # Forgejo refuses to migrate from a private address; a stand-in for the central forge on the host itself needs it.
@@ -42,3 +53,8 @@ forge_migrations_allow_local: false
 forge_runner_name: porelo-host
 forge_runner_labels:
   - porelo-host:docker://docker.io/curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
+  - "ubuntu-24.04:docker://ghcr.io/catthehacker/ubuntu:act-24.04-20260815@sha256:\
+      62d572b92f9f32d3427b6d220ad1f9dca9c7b6ffad37d295425037dbff78abaf"
+  # No 26.04 image exists, so both GitHub labels use the pinned 24.04 image.
+  - "ubuntu-26.04:docker://ghcr.io/catthehacker/ubuntu:act-24.04-20260815@sha256:\
+      62d572b92f9f32d3427b6d220ad1f9dca9c7b6ffad37d295425037dbff78abaf"

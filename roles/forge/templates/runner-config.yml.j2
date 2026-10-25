@@ -10,14 +10,20 @@ container:
   docker_host: "-"
   # Jobs trust the host's CA as the forge does, to reach its registry, whichever bundle their image's tools name.
   # Where the host has a VM pool, its file too, read-only: what porelo-machines --pool reads.
+  # The trust store alone, with no space, so no quoting rests on how the runner splits these; PKCS12 is the default.
   options: >-
     --cpus={{ forge_job_cpus }} --memory={{ forge_job_memory }} --pids-limit={{ forge_job_pids_limit }}
     --env=OMP_NUM_THREADS={{ forge_job_omp_num_threads }}
     --volume={{ __forge_runner_home }}/tls/ca-bundle.pem:/etc/ssl/certs/ca-certificates.crt:ro
     --env=SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
     --env=CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+    --volume={{ __forge_runner_home }}/tls/ca-bundle.p12:/etc/ssl/certs/porelo-host-java.p12:ro
+    --env=JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=/etc/ssl/certs/porelo-host-java.p12
+    --volume={{ __forge_runner_jdk_dir }}:{{ __forge_runner_jdk_job_dir }}:ro
+    --env=JAVA_HOME_25_X64={{ __forge_runner_jdk_job_dir }}
 {% if porelo_host_vm_pool is defined %}
     --volume=/etc/porelo-host/pool:/etc/porelo-host/pool:ro
 {% endif %}
-  valid_volumes: {{ ([__forge_runner_home ~ '/tls/ca-bundle.pem']
+  valid_volumes: {{ ([__forge_runner_home ~ '/tls/ca-bundle.pem', __forge_runner_home ~ '/tls/ca-bundle.p12',
+    __forge_runner_jdk_dir]
     + (['/etc/porelo-host/pool'] if porelo_host_vm_pool is defined else [])) | to_json }}

@@ -1,0 +1,84 @@
+---
+# A gathered push must refuse divergent main branches rather than discard work committed on the central forge.
+- name: Commit on both main branches and measure a plain push after the central forge moved
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      umask 077
+      work=$(mktemp -d)
+      trap 'rm -rf "$work"' EXIT
+      trap 'exit 130' INT
+      trap 'exit 143' TERM
+      token=/srv/porelo-host/drive/porelo-host/forge-central.token
+      api() { curl -sS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem \
+          -H @<(printf 'Authorization: token %s\n' "$(cat "$token")") -H 'Content-Type: application/json' "$@"; }
+      git_as() {
+          local user=$1
+          shift
+          GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraHeader \
+              GIT_CONFIG_VALUE_0="Authorization: Basic $(printf '%s:%s' "$user" "$(cat "$token")" | base64 -w0)" \
+              git "$@"
+      }
+      base=https://10.73.0.1:3000/api/v1/repos
+      api -f -o /dev/null -X POST "$base/central/stand-in/contents/A" \
+          -d '{"content": "QQo=", "message": "Keep central work", "branch": "main"}'
+      token=/home/porelo-forge/.config/porelo-forge/api.token
+      api -f -o /dev/null -X POST "$base/porelo/stand-in/contents/B" \
+          -d '{"content": "Qgo=", "message": "Keep local work", "branch": "main"}'
+      git_as porelo-admin clone --branch main --single-branch \
+          https://10.73.0.1:3000/porelo/stand-in.git "$work/repo"
+      token=/srv/porelo-host/drive/porelo-host/forge-central.token
+      push_rc=0
+      push_error=$(git_as central -C "$work/repo" push \
+          https://10.73.0.1:3000/central/stand-in.git main:main 2>&1 > /dev/null) || push_rc=$?
+      central=$(api -w '\n%{http_code}' "$base/central/stand-in/contents/A?ref=main")
+      printf '%s\0%s' "$push_error" "$central" | python3 -I -c '
+      import base64, json, sys
+      from pathlib import Path
+      error, central = sys.stdin.read().split("\0", 1)
+      for user, path in [("central", "/srv/porelo-host/drive/porelo-host/forge-central.token"),
+                         ("porelo-admin", "/home/porelo-forge/.config/porelo-forge/api.token")]:
+          secret = Path(path).read_text().strip()
+          if not secret:
+              sys.exit("asked for a nonempty token file, got an empty file")
+          encoded = base64.b64encode((user + ":" + secret).encode()).decode()
+          error = error.replace(encoded, "<redacted>").replace(secret, "<redacted>")
+      lines = central.splitlines()
+      body = json.loads("\n".join(lines[:-1]))
+      print(json.dumps({"push_rc": int(sys.argv[1]), "push_stderr": error,
+                        "central_http": int(lines[-1]),
+                        "central_content": body.get("content", "").strip()}))' "$push_rc"
+    executable: /bin/bash
+  become: true
+  become_user: root
+  environment:
+    GIT_CONFIG_GLOBAL: /dev/null
+    GIT_SSL_CAINFO: /etc/porelo-host/forge/ca.pem
+    GIT_TERMINAL_PROMPT: "0"
+    LC_ALL: C
+  register: verify_forge_push
+  changed_when: true
+  failed_when: false
+  no_log: true
+
+- name: Show the plain push's measured stderr with tokens redacted
+  ansible.builtin.debug:
+    msg: "push rc {{ verify_push.push_rc }}, stderr {{ verify_push.push_stderr }}"
+    verbosity: 0
+  vars:
+    verify_push: "{{ verify_forge_push.stdout | from_json }}"
+  when: verify_forge_push.rc == 0
+
+- name: Assert the plain push was rejected and central main still holds its work
+  ansible.builtin.assert:
+    that:
+      - verify_forge_push.rc == 0
+      - verify_push.push_rc != 0
+      - verify_push.push_stderr is search('(?i)\[rejected\].*(non-fast-forward|fetch first)')
+      - verify_push.central_http == 200
+      - verify_push.central_content == 'QQo='
+    fail_msg: >-
+      asked for a plain push rejected as non-fast-forward or fetch first and A kept on central main;
+      got rc {{ verify_forge_push.rc }}, measurement {{ verify_push }}
+  vars:
+    verify_push: "{{ verify_forge_push.stdout | default('{}', true) | from_json }}"

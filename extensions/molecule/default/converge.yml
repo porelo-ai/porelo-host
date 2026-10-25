@@ -14,6 +14,7 @@
       ~ '/../../../roles/porelo/defaults/main.yml') | from_yaml).porelo_repository_url }}"
     converge_packages: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_PACKAGES') }}"
     converge_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
+    converge_forge: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_FORGE', default='on') }}"
   tasks:
     # Whether nested virtualization reaches the Molecule VM itself, so a slow pool VM in CI can be told apart.
     - name: Read whether /dev/kvm exists on the Molecule VM
@@ -128,7 +129,7 @@
               porelo_host_vpn_peer_address: 10.73.0.2/32
               porelo_host_authorized_key: {{ converge_person_public.content | b64decode | trim }}
               vpn_private_key_path: /root/vpn-host.key
-              porelo_host_forge: true
+              porelo_host_forge: {{ (converge_forge == 'on') | lower }}
               # The stand-in for the central forge is a repository on the host's own forge, at a private address.
               forge_migrations_allow_local: true
           {% if converge_vm_pool == 'on' %}
@@ -228,6 +229,15 @@
           mkdir ~/converge-project && cd ~/converge-project && git init -q -b main
           printf 'project:\n  name: "converge"\n  security_class: "offline"\nimage:\n  base_image: "ubuntu:24.04"\n' \
               > project.yml
+          {% if converge_forge == 'on' %}
+          cat >> project.yml <<'PROJECT'
+            snippet: |
+              RUN apt-get update && apt-get install -y --no-install-recommends curl git ca-certificates \
+                  && rm -rf /var/lib/apt/lists/*
+          egress:
+            host_services: ["forge.porelo.internal"]
+          PROJECT
+          {% endif %}
           printf 'repositories:\n  code:\n    description: "Kept on this machine alone"\n' >> project.yml
           printf 'mail:\n  transports:\n    matrix: {}\n' >> project.yml
           git add project.yml
@@ -454,6 +464,8 @@
           touch /root/porelo-host-forge-stand-in
         creates: /root/porelo-host-forge-stand-in
         executable: /bin/bash
+      when: converge_forge == 'on'
+      no_log: true
 
     - name: Write the inventory's forge repositories, as host up writes them
       ansible.builtin.copy:
@@ -467,6 +479,7 @@
               porelo_host_forge_repositories:
                 - name: stand-in
                   url: https://10.73.0.1:3000/central/stand-in.git
+      when: converge_forge == 'on'
 
     - name: Run up with the forge's repositories, its steps as JSON lines
       # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.
@@ -482,11 +495,9 @@
       register: converge_up_forge
       changed_when: >-
         converge_up_forge.stdout is search('"state": "changed"')
+      when: converge_forge == 'on'
 
-    # Stands in for a repository's workflow on a task's branch nobody reviewed: one job on the host's runner, reaching
-    # the forge over TLS with the host's CA, refused by the registry with the run's own token, and publishing with the
-    # publisher's secret a package that holds the digest of that secret, never the secret. Committed once through the
-    # API, which starts the run.
+    # An unreviewed branch must still publish snapshots and run a GitHub workflow without enabling release publishing.
     - name: Commit to an unreviewed branch a workflow whose job reaches the forge and publishes into its registry
       ansible.builtin.shell:
         cmd: |
@@ -545,6 +556,90 @@
                         --upload-file pool-key-digest "$probe/pool-key-digest"
           {% endraw %}
           {% endif %}
+          {% raw %}
+            github-shape:
+              runs-on: ubuntu-26.04
+              steps:
+                - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+                  with:
+                    persist-credentials: false
+                - run: |
+                    test "${{ vars.PORELO_PUBLISH }}" = false
+                    test "${{ vars.PORELO_DEPLOY_PROFILE }}" = forge-release
+                    test -f README.md
+                    node --version
+                # The runner's JDK must reach the registry without disabling certificate checks.
+                - name: A JVM trusts the host's CA and refuses the registry without it
+                  env:
+                    PUBLISHER_TOKEN: ${{ secrets.PORELO_PUBLISHER_TOKEN }}
+                    SNAPSHOTS: ${{ vars.MAVEN_SNAPSHOTS_URL }}
+                    RUN: ${{ github.run_number }}
+                    ARTIFACT: org/fuin/porelo/probe/${{ github.run_number }}/probe-${{ github.run_number }}.pom
+                  run: |
+                    set -eu
+                    "$JAVA_HOME_25_X64/bin/java" -version > java-version.out 2>&1
+                    cat java-version.out
+                    grep -Eq '^openjdk version "25[.]0[.]5"' java-version.out || {
+                        echo "asked Java for 25.0.5; got $(cat java-version.out)" >&2; exit 1;
+                    }
+                    # Published first, so the JVM must read an existing artifact of the private organization.
+                    # The registry reads the POM's coordinates, so they must match its path.
+                    printf '<project><modelVersion>4.0.0</modelVersion><groupId>org.fuin.porelo</groupId>%s\n' \
+                        "<artifactId>probe</artifactId><version>$RUN</version></project>" > probe.pom
+                    printf 'user = "porelo-publisher:%s"\n' "$PUBLISHER_TOKEN" \
+                        | curl -fsS -K - --upload-file probe.pom "$SNAPSHOTS/$ARTIFACT"
+                    test -n "$PUBLISHER_TOKEN"
+                    test -r "$JAVA_HOME_25_X64/lib/security/cacerts"
+                    cat > Get.java <<'JAVA'
+                    import java.net.URI;
+                    import java.net.http.HttpClient;
+                    import java.net.http.HttpRequest;
+                    import java.net.http.HttpResponse;
+                    import java.nio.charset.StandardCharsets;
+                    import java.time.Duration;
+                    import java.util.Base64;
+
+                    class Get {
+                        /** Prints the registry's status after checking its TLS certificate. */
+                        public static void main(String[] args) throws Exception {
+                            String credentials = "porelo-publisher:" + System.getenv("PUBLISHER_TOKEN");
+                            String basic = Base64.getEncoder().encodeToString(
+                                credentials.getBytes(StandardCharsets.UTF_8));
+                            try (var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(30)).build()) {
+                                var request = HttpRequest.newBuilder(
+                                    URI.create(System.getenv("SNAPSHOTS") + "/" + System.getenv("ARTIFACT")))
+                                    .timeout(Duration.ofSeconds(30)).header("Authorization", "Basic " + basic).build();
+                                System.out.println(client.send(request, HttpResponse.BodyHandlers.discarding())
+                                    .statusCode());
+                            }
+                        }
+                    }
+                    JAVA
+                    if ! "$JAVA_HOME_25_X64/bin/java" Get.java > java-trusted.out 2> java-trusted.err; then
+                        cat java-trusted.err >&2
+                        echo 'asked Java for an HTTP status with the host trust store; got a failure' >&2
+                        exit 1
+                    fi
+                    cat java-trusted.out
+                    grep -qx 200 java-trusted.out || {
+                        echo "asked Java for 200 reading the published POM; got $(cat java-trusted.out)" >&2; exit 1;
+                    }
+                    # One public root keeps the host's CA out of the negative control.
+                    "$JAVA_HOME_25_X64/bin/keytool" -importcert -noprompt -alias public \
+                        -storetype PKCS12 -storepass public \
+                        -file /usr/share/ca-certificates/mozilla/ISRG_Root_X1.crt -keystore public.p12 > /dev/null
+                    if "$JAVA_HOME_25_X64/bin/java" -Djavax.net.ssl.trustStore=public.p12 \
+                        -Djavax.net.ssl.trustStorePassword=public Get.java \
+                        > java-untrusted.out 2> java-untrusted.err; then
+                        echo "asked Java without the host CA for a TLS failure; got $(cat java-untrusted.out)" >&2
+                        exit 1
+                    fi
+                    grep -Eq 'SSLHandshakeException|PKIX' java-untrusted.err || {
+                        cat java-untrusted.err >&2
+                        echo 'asked Java without the host CA for SSLHandshakeException or PKIX; got another failure' >&2
+                        exit 1
+                    }
+          {% endraw %}
           WORKFLOW
           )
           curl -fsS -o /dev/null --cacert /etc/porelo-host/forge/ca.pem -H 'Content-Type: application/json' \
@@ -554,11 +649,13 @@
           touch /root/porelo-host-forge-workflow
         creates: /root/porelo-host-forge-workflow
         executable: /bin/bash
+      when: converge_forge == 'on'
+      no_log: true
 
     - name: Keep the lines of the last up for verify
       ansible.builtin.copy:
         dest: /root/porelo-host-up.lines
-        content: "{{ converge_up_forge.stdout }}\n"
+        content: "{{ converge_up_forge.stdout if converge_forge == 'on' else converge_up.stdout }}\n"
         owner: root
         group: root
         mode: "0600"

@@ -1,8 +1,7 @@
 ---
 # Each repository migrated once from the central forge into the owner's organization, as an ordinary repository the
-# tasks' gates push into, with a push mirror back to its address that runs only when started through the API. The
-# person's token for the central forge is read from its file by the shell; it reaches Forgejo in a request body on a
-# pipe, never a variable, a fact, an argument or an output.
+# tasks' gates push into, with no push mirror. For migration, the shell reads the person's central token from its
+# file into a request body on a pipe, never a variable, a fact, an argument or an output.
 - name: repositories | Stop on a repository the contract does not allow
   ansible.builtin.assert:
     that:
@@ -47,8 +46,9 @@
     executable: /bin/bash
   register: __forge_org
   changed_when: __forge_org.stdout == 'made'
+  no_log: true
 
-- name: repositories | Migrate each repository once, with its push mirror back to the central forge
+- name: repositories | Migrate each repository once from the central forge
   ansible.builtin.shell:
     cmd: |
       set -euo pipefail
@@ -73,16 +73,6 @@
       elif [ "$code" != 200 ]; then
           echo "Forgejo answered $code for {{ item.name }}" >&2; exit 1
       fi
-      mirrors=$(api "$repo/push_mirrors")
-      if ! printf '%s' "$mirrors" | python3 -I -c 'import json,sys; sys.exit(0 if any(m["remote_address"] == \
-          sys.argv[1] for m in json.load(sys.stdin)) else 1)' {{ item.url | quote }}; then
-          code=$(body '{"remote_address": {{ item.url | to_json }}, "remote_username": "porelo-host",
-              "interval": "0", "sync_on_commit": false}' remote_password \
-              | api -o "$answer" -w '%{http_code}' -X POST "$repo/push_mirrors" --data @-)
-          [ "$code" = 200 ] || [ "$code" = 201 ] \
-              || { echo "Forgejo answered $code adding the push mirror of {{ item.name }}: $(said)" >&2; exit 1; }
-          changed=yes
-      fi
       echo "${changed:-unchanged}"
     executable: /bin/bash
   loop: "{{ forge_repositories }}"
@@ -91,6 +81,7 @@
   register: __forge_migrated
   changed_when: __forge_migrated.stdout == 'yes'
   failed_when: false
+  no_log: true
 
 # Collect failures to stop once with every repository's answer named; Ansible already runs every loop item.
 - name: repositories | Stop on a repository Forgejo would not take, with its answer

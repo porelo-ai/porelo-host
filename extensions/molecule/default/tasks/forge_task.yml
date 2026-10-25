@@ -1,0 +1,81 @@
+---
+# A host-only probe would miss a task stranded by DNS, its firewall or missing trust.
+- name: Resolve the declared forge name from the running task
+  ansible.builtin.command:
+    argv: [podman, exec, porelo-converge-converge-1, getent, hosts, forge.porelo.internal]
+  become: true
+  become_user: "{{ verify_account }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+  register: verify_task_forge_dns
+  changed_when: false
+  failed_when: false
+
+- name: Reach the forge from the task with its own trust store
+  ansible.builtin.command:
+    argv: [podman, exec, porelo-converge-converge-1, curl, -fsS, --max-time, "10",
+           https://forge.porelo.internal/api/v1/version]
+  become: true
+  become_user: "{{ verify_account }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+  register: verify_task_forge_tls
+  changed_when: false
+  failed_when: false
+
+- name: Try to resolve an undeclared host service from the task
+  ansible.builtin.command:
+    argv: [podman, exec, porelo-converge-converge-1, getent, hosts, registry.porelo.internal]
+  become: true
+  become_user: "{{ verify_account }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+  register: verify_task_registry_dns
+  changed_when: false
+  failed_when: false
+
+# The image's Mozilla certificates exclude the CA installed under /usr/local/share/ca-certificates at task start.
+- name: Try the forge from the task with a bundle that excludes the host's CA
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - porelo-converge-converge-1
+      - sh
+      - -c
+      - |
+        set -eu
+        bundle=$(mktemp)
+        empty=$(mktemp -d)
+        trap 'rm -rf "$bundle" "$empty"' EXIT
+        cat /usr/share/ca-certificates/mozilla/*.crt > "$bundle"
+        test -s "$bundle"
+        # curl falls back to OpenSSL's default store, which holds the host's CA, unless its paths are replaced too.
+        SSL_CERT_FILE="$bundle" SSL_CERT_DIR="$empty" CURL_CA_BUNDLE="$bundle" \
+            curl -fsS --max-time 10 --cacert "$bundle" --capath "$empty" https://forge.porelo.internal/api/v1/version
+  become: true
+  become_user: "{{ verify_account }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+  register: verify_task_forge_untrusted
+  changed_when: false
+  failed_when: false
+
+- name: Assert the task resolves and trusts the forge alone and refuses it without the host's CA
+  ansible.builtin.assert:
+    that:
+      - verify_task_forge_dns.rc == 0
+      - verify_task_forge_dns.stdout is search('forge[.]porelo[.]internal')
+      - verify_task_forge_tls.rc == 0
+      - (verify_task_forge_tls.stdout | from_json).version is defined
+      - verify_task_registry_dns.rc == 2
+      - verify_task_registry_dns.stdout | trim == ''
+      - verify_task_forge_untrusted.rc == 60
+    fail_msg: >-
+      asked the task for forge DNS and trusted HTTPS, no registry DNS and curl exit 60 without the host CA;
+      forge DNS rc {{ verify_task_forge_dns.rc }}: {{ verify_task_forge_dns.stdout }}
+      {{ verify_task_forge_dns.stderr }},
+      HTTPS rc {{ verify_task_forge_tls.rc }}: {{ verify_task_forge_tls.stdout }} {{ verify_task_forge_tls.stderr }},
+      registry DNS rc {{ verify_task_registry_dns.rc }}: {{ verify_task_registry_dns.stdout }}
+      {{ verify_task_registry_dns.stderr }}, untrusted HTTPS rc {{ verify_task_forge_untrusted.rc }}:
+      {{ verify_task_forge_untrusted.stdout }} {{ verify_task_forge_untrusted.stderr }}

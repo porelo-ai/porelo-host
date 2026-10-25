@@ -26,6 +26,10 @@ fail() { say "FAILED: $*"; exit 1; }
 # --- the acceptance tooling, handed over from a checked build -------------------------------------------------------
 pool_check=${PORELO_HOST_MOLECULE_POOL:-on}
 case "$pool_check" in on|off) ;; *) fail 'PORELO_HOST_MOLECULE_POOL must be on or off' ;; esac
+forge_check=${PORELO_HOST_MOLECULE_FORGE:-on}
+case "$forge_check" in on|off) ;; *) fail 'PORELO_HOST_MOLECULE_FORGE must be on or off' ;; esac
+[ "$forge_check" = on ] || [ "$pool_check" = off ] \
+    || fail 'PORELO_HOST_MOLECULE_FORGE=off requires PORELO_HOST_MOLECULE_POOL=off: pool jobs need the forge runner'
 machines=
 if [ "$pool_check" = on ]; then
     machines=${PORELO_HOST_MACHINES:?set PORELO_HOST_MACHINES to the checked runtime JAR directory}
@@ -163,4 +167,5 @@ PORELO_HOST_VERSION=$version \
 PORELO_HOST_PACKAGES=$packages \
 PORELO_HOST_MACHINES=$machines \
 PORELO_HOST_MOLECULE_POOL=$pool_check \
+PORELO_HOST_MOLECULE_FORGE=$forge_check \
     "$root/build/tools.sh" molecule test -s "$scenario"

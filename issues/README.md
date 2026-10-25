@@ -23,7 +23,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho08"></a>[HO08](HO08-The-Forge-With-Its-Registry.md) | L | porelo [B233](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b233), porelo [B234](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b234) (tasks' side only) | Role `forge`: Forgejo and its runner in rootless podman under two accounts of their own, on the VPN and the tasks' address only, its registry over TLS from a CA made on the host, the project's repositories migrated from the central forge with push mirrors, credentials made and kept on the host, every build publishing with a publisher's token kept as an Actions secret; run where the host setting `porelo_host_forge` asks for it. |
+| <a id="ho08"></a>[HO08](HO08-The-Forge-With-Its-Registry.md) | L | - | Role `forge`: Forgejo and its runner in rootless podman under two accounts of their own, on the VPN and the tasks' address only, its registry over TLS from a CA made on the host, the project's repositories migrated from the central forge without push mirrors, credentials made and kept on the host, every build publishing with a publisher's token kept as an Actions secret, GitHub's workflows running 1:1 on its runner; run where the host setting `porelo_host_forge` asks for it. |
 
 ## Backlog
 

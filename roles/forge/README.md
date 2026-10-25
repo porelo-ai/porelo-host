@@ -8,6 +8,12 @@ person's token for the central forge shares no user namespace with a task.
 
 The CA's certificate is `/etc/porelo-host/forge/ca.pem`; its key stays on the host, root's alone.
 
+Each repository is migrated once from the central forge, with its content, as an ordinary repository with no push
+mirror. The person's central token is read from `forge_central_token_path` by the shell into the migration request
+on a pipe. The gathered push runs elsewhere as a plain `git push` without force and refuses when central main moved;
+Forgejo's push mirrors force-push and can erase central commits.
+Previously configured push mirrors remain until `down` removes the forge's volumes; the next `up` migrates anew.
+
 The [resource bounds](../../doc/index.md) are set by `forge_cpus`, `forge_memory`, `forge_pids_limit`,
 `forge_runner_cpus`, `forge_runner_memory` and `forge_runner_pids_limit`; job bounds use `forge_job_cpus`,
 `forge_job_memory`, `forge_job_pids_limit` and `forge_job_omp_num_threads`. Their defaults and types are in
@@ -23,3 +29,8 @@ A build publishes into the registry with the organization's Actions secret `PORE
 token of the account `porelo-publisher`, whose team may write the organization's packages and nothing else; a run's
 own token is refused there. The token is made inside Forgejo's container and never read out, so it stays with the
 forge and the runner's jobs and reaches no task.
+
+`forge_variables` defaults to `PORELO_PUBLISH: "false"`, `JF_URL: "https://jfrog.invalid"`, `PORELO_DEPLOY_PROFILE:
+forge-release` and `MAVEN_SNAPSHOTS_URL`, the forge's own Maven registry; GitHub holds the same names with its values.
+`forge_placeholder_secrets` defaults to `[JF_ACCESS_TOKEN]`; missing secrets get `porelo-host-placeholder`,
+and existing values are kept. Workflows differ between the forges only by variables and secrets.
