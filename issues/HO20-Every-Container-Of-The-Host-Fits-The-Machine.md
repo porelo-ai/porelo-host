@@ -1,6 +1,6 @@
 # HO20 — Every Container Of The Host Fits The Machine
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** M - two quadlets, the runner's job options, a check of the account's delegated controllers in `base`, and
 one in the pool's role, each read in Molecule from what the role writes. Built before release 0.6's sprint 4, the
 host's local forge.
