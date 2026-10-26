@@ -12,6 +12,9 @@
       token=/srv/porelo-host/drive/porelo-host/forge-central.token
       api() { curl -sS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem \
           -H @<(printf 'Authorization: token %s\n' "$(cat "$token")") -H 'Content-Type: application/json' "$@"; }
+      person() { curl -sS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem \
+          -H @<({ printf 'operator:'; tr -d '\r\n' < /etc/porelo-host/forge/person.password; } \
+              | base64 -w0 | sed 's/^/Authorization: Basic /') -H 'Content-Type: application/json' "$@"; }
       git_as() {
           local user=$1
           shift
@@ -24,7 +27,16 @@
           -d '{"content": "QQo=", "message": "Keep central work", "branch": "main"}'
       token=/home/porelo-forge/.config/porelo-forge/api.token
       api -f -o /dev/null -X POST "$base/porelo/stand-in/contents/B" \
-          -d '{"content": "Qgo=", "message": "Keep local work", "branch": "main"}'
+          -d '{"content": "Qgo=", "message": "Keep local work", "branch": "main", "new_branch": "local-work"}'
+      pull=$(api -f -X POST "$base/porelo/stand-in/pulls" \
+          -d '{"head": "local-work", "base": "main", "title": "Keep local work"}' \
+          | python3 -I -c 'import json,sys; print(int(json.load(sys.stdin)["number"]))')
+      approved=$(person -o /dev/null -w '%{http_code}' -X POST "$base/porelo/stand-in/pulls/$pull/reviews" \
+          -d '{"event": "APPROVED", "body": "Accept local work"}')
+      [ "$approved" = 200 ] || { echo "asked operator to approve B with HTTP 200, got HTTP $approved" >&2; exit 1; }
+      merged=$(person -o /dev/null -w '%{http_code}' -X POST "$base/porelo/stand-in/pulls/$pull/merge" \
+          -d '{"Do": "merge"}')
+      [ "$merged" = 200 ] || { echo "asked operator to merge B with HTTP 200, got HTTP $merged" >&2; exit 1; }
       git_as porelo-admin clone --branch main --single-branch \
           https://10.73.0.1:3000/porelo/stand-in.git "$work/repo"
       token=/srv/porelo-host/drive/porelo-host/forge-central.token
@@ -167,6 +179,9 @@
       clones() { find /tmp -maxdepth 1 -name 'tmp.*' -type d | sort; }
       api() { curl -sS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem -H @<(printf 'Authorization: token %s\n' \
           "$(cat /home/porelo-forge/.config/porelo-forge/api.token)") -H 'Content-Type: application/json' "$@"; }
+      person() { curl -sS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem \
+          -H @<({ printf 'operator:'; tr -d '\r\n' < /etc/porelo-host/forge/person.password; } \
+              | base64 -w0 | sed 's/^/Authorization: Basic /') -H 'Content-Type: application/json' "$@"; }
       base=https://10.73.0.1:3000/api/v1/repos
       sha() {
           api "$base/$1/branches/$2" | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["commit"]["id"])'
@@ -184,7 +199,10 @@
       pull=$(api -X POST "$base/porelo/stand-in/pulls" \
           -d '{"head": "central/main", "base": "main", "title": "Merge the central forge'"'"'s work"}' \
           | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["number"])')
-      merged=$(api -o /dev/null -w '%{http_code}' -X POST "$base/porelo/stand-in/pulls/$pull/merge" \
+      approved=$(person -o /dev/null -w '%{http_code}' -X POST "$base/porelo/stand-in/pulls/$pull/reviews" \
+          -d '{"event": "APPROVED", "body": "Accept central work"}')
+      [ "$approved" = 200 ] || { echo "asked operator to approve A with HTTP 200, got HTTP $approved" >&2; exit 1; }
+      merged=$(person -o /dev/null -w '%{http_code}' -X POST "$base/porelo/stand-in/pulls/$pull/merge" \
           -d '{"Do": "merge"}')
       out2=$(/usr/local/sbin/porelo-host-push stand-in < "$token" 2>&1)
       rc2=$?

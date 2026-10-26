@@ -554,6 +554,64 @@
         XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
       changed_when: true
 
+    - name: Read the gate's vault entry before making up with -vvv handle it again
+      ansible.builtin.command:
+        cmd: porelo vault list
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      register: verify_gate_before_vvv
+      changed_when: false
+      no_log: true
+      when: verify_forge == 'on'
+
+    - name: Assert the gate's token was deposited before the verbose run
+      ansible.builtin.assert:
+        that: "'git.token.forge.porelo.internal' in (verify_gate_before_vvv.stdout_lines | map('split') | map('first'))"
+        fail_msg: "asked for git.token.forge.porelo.internal in the vault, got {{ verify_gate_before_vvv.stdout }}"
+      when: verify_forge == 'on'
+
+    # The running task predates token regeneration, so both token digests must be checked for leaks.
+    - name: Read only the gate token's digest before removing its vault entry
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          export XDG_RUNTIME_DIR=/run/user/$(id -u)
+          printf 'protocol=https\nhost=forge.porelo.internal\n\n' \
+              | porelo vault credential --entry git.token.forge.porelo.internal get \
+              | python3 -I -c 'import hashlib,re,sys
+          fields=dict(line.rstrip("\n").split("=",1) for line in sys.stdin if "=" in line)
+          token=fields.get("password","").encode()
+          if not re.fullmatch(rb"[0-9a-f]{40}",token):
+              sys.exit("asked for the gate token on a vault pipe, got another form")
+          print(hashlib.sha256(token).hexdigest())'
+        executable: /bin/bash
+      become: true
+      become_user: "{{ verify_account }}"
+      register: verify_gate_prior_digest
+      changed_when: false
+      failed_when: false
+      no_log: true
+      when: verify_forge == 'on'
+
+    - name: Assert the first gate token can be checked after its vault entry is replaced
+      ansible.builtin.assert:
+        that: verify_gate_prior_digest.rc == 0 and verify_gate_prior_digest.stdout is match('^[0-9a-f]{64}$')
+        fail_msg: "asked for the first gate token's digest, got exit {{ verify_gate_prior_digest.rc }} or another form"
+      when: verify_forge == 'on'
+
+    - name: Remove the gate's token so up with -vvv deposits a new one
+      ansible.builtin.command:
+        argv: [porelo, vault, remove, git.token.forge.porelo.internal]
+      become: true
+      become_user: "{{ verify_account }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+      changed_when: true
+      no_log: true
+      when: verify_forge == 'on'
+
     - name: Ask Porelo what the vault holds before up with -vvv
       ansible.builtin.command:
         cmd: porelo vault list
@@ -568,6 +626,14 @@
       ansible.builtin.assert:
         that: verify_vault_before_vvv.stdout is not search('^converge-key ', multiline=True)
         fail_msg: "asked for converge-key to be absent from the vault, got: {{ verify_vault_before_vvv.stdout }}"
+
+    - name: Assert the gate's token is absent before up with -vvv
+      ansible.builtin.assert:
+        that: >-
+          'git.token.forge.porelo.internal' not in
+          (verify_vault_before_vvv.stdout_lines | map('split') | map('first'))
+        fail_msg: "asked for the gate's entry absent before up -vvv, got {{ verify_vault_before_vvv.stdout }}"
+      when: verify_forge == 'on'
 
     # Ansible's own most talkative output of a whole up, searched for the host's and the pool's private keys and tokens.
     - name: Run up again with Ansible's -vvv and its own output
@@ -683,6 +749,14 @@
         fail_msg: >-
           asked to refuse a planted password and find none in up -vvv or the journal,
           got rc {{ verify_person_password_search.rc }}: {{ verify_person_password_search.stderr }}
+      when: verify_forge == 'on'
+
+    - name: Verify the gate's branch, protected main and installed build reader
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_gate.yml"
+      when: verify_forge == 'on'
+
+    - name: Verify the regenerated gate token stays outside output, journals and task containers
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_gate_secrets.yml"
       when: verify_forge == 'on'
 
     - name: Search the -vvv output for every body line of the pool's private keys
@@ -830,7 +904,8 @@
                       xargs -0 -r grep -lF -D skip -f "$pattern" -- > "$work/hits" 2> "$work/errors" || true
                   # A file grep could not read is a search that did not run, never a clean one.
                   [ ! -s "$work/errors" ] && [ ! -s "$work/find-errors" ] ||
-                      { echo "grep or find could not read under $dir" >&2; exit 1; }
+                      { echo "grep or find could not read under $dir:" >&2
+                        cat "$work/errors" "$work/find-errors" | cut -c1-200 | head -5 >&2; exit 1; }
                   if [ -s "$work/hits" ]; then echo "$dir: found"; else echo "$dir: clean"; fi
               done
             executable: /bin/bash
@@ -853,7 +928,8 @@
         fail_msg: >-
           passphrase search expected every place clean; found in
           {{ verify_passphrase_search.stdout_lines | select('search', ': found$') | list }};
-          search rc {{ verify_passphrase_search.rc }}, places checked {{ verify_passphrase_search.stdout_lines }}
+          search rc {{ verify_passphrase_search.rc }}, places checked {{ verify_passphrase_search.stdout_lines }},
+          unreadable {{ verify_passphrase_search.stderr | default('') }}
         success_msg: "{{ verify_passphrase_search.stdout_lines }}"
       vars:
         verify_passphrase_expected:

@@ -53,6 +53,12 @@
     state: present
     update_cache: true
 
+- name: install | Install the build reader for the host's forge
+  ansible.builtin.apt:
+    name: porelo-adapter-forgejo
+    state: present
+  when: porelo_host_forge | default(false) | bool
+
 - name: install | Install the person's stop command
   ansible.builtin.copy:
     src: "{{ role_path }}/files/porelo-host-stop"

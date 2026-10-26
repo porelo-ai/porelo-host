@@ -1,7 +1,6 @@
 # HO31 — The Account's Gate And Reader On The Host's Forge
 
-**Status:** Backlog; blocked by [HO29](README.md#ho29), since only the person's own forge login can approve a pull
-request.
+**Status:** Implementing.
 **Size:** M - task files in the roles `forge` and `porelo`, a credential handed into the vault, the protection of
 `main`, a contract with porelo-project on the vault entry's name, and Molecule's checks reworked around a protected
 `main`.
@@ -34,8 +33,8 @@ reaches. The forge's token for the gate and the reader is in the account's vault
 - **Into the vault, by Porelo alone:** Forgejo's container prints the token, and the shell pipes it straight into
   `porelo vault put git.token.forge.porelo.internal`, run as Porelo's account, which reads standard input, as Molecule
   already does for a key. The token is never a variable, a register or a file, and the task carries `no_log`. The
-  entry's name is the default both porelo's gate and the `forgejo` reader fall back to for that host
-  (`git.token.<host>`), and porelo-project's `project.yml` names no `builds.credential`, so one token serves both.
+  entry's name is the gate's `git.token.<host>` name. The build configuration must explicitly name
+  `builds.credential: git.token.forge.porelo.internal`, so one token serves both.
 - **`main` protected**, `roles/forge/tasks/protection.yml`, after `gate.yml`, on every repository of
   `porelo_host_forge_repositories`, through the admin's API (`branch_protections`):
   - pushes are refused for everybody;
@@ -63,7 +62,52 @@ reaches. The forge's token for the gate and the reader is in the account's vault
 
 ## To be checked
 
-- How Molecule takes the token back out of the vault for its checks, on a pipe and never on a command line.
-- Which token scopes the `forgejo` reader needs for a job's log: an agent's token with Actions read got `404` for a
-  log through the API.
-- That Forgejo 17's branch protection allows a merge by the approvals' whitelist while pushes are off.
+- Run the full pinned-image workflow and Molecule on a VM; the implementation environment allows no network,
+  installation, podman or Molecule. Static checks cannot prove the runtime acceptance criteria.
+- Verify the project's build configuration names `builds.credential: git.token.forge.porelo.internal`; the locally
+  available Porelo parser requires it and has no default for the reader. This repository changes no project file in
+  another repository.
+- Confirm the gates team's Actions read access and `write:repository,read:organization` token read real job logs.
+  Agents with Actions read have returned `404` for a log; the adapter's local documentation names the endpoints but
+  gives no Forgejo token-scope recipe. The new reader check requests both successful jobs' logs and fails on a refusal.
+- Confirm the approval API's statuses and containment of the merged probe commit. These Forgejo endpoints have not
+  been exercised here.
+- See each acceptance check fail with its role task removed, then pass with it restored. The planted-token matcher is
+  included but has not been run against real verbose output, journal lines or task containers.
+- Check the 25 external citation links left unchecked by the local document checker with networking disabled.
+
+## Built
+
+- The forge role adds and removes a marked host-name block, makes Porelo's forge identity and gates team, and pipes a
+  missing token into the vault without putting the token in an Ansible variable, register, fact or file. It leaves
+  `ansible_facts['getent_passwd']` untouched. Nonsecret status assertions report refusals outside `no_log`.
+- The porelo role installs the Forgejo reader when the host's forge is enabled. Protection tasks manage `main` for
+  every configured repository, compare settings before changing them and check the result afterward.
+- Molecule checks cover the vault entry recreated by verbose up, the named TLS forge, gate pushes, approval and merge,
+  the installed reader's Build2 socket contract with real job logs, token isolation and name removal at down. Both
+  existing gathered-push merge paths use the person's approval and merge; their previous assertions remain.
+- The local forge guide, both role guides and the changelog describe the account, vault entry, reader and protection.
+- Local static checks parse the changed YAML, check the rendered Bash and compile its embedded Python. API stubs
+  exercise unchanged settings, drift correction and missing-setting or HTTP refusals; CLI stubs exercise the token
+  pipe's success and generation, vault-write and readback failures. The digest matcher was seen to fail on an embedded
+  planted token before its correction and to pass plain, embedded and clean controls afterward.
+
+- On the pinned Forgejo 17 image, measured: a branch protection takes and returns every setting written, the
+  approvals' list as `approvals_whitelist_username` and the rule's hold over admins as `apply_to_admins`; a team made
+  with `units_map` answers `permission` read, so the gates team is checked by its units alone.
+- Molecule showed the plan's `/etc/hosts` line reach a task: Podman copies the host's file into each container, where
+  `127.0.0.1` is the container's own loopback and hides the gate's address. The role `porelo` now makes the account's
+  containers without it (`base_hosts_file = "none"`); a container keeps localhost and `host.containers.internal`.
+- Molecule clears the person's forced password change by Forgejo's command line (`admin user must-change-password
+  --unset`, measured): the role's admin token holds no `write:admin` scope, and the admin API answers it `403`.
+
+## Plan corrections
+
+- The original plan assumed a build-reader fallback to `git.token.<host>`. The available parser instead requires a
+  nonempty `builds.credential`, and the build target reads exactly that entry. The guide names it explicitly.
+- Both gathered-push paths needed to change: the direct B commit and the admin merge of `central/main`. The original
+  plan named only the first.
+- The build reader accepts `describe` and `serve <socket>` and speaks `org.fuin.porelo.Build2`; it has no one-shot
+  verdict command. Molecule uses that socket contract, as the local adapter and build API code specify.
+- Vault extraction uses `porelo vault credential --entry git.token.forge.porelo.internal get`, whose Git credential
+  response goes to Git or a test consumer on a pipe. No general-purpose vault export command is assumed.

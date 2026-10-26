@@ -257,6 +257,32 @@
           | regex_replace('(?ms)^# BEGIN porelo-host forge CA\n.*?^# END porelo-host forge CA\n?', '') }}
       when: side_effect_forge == 'on'
 
+    - name: Read the host's name mappings after down
+      ansible.builtin.slurp:
+        src: /etc/hosts
+      register: side_effect_hosts_after
+      when: side_effect_forge == 'on'
+
+    - name: Assert down removed the forge's marked name mapping
+      ansible.builtin.assert:
+        that: "'porelo-host forge name' not in (side_effect_hosts_after.content | b64decode)"
+        fail_msg: >-
+          asked for no forge name block after down, got {{ side_effect_hosts_after.content | b64decode }}
+      when: side_effect_forge == 'on'
+
+    - name: Read whether the account's containers are still kept from the host's names after down
+      ansible.builtin.stat:
+        path: "{{ ansible_facts['getent_passwd']['porelo-test'][4]
+          }}/.config/containers/containers.conf.d/porelo-host-hosts.conf"
+      register: side_effect_hosts_dropin
+      when: side_effect_forge == 'on'
+
+    - name: Assert down removed the account's Podman setting for the host's names
+      ansible.builtin.assert:
+        that: not side_effect_hosts_dropin.stat.exists
+        fail_msg: asked for no porelo-host-hosts.conf in porelo-test's Podman configuration after down, got one
+      when: side_effect_forge == 'on'
+
     - name: Read whether the gathered push and its settings are left after down
       ansible.builtin.stat:
         path: "{{ item }}"

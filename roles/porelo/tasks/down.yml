@@ -98,3 +98,8 @@
       ansible.builtin.file:
         path: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo/task-ca-certificates.pem"
         state: absent
+
+    - name: down | Let the account's containers read the host's names again
+      ansible.builtin.file:
+        path: "{{ __porelo_hosts_dropin }}"
+        state: absent

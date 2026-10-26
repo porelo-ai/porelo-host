@@ -1,0 +1,176 @@
+---
+- name: gate | Check Porelo's account name before it reaches a command
+  ansible.builtin.assert:
+    that: forge_porelo_account is string and forge_porelo_account is match('^[a-z][a-z0-9-]{0,30}\Z')
+    fail_msg: "asked for a lower case account matching ^[a-z][a-z0-9-]{0,30}$, got {{ forge_porelo_account }}"
+    quiet: true
+
+- name: gate | Ask Forgejo which users it has without replacing Porelo's account facts
+  ansible.builtin.command:
+    argv: [podman, exec, forgejo, forgejo, admin, user, list]
+  become: true
+  become_user: "{{ forge_account }}"
+  environment: "{{ __forge_environment }}"
+  register: __forge_gate_users
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+
+- name: gate | Stop when Forgejo cannot list its users
+  ansible.builtin.assert:
+    that: __forge_gate_users.rc == 0
+    fail_msg: "asked Forgejo to list its users before making the gate, got exit {{ __forge_gate_users.rc }}"
+    quiet: true
+
+- name: gate | Make Porelo's forge identity, its password generated and discarded
+  ansible.builtin.shell:
+    cmd: |
+      if podman exec forgejo forgejo admin user create --username porelo-{{ forge_porelo_account }} \
+          --email porelo-{{ forge_porelo_account }}@{{ forge_name }} --random-password \
+          --must-change-password=false > /dev/null 2>&1; then
+          echo made
+      else
+          echo refused
+      fi
+  become: true
+  become_user: "{{ forge_account }}"
+  environment: "{{ __forge_environment }}"
+  when: ('porelo-' ~ forge_porelo_account) not in
+    (__forge_gate_users.stdout_lines[1:] | map('split') | map(attribute=1) | list)
+  register: __forge_gate_user
+  changed_when: __forge_gate_user.stdout | default('') == 'made'
+  failed_when: false
+  no_log: true
+
+- name: gate | Stop when Forgejo refuses Porelo's identity
+  ansible.builtin.assert:
+    that: __forge_gate_user.rc == 0 and __forge_gate_user.stdout == 'made'
+    fail_msg: >-
+      asked Forgejo to make porelo-{{ forge_porelo_account }} with a discarded random password;
+      got {{ __forge_gate_user.stdout | regex_search('^(made|refused)$') | default('no status', true) }}
+    quiet: true
+  when: __forge_gate_user is not skipped
+
+# The API has no Ansible module here; only fixed status words leave this credential-bearing task.
+- name: gate | Give the gates team code and pull request write access and Actions read access
+  ansible.builtin.shell:
+    cmd: |
+      set -Eeuo pipefail
+      exec 2> /dev/null
+      trap 'echo failed; exit 0' ERR
+      refuse() { echo "$1"; exit 0; }
+      umask 077
+      api() { curl -sS --max-time 10 --cacert {{ __forge_ca_dir }}/ca.pem \
+          -H @<(sed 's/^/Authorization: token /' {{ __forge_token }}) \
+          -H 'Content-Type: application/json' "$@"; }
+      base=https://{{ forge_address }}:{{ forge_http_port }}/api/v1
+      answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
+      # Forgejo 17 answers "permission" read once units_map is given, so the units_map alone names the access.
+      desired='{"name": "gates", "includes_all_repositories": true,
+          "can_create_org_repo": false, "units": ["repo.code", "repo.pulls", "repo.actions"],
+          "units_map": {"repo.code": "write", "repo.pulls": "write", "repo.actions": "read"}}'
+      code=$(api -o "$answer" -w '%{http_code}' "$base/orgs/{{ forge_owner }}/teams/search?q=gates")
+      [ "$code" = 200 ] || refuse "team-search-http-$code"
+      team=$(python3 -I -c 'import json,sys; print(next((int(t["id"])
+          for t in json.load(open(sys.argv[1]))["data"] if t["name"] == "gates"), ""))' "$answer")
+      changed=unchanged
+      if [ -z "$team" ]; then
+          code=$(api -o "$answer" -w '%{http_code}' -X POST "$base/orgs/{{ forge_owner }}/teams" -d "$desired")
+          [ "$code" = 201 ] || refuse "team-create-http-$code"
+          team=$(python3 -I -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["id"]))' "$answer")
+          changed=made
+      fi
+      code=$(api -o "$answer" -w '%{http_code}' "$base/teams/$team")
+      [ "$code" = 200 ] || refuse "team-read-http-$code"
+      matches() { python3 -I -c 'import json,sys
+      actual=json.load(open(sys.argv[1])); desired=json.loads(sys.argv[2])
+      sys.exit(0 if all(actual.get(k) == v for k,v in desired.items() if k != "units") else 1)' "$answer" "$desired"; }
+      if ! matches; then
+          code=$(api -o "$answer" -w '%{http_code}' -X PATCH "$base/teams/$team" -d "$desired")
+          [ "$code" = 200 ] || refuse "team-update-http-$code"
+          code=$(api -o "$answer" -w '%{http_code}' "$base/teams/$team")
+          [ "$code" = 200 ] && matches || refuse team-settings-differ
+          changed=made
+      fi
+      member="$base/teams/$team/members/porelo-{{ forge_porelo_account }}"
+      code=$(api -o /dev/null -w '%{http_code}' "$member")
+      if [ "$code" = 404 ]; then
+          code=$(api -o /dev/null -w '%{http_code}' -X PUT "$member")
+          [ "$code" = 204 ] || refuse "member-add-http-$code"
+          code=$(api -o /dev/null -w '%{http_code}' "$member")
+          changed=made
+      fi
+      [ "$code" = 200 ] || refuse "member-read-http-$code"
+      echo "$changed"
+    executable: /bin/bash
+  register: __forge_gate_team
+  changed_when: __forge_gate_team.stdout | default('') == 'made'
+  failed_when: false
+  no_log: true
+
+- name: gate | Stop when Forgejo refuses the gates team or its member
+  ansible.builtin.assert:
+    that: __forge_gate_team.rc == 0 and __forge_gate_team.stdout in ['made', 'unchanged']
+    fail_msg: >-
+      asked for gates with code and pulls write, Actions read, all repositories and Porelo's user as a member;
+      got {{ __forge_gate_team.stdout | regex_search('^[a-z0-9-]{1,80}$') | default('no status', true) }}
+      (HTTP statuses name the refused operation; failed means the command or response could not be read)
+    quiet: true
+
+- name: gate | Ask Porelo which entry names its open vault holds
+  ansible.builtin.shell:
+    cmd: XDG_RUNTIME_DIR=/run/user/$(id -u) porelo vault list
+    executable: /bin/bash
+  become: true
+  become_user: "{{ forge_porelo_account }}"
+  register: __forge_gate_vault
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+
+- name: gate | Stop when Porelo cannot list the account's vault
+  ansible.builtin.assert:
+    that: __forge_gate_vault.rc == 0
+    fail_msg: "asked Porelo to list {{ forge_porelo_account }}'s open vault, got exit {{ __forge_gate_vault.rc }}"
+    quiet: true
+
+# A unique name recovers a missing vault entry even after token generation was interrupted.
+- name: gate | Pipe a missing gate token from Forgejo straight into Porelo's vault
+  ansible.builtin.shell:
+    cmd: |
+      set -uo pipefail
+      cd /
+      uid=$(id -u {{ forge_porelo_account }}) || { echo account-missing; exit 0; }
+      name=porelo-host-gate-$(cat /proc/sys/kernel/random/uuid)
+      if ! runuser -u {{ forge_account }} -- env XDG_RUNTIME_DIR=/run/user/{{ __forge_uid }} \
+          podman exec forgejo forgejo admin user generate-access-token --username porelo-{{ forge_porelo_account }} \
+          --token-name "$name" --scopes write:repository,read:organization --raw 2> /dev/null \
+          | runuser -u {{ forge_porelo_account }} -- env XDG_RUNTIME_DIR=/run/user/$uid \
+              porelo vault put git.token.forge.porelo.internal > /dev/null 2>&1; then
+          echo refused
+          exit 0
+      fi
+      if ! runuser -u {{ forge_porelo_account }} -- env XDG_RUNTIME_DIR=/run/user/$uid porelo vault list \
+          2> /dev/null | awk '{print $1}' | grep -Fxq git.token.forge.porelo.internal; then
+          echo entry-missing
+          exit 0
+      fi
+      echo made
+    executable: /bin/bash
+  when: "'git.token.forge.porelo.internal' not in (__forge_gate_vault.stdout_lines | map('split') | map('first'))"
+  register: __forge_gate_token
+  changed_when: __forge_gate_token.stdout | default('') == 'made'
+  failed_when: false
+  no_log: true
+
+- name: gate | Stop when the token could not reach Porelo's vault
+  ansible.builtin.assert:
+    that: __forge_gate_token.rc == 0 and __forge_gate_token.stdout == 'made'
+    fail_msg: >-
+      asked for Forgejo's gate token piped into git.token.forge.porelo.internal and listed in Porelo's vault;
+      got {{ __forge_gate_token.stdout | regex_search('^[a-z-]{1,40}$') | default('no status', true) }}
+      (account-missing: no Porelo account; refused: generation or vault put failed; entry-missing: not listed afterward)
+    quiet: true
+  when: __forge_gate_token is not skipped

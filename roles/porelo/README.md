@@ -15,10 +15,16 @@ tasks and signs an agent in when needed. Where the project names transports, the
 `matrix`, `porelo-matrix-homeserver` through Porelo's setup script, enabling nothing: the transport's `setup` enables
 and starts the homeserver at the first task start.
 
-Where `porelo_host_forge` is true, `~/.config/porelo/ca-certificates.pem` holds the forge's CA in a marked block beside
+Where `porelo_host_forge` is true, `install` also installs `porelo-adapter-forgejo` from Porelo's apt repository,
+providing `/usr/libexec/porelo/builds/forgejo`. The forge role deposits the gate and reader's shared token into the
+account's vault as `git.token.forge.porelo.internal` when repositories are configured.
+`~/.config/porelo/ca-certificates.pem` holds the forge's CA in a marked block beside
 the person's own certificates, and `~/.config/porelo/task-ca-certificates.pem` holds the forge's CA alone; both are
 owned by the account with mode `0600`, in its `0700` Porelo configuration directory. `down` removes that block and the
 task CA file, and removes the account's CA bundle if only whitespace remains.
+`~/.config/containers/containers.conf.d/porelo-host-hosts.conf` keeps the host's `/etc/hosts` out of the account's
+containers, since its loopback entry for the forge would hide the gate's address Porelo's resolver gives a task; `down`
+removes it.
 
 At `down` (`tasks_from: down`), `porelo task stop --all` stops every running task of the account, keeping their
 containers and workspaces, before the vault is cleared (`porelo vault clear --yes`, with `--force` on a shut vault). If

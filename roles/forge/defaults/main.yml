@@ -37,6 +37,9 @@ forge_central_ca: "{{ porelo_host_forge_central_ca | default('/etc/ssl/certs/ca-
 # The person's web login changes its generated first password at the first sign-in.
 forge_person: operator
 
+# The gate and build reader share a token held only in this Porelo account's vault.
+forge_porelo_account: "{{ porelo_host_account }}"
+
 # Each agent gets a forge account and a token kept on the host, only where the owner's repositories are configured.
 forge_agents: "{{ porelo_host_forge_agents | default([]) }}"
 

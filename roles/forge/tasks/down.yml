@@ -1,4 +1,10 @@
 ---
+- name: down | Remove the forge's marked name from the host
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} porelo-host forge name"
+    state: absent
+
 # Down takes the forge off the host and keeps nothing: its volumes, the API token, the runner's registration and the
 # CA go with the accounts' linger, so nothing of the forge starts again at the next boot. The next up migrates anew.
 - name: down | Read which HTTPS units up installed

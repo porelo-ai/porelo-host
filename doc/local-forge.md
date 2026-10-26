@@ -38,8 +38,19 @@ off; the host reverts its base snapshot so a run's changes do not reach the next
 role](https://github.com/porelo-ai/porelo-host/blob/main/roles/vm_pool/README.md) for its contract.
 
 Porelo reads build verdicts and failed-job logs through the `forgejo` build reader on the host, outside every task, and
-delivers them into the task's `/porelo/files`. The reader receives its credential from the vault for each call. This is
-independent of any task access to declared services. Install and configure the reader as described in the [adapter
+delivers them into the task's `/porelo/files`. Where the forge is enabled, `up` installs `porelo-adapter-forgejo`, which
+provides `/usr/libexec/porelo/builds/forgejo`. With repositories configured, it creates `porelo-<account>`, where
+`forge_porelo_account` defaults to `porelo_host_account`, in the organization's `gates` team. That team writes code and
+pull requests and reads Actions on every repository. Its generated token is piped directly into the account's vault as
+`git.token.forge.porelo.internal`, only while that entry is missing; no token file is written. The gate and build reader
+use this entry for `forge.porelo.internal`. The host resolves that name to `127.0.0.1` through a marked `/etc/hosts`
+block, removed by `down`. Podman would copy that block into a task's container, where loopback is the container's own,
+so the account's containers are made without the host's `/etc/hosts`; a task reaches the forge by the address Porelo's
+resolver gives it.
+
+The reader receives its credential from the vault for each call, independently of any task access to declared services.
+The project's build configuration names `forge: forgejo`, `api: https://forge.porelo.internal/api/v1` and
+`credential: git.token.forge.porelo.internal`; see the [adapter
 documentation](https://github.com/porelo-ai/porelo-adapters/blob/main/doc/index.md#forgejo-actions) and Porelo's
 [build-reader contract](https://github.com/porelo-ai/porelo/blob/main/doc/build-readers.md).
 
@@ -79,9 +90,11 @@ both forges let workflows select their destinations without editing the workflow
 ## The person's two decisions
 
 **First, accept the work by merging `porelo/<task>` into local `main`.** The person reads the pull request and its local
-build before merging in Forgejo. This arrangement requires protected local `main`, so direct pushes cannot substitute
-for that decision. Automatic setup of this protection is not built: the forge role migrates repositories without
-configuring branch protection. Configure protection before relying on this acceptance boundary.
+build before merging in Forgejo. On every configured repository, `up` protects local `main`: direct pushes are disabled,
+one approval is required, and only the person's account (`forge_person`, default `operator`) can supply the counted
+approval and merge the pull request. Administrator merge overrides are disabled. Status checks are not required; the
+person reads the build before approving. Repeating `up` keeps a matching protection rule and corrects different
+settings.
 
 The blue arrows in the picture place forge observation on the host. Build reading works; the additional review and
 lifecycle steps are not built:

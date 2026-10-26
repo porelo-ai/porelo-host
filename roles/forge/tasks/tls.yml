@@ -1,4 +1,10 @@
 ---
+- name: tls | Resolve the forge's name through the host's loopback HTTPS socket
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} porelo-host forge name"
+    block: "127.0.0.1 {{ forge_name }}"
+
 # A CA made on the host for this host, its key root's alone; the forge's certificate signed by it for the VPN's address
 # and the forge's name, its key the forge account's alone. Made once; nothing of either leaves the host but the CA's
 # certificate, which a client trusts.

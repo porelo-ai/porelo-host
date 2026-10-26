@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The host resolves `forge.porelo.internal` over loopback TLS and installs the Forgejo build reader. With repositories
+  configured, the forge creates `porelo-<account>` in `gates`, pipes its token directly into Porelo's vault as
+  `git.token.forge.porelo.internal`, and protects each `main` against direct pushes, requiring the person's approval
+  and merge with no administrator override. A matching rule and existing vault entry stay unchanged across `up`;
+  `down` removes the host's marked name mapping. Porelo's account's containers no longer copy the host's
+  `/etc/hosts`, so tasks resolve the forge through Porelo's resolver alone.
 - The forge gives the person an `operator` web login in the organization's `Owners` team, with a generated first
   password in root-only `/etc/porelo-host/forge/person.password` and a required password change at first sign-in.
   Existing accounts keep their passwords across `up`; `down` removes the first password file.

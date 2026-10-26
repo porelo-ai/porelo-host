@@ -14,3 +14,5 @@ __porelo_task_packages: "{{ (((__porelo_setup_packages.stdout | from_json).packa
 # dpkg-query prints "<package> installed" for an installed one and nothing on stdout for one it does not know.
 __porelo_task_packages_missing: "{{ __porelo_task_packages | difference(__porelo_task_packages_installed.stdout_lines
   | default([]) | select('match', '^\\S+ installed$') | map('split') | map('first') | list) }}"
+__porelo_hosts_dropin: "{{ ansible_facts['getent_passwd'][porelo_account][4]
+  }}/.config/containers/containers.conf.d/porelo-host-hosts.conf"

@@ -1,0 +1,70 @@
+---
+# Reading back every controlled setting refuses an API that ignores part of the acceptance boundary.
+- name: protection | Require the person's approval and merge on main, with direct pushes disabled
+  ansible.builtin.shell:
+    cmd: |
+      set -Eeuo pipefail
+      exec 2> /dev/null
+      trap 'echo failed; exit 0' ERR
+      refuse() { echo "$1"; exit 0; }
+      umask 077
+      api() { curl -sS --max-time 10 --cacert {{ __forge_ca_dir }}/ca.pem \
+          -H @<(sed 's/^/Authorization: token /' {{ __forge_token }}) \
+          -H 'Content-Type: application/json' "$@"; }
+      base=https://{{ forge_address }}:{{ forge_http_port }}/api/v1/repos/{{ forge_owner }}/{{ item.name }}
+      answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
+      desired='{"rule_name": "main", "enable_push": false,
+          "enable_push_whitelist": false, "push_whitelist_usernames": [], "push_whitelist_teams": [],
+          "push_whitelist_deploy_keys": false, "required_approvals": 1, "enable_approvals_whitelist": true,
+          "approvals_whitelist_username": ["{{ forge_person }}"], "approvals_whitelist_teams": [],
+          "enable_merge_whitelist": true, "merge_whitelist_usernames": ["{{ forge_person }}"],
+          "merge_whitelist_teams": [], "enable_status_check": false, "status_check_contexts": [],
+          "apply_to_admins": true}'
+      matches() { python3 -I -c 'import json,sys
+      actual=json.load(open(sys.argv[1])); desired=json.loads(sys.argv[2])
+      def same(key, wanted):
+          if key not in actual:
+              return False
+          got=actual[key]
+          if isinstance(wanted, list) and got is None:
+              got=[]
+          return got == wanted
+      sys.exit(0 if all(same(k,v) for k,v in desired.items()) else 1)' "$answer" "$desired"; }
+      code=$(api -o "$answer" -w '%{http_code}' "$base/branch_protections/main")
+      changed=unchanged
+      if [ "$code" = 404 ]; then
+          code=$(api -o "$answer" -w '%{http_code}' -X POST "$base/branch_protections" -d "$desired")
+          [ "$code" = 201 ] || refuse "create-http-$code"
+          changed=made
+      elif [ "$code" != 200 ]; then
+          refuse "read-http-$code"
+      elif ! matches; then
+          code=$(api -o "$answer" -w '%{http_code}' -X PATCH "$base/branch_protections/main" -d "$desired")
+          [ "$code" = 200 ] || refuse "update-http-$code"
+          changed=made
+      fi
+      code=$(api -o "$answer" -w '%{http_code}' "$base/branch_protections/main")
+      [ "$code" = 200 ] || refuse "confirm-http-$code"
+      matches || refuse settings-differ
+      echo "$changed"
+    executable: /bin/bash
+  loop: "{{ forge_repositories }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: __forge_protection
+  changed_when: __forge_protection.stdout | default('') == 'made'
+  failed_when: false
+  no_log: true
+
+- name: protection | Stop when a repository's main cannot be protected as required
+  ansible.builtin.assert:
+    that: item.rc == 0 and item.stdout in ['made', 'unchanged']
+    fail_msg: >-
+      asked for {{ forge_owner }}/{{ item.item.name }} main with no direct pushes, one approval and only
+      {{ forge_person }} allowed to approve and merge, the rule applied to admins and no required status checks;
+      got {{ item.stdout | regex_search('^[a-z0-9-]{1,80}$') | default('no status', true) }}
+      (HTTP statuses name the refused operation; settings-differ: readback differs; failed: command or response failed)
+    quiet: true
+  loop: "{{ __forge_protection.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"

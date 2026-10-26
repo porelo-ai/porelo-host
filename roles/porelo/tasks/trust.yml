@@ -36,3 +36,25 @@
     owner: "{{ porelo_account }}"
     group: "{{ porelo_account }}"
     mode: "0600"
+
+# Podman copies the host's /etc/hosts into each container, where its loopback entry for the forge would hide the gate's
+# address Porelo's resolver gives the task; the resolver alone names what a task resolves.
+- name: trust | Make the account's Podman configuration directory
+  ansible.builtin.file:
+    path: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/{{ item }}"
+    state: directory
+    owner: "{{ porelo_account }}"
+    group: "{{ porelo_account }}"
+    mode: "0700"
+  loop: [.config/containers, .config/containers/containers.conf.d]
+
+- name: trust | Keep the host's names out of the account's containers
+  ansible.builtin.copy:
+    dest: "{{ __porelo_hosts_dropin }}"
+    content: |
+      # Written by the role porelo at up; the host's /etc/hosts names the forge by its own loopback.
+      [containers]
+      base_hosts_file = "none"
+    owner: "{{ porelo_account }}"
+    group: "{{ porelo_account }}"
+    mode: "0600"
