@@ -1,6 +1,6 @@
 # HO31 — The Account's Gate And Reader On The Host's Forge
 
-**Status:** Analyzed; blocked by [HO29](README.md#ho29), since only the person's own forge login can approve a pull
+**Status:** Backlog; blocked by [HO29](README.md#ho29), since only the person's own forge login can approve a pull
 request.
 **Size:** M - task files in the roles `forge` and `porelo`, a credential handed into the vault, the protection of
 `main`, a contract with porelo-project on the vault entry's name, and Molecule's checks reworked around a protected
