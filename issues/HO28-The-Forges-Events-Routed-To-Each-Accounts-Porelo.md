@@ -1,6 +1,7 @@
 # HO28 — The Forge's Events Routed To Each Account's Porelo
 
-**Status:** Idea.
+**Status:** Idea. Optional and later: a speed-up only. Each daemon reads what it needs by asking the forge
+itself (the operator's decision); a report through this router only makes it arrive sooner.
 
 **What must be true.** The host's forge serves every account on the host, and each account runs its own Porelo daemon
 in user mode. An event of the forge about a task's work - a build finished, a pull request merged, a comment written,
@@ -17,8 +18,7 @@ the gathered push refused - reaches the daemon of the account whose task it conc
   [B289](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b289) and
   [B290](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b290) say: it reads the event's state on
   the forge itself before it acts, so a report too many changes nothing.
-- **A lost report is caught up:** a daemon still follows its own tasks' builds by asking the forge, so a report only
-  makes it quicker.
+- **A lost report is caught up:** the daemon asks the forge anyway, so a report only makes it quicker.
 
 ## Why
 
