@@ -120,8 +120,31 @@ account or token. These accounts carry no authority to write to the central forg
 
 An agent's push starts the workflows' `push` and `pull_request` runs, but the forge refuses it a `workflow_dispatch`
 (`403`), since the team only reads Actions. Its token also reads no job's log (`404` through the API), no push mirror
-(`403`) and not its own user (`403`, no `read:user` scope). No person has a password for the forge's web pages, so a
-job's log is read from Forgejo's data on the host.
+(`403`) and not its own user (`403`, no `read:user` scope).
+
+With repositories configured, the person's web login is `operator` (`forge_person`). It belongs to the organization's
+`Owners` team, so the person can read private repositories, build runs and packages and merge pull requests. Connect
+through the VPN, resolve `forge.porelo.internal` (`forge_name`) to the host's VPN address (`forge_address`), and trust
+the host's CA certificate, `/etc/porelo-host/forge/ca.pem`, in the browser before opening
+`https://forge.porelo.internal/`.
+
+Forgejo generates the first password into `/etc/porelo-host/forge/person.password`, owned by root with mode `0600`.
+On the person's machine, fetch it over SSH straight into a new file only they read; substitute the host's SSH address:
+
+```sh
+(umask 077; set -C; ssh root@host.example.org 'cat /etc/porelo-host/forge/person.password' > forge-person.password)
+```
+
+Read that local file privately and sign in as `operator`. Forgejo requires a new password before continuing; the first
+password then stops working. Delete both copies after that first sign-in:
+
+```sh
+rm forge-person.password
+ssh root@host.example.org 'rm /etc/porelo-host/forge/person.password'
+```
+
+Another `up` keeps the existing account and password and does not recreate a deleted first password file. `down`
+removes any remaining first password file with the forge's other credentials.
 
 The registry publisher is a separate account. Its package token stays with Forgejo and runner jobs as
 `PORELO_PUBLISHER_TOKEN`; it is not handed to tasks. The host build reader's credential and a task's declared service

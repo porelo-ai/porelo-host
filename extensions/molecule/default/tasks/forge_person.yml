@@ -1,0 +1,115 @@
+---
+# A readable first password or a sign-in without a forced change gives away the person's authority to merge.
+- name: Read the person's first password file permissions without reading its value
+  ansible.builtin.stat:
+    path: /etc/porelo-host/forge/person.password
+    get_checksum: false
+    get_mime: false
+  register: verify_person_file
+  no_log: true
+
+- name: Assert root alone owns and reads the person's first password
+  ansible.builtin.assert:
+    that:
+      - verify_person_file.stat.exists
+      - verify_person_file.stat.isreg | default(false)
+      - not (verify_person_file.stat.islnk | default(false))
+      - verify_person_file.stat.uid | default(-1) == 0
+      - verify_person_file.stat.gid | default(-1) == 0
+      - verify_person_file.stat.mode | default('') == '0600'
+      - verify_person_file.stat.size | default(0) > 0
+    fail_msg: "asked for a nonempty root:root 0600 person.password, got {{ verify_person_file.stat }}"
+
+- name: Ask Forgejo which users it has for the person's sign-in
+  ansible.builtin.shell:
+    cmd: >-
+      cd / && runuser -u porelo-forge -- env XDG_RUNTIME_DIR="/run/user/$(id -u porelo-forge)"
+      podman exec forgejo forgejo admin user list
+    executable: /bin/bash
+  register: verify_person_users
+  changed_when: false
+  no_log: true
+
+- name: Assert the person's forge account exists
+  ansible.builtin.assert:
+    that: "'operator' in (verify_person_users.stdout_lines[1:] | map('split') | map(attribute=1) | list)"
+    fail_msg: asked for operator in Forgejo's user list, got no such user
+
+- name: Read the person's membership in the organization's Owners team
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      api() { curl -sS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem \
+          -H @<(sed 's/^/Authorization: token /' /home/porelo-forge/.config/porelo-forge/api.token) "$@"; }
+      base=https://10.73.0.1:3000/api/v1
+      answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
+      code=$(api -o "$answer" -w '%{http_code}' "$base/orgs/porelo/teams/search?q=Owners")
+      [ "$code" = 200 ] || { echo "asked for Owners with HTTP 200, got HTTP $code" >&2; exit 1; }
+      team=$(python3 -I -c 'import json,sys; print(next((int(t["id"]) \
+          for t in json.load(open(sys.argv[1]))["data"] if t["name"] == "Owners"), ""))' "$answer")
+      [ -n "$team" ] || { echo "asked for porelo's Owners team, got no team" >&2; exit 1; }
+      code=$(api -o /dev/null -w '%{http_code}' "$base/teams/$team/members/operator")
+      [ "$code" = 200 ] || { echo "asked for operator in Owners with HTTP 200, got HTTP $code" >&2; exit 1; }
+      echo member
+    executable: /bin/bash
+  register: verify_person_owner
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Assert the person owns the organization
+  ansible.builtin.assert:
+    that: verify_person_owner.rc == 0 and verify_person_owner.stdout == 'member'
+    fail_msg: "asked for operator in Owners, got rc {{ verify_person_owner.rc }}: {{ verify_person_owner.stderr }}"
+
+- name: Sign in with the first password on standard input and require the change-password page
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      umask 077
+      work=$(mktemp -d)
+      trap 'rm -rf "$work"' EXIT
+      request() { curl -sS --max-time 10 --noproxy '*' --cacert /etc/porelo-host/forge/ca.pem \
+          --resolve forge.porelo.internal:443:127.0.0.1 --cookie "$work/cookies" --cookie-jar "$work/cookies" \
+          -o "$work/page" -w '%{http_code}' "$@"; }
+      base=https://forge.porelo.internal
+      # Forgejo 17's sign-in form carries no CSRF token; a must-change user is sent on from / (measured).
+      code=$(tr -d '\r\n' < /etc/porelo-host/forge/person.password \
+          | request "$base/user/login" --data-urlencode user_name=operator --data-urlencode password@-)
+      [ "$code" = 303 ] || { echo "asked for a redirect after sign-in, got HTTP $code" >&2; exit 1; }
+      code=$(request "$base/" --dump-header "$work/headers")
+      [ "$code" = 303 ] || { echo "asked for a redirect from / for a must-change user, got HTTP $code" >&2; exit 1; }
+      python3 -I -c 'import sys; from pathlib import Path; from urllib.parse import urlsplit
+      locations = [line.split(":", 1)[1].strip() for line in Path(sys.argv[1]).read_text().splitlines()
+                   if line.lower().startswith("location:")]
+      if len(locations) != 1:
+          sys.exit("asked for one redirect from /, got another count")
+      target = urlsplit(locations[0])
+      if (target.path != "/user/settings/change_password" or target.scheme not in ("", "https")
+              or target.netloc not in ("", "forge.porelo.internal")):
+          sys.exit("asked for a redirect to the forced password change, got another destination")' "$work/headers"
+      code=$(request "$base/user/settings/change_password")
+      [ "$code" = 200 ] || { echo "asked for the password change page with HTTP 200, got HTTP $code" >&2; exit 1; }
+      python3 -I -c 'import sys; from html.parser import HTMLParser; from pathlib import Path
+      class Form(HTMLParser):
+          fields = set()
+          def handle_starttag(self, tag, attrs):
+              attrs = dict(attrs)
+              if tag == "input" and attrs.get("type") == "password":
+                  self.fields.add(attrs.get("name"))
+      form = Form(); form.feed(Path(sys.argv[1]).read_text())
+      if not {"password", "retype"}.issubset(form.fields):
+          sys.exit("asked for new and repeated password fields, got no password change form")' "$work/page"
+      echo 'password change required'
+    executable: /bin/bash
+  register: verify_person_login
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Assert the first password signs in only to the required password change
+  ansible.builtin.assert:
+    that: verify_person_login.rc == 0 and verify_person_login.stdout == 'password change required'
+    fail_msg: >-
+      asked for operator's first password to require a password change, got rc {{ verify_person_login.rc }}:
+      {{ verify_person_login.stderr }}

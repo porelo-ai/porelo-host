@@ -1,0 +1,140 @@
+---
+- name: person | Check the person's name before it reaches a command
+  ansible.builtin.assert:
+    that: forge_person is string and forge_person is match('^[a-z][a-z0-9-]{0,30}\Z')
+    fail_msg: "asked for a lower case person name matching ^[a-z][a-z0-9-]{0,30}$, got {{ forge_person }}"
+    quiet: true
+
+- name: person | Ask Forgejo which users it has
+  ansible.builtin.command:
+    argv: [podman, exec, forgejo, forgejo, admin, user, list]
+  become: true
+  become_user: "{{ forge_account }}"
+  environment: "{{ __forge_environment }}"
+  register: __forge_person_users_listed
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+# Strict extraction keeps an unexpected CLI sentence from becoming the person's password file. A user made without its
+# file is taken out again, so the next up makes both anew instead of leaving the person with no first password. The
+# task says only how it ended, one word, so the refusal after it can be shown while the password never is.
+- name: person | Pipe the generated first password straight into its root-only file
+  ansible.builtin.shell:
+    cmd: |
+      set -uo pipefail
+      cd /
+      umask 077
+      file={{ (__forge_ca_dir ~ '/person.password') | quote }}
+      forgejo() {
+          runuser -u {{ forge_account }} -- env XDG_RUNTIME_DIR=/run/user/{{ __forge_uid }} \
+              podman exec forgejo forgejo "$@"
+      }
+      ended=interrupted
+      take_back() {
+          [ "$ended" = made ] && return
+          rm -f "$file"
+          if forgejo admin user delete --username {{ forge_person }} > /dev/null 2>&1; then
+              echo "$ended"
+          else
+              echo "$ended-and-kept"
+          fi
+      }
+      trap take_back EXIT
+      trap 'exit 130' INT
+      trap 'exit 143' TERM
+      rm -f "$file"
+      # Forgejo 17 says: generated random password is '<password>' (measured on the pinned image).
+      if ! forgejo admin user create --username {{ forge_person }} \
+          --email {{ forge_person }}@{{ forge_name }} --random-password --must-change-password=true 2> /dev/null \
+          | sed -n "s/^generated random password is '\([^'[:space:]]\{1,\}\)'$/\1/p" > "$file"; then
+          ended=refused
+          exit 0
+      fi
+      if [ ! -s "$file" ] || [ "$(wc -l < "$file")" != 1 ] || ! grep -Eqx '[^[:space:]]+' "$file"; then
+          ended=unexpected
+          exit 0
+      fi
+      chown root:root "$file" && chmod 0600 "$file" || { ended=unowned; exit 0; }
+      ended=made
+      echo made
+    executable: /bin/bash
+  become: true
+  become_user: root
+  environment: "{{ __forge_environment }}"
+  when: forge_person not in
+    (__forge_person_users_listed.stdout_lines[1:] | map('split') | map(attribute=1) | list)
+  register: __forge_person_made
+  changed_when: true
+  failed_when: false
+  no_log: true
+
+- name: person | Stop where the person's first password could not be kept
+  ansible.builtin.assert:
+    that: __forge_person_made.stdout == 'made'
+    fail_msg: >-
+      asked Forgejo to make {{ forge_person }} with a first password kept in {{ __forge_ca_dir }}/person.password;
+      got '{{ __forge_person_made.stdout | regex_search('^[a-z-]{1,40}$') | default('no answer', true) }}'
+      (refused: Forgejo refused the user; unexpected: its answer held no password in the measured form; unowned: the
+      file could not be made root's alone; interrupted: the run ended early;{{ ' ' }}-and-kept: the user is still there
+      and must be deleted before the next up)
+    quiet: true
+  when: __forge_person_made is not skipped
+
+- name: person | Read whether the first password file is still on the host
+  ansible.builtin.stat:
+    path: "{{ __forge_ca_dir }}/person.password"
+    get_checksum: false
+    get_mime: false
+  register: __forge_person_file
+  no_log: true
+
+- name: person | Keep an existing first password file owned and readable by root alone
+  ansible.builtin.file:
+    path: "{{ __forge_ca_dir }}/person.password"
+    state: file
+    owner: root
+    group: root
+    mode: "0600"
+  when: __forge_person_file.stat.exists
+  no_log: true
+
+- name: person | Let the person own the organization's repositories through its Owners team
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      api() { curl -sS --max-time 10 --cacert {{ __forge_ca_dir }}/ca.pem \
+          -H @<(sed 's/^/Authorization: token /' {{ __forge_token }}) \
+          -H 'Content-Type: application/json' "$@"; }
+      base=https://{{ forge_address }}:{{ forge_http_port }}/api/v1
+      answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
+      changed=
+      code=$(api -o "$answer" -w '%{http_code}' "$base/orgs/{{ forge_owner }}/teams/search?q=Owners")
+      [ "$code" = 200 ] \
+          || { echo "asked to search {{ forge_owner }}'s teams with HTTP 200, got HTTP $code" >&2; exit 1; }
+      team=$(python3 -I -c 'import json,sys; print(next((int(t["id"]) \
+          for t in json.load(open(sys.argv[1]))["data"] if t["name"] == "Owners"), ""))' "$answer")
+      [ -n "$team" ] || { echo "asked for {{ forge_owner }}'s Owners team, got no team" >&2; exit 1; }
+      member="$base/teams/$team/members/{{ forge_person }}"
+      code=$(api -o /dev/null -w '%{http_code}' "$member")
+      if [ "$code" = 404 ]; then
+          code=$(api -o /dev/null -w '%{http_code}' -X PUT "$member")
+          [ "$code" = 204 ] \
+              || { echo "asked to add {{ forge_person }} to Owners with HTTP 204, got HTTP $code" >&2; exit 1; }
+          code=$(api -o /dev/null -w '%{http_code}' "$member")
+          changed=yes
+      fi
+      [ "$code" = 200 ] \
+          || { echo "asked for {{ forge_person }} in Owners with HTTP 200, got HTTP $code" >&2; exit 1; }
+      echo "${changed:-unchanged}"
+    executable: /bin/bash
+  register: __forge_person_team_made
+  changed_when: __forge_person_team_made.stdout | default('') == 'yes'
+  failed_when: false
+  no_log: true
+
+- name: person | Stop when Forgejo would not take the person as an owner, with its answer
+  ansible.builtin.assert:
+    that: __forge_person_team_made.rc | default(0) == 0
+    fail_msg: "{{ __forge_person_team_made.stderr | default('') }}"
+    quiet: true

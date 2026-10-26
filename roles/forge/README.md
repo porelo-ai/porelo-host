@@ -8,6 +8,14 @@ person's token for the central forge shares no user namespace with a task.
 
 The CA's certificate is `/etc/porelo-host/forge/ca.pem`; its key stays on the host, root's alone.
 
+With repositories configured, `forge_person` (default `operator`, matching `^[a-z][a-z0-9-]{0,30}$`) is the person's
+web login in the organization's `Owners` team. Forgejo creates it only when absent, with a random first password
+piped straight into `/etc/porelo-host/forge/person.password`, root:root `0600`, and requires a password change at the
+first sign-in. Up keeps an existing account and password; it does not recreate a first password file the person
+deleted. Fetch the file over SSH into a private file, then delete both copies after signing in as described in the
+[local forge guide](../../doc/local-forge.md#credentials-belong-to-their-destination). Down removes the password file
+with the forge's CA directory.
+
 Each repository is migrated once from the central forge, with its content, as an ordinary repository with no push
 mirror. The person's central token is read from `forge_central_token_path` by the shell into the migration request
 on a pipe. The gathered push runs elsewhere as a plain `git push` without force and refuses when central main moved;

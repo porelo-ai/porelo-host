@@ -512,6 +512,30 @@
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_agents.yml"
       when: verify_forge == 'on'
 
+    - name: Verify the person's first sign-in and organization ownership after idempotence
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_person.yml"
+      when: verify_forge == 'on'
+
+    # Recreating the person makes the verbose run handle the very password searched for afterward.
+    - name: Remove the person's forge login and first password before up with -vvv
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          cd /
+          as_forge() { runuser -u porelo-forge -- env XDG_RUNTIME_DIR="/run/user/$(id -u porelo-forge)" "$@"; }
+          # The person owns the organization, which Forgejo refuses to delete a user for without --purge (measured).
+          as_forge podman exec forgejo forgejo admin user delete --username operator --purge
+          rm -f /etc/porelo-host/forge/person.password
+          users=$(as_forge podman exec forgejo forgejo admin user list)
+          rc=0
+          printf '%s\n' "$users" | awk 'NR > 1 {print $2}' | grep -Fx operator > /dev/null || rc=$?
+          [ "$rc" = 1 ] || { echo "asked for operator absent before up -vvv, got search rc $rc" >&2; exit 1; }
+          [ ! -e /etc/porelo-host/forge/person.password ] \
+              || { echo "asked for person.password absent before up -vvv, got a file" >&2; exit 1; }
+        executable: /bin/bash
+      changed_when: true
+      when: verify_forge == 'on'
+
     # Up made the publisher's token once; forgetting that it did makes the -vvv run below make it again, so that run's
     # output is searched for a token it handled.
     - name: Forget that the publisher's secret was set, so up with -vvv makes its token again
@@ -606,6 +630,60 @@
         fail_msg: "up with -vvv gave rc {{ verify_vvv.rc }}, or its output holds the host's private VPN key, the
           person's token for the central forge or the forge's API token"
       no_log: true
+
+    - name: Verify up with -vvv recreated the person's login, ownership and required password change
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_person.yml"
+      when: verify_forge == 'on'
+
+    # The pool-key search removes the verbose file, so the person's password must be checked first.
+    - name: Search verbose output and the journal for the first password and prove a planted leak is refused
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          umask 077
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          pattern=/etc/porelo-host/forge/person.password
+          [ -s "$pattern" ] && [ "$(wc -l < "$pattern")" = 1 ] \
+              || { echo "asked for one nonempty first password pattern, got another form" >&2; exit 1; }
+          journalctl -o cat --no-pager > "$work/journal"
+          search() {
+              local rc=0
+              [ -s "$1" ] || { echo "asked for nonempty search input, got none" >&2; return 2; }
+              grep -F -f "$pattern" -- "$1" > /dev/null || rc=$?
+              case $rc in
+                  0) echo "first password appears in search input" >&2; return 1 ;;
+                  1) return 0 ;;
+                  *) echo "password search ended $rc" >&2; return 2 ;;
+              esac
+          }
+          cat "$pattern" > "$work/planted"
+          rc=0
+          search "$work/planted" > "$work/probe" 2>&1 || rc=$?
+          [ "$rc" = 1 ] || { echo "asked to refuse a planted password, got rc $rc" >&2; exit 1; }
+          echo 'planted password: refused'
+          search /root/porelo-host-vvv.out
+          echo 'up -vvv: clean'
+          search "$work/journal"
+          echo 'journal: clean'
+        executable: /bin/bash
+      register: verify_person_password_search
+      changed_when: false
+      failed_when: false
+      no_log: true
+      when: verify_forge == 'on'
+
+    - name: Assert the first password is absent from verbose output and the journal and a planted leak was refused
+      ansible.builtin.assert:
+        that:
+          - verify_person_password_search.rc == 0
+          - >-
+            verify_person_password_search.stdout_lines
+            == ['planted password: refused', 'up -vvv: clean', 'journal: clean']
+        fail_msg: >-
+          asked to refuse a planted password and find none in up -vvv or the journal,
+          got rc {{ verify_person_password_search.rc }}: {{ verify_person_password_search.stderr }}
+      when: verify_forge == 'on'
 
     - name: Search the -vvv output for every body line of the pool's private keys
       ansible.builtin.shell:

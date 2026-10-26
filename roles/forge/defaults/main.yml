@@ -34,6 +34,9 @@ forge_owner: "{{ porelo_host_forge_owner | default('porelo') }}"
 # The authority the gathered push trusts for the central forge: the system's own, never the host's.
 forge_central_ca: "{{ porelo_host_forge_central_ca | default('/etc/ssl/certs/ca-certificates.crt') }}"
 
+# The person's web login changes its generated first password at the first sign-in.
+forge_person: operator
+
 # Each agent gets a forge account and a token kept on the host, only where the owner's repositories are configured.
 forge_agents: "{{ porelo_host_forge_agents | default([]) }}"
 

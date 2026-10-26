@@ -29,6 +29,10 @@
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/repositories.yml"
   when: forge_repositories | length > 0
 
+- name: Make the person's web login an owner of the organization
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/person.yml"
+  when: forge_repositories | length > 0
+
 - name: Let every build publish into the registry with the publisher's secret
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/publisher.yml"
   when: forge_repositories | length > 0

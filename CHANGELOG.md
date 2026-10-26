@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The forge gives the person an `operator` web login in the organization's `Owners` team, with a generated first
+  password in root-only `/etc/porelo-host/forge/person.password` and a required password change at first sign-in.
+  Existing accounts keep their passwords across `up`; `down` removes the first password file.
 - The forge gives the person `porelo-host-push`, run with `sudo` on the host: it pushes each named repository's local
   `main` to its central forge without force, the central token asked for each time and kept nowhere. A central forge
   that moved refuses it; the command names the central commits, brings them to the local forge as `central/main`, and

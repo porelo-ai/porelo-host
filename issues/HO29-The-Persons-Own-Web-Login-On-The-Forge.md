@@ -1,6 +1,6 @@
 # HO29 — The Person's Own Web Login On The Forge
 
-**Status:** Backlog.
+**Status:** Implementing.
 **Size:** S - one task file of the role `forge`, its removal at `down`, Molecule's checks and the documentation; no
 contract other repositories read.
 
@@ -41,6 +41,30 @@ passes through no inventory, variable, log or task's output, as every other cred
     output or journal line; `operator` and its file are deleted before the `-vvv` `up`, so that run makes them again.
 - Each is seen red without `person.yml`, and the search is seen red on a planted password.
 - After `down` the file is gone.
+
+## Built
+
+- `roles/forge/tasks/person.yml`, after the repositories' migration where repositories are configured. `forge_person`
+  defaults to `operator` and is checked before it reaches a command.
+  - A missing user is made with a random first password and a required password change.
+  - Forgejo 17 prints `generated random password is '<password>'` (measured on the pinned image). An anchored `sed`
+    takes the password from it straight into `/etc/porelo-host/forge/person.password`, root's, `0600`, with no
+    variable, register or task output.
+  - An unexpected answer, an empty or malformed extraction, or an interrupt removes the file and takes the user back
+    out, so the next `up` makes both again.
+  - The admin's API adds the user to the organization's `Owners` team, each answer's code checked.
+- `down` removes the file with `/etc/porelo-host/forge/`.
+- Molecule checks:
+  - the account, its ownership, the file's permissions, and a real sign-in answered with the change-password page, the
+    password sent to `curl` on standard input;
+  - the account and file are deleted before the `-vvv` `up`, made again by it, and its output and the journal are
+    searched with `grep -F -f`, a planted password seen to refuse;
+  - the file is gone after `down`.
+- `doc/local-forge.md` and `roles/forge/README.md` describe the sign-in, the setting and the file.
+
+## To be checked
+
+- Molecule's run of all of it, each check seen red without `person.yml`.
 
 ## Decided
 

@@ -407,6 +407,7 @@
         - /home/porelo-runner/runner/.runner
         - /etc/porelo-host/forge/ca.key
         - /etc/porelo-host/forge/agents
+        - /etc/porelo-host/forge/person.password
         - /etc/systemd/system/porelo-forge-https.socket
         - /etc/systemd/system/porelo-forge-https.service
       register: side_effect_forge_left
