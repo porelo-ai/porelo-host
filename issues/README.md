@@ -17,11 +17,16 @@ it is left out.
 |---|---|---|---|
 | <a id="ho12"></a>[HO12](HO12-The-VM-Pool.md) | L | - | Role `vm_pool`: VMs with run accounts `porelo-machines` rents from, made by the same code as the test VM, deleted by name at `down`. |
 
-## Backlog
+## Implementing
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho32"></a>[HO32](HO32-The-Gathered-Push-Refuses-A-Moved-Central-Forge.md) | M | - | `porelo-host-push`, started by the person on the host over ssh, pushes each repository's local `main` to the central forge without force, the central token asked for hidden; a moved central forge is refused, named and brought back as `central/main`. |
+
+## Backlog
+
+| # | Size | Blocked by | What it covers |
+|---|---|---|---|
 | <a id="ho29"></a>[HO29](HO29-The-Persons-Own-Web-Login-On-The-Forge.md) | S | - | The person signs in to the host's forge through the VPN as `operator`, an owner of the organization, the first password generated and fetched over ssh, then changed at the first sign-in. |
 | <a id="ho31"></a>[HO31](HO31-The-Accounts-Gate-And-Reader-On-The-Hosts-Forge.md) | M | [HO29](#ho29) | The account's gate pushes `porelo/<task>` to the forge by name over TLS, the `forgejo` reader is installed, the gate's token is in the vault alone, and `main` is protected so only the person's approved merge reaches it. |
 | <a id="ho14"></a>[HO14](HO14-The-Collections-Python-Under-Ansible-Test-Sanity.md) | S | - | `ansible-test sanity` on the collection's Python in the Build, from a pinned image of its own. |

@@ -25,6 +25,7 @@
     - /etc/systemd/system/porelo-forge-https.socket
     - /etc/systemd/system/porelo-forge-https.service
     - /etc/systemd/system/sockets.target.wants/porelo-forge-https.socket
+    - /usr/local/sbin/porelo-host-push
   register: forge_absent_paths
 
 - name: Read whether any generated forge unit or its enablement link exists

@@ -480,6 +480,8 @@
                 - name: stand-in
                   url: https://10.73.0.1:3000/central/stand-in.git
               porelo_host_forge_agents: [probe]
+              # The stand-in central forge is the host's own, so its authority is the host's.
+              porelo_host_forge_central_ca: /etc/porelo-host/forge/ca.pem
       when: converge_forge == 'on'
 
     - name: Run up with the forge's repositories, its steps as JSON lines

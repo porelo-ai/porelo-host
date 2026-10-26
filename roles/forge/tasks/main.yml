@@ -36,3 +36,7 @@
 - name: Make the agents' forge accounts and their credentials on the host
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/agents.yml"
   when: forge_repositories | length > 0
+
+- name: Give the person the gathered push of the repositories to the central forge
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/push.yml"
+  when: forge_repositories | length > 0

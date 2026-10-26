@@ -75,3 +75,8 @@
     path: "{{ __forge_ca_dir }}"
     state: absent
   no_log: true
+
+- name: down | Remove the gathered push, which has no forge left to read
+  ansible.builtin.file:
+    path: /usr/local/sbin/porelo-host-push
+    state: absent

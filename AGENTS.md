@@ -437,8 +437,8 @@ and the UTC time that text last changed; change it in the channel first, never i
   since they run the container, read its tarball and drive libvirt where the collection is checked;
   `roles/vm_pool/files/porelo-vm`, `roles/vm_pool/files/porelo-pool-give-back` and
   `roles/vm_pool/files/porelo-pool-revert`, shell, since they drive virsh on the host and run inside a pool VM, where
-  there is no Java; `roles/porelo/files/porelo-host-stop`, shell, since it runs in the person's terminal on the host,
-  where there is no Java; `doc/images/local-forge-svg.py`, Python like the collection's plugins, since it draws the
+  there is no Java; `roles/porelo/files/porelo-host-stop` and `roles/forge/files/porelo-host-push`, shell, since they
+  run in the person's terminal on the host, where there is no Java; `doc/images/local-forge-svg.py`, Python like the collection's plugins, since it draws the
   document's picture; and the collection itself is YAML.
 
 ## The skills this repository uses

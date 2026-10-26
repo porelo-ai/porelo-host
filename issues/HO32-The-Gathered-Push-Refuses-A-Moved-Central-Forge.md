@@ -1,6 +1,6 @@
 # HO32 — The Gathered Push Refuses A Moved Central Forge
 
-**Status:** Backlog.
+**Status:** Implementing.
 **Size:** M - one command with its install and removal, a measured refusal and its recovery branch, the hidden
 token's path, and a Molecule scenario against a stand-in central forge; no contract other repositories read.
 
@@ -20,15 +20,21 @@ approves each pull request on the local forge and the central forge receives onl
   person runs it in the ssh terminal as root (`sudo`, which the rented host's login account has). The role `forge`
   installs it as `/usr/local/sbin/porelo-host-push` where `porelo_host_forge` is true, and `down.yml` removes it.
 - **Its settings:** the role writes `/etc/porelo-host/forge/push.conf`, root's, `0600`: the local forge's address
-  (`https://{{ forge_address }}:{{ forge_http_port }}`), `forge_owner`, and each repository of
+  (`https://{{ forge_address }}:{{ forge_http_port }}`), `forge_owner`, the central forge's CA, and each repository of
   `porelo_host_forge_repositories` with its migration source `url`, which `repositories.yml` already checks to carry no
-  credential. It goes with the rest of `/etc/porelo-host/forge/` at `down`.
-- **Reading the local forge:** with the forge admin's token from its root-readable file
-  (`/home/porelo-forge/.config/porelo-forge/api.token`), the command clones local `main` of each named repository into
-  a temporary directory only root reads, removed on exit and on interrupt. Git trusts
-  `/home/porelo-forge/tls/ca-bundle.pem`, the system's CAs with the host's, so both the local forge and the central one
-  are trusted. It reads no global configuration (`GIT_CONFIG_GLOBAL=/dev/null`) and never prompts
-  (`GIT_TERMINAL_PROMPT=0`). A repository not in `push.conf` is refused before anything is read.
+  credential. It goes with the rest of `/etc/porelo-host/forge/` at `down`; an `up` without repositories, as the host's
+  first inventory is, leaves it and the command, as it leaves the agents' accounts.
+- **Nothing from the caller:** its first line empties the environment (`env -S -i`) and fixes `PATH` before bash
+  starts, and it works in `/`, so no git, proxy, locale or shell setting of its caller reaches root.
+- **Reading the local forge:** the forge's account reads its own admin token
+  (`/home/porelo-forge/.config/porelo-forge/api.token`, through `runuser`, with `/dev/null` as its input and a timeout),
+  so a file it put in the token's place is never read with root's rights, nor the person's terminal. The command clones
+  local `main` of each named repository into a temporary directory only root reads, removed on exit and on interrupt,
+  and fails naming it if it cannot. Git trusts each forge by its own authority only: the local forge by
+  `/etc/porelo-host/forge/ca.pem`, the central one by `forge_central_ca` (`porelo_host_forge_central_ca`, the system's
+  CA bundle by default), so the host's CA never stands in for the central forge. Each must be a regular file of root's
+  that nobody else can write. It reads no global configuration, never prompts and follows no redirect. A repository not
+  in `push.conf`, or one named twice, is refused before anything is read.
 - **The central token:** asked once with `read -rs`, never echoed, held in a shell variable only for the run. It
   reaches git only as `http.extraHeader` through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_0`/`GIT_CONFIG_VALUE_0`, never on a
   command line.

@@ -257,6 +257,21 @@
           | regex_replace('(?ms)^# BEGIN porelo-host forge CA\n.*?^# END porelo-host forge CA\n?', '') }}
       when: side_effect_forge == 'on'
 
+    - name: Read whether the gathered push and its settings are left after down
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: [/usr/local/sbin/porelo-host-push, /etc/porelo-host/forge/push.conf]
+      register: side_effect_gathered
+      when: side_effect_forge == 'on'
+
+    - name: Assert down took the gathered push and its settings
+      ansible.builtin.assert:
+        that: side_effect_gathered.results | selectattr('stat.exists') | list | length == 0
+        fail_msg: >-
+          asked for neither the gathered push nor its settings after down; left
+          {{ side_effect_gathered.results | selectattr('stat.exists') | map(attribute='item') | list }}
+      when: side_effect_forge == 'on'
+
     - name: Read whether the drive's folder is still mounted
       ansible.builtin.command:
         cmd: findmnt --noheadings --mountpoint {{ side_effect_drive }}

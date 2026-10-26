@@ -96,6 +96,12 @@ argument_specs:
         type: str
         default: porelo
         description: The organization the repositories are migrated into, from porelo_host_forge_owner.
+      forge_central_ca:
+        type: path
+        default: /etc/ssl/certs/ca-certificates.crt
+        description: >-
+          The CA bundle the gathered push trusts for the central forge, from porelo_host_forge_central_ca; a root-owned
+          file, the system's own by default.
       forge_variables:
         type: dict
         default:

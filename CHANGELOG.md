@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The forge gives the person `porelo-host-push`, run with `sudo` on the host: it pushes each named repository's local
+  `main` to its central forge without force, the central token asked for each time and kept nowhere. A central forge
+  that moved refuses it; the command names the central commits, brings them to the local forge as `central/main`, and
+  pushes none of the repositories after it. It trusts the central forge by the system's CAs, or by
+  `porelo_host_forge_central_ca`, never by the host's own. `down` removes the command and its settings.
+
 ### Changed
 
 - The README links the host lifecycle and the local forge's documentation.

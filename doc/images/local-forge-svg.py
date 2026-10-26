@@ -345,19 +345,19 @@ callout(606, 720, 130, 54, L("Built again:", "*green"), (BR + 26, 766))
 callout(565, 888, 170, 71, L("*Decision 1:", "you read", "and merge"),
         (656, 820), icon="person")
 callout(768, 1196, 176, 71, L("*Decision 2:", "you push all", "merged work"),
-        (870, 1138), icon="person", todo=True)
+        (870, 1138), icon="person")
 callout(986, 140, 164, 54, L("Central main,", "as it is"), (CEN + 15, 162))
 callout(986, 1132, 164, 54, L("Built and", "*published"), (CEN + 15, 1174))
 callout(986, 1250, 164, 54, L("Meanwhile someone", "merges centrally"), (CEN + 15, 1276))
 callout(600, 1262, 128, 54, L("More work", "merged"), (MAIN - 16, 1346))
 callout(762, 1418, 154, 71, L("*Refused:", "central forge moved;", "Porelo sees it"), (910, 1396), todo=True)
-callout(446, 1330, 152, 54, L("Comes back as", "*central/main"), (BR - 10, 1428), todo=True)
+callout(446, 1330, 152, 54, L("Comes back as", "*central/main"), (BR - 10, 1428))
 callout(350, 1386, 120, 56, L("Starts a", "merge task"), (AI + 11, 1476), style="porelo", todo=True)
 callout(58, 1528, 194, 56, L("Merges central/main,", "then {git push}"), (AI - 15, 1530), icon="robot")
 callout(606, 1540, 130, 54, L("Built:", "*green"), (BR + 26, 1596))
 callout(565, 1708, 170, 56, L("You read", "and merge"), (655, 1645), icon="person")
 callout(350, 1608, 120, 56, L("Ends the task", "with the merge"), (AI + 10, 1690), style="porelo", todo=True)
-callout(986, 1728, 164, 54, L("You push again:", "*goes through"), (CEN + 15, 1766), todo=True)
+callout(986, 1728, 164, 54, L("You push again:", "*goes through"), (CEN + 15, 1766))
 
 add('</g>')
 

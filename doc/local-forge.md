@@ -92,13 +92,23 @@ lifecycle steps are not built:
 - End the task after the person merges its pull request: not built yet.
 
 **Second, start a gathered push of accepted local `main` to the central forge.** This is a separate decision about
-sending the merged work outward. The gathered-push tool is not built; the specified operation is started by the person
-on the host over SSH and uses a plain `git push` without force. No command is provided for that operation.
+sending the merged work outward. The person starts it on the host over SSH, naming the repositories in their order:
 
-The specified recovery refuses a push when central `main` contains commits missing locally, preserving the central work.
-It brings central `main` back as the local branch `central/main`, which a task merges into the local work. That task's
-branch receives a local build and the person's merge decision before the person tries the gathered push again. This
-recovery is not built with the gathered-push tool. Starting that merge task automatically is also not built.
+    sudo porelo-host-push porelo-message-sluice
+
+It asks once for the central forge's token, without showing it, and keeps it only for the run. For each repository it
+reads local `main` with the forge admin's token and pushes it to the repository's migration source with a plain
+`git push` without force, the next only once the one before was taken. A repository the forge does not hold is refused
+before anything is read. `/etc/porelo-host/forge/push.conf`, root's, names the repositories, their central
+addresses and the authority the central forge is trusted by, `porelo_host_forge_central_ca`, the system's CA bundle by
+default; the host's own CA is never trusted for it. `up` writes the file where repositories are configured, and
+`down` removes it with the command.
+
+When central `main` holds commits local `main` lacks, the push is refused and nothing is lost on either forge. The
+command names those commits and brings central `main` to the local forge as the branch `central/main`, which a task
+merges into the local work. That task's branch receives a local build and the person's merge decision before the
+person runs the push again. The repositories named after a refused one are not pushed, and the command says which.
+Starting that merge task automatically is not built.
 
 ## Credentials belong to their destination
 
@@ -118,10 +128,10 @@ The registry publisher is a separate account. Its package token stays with Forge
 credentials have their own routes, described in [Porelo's credential
 documentation](https://github.com/porelo-ai/porelo/blob/main/doc/credentials.md).
 
-The specified gathered push asks for the operator's central token with hidden input in the SSH terminal and stores it
-nowhere; this input path is not built with the tool. The token for initial repository migration has a different
-lifetime: the forge role reads it from the person's drive into the migration request. It is not an implementation of the
-gathered push's temporary credential handling.
+The gathered push asks for the central token with hidden input in the SSH terminal and stores it nowhere; git
+receives it only as a header in its environment, never on a command line, and the command's output names no token. The
+token for initial repository migration has a different lifetime: the forge role reads it from the person's drive into
+the migration request.
 
 ## If the host is lost
 

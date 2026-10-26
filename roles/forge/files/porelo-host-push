@@ -1,0 +1,142 @@
+#!/usr/bin/env -S -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C /bin/bash --noprofile --norc
+# shellcheck shell=bash
+# The gathered push, run by the person as root on the host: each repository's approved local main goes to the central
+# forge with a plain push. A central forge that moved refuses it, and its commits reach the local forge as central/main.
+# The line above empties the environment before bash starts: root takes no PATH, git, proxy or shell setting from its
+# caller.
+set -u
+cd / || exit 1
+
+conf=/etc/porelo-host/forge/push.conf
+forge_account=porelo-forge
+admin_token_file=/home/porelo-forge/.config/porelo-forge/api.token
+local_ca=/etc/porelo-host/forge/ca.pem
+ca_owner=0
+name_pattern='^[A-Za-z0-9][A-Za-z0-9._-]*$'
+
+fail() {
+    printf 'porelo-host-push: %s\n' "$1" >&2
+    exit "${2:-1}"
+}
+
+[ "$#" -gt 0 ] || fail "name the repositories to push, in their order" 64
+[ "$(id -u)" = 0 ] || fail "run it as root, with sudo" 77
+[ -r "$conf" ] || fail "$conf is not readable; is the forge on this host?" 66
+
+# An authority root trusts is a regular file of root's that nobody else can write.
+trusted() {
+    local owner mode
+    [ -f "$1" ] && [ -r "$1" ] || return 1
+    read -r owner mode < <(stat -L -c '%u %a' "$1") || return 1
+    [ "$owner" = "$ca_owner" ] && [ $((8#$mode & 8#022)) = 0 ]
+}
+trusted "$local_ca" || fail "the host's CA $local_ca is not a file only root can change" 66
+
+local_forge=
+owner=
+central_ca=
+declare -A central_url=()
+while read -r key first second; do
+    case "$key" in
+        local) local_forge=$first ;;
+        owner) owner=$first ;;
+        central-ca) central_ca=$first ;;
+        repository) central_url[$first]=$second ;;
+        '' | '#'*) ;;
+        *) fail "$conf names '$key', which this command does not read" 65 ;;
+    esac
+done < "$conf"
+[ -n "$local_forge" ] && [ -n "$owner" ] && [ -n "$central_ca" ] \
+    || fail "$conf names no local forge, owner or central CA" 65
+trusted "$central_ca" || fail "the central forge's CA $central_ca is not a file only root can change" 66
+
+declare -A named=()
+for name in "$@"; do
+    [[ $name =~ $name_pattern ]] || fail "'$name' is not a repository name" 64
+    [ -n "${central_url[$name]:-}" ] || fail "the forge holds no repository '$name' to push; it holds: ${!central_url[*]}" 64
+    [ -z "${named[$name]:-}" ] || fail "'$name' is named twice" 64
+    named[$name]=1
+done
+
+# The forge's account reads its own token, so a file it put in that token's place is never read with root's rights.
+# Never with the person's terminal or the central token on its standard input, and never waiting on a pipe put there.
+admin_token=$(timeout 10 runuser -u "$forge_account" -- cat -- "$admin_token_file" < /dev/null) \
+    || fail "$admin_token_file could not be read" 66
+[ -n "$admin_token" ] || fail "$admin_token_file is empty" 66
+printf 'Token for the central forge (not shown): ' >&2
+IFS= read -rs central_token || fail "no token was given" 75
+printf '\n' >&2
+[ -n "$central_token" ] || fail "no token was given" 75
+
+basic() {
+    printf 'Authorization: Basic %s' "$(printf 'x-access-token:%s' "$1" | base64 -w0)"
+}
+admin_header=$(basic "$admin_token")
+central_header=$(basic "$central_token")
+
+# Every form a token takes here is cut out of what git says before it is shown.
+redact() {
+    local text=$1 secret
+    for secret in "$admin_header" "$central_header" "${admin_header#Authorization: Basic }" \
+        "${central_header#Authorization: Basic }" "$admin_token" "$central_token"; do
+        text=${text//"$secret"/<redacted>}
+    done
+    printf '%s' "$text"
+}
+
+# The token reaches git through its environment alone, never on a redirect to another host; each forge is trusted by
+# its own authority only, so the host's CA can never stand in for the central forge.
+git_as() {
+    local header=$1 ca=$2
+    shift 2
+    GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=http.extraHeader GIT_CONFIG_VALUE_0="$header" \
+        GIT_CONFIG_KEY_1=http.followRedirects GIT_CONFIG_VALUE_1=false GIT_SSL_CAINFO="$ca" git "$@"
+}
+as_local() { git_as "$admin_header" "$local_ca" "$@"; }
+as_central() { git_as "$central_header" "$central_ca" "$@"; }
+
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
+umask 077
+work=$(mktemp -d) && [ -d "$work" ] || fail "no temporary directory could be made" 73
+clean_up() {
+    rm -rf "$work"
+    if [ -e "$work" ]; then
+        printf 'porelo-host-push: left %s behind\n' "$work" >&2
+        exit 1
+    fi
+}
+trap clean_up EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+pushed=()
+for name in "$@"; do
+    repo="$work/$name"
+    local_url="$local_forge/$owner/$name.git"
+    central=${central_url[$name]}
+    if ! said=$(as_local clone --quiet --branch main --single-branch "$local_url" "$repo" 2>&1); then
+        fail "$name: local main could not be read from $local_url: $(redact "$said")"
+    fi
+    printf '%s: pushing local main %s to %s\n' "$name" "$(git -C "$repo" rev-parse --short HEAD)" "$central"
+    if said=$(as_central -C "$repo" push --porcelain "$central" main:main 2>&1); then
+        printf '%s: taken\n' "$name"
+        pushed+=("$name")
+        continue
+    fi
+    left=("${@:$((${#pushed[@]} + 2))}")
+    if ! [[ $said =~ \[rejected\] ]] || ! [[ $said =~ (fetch\ first|non-fast-forward) ]]; then
+        fail "$name: the push failed; not pushed: ${left[*]:-none}. Git said: $(redact "$said")"
+    fi
+    if ! said=$(as_central -C "$repo" fetch --quiet "$central" main 2>&1); then
+        fail "$name: refused, and central main could not be read: $(redact "$said")"
+    fi
+    missing=$(git -C "$repo" log --oneline main..FETCH_HEAD)
+    if ! said=$(as_local -C "$repo" push --quiet "$local_url" FETCH_HEAD:refs/heads/central/main 2>&1); then
+        fail "$name: refused, and central main could not be brought to the local forge: $(redact "$said")"
+    fi
+    printf '%s: refused, since the central forge holds commits local main lacks:\n%s\n' "$name" "$missing" >&2
+    printf '%s: they are on the local forge as the branch central/main; merge it in a task, approve it, push again.\n' \
+        "$name" >&2
+    fail "$name: not pushed; not pushed either: ${left[*]:-none}"
+done
+printf 'pushed: %s\n' "${pushed[*]}"

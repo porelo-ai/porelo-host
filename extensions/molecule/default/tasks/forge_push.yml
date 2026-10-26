@@ -82,3 +82,157 @@
       got rc {{ verify_forge_push.rc }}, measurement {{ verify_push }}
   vars:
     verify_push: "{{ verify_forge_push.stdout | default('{}', true) | from_json }}"
+
+# The person's gathered push over the same moved central forge: refused, central's commit brought back, no token shown.
+- name: Check the gathered push and its settings are root's alone
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: [/usr/local/sbin/porelo-host-push, /etc/porelo-host/forge/push.conf]
+  register: verify_gathered_files
+
+- name: Assert the gathered push is installed and its settings are root's alone
+  ansible.builtin.assert:
+    that:
+      - verify_gathered_files.results[0].stat.exists and verify_gathered_files.results[0].stat.mode == '0755'
+      - verify_gathered_files.results[0].stat.pw_name == 'root'
+      - verify_gathered_files.results[1].stat.exists and verify_gathered_files.results[1].stat.mode == '0600'
+      - verify_gathered_files.results[1].stat.pw_name == 'root'
+    fail_msg: >-
+      asked for /usr/local/sbin/porelo-host-push root's 0755 and push.conf root's 0600; got
+      {{ verify_gathered_files.results | map(attribute='stat') | map('dict2items') | map('items2dict') | list }}
+
+# The forge's account can replace its own token file; root must then read nothing it could not.
+- name: Show the gathered push reads the forge's token as the forge's account, never as root
+  block:
+    - name: Put a root-only file in the place of the forge's token
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          umask 077
+          printf 'root-only-%s\n' "$(date +%s%N)" > /root/porelo-host-push-probe
+          mv /home/porelo-forge/.config/porelo-forge/api.token /root/porelo-host-push-api.token
+          ln -s /root/porelo-host-push-probe /home/porelo-forge/.config/porelo-forge/api.token
+        executable: /bin/bash
+      become: true
+      changed_when: true
+      no_log: true
+
+    - name: Run the gathered push with the forge's token replaced
+      ansible.builtin.shell:
+        cmd: |
+          set -uo pipefail
+          started=$(date +%s)
+          /usr/local/sbin/porelo-host-push stand-in < /srv/porelo-host/drive/porelo-host/forge-central.token \
+              > /dev/null 2>&1
+          rc=$?
+          seen=$(journalctl -q --no-pager --since "@$started" 2>/dev/null \
+              | grep -cF -f /root/porelo-host-push-probe || true)
+          printf '{"rc": %d, "seen": %d}\n' "$rc" "$seen"
+        executable: /bin/bash
+      become: true
+      register: verify_gathered_probe
+      changed_when: false
+      no_log: true
+
+    - name: Assert root read nothing through the forge's token file
+      ansible.builtin.assert:
+        that:
+          - (verify_gathered_probe.stdout | from_json).rc == 66
+          - (verify_gathered_probe.stdout | from_json).seen == 0
+        fail_msg: >-
+          asked for the push to stop (66) with the root-only file unread; got {{ verify_gathered_probe.stdout }}
+  always:
+    - name: Put the forge's own token back
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          if [ -e /root/porelo-host-push-api.token ]; then
+              rm -f /home/porelo-forge/.config/porelo-forge/api.token
+              mv /root/porelo-host-push-api.token /home/porelo-forge/.config/porelo-forge/api.token
+          fi
+          rm -f /root/porelo-host-push-probe
+          token=/home/porelo-forge/.config/porelo-forge/api.token
+          [ -f "$token" ] && [ ! -L "$token" ]
+        executable: /bin/bash
+      become: true
+      changed_when: true
+      no_log: true
+
+- name: Run the gathered push over the moved central forge, merge what it brought back, and push again
+  ansible.builtin.shell:
+    cmd: |
+      set -uo pipefail
+      started=$(date +%s)
+      token=/srv/porelo-host/drive/porelo-host/forge-central.token
+      clones() { find /tmp -maxdepth 1 -name 'tmp.*' -type d | sort; }
+      api() { curl -sS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem -H @<(printf 'Authorization: token %s\n' \
+          "$(cat /home/porelo-forge/.config/porelo-forge/api.token)") -H 'Content-Type: application/json' "$@"; }
+      base=https://10.73.0.1:3000/api/v1/repos
+      sha() {
+          api "$base/$1/branches/$2" | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["commit"]["id"])'
+      }
+      before=$(clones)
+      local_before=$(sha porelo/stand-in main)
+      central_before=$(sha central/stand-in main)
+      /usr/local/sbin/porelo-host-push nosuch < /dev/null > /dev/null 2>&1
+      unknown_rc=$?
+      out1=$(/usr/local/sbin/porelo-host-push stand-in < "$token" 2>&1)
+      rc1=$?
+      local_after=$(sha porelo/stand-in main)
+      central_after=$(sha central/stand-in main)
+      back=$(api -o /dev/null -w '%{http_code}' "$base/porelo/stand-in/contents/A?ref=central/main")
+      pull=$(api -X POST "$base/porelo/stand-in/pulls" \
+          -d '{"head": "central/main", "base": "main", "title": "Merge the central forge'"'"'s work"}' \
+          | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["number"])')
+      merged=$(api -o /dev/null -w '%{http_code}' -X POST "$base/porelo/stand-in/pulls/$pull/merge" \
+          -d '{"Do": "merge"}')
+      out2=$(/usr/local/sbin/porelo-host-push stand-in < "$token" 2>&1)
+      rc2=$?
+      leaked=no
+      journal=$(journalctl -q --no-pager --since "@$started" 2>/dev/null)
+      for f in "$token" /home/porelo-forge/.config/porelo-forge/api.token; do
+          secret=$(tr -d '\n' < "$f")
+          basic=$(printf 'x-access-token:%s' "$secret" | base64 -w0)
+          case "$out1$out2$journal" in *"$secret"* | *"$basic"*) leaked=yes ;; esac
+      done
+      left=$(comm -13 <(printf '%s\n' "$before") <(clones) | grep -c . || true)
+      has() { case "$1" in *"$2"*) echo true ;; *) echo false ;; esac; }
+      same() { [ "$1" = "$2" ] && echo true || echo false; }
+      # Only the shape of the answers leaves this task, never their text, in case a token was in it.
+      printf '%s\n' "{\"unknown_rc\": $unknown_rc, \"rc1\": $rc1, \"names_a\": $(has "$out1" 'Keep central work'),
+        \"names_branch\": $(has "$out1" central/main), \"local_kept\": $(same "$local_before" "$local_after"),
+        \"central_kept\": $(same "$central_before" "$central_after"), \"back_http\": $back,
+        \"merged_http\": $merged, \"rc2\": $rc2, \"taken\": $(has "$out2" 'stand-in: taken'),
+        \"same_main\": $(same "$(sha porelo/stand-in main)" "$(sha central/stand-in main)"),
+        \"leaked\": \"$leaked\", \"left\": $left}" | tr -d '\n'
+    executable: /bin/bash
+  become: true
+  register: verify_gathered
+  changed_when: true
+  failed_when: false
+  no_log: true
+
+- name: Assert the gathered push refused and kept both forges, then took the merged work, showing no token
+  ansible.builtin.assert:
+    that:
+      - verify_gathered.rc == 0
+      - verify_result.unknown_rc == 64
+      - verify_result.rc1 != 0
+      - verify_result.names_a
+      - verify_result.names_branch
+      - verify_result.local_kept
+      - verify_result.central_kept
+      - verify_result.back_http == 200
+      - verify_result.merged_http == 200
+      - verify_result.rc2 == 0
+      - verify_result.taken
+      - verify_result.same_main
+      - verify_result.leaked == 'no'
+      - verify_result.left == 0
+    fail_msg: >-
+      asked for an unknown repository refused (64), the push over the moved central forge refused naming
+      'Keep central work' and central/main with both mains kept and A on central/main (200), the merge taken (200),
+      the second push taken with both mains equal, no token in output or journal and no clone left; got
+      {{ verify_result }}
+  vars:
+    verify_result: "{{ verify_gathered.stdout | default('{}', true) | from_json }}"
