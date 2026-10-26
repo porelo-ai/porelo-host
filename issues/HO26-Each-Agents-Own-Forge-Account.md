@@ -43,3 +43,7 @@ logged or written anywhere but a file only root on the host reads.
   the second and the `-vvv` `up`; the token's digest is in no `-vvv` output, journal line or task container.
 - Seen red first only with fixtures outside the VM: without the token file and with the central push allowed, the same
   assertions fail; a planted token fails the digest search. A VM run without `agents.yml` was not made.
+- **On a rented host:** an agent pushes and so starts a workflow's `push` and `pull_request` runs, but a
+  `workflow_dispatch` is refused (`403`, "user should have a permission to write to a repo"), since team `agents`
+  reads Actions and writes only code, pulls and issues, as planned. An agent reads neither a job's log (`404` through
+  the API) nor the repository's push mirrors (`403`).
