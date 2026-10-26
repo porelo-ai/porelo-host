@@ -17,6 +17,9 @@ and `porelo`'s agents part (every offered agent and the project's transport pack
 or stop for a sign-in). A second `up` runs both plays from the top and changes only what differs, read from the
 commands' own exit codes and `--json` output, so resuming is idempotence, with no marker file of the playbook's own.
 
+The [local forge](local-forge.md) connects task branches and independent builds to the person's merge and gathered-push
+decisions.
+
 Where the host runs a forge, `~/.config/porelo/ca-certificates.pem` of Porelo's account keeps the forge's CA in a
 marked block beside the person's certificates, and `~/.config/porelo/task-ca-certificates.pem` holds that CA alone;
 both are mode `0600` in the account's `0700` Porelo configuration directory. `down` removes the marked block and the

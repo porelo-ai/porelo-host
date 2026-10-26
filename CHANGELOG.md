@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The README links the host lifecycle and the local forge's documentation.
+
 ## [0.5.3] - 2026-10-25
 
 ### Removed

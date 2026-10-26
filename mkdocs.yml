@@ -3,6 +3,7 @@ docs_dir: doc
 strict: true
 nav:
     - Overview: index.md
+    - The local forge: local-forge.md
     - What a program reads: lines.md
     - Testing: testing.md
     - Decisions: decisions.md

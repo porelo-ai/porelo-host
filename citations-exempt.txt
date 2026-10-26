@@ -1,0 +1,2 @@
+# SVG path commands resemble issue numbers.
+doc/images/local-forge-svg.py

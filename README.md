@@ -13,8 +13,8 @@ At down it stops every running task of the account, copies that data off and lea
 back. What keeps a guarantee stays Porelo's: the playbook calls Porelo's own commands for following a signed
 project and depositing keys.
 
-**The collection has no role yet**: it builds and is checked, and its roles are planned in
-[its issues](issues/README.md).
+The [host lifecycle](doc/index.md) explains setup and teardown. The [local forge](doc/local-forge.md) explains
+how task work is built and accepted locally, and which steps toward central publication remain unbuilt.
 
 **Requirements**: a host with Ubuntu 26.04; the playbook runs on the host itself, with the `ansible-core` Ubuntu
 carries (2.20; the collection needs 2.19 or newer), so the person's computer needs only ssh. Porelo in the version
