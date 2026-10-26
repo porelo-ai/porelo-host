@@ -21,8 +21,16 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho32"></a>[HO32](HO32-The-Gathered-Push-Refuses-A-Moved-Central-Forge.md) | M | - | `porelo-host-push`, started by the person on the host over ssh, pushes each repository's local `main` to the central forge without force, the central token asked for hidden; a moved central forge is refused, named and brought back as `central/main`. |
 | <a id="ho14"></a>[HO14](HO14-The-Collections-Python-Under-Ansible-Test-Sanity.md) | S | - | `ansible-test sanity` on the collection's Python in the Build, from a pinned image of its own. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | porelo-project [PJ45](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj45), porelo-message-matrix [MX24](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx24), porelo [B231](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b231), porelo-message-matrix [MX39](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx39) | Role `store`: restic pinned, each entry's own copy and restore command, an hourly user timer, a last copy at `down`, the restore before anything reads it. |
+
+## Analyzed
+
+| # | Size | Blocked by | What it covers | Open questions |
+|---|---|---|---|---|
+| <a id="ho29"></a>[HO29](HO29-The-Persons-Own-Web-Login-On-The-Forge.md) | S | - | The person signs in to the host's forge through the VPN as `operator`, an owner of the organization, the first password generated and fetched over ssh, then changed at the first sign-in. | 0 |
+| <a id="ho31"></a>[HO31](HO31-The-Accounts-Gate-And-Reader-On-The-Hosts-Forge.md) | M | [HO29](#ho29) | The account's gate pushes `porelo/<task>` to the forge by name over TLS, the `forgejo` reader is installed, the gate's token is in the vault alone, and `main` is protected so only the person's approved merge reaches it. | 0 |
 
 ## Accepted
 
@@ -35,7 +43,6 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho30"></a>[HO30](HO30-The-Forges-Trust-And-Job-Bounds-Measured.md) | - | - | A running job's container measured to carry its bounds, and when Porelo reads the forge's CA, beyond what Molecule reads from the files the roles write. |
-| <a id="ho29"></a>[HO29](HO29-The-Persons-Own-Web-Login-On-The-Forge.md) | - | - | The person signs in to the host's forge in a browser through the VPN with an account of their own, and sees the private repositories, runs and packages; its password passes through no inventory, variable or log. |
 | <a id="ho28"></a>[HO28](HO28-The-Forges-Events-Routed-To-Each-Accounts-Porelo.md) | - | - | Optional speed-up: the forge's webhooks, reviews included, reported to one router on the host, which checks the signature and hands only a wake-up hint to the daemon of the account whose task it concerns, known from the pusher's forge account or the pull request's branch. |
 | <a id="ho27"></a>[HO27](HO27-The-Forges-Jobs-Told-Where-The-Pool-Is.md) | - | porelo-buildtools [BT25](https://github.com/porelo-ai/porelo-buildtools/blob/main/issues/README.md#bt25) | The forge's runner tells every job where the VM pool is, so one workflow takes a pool account on the forge and rents a server on GitHub. |
 | <a id="ho24"></a>[HO24](HO24-The-Setup-Runs-To-Its-End-On-The-Host.md) | - | - | `up`'s playbook runs on the host to its end whoever watches, and `porelo-host` attaches to it again when started again. |
