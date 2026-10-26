@@ -16,7 +16,7 @@ hint (repository, pull request number, branch, kind of event) - never content.
 - **The router checks `X-Forgejo-Signature`** (HMAC-SHA256 with a secret the role generates on the host and never
   prints) and limits size and rate before it parses JSON; a report that fails is dropped.
 - **The account is known from the push:** each daemon pushes with the forge account of its own person
-  ([HO26](README.md#ho26) makes one per agent today), so the forge names the pusher of every branch, pull request and
+  (the `forge` role makes one per agent today), so the forge names the pusher of every branch, pull request and
   merge, and the role keeps the map from forge account to the host's account.
 - **For review and comment events the sender is the reviewer,** so the account is found from the pull request's head
   branch or its author, never from the sender.
@@ -42,7 +42,7 @@ A report carries text anybody with a forge account can write, so it may wake a d
 - Which Forgejo webhook events the role subscribes - `pull_request`, `pull_request_review_approved`,
   `pull_request_review_rejected`, `pull_request_review_comment`, `pull_request_review_request`, `issue_comment` - and
   their headers `X-Forgejo-Event`, `X-Forgejo-Delivery`, `X-Forgejo-Signature`, to be confirmed against the Forgejo
-  version the `forge` role pins in [HO08](README.md#ho08).
+  version the `forge` role pins in `roles/forge/vars/main.yml`.
 - Whether the webhook is a system webhook or one per organization: the role's admin token holds only
   `write:organization` and `write:repository`, so a system webhook needs a wider token or the forge's own command line.
 - Whether Forgejo sends a webhook when an Actions run ends; if not, the build's end is reported by a workflow step to

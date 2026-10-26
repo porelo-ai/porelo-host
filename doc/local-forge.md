@@ -61,6 +61,11 @@ The local address uses the VPN address and port reached by a runner job; the def
 organization is `porelo`. The forge's browser address is `https://forge.porelo.internal/`. Jobs trust the host's CA
 through the runner's certificate bundle and JVM trust store.
 
+Two differences from GitHub reach a job. The JVM trust store comes through `JAVA_TOOL_OPTIONS`, so every JVM a job
+starts announces it on stderr; a test that reads a child JVM's stderr together with its output must keep them apart.
+The organization and its repositories are private, so a step that fetches again after a checkout without credentials
+fails, where GitHub's public repository needs none.
+
 **`PORELO_PUBLISH=false` still deploys snapshots to the forge's registry** when the workflow's deploy conditions hold.
 `PORELO_DEPLOY_PROFILE` selects that destination. For example, the buildtools workflow deploys on `main` pushes and
 version tags; its deployment job is not switched off by `PORELO_PUBLISH`. Registry credentials also allow a workflow to
@@ -102,6 +107,11 @@ configured. Its team can write the organization's code, pull requests and issues
 cannot create repositories. Its token is written into `/etc/porelo-host/forge/agents/<name>.token`, owned by root, mode
 `0600`, in a `0700` directory. An existing file is kept across `up`; removing an inventory name does not delete the
 account or token. These accounts carry no authority to write to the central forge.
+
+An agent's push starts the workflows' `push` and `pull_request` runs, but the forge refuses it a `workflow_dispatch`
+(`403`), since the team only reads Actions. Its token also reads no job's log (`404` through the API), no push mirror
+(`403`) and not its own user (`403`, no `read:user` scope). No person has a password for the forge's web pages, so a
+job's log is read from Forgejo's data on the host.
 
 The registry publisher is a separate account. Its package token stays with Forgejo and runner jobs as
 `PORELO_PUBLISHER_TOKEN`; it is not handed to tasks. The host build reader's credential and a task's declared service

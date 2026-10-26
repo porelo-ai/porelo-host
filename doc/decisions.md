@@ -18,6 +18,11 @@ says why.
 | The changelog | `CHANGELOG.md`, Keep a Changelog, as in every Porelo repository; no `antsibull-changelog`. | [Why](#the-changelog) |
 | An agent is installed from Porelo's catalogue as it is | Every package named as kind `agent` is installed; the catalogue reads every apt source on the host. | [Why](#an-agent-is-installed-from-porelos-catalogue-as-it-is) |
 | Porelo's setup script | It comes in the `porelo` package from Porelo's apt repository, which the role adds by its pinned fingerprint. | [Why](#porelos-setup-script) |
+| The forge's accounts | Forgejo and its runner run as `porelo-forge` and `porelo-runner`, never as Porelo's account. | [Why](#the-forges-accounts) |
+| Whether the forge runs | A host setting, `porelo_host_forge`, written by the interface beside the account; Porelo changes nothing for it. | [Why](#whether-the-forge-runs) |
+| How a job publishes to the registry | With the account `porelo-publisher`'s package token, an organization Actions secret, on every branch. | [Why](#how-a-job-publishes-to-the-registry) |
+| No push mirrors | The forge pushes nothing to the central forge; the gathered push is a plain `git push` without force. | [Why](#no-push-mirrors) |
+| The same workflows on both forges | GitHub's workflows run unchanged on the forge; only variables and secrets differ. | [Why](#the-same-workflows-on-both-forges) |
 
 ## The Ansible tools
 
@@ -142,3 +147,36 @@ needs no change.
 The role adds Porelo's apt repository only once the downloaded signing key has the fingerprint Porelo's
 `getting-started.md` pins, installs `porelo` from it, and runs `/usr/share/porelo/setup/porelo-setup.sh` from that
 package for the account and the extra packages, rather than fetching an unpinned script or keeping a copy here.
+
+## The forge's accounts
+
+A task's container must not share a user namespace with what holds the forge's admin and the person's central token,
+and a job's code must reach neither. So Forgejo runs as `porelo-forge` and its runner as `porelo-runner`, each with
+linger and subordinate ids of its own; only `porelo-runner` is in `kvm`, since a job may drive a VM.
+
+## Whether the forge runs
+
+The forge belongs to the machine, not to a project: `porelo_host_forge` (default `false`) is written by the interface's
+`host up` into the first inventory, beside the account. A project's file asks for nothing, so Porelo needs no change.
+
+## How a job publishes to the registry
+
+A run's own token cannot write the organization's registry: Forgejo answers `401` from its package access check,
+measured on Forgejo 17. So `up` makes the account `porelo-publisher`, in a team that writes the organization's packages
+and nothing else, and sets its token as the organization's Actions secret `PORELO_PUBLISHER_TOKEN`. Every build
+publishes its snapshots with it, an unreviewed task branch's too; the token stays in Forgejo and the runner's jobs and
+reaches no task.
+
+## No push mirrors
+
+Forgejo's push mirror force-pushes: with commit A on central `main` and B on the host's, a sync answered `200` and A was
+gone, measured. So the role configures none. Work leaves through the gathered push, a plain `git push` without force,
+which refuses when the central forge moved.
+
+## The same workflows on both forges
+
+A workflow that branches on the forge it runs on is tested on one of them only. So the runner offers GitHub's labels on
+an image close to GitHub's, takes actions from github.com by their pins and offers the JDK as `JAVA_HOME_25_X64`, and
+the organization holds the variables and placeholder secrets the workflows read; snapshots go to the forge's own Maven
+registry. Where the forges still differ, a job sees it: the runner sets `JAVA_TOOL_OPTIONS` for the host's trust store,
+and the repositories are private.

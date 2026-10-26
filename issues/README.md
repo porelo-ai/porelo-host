@@ -15,10 +15,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho26"></a>[HO26](HO26-Each-Agents-Own-Forge-Account.md) | S | - | Role `forge`: each agent `porelo_host_forge_agents` names gets an account in team `agents`, which writes the organization's repositories, and a token written only into a root-only file on the host. |
-| <a id="ho08"></a>[HO08](HO08-The-Forge-With-Its-Registry.md) | L | - | Role `forge`: Forgejo and its runner in rootless podman under two accounts of their own, on the VPN and the tasks' address only, its registry over TLS from a CA made on the host, the project's repositories migrated from the central forge without push mirrors, credentials made and kept on the host, every build publishing with a publisher's token kept as an Actions secret, GitHub's workflows running 1:1 on its runner; run where the host setting `porelo_host_forge` asks for it. |
-| <a id="ho17"></a>[HO17](HO17-The-Forges-CA-In-Porelos-Account.md) | XS | - | Role `porelo`: the host's forge CA in `~/.config/porelo/ca-certificates.pem` for host clients, including the build reader and broker, and alone in `task-ca-certificates.pem` for tasks' declared host services, owner-only; `down` takes it out of both. |
-| <a id="ho20"></a>[HO20](HO20-Every-Container-Of-The-Host-Fits-The-Machine.md) | M | - | The forge's and runner's quadlets, the runner's job containers and the VM pool bounded to fit a host of any size, porelo-project's [PJ68](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj68) for porelo-host. |
 | <a id="ho12"></a>[HO12](HO12-The-VM-Pool.md) | L | - | Role `vm_pool`: VMs with run accounts `porelo-machines` rents from, made by the same code as the test VM, deleted by name at `down`. |
 
 ## Backlog
@@ -38,6 +34,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho30"></a>[HO30](HO30-The-Forges-Trust-And-Job-Bounds-Measured.md) | - | - | A running job's container measured to carry its bounds, and when Porelo reads the forge's CA, beyond what Molecule reads from the files the roles write. |
 | <a id="ho29"></a>[HO29](HO29-The-Persons-Own-Web-Login-On-The-Forge.md) | - | - | The person signs in to the host's forge in a browser through the VPN with an account of their own, and sees the private repositories, runs and packages; its password passes through no inventory, variable or log. |
 | <a id="ho28"></a>[HO28](HO28-The-Forges-Events-Routed-To-Each-Accounts-Porelo.md) | - | - | Optional speed-up: the forge's webhooks, reviews included, reported to one router on the host, which checks the signature and hands only a wake-up hint to the daemon of the account whose task it concerns, known from the pusher's forge account or the pull request's branch. |
 | <a id="ho27"></a>[HO27](HO27-The-Forges-Jobs-Told-Where-The-Pool-Is.md) | - | porelo-buildtools [BT25](https://github.com/porelo-ai/porelo-buildtools/blob/main/issues/README.md#bt25) | The forge's runner tells every job where the VM pool is, so one workflow takes a pool account on the forge and rents a server on GitHub. |
@@ -55,6 +52,10 @@ it is left out.
 
 | # | Title | What was built |
 |---|---|---|
+| <a id="ho26"></a>HO26 | Each Agent's Own Forge Account | Each agent the host's settings name gets an account `agent-<name>` on the host's forge in team `agents`, which writes the organization's code, pull requests and issues, with a token written only into a root-only file on the host. |
+| <a id="ho08"></a>HO08 | The Forge With Its Registry | Where the host's settings ask for it, `up` runs Forgejo with its Actions runner and package registry in rootless podman under two accounts of their own, reached by name over TLS with the host's CA through the VPN, its repositories migrated once from the central forge with no push mirror, and `down` takes it off. |
+| <a id="ho17"></a>HO17 | The Forge's CA In Porelo's Account | `up` puts the forge's CA into Porelo's account, as a marked block in `~/.config/porelo/ca-certificates.pem` for host clients and alone in `~/.config/porelo/task-ca-certificates.pem` for tasks, and `down` takes it out. |
+| <a id="ho20"></a>HO20 | Every Container Of The Host Fits The Machine | The forge, its runner and each job are bounded by fixed CPU, memory and process limits, and `up` refuses an account without the `cpu`, `memory` and `pids` controllers and a VM pool larger than half the host's memory. |
 | <a id="ho25"></a>HO25 | The Stop Asks Again Until It Is Done | At `up`'s stop, `porelo-host-stop` asks a mistyped Tresorit login or vault passphrase again in the same terminal until it succeeds or the person cancels, with exits the interface reads. |
 | <a id="ho21"></a>HO21 | Each Step Says What It Does And How Long | Each of the playbooks' sixteen steps carries a plain-words text and its usual duration as its own variables, which its `started` line passes on after a plan line of the run ahead, `v` staying 1. |
 | <a id="ho13"></a>HO13 | A Release Carries Its Tarball And Digest | A release attaches the collection's tarball and its `SHA256SUMS`, stopping before anything is attached if the tag is not `galaxy.yml`'s plain version, so `host up` can refuse any other. |
