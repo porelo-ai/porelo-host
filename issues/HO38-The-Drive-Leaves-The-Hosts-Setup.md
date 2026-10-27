@@ -1,6 +1,6 @@
 # HO38 — The Drive Leaves The Host's Setup
 
-**Status:** Analyzed; blocked by [HO36](README.md#ho36).
+**Status:** Backlog; blocked by [HO36](README.md#ho36).
 **Size:** L - `up` and `down` run the drive's step only where the person chose a drive, the role changes whose account
 it serves, the drive's login moves to the person's account, and that account is a contract with porelo-frontend, whose
 [F201](https://github.com/porelo-ai/porelo-frontend/blob/main/issues/README.md#f201) mounts the drive from it.
