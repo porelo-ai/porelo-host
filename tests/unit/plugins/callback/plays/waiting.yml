@@ -6,5 +6,5 @@
   tasks:
       - name: Stop for the person's step
         ansible.builtin.fail:
-            msg: '{{ ["drive", "vault-new"] | to_json }}'
+            msg: '{{ ["vault-new", "keys", "wireguard"] | to_json }}'
         tags: [porelo_host_waiting]

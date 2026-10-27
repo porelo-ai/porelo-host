@@ -1,7 +1,7 @@
 ---
 # What `host down` runs on the host itself, with `-c local`, before the host is given back. Its steps come with the
 # roles that bring something up, the other way round: the store's last copy first, which must succeed before anything
-# stops; then the tasks and services; then the vault; then the VPN; the drive synced and unmounted last. Each takes
+# stops; then the tasks and services; then the vault; then the VPN; the person's key off the account last. Each takes
 # down only what is there, so it also follows a failed `up`.
 - name: Take the host down
   hosts: localhost
@@ -44,16 +44,7 @@
           text: Closing the VPN
           seconds: 10
 
-    - name: Take the person's drive down, last
-      ansible.builtin.include_role:
-        name: porelo.host.drive
-        tasks_from: down
-      vars:
-        porelo_host_step:
-          text: Syncing and closing the drive
-          seconds: 10
-
-    - name: Take the person's key off the account, after the drive
+    - name: Take the person's key off the account
       ansible.builtin.include_role:
         name: porelo.host.base
         tasks_from: down

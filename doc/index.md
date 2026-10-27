@@ -5,13 +5,11 @@ Brings a Porelo project up on a server and takes it down again, owned or rented 
 
 **`porelo.host.up`, in two plays around the person's step.** The first play runs `base` (packages, KVM with libvirt,
 podman), `porelo`'s install and setup script (which makes Porelo's account with linger and subordinate ids), `base`'s
-account part (the account in `kvm` and `libvirt`, and the person's ssh key on the account for the stop), `drive` (the
-`noexec` folder, and the drive's client syncing the person's folder when logged in: Tresorit's, the one provider
-implemented today), and `porelo setup` with `porelo vault status`, and `vpn`'s needs part (whether the host's VPN key is
-there). Each role that needs the person's step adds what is missing (`drive`, `vault-new` with `keys`, `vault`, or
-`wireguard`) to `porelo_host_needs`. The second play stops first with a [waiting line](lines.md) while
-`porelo_host_needs` is not empty; the person's stop gives every need but the drive's login on [standard
-input](lines.md), from their secrets file on the desktop. Once the drive is synced and the vault is open, it runs `vpn`
+account part (the account in `kvm` and `libvirt`, and the person's ssh key on the account for the stop), `porelo setup`
+with `porelo vault status`, and `vpn`'s needs part (whether the host's VPN key is there). Each role that needs the
+person's step adds what is missing (`vault-new` with `keys`, `vault`, or `wireguard`) to `porelo_host_needs`. The second
+play stops first with a [waiting line](lines.md) while `porelo_host_needs` is not empty; the person's stop gives every
+need on [standard input](lines.md), from their secrets file on the desktop. Once the vault is open, it runs `vpn`
 (WireGuard with the host's key, which the stop wrote into `/etc/wireguard`, read by `wg` itself, and nftables leaving
 only ssh and the VPN on the public interfaces), `porelo`'s project part (the machine file read from
 `/etc/porelo-host/setup/`, where the interface uploaded it, each key of the machine file checked in the vault, where the
@@ -39,8 +37,7 @@ half of `MemTotal`, naming both sides.
 it also refuses a pool whose memory (systems × accounts per system × memory per VM) exceeds half of `MemTotal`,
 naming the pool's memory and the host's total memory.
 
-**`porelo.host.down`, the other way round.** Takes the VM pool and the forge off the host, stops every running task
-of the account with `porelo task stop --all` and clears
-the vault (`porelo vault clear --yes`), stops the VPN, waits for the drive to finish syncing before logging the client
-out with `--unlink` and unmounting the folder, and takes the person's ssh key off the account last. Every step takes
-down only what is there, so `down` after a failed `up` works too.
+**`porelo.host.down`, the other way round.** Takes the VM pool and the forge off the host, stops every running task of
+the account with `porelo task stop --all` and clears the vault (`porelo vault clear --yes`), stops the VPN, and takes
+the person's ssh key off the account last. Every step takes down only what is there, so `down` after a failed `up` works
+too.

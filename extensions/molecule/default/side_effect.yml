@@ -1,12 +1,11 @@
 ---
 # Runs `down` on the host itself, as `host down` does, after verify has read what `up` left, and reads what `down`
-# leaves: the VPN taken down, the client logged out and unlinked, the drive unmounted.
+# leaves: the VPN taken down, the vault cleared, nothing of the setup's files, keys or tokens left.
 - name: Side effect
   hosts: all
   gather_facts: false
   become: true
   vars:
-    side_effect_drive: /srv/porelo-host/drive
     side_effect_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
     side_effect_forge: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_FORGE', default='on') }}"
   tasks:
@@ -108,68 +107,6 @@
         fail_msg: /run/porelo-host/forge-central.token is not there after the stop was given it
       when: side_effect_forge == 'on'
 
-    # First a down whose drive never reads synced: it must stop on the drive, saying what would be lost, and keep it.
-    - name: Keep the stub's tresor syncing
-      ansible.builtin.file:
-        path: /home/porelo-test/.local/share/tresorit/stub-state/never-idle
-        state: touch
-        owner: porelo-test
-        group: porelo-test
-        mode: "0644"
-        modification_time: preserve
-        access_time: preserve
-
-    - name: Run down while the drive does not read synced
-      ansible.builtin.command:
-        cmd: ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.down -e drive_sync_wait=10
-      environment:
-        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
-        LC_ALL: C.UTF-8
-      register: side_effect_unsynced
-      changed_when: true
-      failed_when: false
-
-    - name: Read every running container after down with the unsynced drive
-      ansible.builtin.command:
-        argv: [podman, ps, --format, "{% raw %}{{.Names}}{% endraw %}"]
-      become: true
-      become_user: porelo-test
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd']['porelo-test'][1] }}"
-      register: side_effect_unsynced_containers
-      changed_when: false
-
-    - name: Assert down stopped every container before it reached the unsynced drive
-      ansible.builtin.assert:
-        that: side_effect_unsynced_containers.stdout_lines | length == 0
-        fail_msg: >-
-          asked for no running container after down, got {{ side_effect_unsynced_containers.stdout_lines }};
-          down rc {{ side_effect_unsynced.rc }}: {{ side_effect_unsynced.stdout }}
-
-    - name: Read whether the drive is still mounted after it
-      ansible.builtin.command:
-        cmd: findmnt --noheadings --mountpoint {{ side_effect_drive }}
-      register: side_effect_kept
-      changed_when: false
-      failed_when: false
-
-    - name: Assert down stopped on the drive, saying what would be lost, and left it mounted and logged in
-      ansible.builtin.assert:
-        that:
-          - side_effect_unsynced.rc == 2
-          - side_effect_unsynced.stdout is search('did not read synced within 10 s')
-          - side_effect_unsynced.stdout is search('would be lost with the host')
-          - side_effect_kept.rc == 0
-        fail_msg: >-
-          down with an unsynced drive gave rc {{ side_effect_unsynced.rc }}:
-          {{ side_effect_unsynced.stdout_lines | select('search', 'failed') | list }};
-          mount rc {{ side_effect_kept.rc }}
-
-    - name: Let the stub's tresor read synced again
-      ansible.builtin.file:
-        path: /home/porelo-test/.local/share/tresorit/stub-state/never-idle
-        state: absent
-
     - name: Run down on the host itself, as host down does, its steps as JSON lines
       # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.
       ansible.builtin.shell:
@@ -184,6 +121,23 @@
       failed_when: false
       changed_when: >-
         side_effect_down.stdout is search('"state": "changed"')
+
+    - name: Read every running container of the account after down
+      ansible.builtin.command:
+        argv: [podman, ps, --format, "{% raw %}{{.Names}}{% endraw %}"]
+      become: true
+      become_user: porelo-test
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd']['porelo-test'][1] }}"
+      register: side_effect_containers_after_down
+      changed_when: false
+
+    - name: Assert down stopped every container of the account
+      ansible.builtin.assert:
+        that: side_effect_containers_after_down.stdout_lines | length == 0
+        fail_msg: >-
+          asked for no running container after down, got {{ side_effect_containers_after_down.stdout_lines }};
+          down rc {{ side_effect_down.rc }}: {{ side_effect_down.stdout }}
 
     # The steps' durations as this run measured them, from each step's start to the next line after its last; read by
     # hand into the playbooks' porelo_host_step blocks, nothing asserted.
@@ -309,18 +263,6 @@
           {{ side_effect_gathered.results | selectattr('stat.exists') | map(attribute='item') | list }}
       when: side_effect_forge == 'on'
 
-    - name: Read whether the drive's folder is still mounted
-      ansible.builtin.command:
-        cmd: findmnt --noheadings --mountpoint {{ side_effect_drive }}
-      register: side_effect_mount
-      changed_when: false
-      failed_when: false
-
-    - name: Assert down left the drive unmounted
-      ansible.builtin.assert:
-        that: side_effect_mount.rc != 0
-        fail_msg: "{{ side_effect_drive }} is still mounted after down: {{ side_effect_mount.stdout }}"
-
     - name: Read whether the VPN's interface is still there
       ansible.builtin.command:
         cmd: ip link show wg-porelo
@@ -357,16 +299,6 @@
         fail_msg: >-
           after down these are still there:
           {{ side_effect_stop_files.results | selectattr('stat.exists') | map(attribute='item') | list }}
-
-    - name: Read the client's stub's state after down
-      ansible.builtin.find:
-        paths: /home/porelo-test/.local/share/tresorit/stub-state
-      register: side_effect_stub
-
-    - name: Assert down logged the client out with --unlink and stopped every sync
-      ansible.builtin.assert:
-        that: side_effect_stub.files | map(attribute='path') | map('basename') | list == ['unlinked']
-        fail_msg: "the stub's state after down: {{ side_effect_stub.files | map(attribute='path') | list }}"
 
     - name: Ask Porelo whether the account still has a vault
       ansible.builtin.command:
@@ -512,12 +444,12 @@
         the pool's keys and no revert unit
       ansible.builtin.assert:
         that:
-          - side_effect_pool_secret | map(attribute='state') | list == ['changed', 'ok']
+          - side_effect_pool_secret | map(attribute='state') | list == ['changed']
           - side_effect_pool_left.stdout | trim == ''
         fail_msg: "after down: secret {{ side_effect_pool_secret }}; left {{ side_effect_pool_left.stdout_lines }}"
       vars:
         side_effect_pool_secret: >-
-          {{ (side_effect_unsynced.stdout_lines + side_effect_down.stdout_lines) | select | map('from_json')
+          {{ side_effect_down.stdout_lines | select | map('from_json')
           | selectattr('task', 'defined')
           | selectattr('task', 'search', "down \\| Delete the run key's Actions secret from the forge")
           | rejectattr('state', 'equalto', 'started') | list }}

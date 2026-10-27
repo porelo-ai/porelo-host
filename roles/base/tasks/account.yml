@@ -45,8 +45,8 @@
 - name: account | Check the controllers before Porelo can start containers
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/controllers.yml"
 
-# The person reaches the account itself over ssh: porelo's own way to open its vault (doc/hosts.md), and the way
-# porelo-host logs the drive in. Their one key is added, and nothing else of the file is touched.
+# The person reaches the account itself over ssh: porelo's own way to open its vault (doc/hosts.md). Their one key is
+# added, and nothing else of the file is touched.
 - name: account | Make the account's ssh directory
   ansible.builtin.file:
     path: "{{ ansible_facts['getent_passwd'][base_account][4] }}/.ssh"

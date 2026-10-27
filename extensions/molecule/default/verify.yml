@@ -11,7 +11,6 @@
     verify_vault_passphrase: converge-passphrase
     verify_setup_script: "{{ (lookup('ansible.builtin.file', playbook_dir
       ~ '/../../../roles/porelo/defaults/main.yml') | from_yaml).porelo_setup_script }}"
-    verify_drive: /srv/porelo-host/drive
     verify_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
     verify_forge: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_FORGE', default='on') }}"
     verify_forge_inventory: "{{ '-i /root/porelo-host-forge.yml' if verify_forge == 'on' else '' }}"
@@ -279,48 +278,28 @@
           {{ verify_account }}'s rootless podman mapped {{ verify_account_podman.stdout_lines }}
           (rc {{ verify_account_podman.rc }}: {{ verify_account_podman.stderr }})
 
-    # The drive role, with a local folder in the tresor's place: its own filesystem, nothing run from it.
-    - name: Read how the drive's folder is mounted
-      ansible.builtin.command:
-        cmd: findmnt --noheadings --output OPTIONS --mountpoint {{ verify_drive }}
-      register: verify_drive_mount
+    # Nothing of Tresorit is on a host: no client in the account, no unit of it, nothing mounted for a drive.
+    - name: Read whether anything of Tresorit or a drive is on the host
+      ansible.builtin.shell:
+        cmd: |
+          set -uo pipefail
+          home=/home/{{ verify_account }}
+          [ -e "$home/.local/share/tresorit" ] && echo "client: $home/.local/share/tresorit"
+          command -v tresorit-cli && echo "client on PATH"
+          find /etc/systemd /usr/lib/systemd "$home/.config/systemd" \
+              \( -iname '*tresorit*' -o -iname '*drive*.mount' \) 2>/dev/null | sed 's/^/unit: /'
+          findmnt --noheadings --output TARGET | grep -F /srv/porelo-host | sed 's/^/mount: /'
+          [ -e /srv/porelo-host/drive ] && echo "folder: /srv/porelo-host/drive"
+          [ -e /var/lib/porelo-host/drive.img ] && echo "image: /var/lib/porelo-host/drive.img"
+          exit 0
+        executable: /bin/bash
+      register: verify_tresorit
       changed_when: false
-      failed_when: false
 
-    - name: Assert the drive's folder is a filesystem of its own, mounted noexec, nosuid and nodev
+    - name: Assert nothing of Tresorit or a drive is on the host
       ansible.builtin.assert:
-        that:
-          - verify_drive_mount.rc == 0
-          - verify_drive_mount.stdout.split(',') is superset(['noexec', 'nosuid', 'nodev'])
-        fail_msg: >-
-          {{ verify_drive }} is mounted with '{{ verify_drive_mount.stdout }}' (rc {{ verify_drive_mount.rc }})
-
-    - name: Put a script into the drive as the account
-      ansible.builtin.copy:
-        dest: "{{ verify_drive }}/verify-noexec.sh"
-        content: "#!/bin/sh\necho ran\n"
-        mode: "0755"
-      become: true
-      become_user: "{{ verify_account }}"
-
-    - name: Run that script as the account
-      ansible.builtin.command:
-        cmd: "{{ verify_drive }}/verify-noexec.sh"
-      become: true
-      become_user: "{{ verify_account }}"
-      register: verify_drive_run
-      changed_when: false
-      failed_when: false
-
-    - name: Remove the script again
-      ansible.builtin.file:
-        path: "{{ verify_drive }}/verify-noexec.sh"
-        state: absent
-
-    - name: Assert the script was refused
-      ansible.builtin.assert:
-        that: verify_drive_run.rc != 0 and verify_drive_run.stdout != 'ran'
-        fail_msg: "a script in {{ verify_drive }} ran: rc {{ verify_drive_run.rc }}, {{ verify_drive_run.stdout }}"
+        that: verify_tresorit.stdout_lines | length == 0
+        fail_msg: "asked for nothing of Tresorit or a drive on the host, found {{ verify_tresorit.stdout_lines }}"
 
     # The vpn role: a service bound to every address is reached through the VPN, from a peer in a network namespace of
     # its own, and refused on the public address, from where Molecule itself connects.
@@ -477,36 +456,6 @@
         that: (verify_host_key.content | b64decode | trim) not in (verify_key_lines.content | b64decode)
         fail_msg: the host's private VPN key appears in up's lines
       no_log: true
-
-    # The drive's client, the stub in its place: the person's tresor syncs into the drive's folder, nothing else does.
-    - name: Read where the client syncs each tresor to
-      ansible.builtin.command:
-        cmd: /home/{{ verify_account }}/.local/share/tresorit/tresorit-cli -p tresors
-      become: true
-      become_user: "{{ verify_account }}"
-      register: verify_tresors
-      changed_when: false
-
-    - name: Assert only the person's tresor syncs, into the drive's folder
-      ansible.builtin.assert:
-        that: verify_tresors.stdout_lines | map('split', '\t') | map('batch', 2) | map('first') | list
-          == [['porelo-test-drive', verify_drive], ['porelo-test-other', '-']]
-        fail_msg: "the client syncs: {{ verify_tresors.stdout_lines }}"
-
-    - name: Read the client's daemon's user unit
-      ansible.builtin.systemd_service:
-        name: tresorit-daemon.service
-        scope: user
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      register: verify_daemon
-
-    - name: Assert the daemon runs
-      ansible.builtin.assert:
-        that: verify_daemon.status.ActiveState == 'active'
-        fail_msg: "tresorit-daemon.service is {{ verify_daemon.status.ActiveState | default(verify_daemon) }}"
 
     - name: Verify the agent's credential and its repository access after idempotence
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_agents.yml"
@@ -832,7 +781,7 @@
     - name: Read the machine's key, only to search the run's output for it
       ansible.builtin.slurp:
         src: /root/secrets/converge-key
-      register: verify_drive_key
+      register: verify_machine_key
       no_log: true
 
     - name: Search the journal and Ansible's directories for the machine's key
@@ -863,7 +812,7 @@
               fi
           done
         executable: /bin/bash
-      register: verify_drive_key_search
+      register: verify_machine_key_search
       changed_when: false
       no_log: true
 
@@ -871,16 +820,16 @@
       ansible.builtin.assert:
         that:
           - verify_vault_after_vvv.stdout is search('^converge-key ', multiline=True)
-          - (verify_drive_key.content | b64decode | trim) | length > 20
-          - (verify_drive_key.content | b64decode | trim) not in (verify_vvv.stdout + verify_vvv.stderr)
-          - verify_drive_key_search.stdout_lines | length == 3
-          - verify_drive_key_search.stdout_lines[0] is match('journal')
-          - verify_drive_key_search.stdout_lines | reject('search', ' (clean|absent)$') | list | length == 0
+          - (verify_machine_key.content | b64decode | trim) | length > 20
+          - (verify_machine_key.content | b64decode | trim) not in (verify_vvv.stdout + verify_vvv.stderr)
+          - verify_machine_key_search.stdout_lines | length == 3
+          - verify_machine_key_search.stdout_lines[0] is match('journal')
+          - verify_machine_key_search.stdout_lines | reject('search', ' (clean|absent)$') | list | length == 0
         fail_msg: >-
           asked for converge-key in the vault and its value in no -vvv output, journal or ~/.ansible file;
           vault list gave '{{ verify_vault_after_vvv.stdout }}',
-          in -vvv: {{ (verify_drive_key.content | b64decode | trim) in (verify_vvv.stdout + verify_vvv.stderr) }},
-          search gave {{ verify_drive_key_search.stdout_lines }}
+          in -vvv: {{ (verify_machine_key.content | b64decode | trim) in (verify_vvv.stdout + verify_vvv.stderr) }},
+          search gave {{ verify_machine_key_search.stdout_lines }}
       no_log: true
 
     # A vault passphrase leaked by up must be caught in its output, the whole journal and persistent host files.
@@ -931,7 +880,7 @@
               result=$(search "$work/journal")
               echo "journal: $result"
               # One grep per batch of files, not per file: the account's container storage holds very many.
-              for dir in /root /home /srv/porelo-host /etc /var/log; do
+              for dir in /root /home /srv /etc /var/log; do
                   : > "$work/hits"; : > "$work/errors"
                   find "$dir" \( -path /root/.ansible/tmp -o -path /root/secrets \
                       -o -path {{ (verify_account_home ~ '/.ansible/tmp') | quote }} \) \
@@ -989,7 +938,7 @@
           - 'journal: clean'
           - '/root: clean'
           - '/home: clean'
-          - '/srv/porelo-host: clean'
+          - '/srv: clean'
           - '/etc: clean'
           - '/var/log: clean'
 
@@ -1129,9 +1078,9 @@
         fail_msg: "asked for porelo-converge-converge-1 to be stopped, got: {{ verify_stopped_task.stdout }}"
 
     # Read as up left them, before any test below changes them.
-    - name: Read the setup's directory and files, and search the drive for any of them
+    - name: Read the setup's directory and files, and search /srv for any of them
       ansible.builtin.find:
-        paths: [/etc/porelo-host/setup, /srv/porelo-host/drive]
+        paths: [/etc/porelo-host/setup, /srv]
         recurse: true
         file_type: any
         patterns: ["machine.yml", "*.bundle"]
@@ -1644,7 +1593,7 @@
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_push.yml"
       when: verify_forge == 'on'
 
-    # A key file missing on the drive stops the vpn role before the firewall's rules are written again.
+    # A key file missing stops the vpn role before the firewall's rules are written again.
 
     # The VM pool: one VM per run account, its file for porelo-machines holding no key, its run key on the host alone
     # and reaching jobs as the forge organization's Actions secret, and a give-back that leaves nothing of the run on
@@ -1772,7 +1721,7 @@
       ansible.builtin.command:
         cmd: >-
           ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.up
-          -e vpn_private_key_path=/srv/porelo-host/drive/porelo-host/no-such.key -e vpn_ssh_port=2222
+          -e vpn_private_key_path=/etc/wireguard/no-such.key -e vpn_ssh_port=2222
       environment:
         ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
         LC_ALL: C.UTF-8
@@ -1791,7 +1740,7 @@
           - verify_no_key.rc == 2
           - >-
             verify_no_key.stdout is search('wireguard: no key file of root.s alone, mode 0600, at
-            /srv/porelo-host/drive/porelo-host/no-such.key')
+            /etc/wireguard/no-such.key')
           - verify_rules_after.stat.checksum == verify_rules_before.stat.checksum
         fail_msg: "up without the key gave rc {{ verify_no_key.rc }}: {{ verify_no_key.stdout_lines | select('search',
           'failed') | list }}; rules {{ verify_rules_before.stat.checksum }} -> {{ verify_rules_after.stat.checksum }}"
@@ -1921,7 +1870,7 @@
           {{ (verify_homeserver_conf.content | b64decode).splitlines()
           | select('match', '^PORELO_MATRIX_PORT=[0-9]+$') | map('split', '=') | map('last') | first | default('') }}
 
-    # base: the person reaches the account itself over ssh, as porelo-host does for the drive's login and the vault.
+    # base: the person reaches the account itself over ssh, as porelo's doc/hosts.md has them open the vault.
     - name: Log in over ssh as the account with the person's key, and ask Porelo for the vault
       ansible.builtin.command:
         argv: [ssh, -o, BatchMode=yes, -o, IdentitiesOnly=yes, -o, StrictHostKeyChecking=accept-new,
@@ -1935,26 +1884,6 @@
       ansible.builtin.assert:
         that: verify_person_ssh.rc == 0 and verify_person_ssh.stdout is search('^open', multiline=True)
         fail_msg: "ssh as {{ verify_account }}: rc {{ verify_person_ssh.rc }}, {{ verify_person_ssh.stderr }}"
-
-    # The drive's login, as porelo-host runs it: over ssh as the account, the client by name, the account's daemon.
-    - name: Ask the drive's client by name over ssh as the account, as porelo-host's drive step does
-      ansible.builtin.command:
-        argv: [ssh, -o, BatchMode=yes, -o, IdentitiesOnly=yes, -o, StrictHostKeyChecking=accept-new,
-               -o, UserKnownHostsFile=/root/person-known-hosts, -i, /root/person-ssh, "{{ verify_account }}@127.0.0.1",
-               "XDG_RUNTIME_DIR=/run/user/$(id -u) tresorit-cli -p status"]
-      register: verify_person_client
-      changed_when: false
-      failed_when: false
-
-    - name: Assert the client is found by name and reaches the account's daemon
-      ansible.builtin.assert:
-        that:
-          - verify_person_client.rc == 0
-          - verify_person_client.stdout is search('^Tresorit daemon:\trunning', multiline=True)
-          - verify_person_client.stdout is search('^Logged in as:\t', multiline=True)
-        fail_msg: >-
-          tresorit-cli over ssh as {{ verify_account }}: rc {{ verify_person_client.rc }},
-          {{ verify_person_client.stdout }} {{ verify_person_client.stderr }}
 
     # The lines callback, as porelo-frontend's host command reads it from a real up on the host.
     - name: Read the lines of the last up

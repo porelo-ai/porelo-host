@@ -7,12 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- Nothing of Tresorit is on a host any more: the role `drive`, the module `tresorit_installer`, the drive's step in
+  `up` and `down`, and the stop's `drive` and `--email`, which `porelo-host-stop` now refuses with 64. `up` asks no
+  drive login and `down` waits on no sync; a user's own drive is the interface's, outside the host's setup.
+
 ### Changed
 
 - The stop's secrets come on its standard input: `porelo-host-stop --stdin NEED...`, run as root over the admin's ssh,
   takes the vault's passphrase, the machine's keys, the host's VPN key and the central forge's token from the person's
   secrets file, one base64 line each, checks every line before using any, and pipes each value straight into its user.
-  The drive holds no secret any more; only the drive's own login stays the person's, typed at the host.
+  The drive holds no secret any more.
 - `up`'s stop names `keys` with `vault-new` and `wireguard` while the host has no VPN key. `project` no longer puts
   keys from the drive into the vault; it refuses naming each key of the machine file the vault lacks.
 - The host's VPN key lies in `/etc/wireguard/porelo-host.key`, root's with mode `0600`, so the VPN comes back after a

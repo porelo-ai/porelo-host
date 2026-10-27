@@ -6,14 +6,9 @@ from pathlib import Path
 
 
 def test_down_goes_through_when_up_made_neither_the_account_nor_anything_else(tmp_path):
-    # As after an up that base's CPU check stopped: no account, no mount unit, no VPN file, no client.
+    # As after an up that base's CPU check stopped: no account, no VPN file, no vault.
     inventory = tmp_path / "inventory.yml"
-    inventory.write_text(
-        "all:\n  hosts:\n    localhost:\n  vars:\n"
-        "    porelo_host_account: porelo-no-such-account\n"
-        "    porelo_host_tresor: porelo-test-drive\n"
-        f"    drive_path: {tmp_path}/drive\n"
-    )
+    inventory.write_text("all:\n  hosts:\n    localhost:\n  vars:\n    porelo_host_account: porelo-no-such-account\n")
     done = subprocess.run(
         ["ansible-playbook", "-c", "local", "-i", str(inventory), "porelo.host.down"],
         env=dict(os.environ, ANSIBLE_NOCOLOR="1"),

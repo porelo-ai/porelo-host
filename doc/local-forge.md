@@ -181,7 +181,5 @@ local build records and local registry snapshots. A green local build or a local
 central forge.
 
 `down` removes the forge's volumes and credentials and the pool's VMs, snapshots and keys. It stops tasks but leaves
-their containers and workspaces on the host, then clears the vault. The drive role waits for data already written to the
-person's synced folder to finish syncing before unlinking and unmounting it. None of these teardown roles exports the
-local forge, its registry or task workspaces to that folder. Preserve local-only work before teardown; drive syncing
-alone does not preserve it.
+their containers and workspaces on the host, then clears the vault. None of these teardown roles exports the local
+forge, its registry or task workspaces anywhere. Preserve local-only work before teardown.

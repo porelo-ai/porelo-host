@@ -69,7 +69,7 @@ jobs:
               run: |
                   set -eu
                   build/tools.sh black --check -l 120 plugins tests
-                  build/tools.sh python3 -c "import sys; [compile(open(f).read(), f, 'exec') for f in sys.argv[1:]]" plugins/callback/lines.py plugins/modules/tresorit_installer.py
+                  build/tools.sh python3 -c "import sys; [compile(open(f).read(), f, 'exec') for f in sys.argv[1:]]" plugins/callback/lines.py
                   build/tools.sh python3 -m pytest -q -p no:cacheprovider -p no:pytest-ansible tests/unit
 
             - name: The tarball, holding only what the collection ships

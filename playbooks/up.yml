@@ -34,14 +34,6 @@
           text: Setting up Porelo's account
           seconds: 10
 
-    - name: Give the person's drive its folder
-      ansible.builtin.include_role:
-        name: porelo.host.drive
-      vars:
-        porelo_host_step:
-          text: Setting up the drive
-          seconds: 20
-
     - name: Run Porelo's setup, and ask whether the vault is open
       ansible.builtin.include_role:
         name: porelo.host.porelo

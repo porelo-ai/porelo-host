@@ -32,12 +32,12 @@ them, since `machine.yml` pins the project's signing key. `project` refuses befo
 directory or `machine.yml` is missing, is not root's, or can be written by its group or others, naming each with its
 owner and mode; `down` removes the directory.
 
-The person's stop, `porelo-host-stop` in `/usr/local/bin`, is installed by `install`, which also names the account
-in `/etc/porelo-host/stop.conf`, root's with mode `0644` and no secret. Run by the person as the account, it asks in
-their terminal; run as root with `--stdin`, it takes every need but the drive's login from the person's secrets file,
-one base64 line each, and passes each value on a pipe into its user: the vault's passphrase into `porelo vault init`
-or `unlock`, each key into `porelo vault put`, as the account. The keys reach the vault only so, never through
-Ansible; the [line contract](../../doc/lines.md) has the form and the exits.
+The person's stop, `porelo-host-stop` in `/usr/local/bin`, is installed by `install`, which also names the account in
+`/etc/porelo-host/stop.conf`, root's with mode `0644` and no secret. Run by the person as the account, it asks in their
+terminal; run as root with `--stdin`, it takes every need from the person's secrets file, one base64 line each, and
+passes each value on a pipe into its user: the vault's passphrase into `porelo vault init` or `unlock`, each key into
+`porelo vault put`, as the account. The keys reach the vault only so, never through Ansible; the [line
+contract](../../doc/lines.md) has the form and the exits.
 
 At `down` (`tasks_from: down`), `porelo task stop --all` stops every running task of the account, keeping their
 containers and workspaces, before the vault is cleared (`porelo vault clear --yes`, with `--force` on a shut vault), and

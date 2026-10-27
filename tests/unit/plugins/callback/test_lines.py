@@ -210,7 +210,7 @@ def test_a_task_with_no_log_never_writes_its_message():
 def test_the_stop_is_a_waiting_line_naming_what_it_waits_for():
     code, lines, output = run("waiting.yml")
     assert code == 2, f"ansible-playbook ends a failed play with 2, and the caller maps it: {output}"
-    assert {"v": 1, "state": "waiting", "needs": ["drive", "vault-new"]} in lines, output
+    assert {"v": 1, "state": "waiting", "needs": ["vault-new", "keys", "wireguard"]} in lines, output
     assert not [line for line in lines if line["state"] == "failed"], f"the stop is no failure: {output}"
 
 

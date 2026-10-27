@@ -57,32 +57,28 @@ tell.
 **The stop.** `up`'s second play begins with the step only the person can take. When something is missing it stops
 with one line in place of a failure:
 
-    {"v": 1, "state": "waiting", "needs": ["drive", "vault-new"]}
+    {"v": 1, "state": "waiting", "needs": ["vault-new", "keys", "wireguard"]}
 
-`needs` names what is missing: `drive` when the person has not logged the drive's client in, `vault-new` with `keys`
-when the account has no vault yet, `vault` when its vault is shut, and `wireguard` while the host has neither the VPN's
-key nor its running interface. `up` installs agents without stopping for their sign-ins and starts no task. `ansible-playbook` itself exits 2 on a waiting stop, as on any failure,
+`needs` names what is missing: `vault-new` with `keys` when the account has no vault yet, `vault` when its vault is
+shut, and `wireguard` while the host has neither the VPN's key nor its running interface. `up` installs agents without
+stopping for their sign-ins and starts no task. `ansible-playbook` itself exits 2 on a waiting stop, as on any failure,
 so a program tells the stop from a failure by this line, never by the exit code. A second `up` after the person's step
 runs both plays from the top; what is done is done, so it goes on where it stopped.
 
-The person runs `porelo-host-stop [--email ADDRESS] NEED...` in a terminal as the account on the host, with the needs
-as `up` names them. `drive` asks for the e-mail, with the given address as a default kept by Enter, then lets
-Tresorit ask for its password. `--email` is allowed only with `drive`. `vault-new` asks for a new vault passphrase
-twice; `vault` asks for the existing passphrase to unlock it. The drive runs before the vault. A failed attempt
-shows the command's error and asks `Try again? [Y/n]`; retrying the drive asks for the e-mail again.
+A person at the host's terminal may instead run `porelo-host-stop NEED...` as the account, with `vault-new` or
+`vault`: `vault-new` asks for a new vault passphrase twice, `vault` for the existing one to unlock it. A failed attempt
+shows the command's error and asks `Try again? [Y/n]`. `drive` is no need any more and is refused with 64.
 
 The command exits 0 when every named need is done, 75 on `n`, `N` or Ctrl+C, 64 for a wrong call, and 69 when a
 required command is missing. Its last line on success is "The host's stop is done; close this terminal, and setup
 goes on." On cancellation it is "Cancelled; the host waits at this stop. Running up again comes back here."
 
-**The stop on standard input.** Every need but `drive` is given from the person's secrets file by one pipeline, run
-as root:
+**The stop on standard input.** Every need is given from the person's secrets file by one pipeline, run as root:
 
     <secrets> | ssh <admin>@<host> sudo porelo-host-stop --stdin NEED...
 
-with the needs as `up` names them, `drive` left out: where `up` names `drive` too, the person's terminal stop for it
-runs first. Standard input holds one line per secret, `<need> <value>` or, for a key, `key <name> <value>`, the value
-in base64:
+with the needs as `up` names them. Standard input holds one line per secret, `<need> <value>` or, for a key,
+`key <name> <value>`, the value in base64:
 
 | Need | Its lines | Where the value goes |
 |---|---|---|
@@ -93,13 +89,13 @@ in base64:
 | `forge-central-token` | `forge-central-token <token>` | `/run/porelo-host/forge-central.token`, root's with mode `0600`, until the migration |
 
 Every line is checked before any is used: a need not named, an unknown need, a line given twice, a key name other than
-letters, digits, `.`, `_` and `-`, or a value that is not base64 is refused, naming the line and never the value, and
-so is a named need no line gives; only `keys` beside `vault-new` may come with no line, for a machine without keys. `drive` and `--email` are refused with `--stdin`, as is
-a call not made as root. The values then go in the table's order, each decoded on a pipe into its user, and nothing is
-asked. A key the vault lacks later, or the central token, is given by another call with that need alone:
-`forge-central-token` is never named by the stop, since only the running forge knows whether a repository is still to
-migrate; `up` fails there with a message beginning `forge-central-token:`, and with `keys:` for a missing key, then the
-call is made and `up` runs again.
+letters, digits, `.`, `_` and `-`, or a value that is not base64 is refused, naming the line and never the value, and so
+is a named need no line gives; only `keys` beside `vault-new` may come with no line, for a machine without keys. `drive`
+is refused, as is a call not made as root. The values then go in the table's order, each decoded on a pipe into its
+user, and nothing is asked. A key the vault lacks later, or the central token, is given by another call with that need
+alone: `forge-central-token` is never named by the stop, since only the running forge knows whether a repository is
+still to migrate; `up` fails there with a message beginning `forge-central-token:`, and with `keys:` for a missing key,
+then the call is made and `up` runs again.
 
 It exits 0 when every line is used, printing "The host's stop is done; run up again."; 64 for a wrong call or a wrong
 line, with nothing used; 65 when the vault refuses a value (`vault-new`, `vault`, a key), naming it; 69 when a required

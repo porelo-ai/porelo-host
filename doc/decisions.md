@@ -14,7 +14,6 @@ says why.
 | The host's VPN key on its disk | An accepted risk: the key lies in the clear in `/etc/wireguard`, root's alone, for the host's life. | [Why](#the-hosts-vpn-key-on-its-disk) |
 | Where the VM test runs | On a libvirt VM per run everywhere: here, in the GitHub Build and in the Forgejo build. | [Why](#where-the-vm-test-runs) |
 | `ansible-test sanity` | Not run yet, though the collection holds Python; it comes in its own pinned container. | [Why](#ansible-test-sanity) |
-| Tresorit's installer | Run only when signed under a pinned CA, whose fingerprint was read from the installer itself. | [Why](#tresorits-installer) |
 | Ubuntu's `ansible-core` and CVE-2026-89091 | An accepted risk: the one tarball the host installs is the collection's own. | [Why](#ubuntus-ansible-core-and-cve-2026-89091) |
 | The release's publish job unpacks the build's artifact | An accepted risk: `unzip` parses an archive the build job made, beside the token that writes the release. | [Why](#the-releases-publish-job-unpacks-the-builds-artifact) |
 | The changelog | `CHANGELOG.md`, Keep a Changelog, as in every Porelo repository; no `antsibull-changelog`. | [Why](#the-changelog) |
@@ -53,13 +52,12 @@ be assumed. The `ansible-core` the host's Ubuntu carries is therefore the versio
 
 ## The order of `up` and `down`
 
-Every need of the stop, the drive's login, the vault and the VPN's key, is known in the first play, so the person
-has one stop for all of them, and the VPN comes after it; until the VPN is up, the host is reached over its public ssh
-only. At `down`,
-`porelo vault clear` on an account with its own homeserver also runs the transport's `clear`, which removes the
-homeserver's database volume, its port, its registration token and its poll positions. So the store, which no role
-keeps yet, is to take its last copy before `vault clear`, and at `up` to be restored before the first
-`porelo task start`, which would otherwise make a fresh homeserver.
+Every need of the stop, the vault and the VPN's key, is known in the first play, so the person has one stop for both,
+and the VPN comes after it; until the VPN is up, the host is reached over its public ssh only. At `down`, `porelo vault
+clear` on an account with its own homeserver also runs the transport's `clear`, which removes the homeserver's database
+volume, its port, its registration token and its poll positions. So the store, which no role keeps yet, is to take its
+last copy before `vault clear`, and at `up` to be restored before the first `porelo task start`, which would otherwise
+make a fresh homeserver.
 
 ## Where the VM test runs
 
@@ -73,28 +71,10 @@ are moved by hand.
 
 ## `ansible-test sanity`
 
-The collection holds Python: the `lines` callback and the `tresorit_installer` module. `ansible-test sanity` is not
-run on them yet, since it installs its own requirements from PyPI at run time, by version and without a hash, which a
-pinned build may not do. Until it runs in a pinned container of its own, the Build checks them with `black`, a
-compile, and unit tests that run each under the image's own `ansible-playbook`; what sanity adds beyond that, such as
-the module's documentation against its arguments, is not checked.
-
-## Tresorit's installer
-
-**What holds.** Tresorit serves one Linux installer at a fixed address and replaces it without notice, so it cannot
-be pinned by its digest. Its line 2 is an RSASSA-PSS SHA-512 signature over everything from line 3 on, and line 3 is
-the signing certificate with the CA that issued it. The role runs the installer only when that CA's SHA-256
-fingerprint is the pinned one, the CA issued the certificate, the certificate is made for code signing and valid
-now, and the signature covers the file as it is; the installer's own `CHECKSUM` is a CRC and is not relied on.
-
-**Where the pin comes from.** The fingerprint of "Tresorit Code Signing CA 2020" was read from the installer as
-Tresorit's site serves it, fetched twice by separate ways, by curl here and in the operator's browser, both
-byte-identical. Tresorit publishes no fingerprint that could be read instead. The CA's root, "Tresorit Root CA 2014",
-is not in the file.
-
-**What would change the answer.** A fingerprint Tresorit publishes, which then replaces the one read; a new CA when
-this one expires on 2029-12-31, which stops the role, naming the pinned fingerprint, until the pin is read again
-in the same way.
+The collection holds Python: the `lines` callback. `ansible-test sanity` is not run on it yet, since it installs its own
+requirements from PyPI at run time, by version and without a hash, which a pinned build may not do. Until it runs in a
+pinned container of its own, the Build checks it with `black`, a compile, and unit tests that run it under the image's
+own `ansible-playbook`; what sanity adds beyond that, such as a plugin's documentation against its code, is not checked.
 
 ## Ubuntu's `ansible-core` and CVE-2026-89091
 
@@ -190,10 +170,9 @@ The vault's passphrase, the machine's keys, the VPN's key and the central forge'
 `secrets.kdbx` on the desktop, which only `keepassxc-cli` unlocks, and the interface holds none of them. At the stop a
 terminal on the desktop pipes them, one base64 line each, into `porelo-host-stop --stdin` on the host, run as root over
 the admin's ssh as `up` itself is run, and the script passes each through a pipe straight into what uses it: the vault
-as the account, or a file of root's for the VPN's key and the central token. So no secret passes through a drive,
-an inventory, a variable, a command line or Ansible, and none is in the clear on the drive, which another device of
-the person's syncs. Every line is checked before any is used, so a wrong line leaves nothing half done. The drive's
-own login stays the person's, typed at the host, until the drive leaves the host's setup.
+as the account, or a file of root's for the VPN's key and the central token. So no secret passes through a drive, an
+inventory, a variable, a command line or Ansible. Every line is checked before any is used, so a wrong line leaves
+nothing half done.
 
 ## The host's VPN key on its disk
 

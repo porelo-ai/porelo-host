@@ -4,8 +4,8 @@
 
 **What must be true.** Once `up` has brought the VPN up, the host's ssh answers only on the VPN's address; its public
 address offers the VPN's UDP port alone. Before that, ssh on the public address is the one way in, since `up` needs it
-until the host's WireGuard key, which lies on the person's drive, is read at the stop. A person whose VPN fails still
-gets back onto the host by a way that is written down and tried.
+until the host's WireGuard key is given at the stop. A person whose VPN fails still gets back onto the host by a way
+that is written down and tried.
 
 ## Why
 

@@ -61,7 +61,7 @@
     - name: Install the collection before up runs
       ansible.builtin.meta: flush_handlers
 
-    # Stands in for the part of Porelo's setup script up runs too, since the client's stub below goes into the
+    # Stands in for the part of Porelo's setup script up runs too, since the run's project below is made in the
     # account's home before the first up: the script then finds the account and must leave it as it is.
     - name: Make the account as Porelo's setup script makes it
       ansible.builtin.user:
@@ -91,7 +91,7 @@
       loop: [/root/vpn-host, /etc/wireguard/verify-peer]
 
     # Stands in for the person's ssh key, which porelo-host passes as porelo_host_authorized_key and logs in with as
-    # the account itself, for the drive's login and the vault's step.
+    # the account itself, for the vault's step at the host's terminal.
     - name: Make the person's ssh key for the run
       ansible.builtin.command:
         cmd: ssh-keygen -q -t ed25519 -N "" -C person -f /root/person-ssh
@@ -121,9 +121,6 @@
               porelo_host_account: {{ converge_account }}
               # porelo vault status is in porelo's snapshots only, until a release carries it.
               porelo_host_distribution: snapshots
-              # Tresorit is met only at a real up; here a stub of its client answers as the real one was measured.
-              porelo_host_tresor: porelo-test-drive
-              drive_sync_wait: 60
               porelo_host_vpn_peer_public_key: {{ converge_peer_public.content | b64decode | trim }}
               porelo_host_vpn_peer_address: 10.73.0.2/32
               porelo_host_authorized_key: {{ converge_person_public.content | b64decode | trim }}
@@ -141,27 +138,6 @@
               porelo_host_vm_pool: {systems: [ubuntu], accounts: 1}
               vm_pool_memory: 1024
           {% endif %}
-
-    # The client's stub in the place the installer puts the real one, so the role leaves it as an installed client.
-    - name: Make the client's directory as the account's
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: directory
-        owner: "{{ converge_account }}"
-        group: "{{ converge_account }}"
-        mode: "0755"
-      loop:
-        - /home/{{ converge_account }}/.local
-        - /home/{{ converge_account }}/.local/share
-        - /home/{{ converge_account }}/.local/share/tresorit
-
-    - name: Put the client's stub there
-      ansible.builtin.copy:
-        src: tresorit-cli
-        dest: /home/{{ converge_account }}/.local/share/tresorit/tresorit-cli
-        owner: "{{ converge_account }}"
-        group: "{{ converge_account }}"
-        mode: "0755"
 
     # Stands in for the person's project and their machine file on the desktop: a project of its own in a local
     # repository, its commit signed by a key made for the run, its bundle, and the machine file naming the bundle where
@@ -217,7 +193,7 @@
         creates: /etc/porelo-host/setup/converge.bundle
         executable: /bin/bash
 
-    # Once, before the person's login: the drive is logged out, so up stops for it.
+    # Once, before the person's step: no vault and no VPN key yet, so up stops for them.
     - name: Read whether the first up ran
       ansible.builtin.stat:
         path: /root/porelo-host-first-up.lines
@@ -238,12 +214,12 @@
       changed_when: true
       failed_when: false
 
-    - name: Assert the first up stopped for the drive, the new vault with its keys and the VPN's key, with rc 2
+    - name: Assert the first up stopped for the new vault with its keys and the VPN's key alone, with rc 2
       ansible.builtin.assert:
         that:
           - converge_first_up.rc == 2
           - converge_first_waiting | length == 1
-          - converge_first_waiting[0].needs == ['drive', 'vault-new', 'keys', 'wireguard']
+          - converge_first_waiting[0].needs == ['vault-new', 'keys', 'wireguard']
           - converge_first_failed | length == 0
         fail_msg: "the first up gave rc {{ converge_first_up.rc }} and these lines: {{ converge_first_up.stdout }}"
       vars:
@@ -321,7 +297,7 @@
           - converge_refused.stdout_lines == ['unknown=64', 'base64=64', 'drive=64', 'vault=4']
           - converge_refused.stderr is search('line 2 gives an unknown need')
           - converge_refused.stderr is search('line 2 holds no base64 value')
-          - converge_refused.stderr is search('drive is never given on standard input')
+          - converge_refused.stderr is search('drive is no need of the host any more')
         fail_msg: "the refusals gave {{ converge_refused.stdout_lines }}: {{ converge_refused.stderr }}"
       when: not converge_vault_file.stat.exists
 
@@ -339,17 +315,6 @@
         creates: /home/{{ converge_account }}/.local/share/porelo/vault.bin
         executable: /bin/bash
       no_log: true
-
-    # The person's step, as porelo-frontend gives it: the password on the client's stdin, run as the account.
-    - name: Log the client in, as the person's step does
-      ansible.builtin.shell:
-        cmd: >-
-          set -o pipefail && printf 'stub-password\n' | XDG_RUNTIME_DIR=/run/user/$(id -u)
-          ~/.local/share/tresorit/tresorit-cli login --email person@example.invalid --password-on-stdin
-        creates: /home/{{ converge_account }}/.local/share/tresorit/stub-state/login
-        executable: /bin/bash
-      become: true
-      become_user: "{{ converge_account }}"
 
     - name: Run up on the host itself, as host up does, its steps as JSON lines
       # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.

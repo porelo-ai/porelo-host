@@ -8,9 +8,8 @@ Ubuntu 26.04 only.
 
 ## What differs and must be measured, nothing decided
 
-- **SELinux in place of AppArmor**: whether `wg` may read the host's key on the drive at all, and whether that takes
-  a file context on the one path or a policy module, rather than the AppArmor exception the `vpn` role writes on
-  Ubuntu; the same for the drive's `noexec` filesystem and Tresorit's daemon as a user unit.
+- **SELinux in place of AppArmor**: whether `wg` may read the host's key in `/etc/wireguard` as it does on Ubuntu,
+  and whether anything else of the roles needs a file context or a policy module.
 - **firewalld, active by default**, beside the collection's own nftables table `inet porelo_host`: whether both hold
   together, or one must give way.
 - **`dnf` and Fedora's own `ansible-core`**: the packages' names (`wireguard-tools`, KVM's, podman's), and the
@@ -23,5 +22,4 @@ Ubuntu 26.04 only.
 
 ## What stays as it is
 
-The systemd units (the drive's mount, Tresorit's daemon, the firewall's), the `noexec` mount, and the Tresorit
-installer checked against its pinned CA before it runs.
+The systemd units (the firewall's, the VPN's, the forge's), and the stop's lines on standard input.

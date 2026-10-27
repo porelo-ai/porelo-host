@@ -3,9 +3,8 @@
 **Status:** Backlog.
 **Size:** S - one pinned container image and one Build step; the findings it brings are fixed where they arise.
 
-**What must be true.** The collection's Python, the `lines` callback and the `tresorit_installer` module, passes
-`ansible-test sanity` in the Build, with everything it runs pinned, so a module's documentation is checked against
-its arguments as Galaxy's own import checks would.
+**What must be true.** The collection's Python, the `lines` callback, passes `ansible-test sanity` in the Build, with
+everything it runs pinned, so a plugin's documentation is checked against its code as Galaxy's own import checks would.
 
 ## Plan
 
