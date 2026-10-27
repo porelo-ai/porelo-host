@@ -108,3 +108,9 @@
   ansible.builtin.file:
     path: /etc/porelo-host/stop.conf
     state: absent
+
+# Nothing of the project stays on a host given back.
+- name: down | Remove the setup's files the interface uploaded
+  ansible.builtin.file:
+    path: "{{ __porelo_setup_dir }}"
+    state: absent

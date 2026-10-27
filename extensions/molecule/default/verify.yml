@@ -1128,11 +1128,40 @@
         that: not (verify_stopped_task.stdout | from_json).running
         fail_msg: "asked for porelo-converge-converge-1 to be stopped, got: {{ verify_stopped_task.stdout }}"
 
+    # Read as up left them, before any test below changes them.
+    - name: Read the setup's directory and files, and search the drive for any of them
+      ansible.builtin.find:
+        paths: [/etc/porelo-host/setup, /srv/porelo-host/drive]
+        recurse: true
+        file_type: any
+        patterns: ["machine.yml", "*.bundle"]
+      register: verify_setup_files
+
+    - name: Read the setup's directory itself
+      ansible.builtin.stat:
+        path: /etc/porelo-host/setup
+      register: verify_setup_dir
+
+    - name: Assert the setup's files lie in the setup's directory alone, the account reading and root writing them
+      ansible.builtin.assert:
+        that:
+          - verify_setup_files.files | map(attribute='path') | sort
+            == ['/etc/porelo-host/setup/converge.bundle', '/etc/porelo-host/setup/machine.yml']
+          - verify_setup_files.files | map(attribute='mode') | unique | list == ['0640']
+          - verify_setup_files.files | map(attribute='uid') | unique | list == [0]
+          - verify_setup_files.files | map(attribute='gr_name') | unique | list == [verify_account]
+          - verify_setup_dir.stat.mode == '0750' and verify_setup_dir.stat.uid == 0
+          - verify_setup_dir.stat.gr_name == verify_account
+        fail_msg: >-
+          asked for machine.yml and the bundle in /etc/porelo-host/setup alone, 0640 root:{{ verify_account }} in a
+          0750 directory; found {{ verify_setup_files.files | map(attribute='path') | list }} with modes
+          {{ verify_setup_files.files | map(attribute='mode') | list }}, the directory {{ verify_setup_dir.stat.mode }}
+
     - name: Refuse a machine file whose signature does not check, and always restore the original
       block:
         - name: Keep the original machine file as a backup
           ansible.builtin.copy:
-            src: /srv/porelo-host/drive/porelo-host/machine.yml
+            src: /etc/porelo-host/setup/machine.yml
             dest: /root/machine.yml.bak
             remote_src: true
             owner: root
@@ -1148,7 +1177,7 @@
               ssh-keygen -q -t ed25519 -N "" -C throwaway -f "$tmp/key"
               other=$(ssh-keygen -lf "$tmp/key.pub" | cut -d' ' -f2)
               sed "s|^  signed_by: .*|  signed_by: \"$other\"|" /root/machine.yml.bak \
-                  > /srv/porelo-host/drive/porelo-host/machine.yml
+                  > /etc/porelo-host/setup/machine.yml
               printf '%s\n' "$other"
             executable: /bin/bash
           register: verify_other_signer
@@ -1198,19 +1227,70 @@
             verify_wrong_key_failed: >-
               {{ verify_wrong_key_lines | selectattr('state', 'equalto', 'failed') | list }}
       always:
-        - name: Restore the original machine file on the drive
+        - name: Restore the original machine file in the setup's directory
           ansible.builtin.copy:
             src: /root/machine.yml.bak
-            dest: /srv/porelo-host/drive/porelo-host/machine.yml
+            dest: /etc/porelo-host/setup/machine.yml
             remote_src: true
-            owner: "{{ verify_account }}"
+            owner: root
             group: "{{ verify_account }}"
-            mode: "0644"
+            mode: "0640"
 
         - name: Remove the backup of the machine file
           ansible.builtin.file:
             path: /root/machine.yml.bak
             state: absent
+
+    # machine.yml pins the project's signing key and names the bundle followed as the origin: neither may be the
+    # account's to change, and install never makes such a file look as uploaded again.
+    - name: Refuse the setup's files where the account could change them, and always make them root's alone again
+      block:
+        - name: Run up with each fault in turn
+          ansible.builtin.shell:
+            cmd: |
+              set -uo pipefail
+              {{ item.fault }}
+              ANSIBLE_STDOUT_CALLBACK=porelo.host.lines LC_ALL=C.UTF-8 ansible-playbook -c local \
+                  -i /root/porelo-host-inventory.yml {{ verify_forge_inventory }} porelo.host.up
+              rc=$?
+              chown root:{{ verify_account }} /etc/porelo-host/setup/machine.yml /etc/porelo-host/setup/converge.bundle
+              chmod 0640 /etc/porelo-host/setup/machine.yml /etc/porelo-host/setup/converge.bundle
+              exit $rc
+            executable: /bin/bash
+          loop:
+            - fault: chmod 0660 /etc/porelo-host/setup/machine.yml
+              found: "/etc/porelo-host/setup/machine.yml: plain file uid 0 mode 0660"
+            - fault: chown {{ verify_account }} /etc/porelo-host/setup/machine.yml
+              found: "setup/machine.yml: plain file uid {{ ansible_facts['getent_passwd'][verify_account][1] }}"
+            - fault: chmod 0660 /etc/porelo-host/setup/converge.bundle
+              found: "/etc/porelo-host/setup/converge.bundle: plain file uid 0 mode 0660"
+          loop_control:
+            label: "{{ item.fault }}"
+          register: verify_faulty_ups
+          changed_when: false
+          failed_when: false
+
+        - name: Assert up stopped on each, naming the file, its owner and mode, before Porelo followed anything
+          ansible.builtin.assert:
+            that:
+              - item.rc == 2
+              - verify_faulty_failed | length == 1
+              - verify_faulty_failed[0].msg is search(item.item.found | regex_escape)
+            fail_msg: "{{ item.item.fault }}: up gave rc {{ item.rc }}, lines {{ item.stdout }}"
+          loop: "{{ verify_faulty_ups.results }}"
+          loop_control:
+            label: "{{ item.item.fault }}"
+          vars:
+            verify_faulty_failed: >-
+              {{ item.stdout_lines | select | map('from_json') | selectattr('state', 'equalto', 'failed') | list }}
+      always:
+        - name: Make the setup's files root's alone again
+          ansible.builtin.file:
+            path: "{{ item }}"
+            owner: root
+            group: "{{ verify_account }}"
+            mode: "0640"
+          loop: [/etc/porelo-host/setup/machine.yml, /etc/porelo-host/setup/converge.bundle]
 
     # Replacing the bundle would silently discard certificates the person already trusts.
     - name: Read the system's CA bundle for a certificate of the person's own
@@ -1752,6 +1832,7 @@
         that:
           - verify_follows | length == 1
           - verify_follows[0].verified and verify_follows[0].outcome == 'applied'
+          - verify_follows[0].url == '/etc/porelo-host/setup/converge.bundle'
           - verify_project.results[1].stdout is search('^converge-key ', multiline=True)
         fail_msg: "following: {{ verify_project.results[0].stdout }}; vault: {{ verify_project.results[1].stdout }}"
       vars:

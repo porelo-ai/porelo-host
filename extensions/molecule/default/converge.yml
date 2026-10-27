@@ -76,9 +76,10 @@
 
     # Stands in for the person's secrets file: the host's VPN key, made for the run under /root, reaches the host only
     # through the stop's --stdin; the test peer's is used by verify from a network namespace of its own.
-    - name: Install WireGuard's tools to make the run's keys
+    # acl lets Ansible become the account before up's base role installs it.
+    - name: Install WireGuard's tools to make the run's keys, git for the run's project, and acl
       ansible.builtin.apt:
-        name: wireguard-tools
+        name: [wireguard-tools, git, acl]
         state: present
 
     - name: Make the run's VPN keys, the host's and the test peer's
@@ -162,6 +163,60 @@
         group: "{{ converge_account }}"
         mode: "0755"
 
+    # Stands in for the person's project and their machine file on the desktop: a project of its own in a local
+    # repository, its commit signed by a key made for the run, its bundle, and the machine file naming the bundle where
+    # the interface uploads it, that key's fingerprint and one key for the vault, whose value is in the secrets file.
+    - name: Make the run's project, signed, its bundle and the machine file, as the desktop holds them
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          ssh-keygen -q -t ed25519 -N "" -C converge-signer -f ~/.ssh/converge-signer
+          mkdir ~/converge-project && cd ~/converge-project && git init -q -b main
+          printf 'project:\n  name: "converge"\n  security_class: "offline"\nimage:\n  base_image: "ubuntu:24.04"\n' \
+              > project.yml
+          {% if converge_forge == 'on' %}
+          cat >> project.yml <<'PROJECT'
+            snippet: |
+              RUN apt-get update && apt-get install -y --no-install-recommends curl git ca-certificates \
+                  && rm -rf /var/lib/apt/lists/*
+          egress:
+            host_services: ["forge.porelo.internal"]
+          PROJECT
+          {% endif %}
+          printf 'repositories:\n  code:\n    description: "Kept on this machine alone"\n' >> project.yml
+          printf 'mail:\n  transports:\n    matrix: {}\n' >> project.yml
+          git add project.yml
+          git -c user.name=converge -c user.email=converge@example.invalid -c gpg.format=ssh \
+              -c user.signingkey="$HOME/.ssh/converge-signer.pub" commit -q -S -m "The run's project"
+          desktop=~/converge-desktop
+          mkdir -p "$desktop"
+          git bundle create -q "$desktop/converge.bundle" --all
+          signer=$(ssh-keygen -lf ~/.ssh/converge-signer.pub | cut -d' ' -f2)
+          {
+              echo 'project:'
+              echo '  name: converge'
+              echo '  url: "/etc/porelo-host/setup/converge.bundle"'
+              echo "  signed_by: \"$signer\""
+              echo 'keys:'
+              echo '  - { name: converge-key, path: keys/converge-key }'
+          } > "$desktop/machine.yml"
+        creates: /home/{{ converge_account }}/converge-desktop/machine.yml
+        executable: /bin/bash
+      become: true
+      become_user: "{{ converge_account }}"
+
+    # As the interface's copy step uploads them over ssh before up: the directory and each file root's alone.
+    - name: Upload the machine file and the bundle into the host's setup directory, as the interface does
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          install -d -m 0700 -o root -g root /etc/porelo-host/setup
+          for f in machine.yml converge.bundle; do
+              install -m 0600 -o root -g root /home/{{ converge_account }}/converge-desktop/$f /etc/porelo-host/setup/$f
+          done
+        creates: /etc/porelo-host/setup/converge.bundle
+        executable: /bin/bash
+
     # Once, before the person's login: the drive is logged out, so up stops for it.
     - name: Read whether the first up ran
       ansible.builtin.stat:
@@ -220,47 +275,6 @@
 
     - name: Install the handed-over packages before the next up
       ansible.builtin.meta: flush_handlers
-
-    # Stands in for the person's project and their machine file on the drive: a project of its own in a local
-    # repository, its commit signed by a key made for the run, the machine file naming that key's fingerprint and one
-    # key for the vault, whose value is in the secrets file alone, never on the drive.
-    - name: Make the run's project, signed, and the machine file on the drive
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          ssh-keygen -q -t ed25519 -N "" -C converge-signer -f ~/.ssh/converge-signer
-          mkdir ~/converge-project && cd ~/converge-project && git init -q -b main
-          printf 'project:\n  name: "converge"\n  security_class: "offline"\nimage:\n  base_image: "ubuntu:24.04"\n' \
-              > project.yml
-          {% if converge_forge == 'on' %}
-          cat >> project.yml <<'PROJECT'
-            snippet: |
-              RUN apt-get update && apt-get install -y --no-install-recommends curl git ca-certificates \
-                  && rm -rf /var/lib/apt/lists/*
-          egress:
-            host_services: ["forge.porelo.internal"]
-          PROJECT
-          {% endif %}
-          printf 'repositories:\n  code:\n    description: "Kept on this machine alone"\n' >> project.yml
-          printf 'mail:\n  transports:\n    matrix: {}\n' >> project.yml
-          git add project.yml
-          git -c user.name=converge -c user.email=converge@example.invalid -c gpg.format=ssh \
-              -c user.signingkey="$HOME/.ssh/converge-signer.pub" commit -q -S -m "The run's project"
-          drive=/srv/porelo-host/drive/porelo-host
-          mkdir -p "$drive"
-          signer=$(ssh-keygen -lf ~/.ssh/converge-signer.pub | cut -d' ' -f2)
-          {
-              echo 'project:'
-              echo '  name: converge'
-              echo "  url: \"$HOME/converge-project\""
-              echo "  signed_by: \"$signer\""
-              echo 'keys:'
-              echo '  - { name: converge-key, path: keys/converge-key }'
-          } > "$drive/machine.yml"
-        creates: /srv/porelo-host/drive/porelo-host/machine.yml
-        executable: /bin/bash
-      become: true
-      become_user: "{{ converge_account }}"
 
     # Stands in for the person's secrets file on the desktop: the vault's passphrase and the machine's key, root's.
     - name: Make the run's secrets, the vault's passphrase and the machine's key

@@ -7,6 +7,35 @@
     database: passwd
     key: "{{ porelo_account }}"
 
+# machine.yml pins the project's signing key, so a file the account could write would let a task choose what it
+# follows; the place is checked before Porelo reads anything of it.
+- name: project | Read the setup's directory and the machine file
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    get_checksum: false
+    get_mime: false
+  loop: ["{{ __porelo_setup_dir }}", "{{ porelo_machine_file }}"]
+  register: __porelo_setup_place
+
+- name: project | Stop where the setup's files are missing or anybody but root can write them, naming what was found
+  ansible.builtin.assert:
+    that:
+      - __porelo_setup_place.results[0].stat.isdir | default(false)
+      - __porelo_setup_place.results[1].stat.isreg | default(false)
+      - __porelo_setup_place.results | map(attribute='stat.uid', default=-1) | unique | list == [0]
+      - __porelo_setup_place.results | selectattr('stat.wgrp') | list | length == 0
+      - __porelo_setup_place.results | selectattr('stat.woth') | list | length == 0
+    fail_msg: >-
+      {{ __porelo_setup_dir }} a directory and {{ porelo_machine_file }} a plain file must be there, root's, and
+      written by root alone; found
+      {% for r in __porelo_setup_place.results %}{{ r.item }}:
+      {{ 'missing' if not r.stat.exists
+      else (('link' if r.stat.islnk else ('directory' if r.stat.isdir
+      else ('plain file' if r.stat.isreg else 'other'))) ~ ' uid ' ~ r.stat.uid ~ ' mode ' ~ r.stat.mode) }}
+      {{- '; ' if not loop.last }}
+      {%- endfor %}
+    quiet: true
+
 - name: project | Ask Porelo for the second play's inventory from the person's machine file
   ansible.builtin.command:
     cmd: porelo project inventory --machine-file {{ porelo_machine_file }}
@@ -32,6 +61,31 @@
     that: __porelo_second.all.vars.porelo_inventory_version == 2
     fail_msg: >-
       Porelo wrote inventory version {{ __porelo_second.all.vars.porelo_inventory_version }}, this role reads 2
+    quiet: true
+
+# The bundle the machine file names is followed as the project's origin, so it must lie beside the machine file and be
+# root's alone too: an account that could change it could hand an older commit signed by the same key.
+- name: project | Read the bundle the machine file names
+  ansible.builtin.stat:
+    path: "{{ __porelo_host.porelo_project.url }}"
+    get_checksum: false
+    get_mime: false
+  register: __porelo_bundle
+
+- name: project | Stop where the bundle lies elsewhere or anybody but root can write it, naming what was found
+  ansible.builtin.assert:
+    that:
+      - (__porelo_host.porelo_project.url | dirname) == __porelo_setup_dir
+      - __porelo_bundle.stat.isreg | default(false)
+      - __porelo_bundle.stat.uid == 0
+      - not __porelo_bundle.stat.wgrp and not __porelo_bundle.stat.woth
+    fail_msg: >-
+      the project's url must be a plain file in {{ __porelo_setup_dir }}, root's and written by root alone; found
+      {{ __porelo_host.porelo_project.url }}:
+      {{ 'missing' if not __porelo_bundle.stat.exists
+      else (('link' if __porelo_bundle.stat.islnk else ('directory' if __porelo_bundle.stat.isdir
+      else ('plain file' if __porelo_bundle.stat.isreg else 'other')))
+      ~ ' uid ' ~ __porelo_bundle.stat.uid ~ ' mode ' ~ __porelo_bundle.stat.mode) }}
     quiet: true
 
 - name: project | Ask Porelo which entries the vault holds, by name

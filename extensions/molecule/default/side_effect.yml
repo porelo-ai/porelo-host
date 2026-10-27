@@ -341,6 +341,7 @@
         - /run/porelo-host/forge-central.token
         - /etc/porelo-host/stop.conf
         - /etc/porelo-host/vpn.conf
+        - /etc/porelo-host/setup
       register: side_effect_stop_files
 
     - name: Assert down took the VPN's interface and its file

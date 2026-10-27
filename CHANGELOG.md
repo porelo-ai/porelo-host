@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keys from the drive into the vault; it refuses naming each key of the machine file the vault lacks.
 - The host's VPN key lies in `/etc/wireguard/porelo-host.key`, root's with mode `0600`, so the VPN comes back after a
   reboot; `down` removes it. The AppArmor rule that let `wg` read the drive's key is gone.
+- The host reads the machine file and the project's bundle from `/etc/porelo-host/setup/`, where the interface uploads
+  them root's alone before `up`, no longer from the drive. `install` lets the account read them, `project` refuses
+  them where anybody but root can write them, naming owner and mode, and `down` removes them.
 - `up` refuses naming `forge-central-token` only while a repository is still to migrate, and the migration removes the
   token from `/run/porelo-host/` again. `forge_central_token_path` is gone.
 

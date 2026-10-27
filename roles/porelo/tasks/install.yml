@@ -98,3 +98,42 @@
     and __porelo_setup_script.stdout is search(porelo_account ~ ' exists')
     and __porelo_setup_script.stdout is search('linger is already enabled')
     and __porelo_setup_script.stdout is search('ranges are already allocated'))
+
+# The interface uploads the setup's files root's alone before the account exists; once the setup script has made it,
+# the account may read them, never write them, since machine.yml pins the project's signing key. Only what root alone
+# can write is opened to the account's group: anything else is left as found, for project to refuse, so a file someone
+# else changed is never made to look as uploaded.
+- name: install | Read whether the interface uploaded the setup's files
+  ansible.builtin.stat:
+    path: "{{ __porelo_setup_dir }}"
+  register: __porelo_setup_uploaded
+
+- name: install | Let the account read the setup's directory
+  ansible.builtin.file:
+    path: "{{ __porelo_setup_dir }}"
+    state: directory
+    owner: root
+    group: "{{ porelo_account }}"
+    mode: "0750"
+  when:
+    - __porelo_setup_uploaded.stat.isdir | default(false)
+    - __porelo_setup_uploaded.stat.uid == 0
+    - not __porelo_setup_uploaded.stat.wgrp and not __porelo_setup_uploaded.stat.woth
+
+- name: install | Find the setup's files
+  ansible.builtin.find:
+    paths: "{{ __porelo_setup_dir }}"
+    file_type: file
+  register: __porelo_setup_files
+  when: __porelo_setup_uploaded.stat.isdir | default(false)
+
+- name: install | Let the account read the setup's files
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: root
+    group: "{{ porelo_account }}"
+    mode: "0640"
+  loop: "{{ __porelo_setup_files.files | default([]) | selectattr('uid', 'equalto', 0)
+    | rejectattr('wgrp') | rejectattr('woth') | list }}"
+  loop_control:
+    label: "{{ item.path }}"

@@ -1,6 +1,6 @@
 # HO36 — The Host Reads The Files Its Setup Uploaded
 
-**Status:** Backlog; blocked by [HO37](README.md#ho37).
+**Status:** Implementing.
 **Size:** M - a few lines in one role and its `down`, but a contract porelo-frontend writes (the place, its owner and
 mode, and the paths in `machine.yml`), its docs and a Molecule check.
 

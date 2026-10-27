@@ -25,6 +25,13 @@ task CA file, and removes the account's CA bundle if only whitespace remains.
 containers, since its loopback entry for the forge would hide the gate's address Porelo's resolver gives a task; `down`
 removes it.
 
+The machine file and the project's bundle it names come from the interface, which uploads them over ssh into
+`/etc/porelo-host/setup/` before `up`, each root's alone. Once Porelo's setup script has made the account, `install`
+gives the directory and its files the account's group (`0750`, `0640`), so the account reads them and never writes
+them, since `machine.yml` pins the project's signing key. `project` refuses before Porelo reads anything where the
+directory or `machine.yml` is missing, is not root's, or can be written by its group or others, naming each with its
+owner and mode; `down` removes the directory.
+
 The person's stop, `porelo-host-stop` in `/usr/local/bin`, is installed by `install`, which also names the account
 in `/etc/porelo-host/stop.conf`, root's with mode `0644` and no secret. Run by the person as the account, it asks in
 their terminal; run as root with `--stdin`, it takes every need but the drive's login from the person's secrets file,
@@ -34,7 +41,7 @@ Ansible; the [line contract](../../doc/lines.md) has the form and the exits.
 
 At `down` (`tasks_from: down`), `porelo task stop --all` stops every running task of the account, keeping their
 containers and workspaces, before the vault is cleared (`porelo vault clear --yes`, with `--force` on a shut vault), and
-removes `stop.conf`. If a task survives, `down` fails with Porelo's words and leaves the vault in place.
+removes `stop.conf` and `/etc/porelo-host/setup/`. If a task survives, `down` fails with Porelo's words and leaves the vault in place.
 
 ## Requirements
 
@@ -50,7 +57,7 @@ Ubuntu 26.04, run as root on the host itself (`-c local`).
 | `porelo_key_fingerprint` | in `defaults/main.yml` | The fingerprint the package key must have. |
 | `porelo_repository_url` | in `defaults/main.yml` | Porelo's apt repository. |
 | `porelo_setup_script` | `/usr/share/porelo/setup/porelo-setup.sh` | Porelo's setup script, as the package `porelo` ships it. |
-| `porelo_machine_file` | `/srv/porelo-host/drive/porelo-host/machine.yml` | The person's machine file on their drive, which Porelo reads. |
+| `porelo_machine_file` | `/etc/porelo-host/setup/machine.yml` | The person's machine file, uploaded by the interface into the setup directory, which Porelo reads. |
 
 ## Example
 
