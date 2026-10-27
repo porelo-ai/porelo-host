@@ -17,16 +17,6 @@ it is left out.
 |---|---|---|---|
 | <a id="ho12"></a>[HO12](HO12-The-VM-Pool.md) | L | - | Role `vm_pool`: VMs with run accounts `porelo-machines` rents from, made by the same code as the test VM, deleted by name at `down`. |
 
-## Implementing
-
-| # | Size | Blocked by | What it covers |
-|---|---|---|---|
-| <a id="ho33"></a>[HO33](HO33-The-Forges-Runner-Takes-Jobs-Side-By-Side-With-A-Cache.md) | M | - | The forge's runner takes as many jobs at once as half the machine holds within their bounds, and a job's `actions/cache` reaches the runner's cache on the forge's address. |
-| <a id="ho34"></a>[HO34](HO34-The-Forge-Merges-Fast-Forward-Only.md) | S | - | Each repository on the host's forge allows only the fast-forward merge, so a pull request's own commits reach `main` unchanged and no commit of the forge's `operator` does. |
-| <a id="ho32"></a>[HO32](HO32-The-Gathered-Push-Refuses-A-Moved-Central-Forge.md) | M | - | `porelo-host-push`, started by the person on the host over ssh, pushes each repository's local `main` to the central forge without force, the central token asked for hidden; a moved central forge is refused, named and brought back as `central/main`. |
-| <a id="ho29"></a>[HO29](HO29-The-Persons-Own-Web-Login-On-The-Forge.md) | S | - | The person signs in to the host's forge through the VPN as `operator`, an owner of the organization, the first password generated and fetched over ssh, then changed at the first sign-in. |
-| <a id="ho31"></a>[HO31](HO31-The-Accounts-Gate-And-Reader-On-The-Hosts-Forge.md) | M | - | Gate, reader; main review |
-
 ## Backlog
 
 | # | Size | Blocked by | What it covers |
@@ -62,6 +52,11 @@ it is left out.
 
 | # | Title | What was built |
 |---|---|---|
+| <a id="ho34"></a>HO34 | The Forge Merges Fast-Forward Only | Each repository on the host's forge offers only the fast-forward merge, read back after it is set, so a merged pull request's own commits reach `main` unchanged with the person as author and no commit of the forge's `operator`; the central work joins on a `central/take` branch. |
+| <a id="ho33"></a>HO33 | The Forge's Runner Takes Jobs Side By Side, With A Cache | The forge's runner takes four jobs at once, refused by `up` where they would not fit half the machine's CPUs and memory beside the VM pool, and serves its cache on the forge's address, so a job's `actions/cache` saves and a later run restores. |
+| <a id="ho32"></a>HO32 | The Gathered Push Refuses A Moved Central Forge | `porelo-host-push`, started by the person on the host over ssh, pushes each repository's local `main` to the central forge without force, the central token asked for hidden; a moved central forge is refused, named and brought back as `central/main`. |
+| <a id="ho31"></a>HO31 | The Account's Gate And Reader On The Host's Forge | The gate of Porelo's account pushes `porelo/<task>` to the host's forge by name over TLS and the `forgejo` build reader reads its verdict and logs, the token in the account's vault alone; `main` is protected so only the person's approved and merged pull request reaches it. |
+| <a id="ho29"></a>HO29 | The Person's Own Web Login On The Forge | The person signs in to the host's forge through the VPN as `operator`, an owner of the organization, with a generated first password fetched over ssh from a root-only file and changed at the first sign-in. |
 | <a id="ho26"></a>HO26 | Each Agent's Own Forge Account | Each agent the host's settings name gets an account `agent-<name>` on the host's forge in team `agents`, which writes the organization's code, pull requests and issues, with a token written only into a root-only file on the host. |
 | <a id="ho08"></a>HO08 | The Forge With Its Registry | Where the host's settings ask for it, `up` runs Forgejo with its Actions runner and package registry in rootless podman under two accounts of their own, reached by name over TLS with the host's CA through the VPN, its repositories migrated once from the central forge with no push mirror, and `down` takes it off. |
 | <a id="ho17"></a>HO17 | The Forge's CA In Porelo's Account | `up` puts the forge's CA into Porelo's account, as a marked block in `~/.config/porelo/ca-certificates.pem` for host clients and alone in `~/.config/porelo/task-ca-certificates.pem` for tasks, and `down` takes it out. |
