@@ -29,6 +29,8 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho34"></a>[HO34](HO34-The-Forge-Merges-Fast-Forward-Only.md) | S | - | Each repository on the host's forge allows only the fast-forward merge, so a pull request's own commits reach `main` unchanged and no commit of the forge's `operator` does. |
+| <a id="ho33"></a>[HO33](HO33-The-Forges-Runner-Takes-Jobs-Side-By-Side-With-A-Cache.md) | M | - | The forge's runner takes as many jobs at once as half the machine holds within their bounds, and a job's `actions/cache` reaches the runner's cache on the forge's address. |
 | <a id="ho14"></a>[HO14](HO14-The-Collections-Python-Under-Ansible-Test-Sanity.md) | S | - | `ansible-test sanity` on the collection's Python in the Build, from a pinned image of its own. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | porelo-project [PJ45](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj45), porelo-message-matrix [MX24](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx24), porelo [B231](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b231), porelo-message-matrix [MX39](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx39) | Role `store`: restic pinned, each entry's own copy and restore command, an hourly user timer, a last copy at `down`, the restore before anything reads it. |
 
@@ -53,8 +55,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho33"></a>[HO33](HO33-The-Forges-Runner-Takes-Jobs-Side-By-Side-With-A-Cache.md) | M | - | The forge's runner takes as many jobs at once as half the machine holds within their bounds, and a job's `actions/cache` reaches the runner's cache on the forge's address. |
-| <a id="ho34"></a>[HO34](HO34-The-Forge-Merges-Fast-Forward-Only.md) | S | - | Each repository on the host's forge allows only the fast-forward merge, so a pull request's own commits reach `main` unchanged and no commit of the forge's `operator` does. |
 | <a id="ho23"></a>[HO23](HO23-A-Machine-Rented-And-Given-Back-By-OpenTofu.md) | L | - | An administrator rents and gives back a host by one OpenTofu module per provider, its state kept encrypted with the administrator, outside the interface. |
 
 ## Finished
