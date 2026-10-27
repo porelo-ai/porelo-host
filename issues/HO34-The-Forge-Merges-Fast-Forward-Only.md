@@ -37,7 +37,8 @@ Sprint 5's rented host, 2026-10-27:
 - **A pull request behind `main`** cannot be merged fast-forward. Its author brings the branch up to date by a rebase
   of their own and pushes it, as the agents already do before opening one.
 - **Molecule** (`extensions/molecule/default`): the migrated repository's settings read back through the API, every
-  field as above. The check is seen red against today's role.
+  field as above. The check is seen red against today's role. `tasks/forge_push.yml` merges its two pull requests
+  with `{"Do": "merge"}`, a merge commit, which the setting refuses; both become `{"Do": "fast-forward-only"}`.
 - **Docs:** the role's README says that the forge merges fast-forward only, and why. Changelog under *Changed*.
 
 ## Acceptance
