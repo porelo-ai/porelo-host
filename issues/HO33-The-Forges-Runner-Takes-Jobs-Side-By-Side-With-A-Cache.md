@@ -81,4 +81,4 @@ Sprint 5's rented host, `EM-I220E-NVME` (16 cores, 32 threads, 128 GB), porelo-b
   its own size, and the rented host keeps the defaults. `EM-I220E-NVME` takes them exactly on CPUs (16 of 32 threads).
   The operator's word named capacity 1 and 1g for Molecule. It was built with capacity 2 and 768m (1 CPU, OMP 1),
   so the written capacity differs from the old fixed 1 and the check is red against it. Two such jobs and the pool's
-  one VM still fit half the test VM's 6 GiB.
+  one VM still fit half the test VM's 6 GiB. The operator agreed to capacity 2 and 768m on 2026-10-27.
