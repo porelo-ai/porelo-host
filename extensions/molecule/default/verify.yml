@@ -1289,7 +1289,6 @@
           - not verify_forge_lines[0].allow_rebase
           - not verify_forge_lines[0].allow_rebase_explicit
           - not verify_forge_lines[0].allow_squash_merge
-          - not verify_forge_lines[0].allow_manual_merge
         fail_msg: >-
           asked for the repository migrated with its content, no mirror, no push mirror, fast-forward its only and
           default merge style, PORELO_PUBLISH=false, JF_URL=https://jfrog.invalid and secret name JF_ACCESS_TOKEN;

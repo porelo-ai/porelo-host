@@ -19,8 +19,9 @@
       desired='{"allow_fast_forward_only_merge": true, "default_merge_style": "fast-forward-only",
           "allow_merge_commits": false, "allow_rebase": false, "allow_rebase_explicit": false,
           "allow_squash_merge": false, "allow_manual_merge": false}'
+      # Forgejo 17 takes allow_manual_merge but does not report it back (measured), so it is sent and not read.
       matches() { python3 -I -c 'import json,sys
-      actual=json.load(open(sys.argv[1])); desired=json.loads(sys.argv[2])
+      actual=json.load(open(sys.argv[1])); desired=json.loads(sys.argv[2]); desired.pop("allow_manual_merge")
       sys.exit(0 if all(k in actual and actual[k] == v for k,v in desired.items()) else 1)' "$answer" "$desired"; }
       code=$(api -o "$answer" -w '%{http_code}' "$base")
       [ "$code" = 200 ] || refuse "read-http-$code"

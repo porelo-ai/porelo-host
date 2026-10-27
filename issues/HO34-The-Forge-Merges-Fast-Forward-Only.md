@@ -31,6 +31,8 @@ Sprint 5's rented host, 2026-10-27:
   - `allow_fast_forward_only_merge: true`, `default_merge_style: fast-forward-only`;
   - `allow_merge_commits`, `allow_rebase`, `allow_rebase_explicit`, `allow_squash_merge` and
     `allow_manual_merge` all `false`.
+  - Forgejo 17.0.0 takes `allow_manual_merge` but leaves it out of the repository's answer (measured on a
+    throwaway Forgejo 17.0.0). So it is sent and not read back; the six others are.
 
   *Rebase* is not kept: Forgejo rewrites the committer when it rebases. The task reads the repository back and fails
   unless every field matches, as the branch protection's task does. It reports `changed` only when it patched.
@@ -55,8 +57,6 @@ Sprint 5's rented host, 2026-10-27:
 
 ## To be checked
 
-- Forgejo 17.0.0's field names in `PATCH /repos/{owner}/{repo}` for the fast-forward style and the default. The
-  names above are from Gitea's API since 1.21, not yet run against this forge.
 - Whether the pull request page's *Update branch* button still offers a merge from `main` into the branch. If it
   does, it is the same commit of the forge's own one step earlier. Then it is either switched to rebase
   (`default_update_style`, if Forgejo has it) or left out.
