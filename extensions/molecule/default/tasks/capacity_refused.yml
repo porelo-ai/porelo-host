@@ -1,0 +1,26 @@
+---
+# One case of the forge's capacity check that must refuse for memory: the refusal is kept by the case's label.
+- name: Check a capacity whose memory exceeds half the host
+  block:
+    - name: Run the forge's capacity check alone
+      ansible.builtin.include_role:
+        name: porelo.host.forge
+        tasks_from: capacity
+      vars:
+        forge_runner_capacity: 1
+        forge_job_cpus: 1
+        forge_job_memory: "{{ verify_capacity_case.memory }}"
+        porelo_host_vm_pool: "{{ verify_capacity_case.pool }}"
+        vm_pool_memory: "{{ verify_capacity_case.pool_mib | default(1536) }}"
+  rescue:
+    - name: Assert the refusal names half of the host's memory
+      ansible.builtin.assert:
+        that: >-
+          (((verify_capacity_kib | int) // 2) ~ ' of ' ~ verify_capacity_kib ~ ' KiB') in ansible_failed_result.msg
+        fail_msg: >-
+          asked for {{ verify_capacity_case.label }} refused against half of {{ verify_capacity_kib }} KiB;
+          got {{ ansible_failed_result }}
+
+    - name: Keep the refused case
+      ansible.builtin.set_fact:
+        verify_capacity_memory_refused: "{{ verify_capacity_memory_refused + [verify_capacity_case.label] }}"

@@ -151,7 +151,7 @@
               if verdict != "success" or len(jobs) != 2 or not all(logs):
                   got = (verdict, len(jobs), bool(all(logs)))
                   sys.exit("asked for success, two jobs and both logs; got " + str(got))
-              if not any("OMP_NUM_THREADS=4" in log for log in logs):
+              if not any("OMP_NUM_THREADS=1" in log for log in logs):
                   sys.exit("asked for the real probe job log marker, got no marker")
               print(json.dumps({"verdict": verdict, "jobs": len(jobs), "logs_read": True, "head_matches": True}))
           finally:

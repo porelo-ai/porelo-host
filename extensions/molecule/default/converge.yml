@@ -132,6 +132,12 @@
               porelo_host_forge: {{ (converge_forge == 'on') | lower }}
               # The stand-in for the central forge is a repository on the host's own forge, at a private address.
               forge_migrations_allow_local: true
+              # Job bounds of the test VM's size: the runner's jobs and the pool share half of its 4 vCPUs and 6 GiB.
+              # Two jobs, not the old fixed one, so the written capacity is the variable's.
+              forge_runner_capacity: 2
+              forge_job_cpus: 1
+              forge_job_memory: 768m
+              forge_job_omp_num_threads: 1
           {% if converge_vm_pool == 'on' %}
               # One pool VM, small enough for the test VM, which holds it nested.
               porelo_host_vm_pool: {systems: [ubuntu], accounts: 1}
@@ -533,11 +539,11 @@
                     memory=$(cat /sys/fs/cgroup/memory.max)
                     cpu=$(cat /sys/fs/cgroup/cpu.max)
                     echo "OMP_NUM_THREADS=$cores pids.max=$pids memory.max=$memory cpu.max=$cpu"
-                    test "$cores" = 4
+                    test "$cores" = 1
                     test "$pids" = 2048
-                    test "$memory" = 8589934592
+                    test "$memory" = 805306368
                     set -- $cpu
-                    test "$1" != max && test "$1" -eq "$((4 * $2))"
+                    test "$1" != max && test "$1" -eq "$2"
                 - name: The run's own token may not publish
                   env:
                     RUN_TOKEN: ${{ github.token }}

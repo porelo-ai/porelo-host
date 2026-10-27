@@ -69,7 +69,8 @@
   ansible.builtin.assert:
     that:
       - verify_job_options | select('match', '^--(cpus=|memory=|pids-limit=|env=OMP_NUM_THREADS=)') | sort
-        == ['--cpus=4', '--env=OMP_NUM_THREADS=4', '--memory=8g', '--pids-limit=2048']
+        == ['--cpus=1', '--env=OMP_NUM_THREADS=1', '--memory=768m', '--pids-limit=2048']
+      - (verify_runner_config.content | b64decode | from_yaml).runner.capacity == 2
       - verify_job_options | select('match', '^--volume=.*/tls/ca-bundle[.]p12:') | list
         == ['--volume=/home/porelo-runner/tls/ca-bundle.p12:/etc/ssl/certs/porelo-host-java.p12:ro']
       - verify_job_options | select('match', '^--env=JAVA_TOOL_OPTIONS=') | list
@@ -85,7 +86,8 @@
       - verify_job_configuration.valid_volumes | select('equalto', verify_job_jdk_dir) | list
         == [verify_job_jdk_dir]
     fail_msg: >-
-      asked for --cpus=4 --memory=8g --pids-limit=2048 --env=OMP_NUM_THREADS=4 and one read-only Java PKCS12
+      asked for capacity 2, --cpus=1 --memory=768m --pids-limit=2048 --env=OMP_NUM_THREADS=1 (the test VM's job bounds)
+      and one read-only Java PKCS12
       mount allowed in valid_volumes, with the trust store in JAVA_TOOL_OPTIONS, and one read-only JDK
       mount allowed in valid_volumes at /opt/porelo-jdk-25 with JAVA_HOME_25_X64 set to that path;
       got {{ verify_job_configuration }}
@@ -95,6 +97,31 @@
     verify_job_jdk_dir: "/opt/porelo-host/jdk-{{ verify_job_jdk.version }}"
     verify_job_jdk: "{{ (lookup('ansible.builtin.file', playbook_dir
       ~ '/../../../roles/forge/vars/main.yml') | from_yaml).__forge_runner_jdk }}"
+  when: verify_forge == 'on'
+
+- name: Read the runner's unit
+  ansible.builtin.slurp:
+    src: /home/porelo-runner/.config/containers/systemd/forgejo-runner.container
+  register: verify_runner_unit
+  when: verify_forge == 'on'
+
+# The address the runner detects itself is the host's public one, which a job cannot reach; measured on sprint 5's host.
+- name: Assert jobs reach the runner's cache on the forge's address, through ports the unit publishes there alone
+  ansible.builtin.assert:
+    that:
+      - verify_runner_cache.enabled
+      - verify_runner_cache.dir == '/data/cache'
+      - verify_runner_cache.host == '10.73.0.1'
+      - verify_runner_cache.port == 4000
+      - verify_runner_cache.proxy_port == 4001
+      - verify_runner_published == ['PublishPort=10.73.0.1:4000:4000', 'PublishPort=10.73.0.1:4001:4001']
+    fail_msg: >-
+      asked for the cache enabled in /data/cache on host 10.73.0.1, port 4000 and proxy port 4001, both published on
+      10.73.0.1 and nowhere else; got {{ verify_runner_cache }} and {{ verify_runner_published }}
+  vars:
+    verify_runner_cache: "{{ (verify_runner_config.content | b64decode | from_yaml).cache | default({}) }}"
+    verify_runner_published: >-
+      {{ verify_runner_unit.content | b64decode | regex_findall('(?m)^PublishPort=.*$') | sort }}
   when: verify_forge == 'on'
 
 # A separate account lets the test restart its manager without stopping the running forge or Porelo's tasks.
@@ -215,6 +242,87 @@
         state: absent
         remove: true
       when: verify_controller_account.uid is defined
+
+# The runner's jobs and the pool share half the host; checked alone, as the role checks before writing the runner's
+# configuration, with no pool on this host's inventory for the entry point.
+- name: Read the test host's processors for the runner's capacity
+  ansible.builtin.slurp:
+    src: /proc/cpuinfo
+  register: verify_cpuinfo
+
+- name: Keep the measured processors and start with no capacity refusal observed
+  ansible.builtin.set_fact:
+    verify_host_cpus: "{{ verify_cpuinfo.content | b64decode | regex_findall('(?m)^processor\\s*:') | length }}"
+    verify_capacity_refused: false
+
+- name: Check a capacity just within half of the host's processors
+  ansible.builtin.include_role:
+    name: porelo.host.forge
+    tasks_from: capacity
+  vars:
+    forge_runner_capacity: "{{ (verify_host_cpus | int) // 2 }}"
+    forge_job_cpus: 1
+    forge_job_memory: 1m
+
+- name: Run only the capacity check against jobs taking every processor
+  block:
+    - name: Check a capacity of one job per processor
+      ansible.builtin.include_role:
+        name: porelo.host.forge
+        tasks_from: capacity
+      vars:
+        forge_runner_capacity: "{{ verify_host_cpus | int }}"
+        forge_job_cpus: 1
+        forge_job_memory: 1m
+  rescue:
+    - name: Assert the refusal names the jobs and the host's half
+      ansible.builtin.assert:
+        that:
+          - "('asked for ' ~ verify_host_cpus ~ ' jobs of 1 CPUs') in ansible_failed_result.msg"
+          - "(((verify_host_cpus | int) // 2) ~ ' of ' ~ verify_host_cpus ~ ' processors') in ansible_failed_result.msg"
+        fail_msg: >-
+          asked for {{ verify_host_cpus }} one-CPU jobs refused against half of {{ verify_host_cpus }} processors;
+          got {{ ansible_failed_result }}
+
+    - name: Keep the capacity refusal observed
+      ansible.builtin.set_fact:
+        verify_capacity_refused: true
+
+- name: Assert the capacity check refused jobs taking every processor
+  ansible.builtin.assert:
+    that: verify_capacity_refused
+    fail_msg: asked the capacity check to refuse jobs taking every processor, but it accepted them
+
+- name: Read the test host's memory for the runner's capacity
+  ansible.builtin.slurp:
+    src: /proc/meminfo
+  register: verify_capacity_meminfo
+
+- name: Keep the measured memory and start with no memory refusal observed
+  ansible.builtin.set_fact:
+    verify_capacity_kib: >-
+      {{ (verify_capacity_meminfo.content | b64decode | regex_findall('(?m)^MemTotal:\s+([0-9]+) kB$') | first) | int }}
+    verify_capacity_memory_refused: []
+
+# One job of the host's whole memory, and a pool of half the host beside one small job: each alone over the half.
+- name: Run only the capacity check against jobs and a pool taking more than half the memory
+  ansible.builtin.include_tasks: capacity_refused.yml
+  loop:
+    - {label: one job of all the memory, memory: "{{ verify_capacity_kib }}k", pool: {}}
+    - label: a pool of half the memory beside one job
+      memory: 1m
+      pool: {systems: [ubuntu], accounts: 1}
+      pool_mib: "{{ verify_capacity_kib // 2048 }}"
+  loop_control:
+    loop_var: verify_capacity_case
+    label: "{{ verify_capacity_case.label }}"
+
+- name: Assert the capacity check refused both, naming the memory
+  ansible.builtin.assert:
+    that: verify_capacity_memory_refused == ['one job of all the memory', 'a pool of half the memory beside one job']
+    fail_msg: >-
+      asked the capacity check to refuse a job of all the memory and a pool of half of it beside a job, each naming
+      the host's KiB; refused only {{ verify_capacity_memory_refused }}
 
 # No libvirt call is needed to prove an oversized pool would be refused before making VMs.
 - name: Read the test host's memory for an oversized pool
