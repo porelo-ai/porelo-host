@@ -40,6 +40,10 @@ reaches. The forge's token for the gate and the reader is in the account's vault
   - pushes are refused for everybody;
   - one approval is required, and approvals and merges are allowed for the person's account alone;
   - status checks are not required, since the person reads the build.
+  - the person cannot approve a pull request they opened, so another forge account opens it: the gate's identity,
+    whose team writes pull requests, once porelo
+    [B297](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b297) is built, and an agent's account
+    until then. Found in sprint 5's test, where the person's own pull request could not be approved.
 - **porelo-message-sluice seeded:** as today, by `porelo_host_forge_repositories` in the forge's inventory.
 - **Molecule around a protected `main`:** `tasks/forge_push.yml` commits B to `porelo/stand-in` on a branch and lets
   `operator` approve and merge its pull request, in place of the direct commit to `main` it makes today.
