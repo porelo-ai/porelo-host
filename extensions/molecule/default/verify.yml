@@ -902,6 +902,20 @@
                       -o -path {{ (verify_account_home ~ '/.ansible/tmp') | quote }} \) \
                       -prune -o -type f -print0 2> "$work/find-errors" |
                       xargs -0 -r grep -lF -D skip -f "$pattern" -- > "$work/hits" 2> "$work/errors" || true
+                  # A file gone between find and grep, such as an SQLite journal of a running container store, held
+                  # nothing that stays on the host; it is dropped only when it is gone still. Every other error stays.
+                  for errors in "$work/errors" "$work/find-errors"; do
+                      while IFS= read -r line; do
+                          case $line in
+                              'grep: '*': No such file or directory' | 'find: '*': No such file or directory')
+                                  gone=${line#*: }; gone=${gone%: No such file or directory}
+                                  gone=${gone#\'}; gone=${gone%\'}
+                                  if [ ! -e "$gone" ] && [ ! -L "$gone" ]; then continue; fi ;;
+                          esac
+                          printf '%s\n' "$line"
+                      done < "$errors" > "$errors.kept"
+                      mv "$errors.kept" "$errors"
+                  done
                   # A file grep could not read is a search that did not run, never a clean one.
                   [ ! -s "$work/errors" ] && [ ! -s "$work/find-errors" ] ||
                       { echo "grep or find could not read under $dir:" >&2
