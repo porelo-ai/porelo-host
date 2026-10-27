@@ -9,8 +9,6 @@ on it.
 `secrets.kdbx` and the interface holds no secret, gives the host every secret the stop needs in one pipeline on standard
 input, and the host passes each straight to what uses it. The drive holds no secret in the clear, and once `up` has
 ended to its last step no secret given at the stop lies in a file on the host but the VPN's key in `/etc/wireguard`.
-The drive's login is not one of them: it stays the person's, typed at the host as today, until
-[HO38](README.md#ho38) takes the drive out of the host's setup.
 This is the host's part of porelo-project
 [PJ51](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj51).
 
@@ -24,14 +22,18 @@ keys); a host gets only its own group and `shared`.
   porelo-host-stop --stdin NEED...`, as `up` itself is run, with the needs as the stop's line names them, and writes one
   line per secret: `<need> [<name>] <value in base64>`. Base64 keeps a secret from breaking the framing; the script
   refuses an unknown need, a second line of one need and name, or a value that does not decode, with exit 64, before it
-  uses any line. A named need the lines do not bring is asked in the terminal where there is one (a first host's
-  passphrase), and refused where there is none. `drive` is never a line, and a `--stdin` call that names it is refused
-  with exit 64: where the stop's line names `drive` too, the interface first runs the person's terminal stop for it, as
-  today, then the pipeline for the rest. `--stdin` refuses to run but as root; the script stays
-  installed as today, `/usr/local/bin`, `0755`, root's, and without `--stdin` it is the person's terminal
-  stop as the account, unchanged. As root it reads the account's name and `vpn_private_key_path` from
-  `/etc/porelo-host/stop.conf`, no secret, root's `0644`, which `roles/porelo/tasks/install.yml` writes from the
-  inventory, and refuses where the file is missing or names an account `getent` does not know.
+  uses any line. A named need the lines do not bring is refused with exit 64, naming it, since the pipeline's standard
+  input is the file's lines and there is no terminal to ask in: a first host's passphrase is put into `secrets.kdbx`
+  on the desktop before the pipeline runs. `drive` is never a line, and a `--stdin` call that names it is refused with
+  exit 64: the drive's login stays the person's, typed at the host as today, until [HO38](README.md#ho38) takes the
+  drive out of the host's setup, so where the stop's line names `drive` too, the interface first runs the person's
+  terminal stop for it, then the pipeline for the rest. `--stdin` refuses to run but as root; the script stays
+  installed as today, `/usr/local/bin`, `0755`, root's, and without `--stdin` it is the person's terminal stop as the
+  account, unchanged. As root it reads two files, neither holding a secret, each root's `0644`, and refuses where one
+  is missing: the account's name from `/etc/porelo-host/stop.conf`, which `roles/porelo/tasks/install.yml` writes from
+  `porelo_account`, refused where it names an account `getent` does not know; and `vpn_private_key_path` from
+  `/etc/porelo-host/vpn.conf`, which `roles/vpn/tasks/needs.yml` writes in the first play, where the vpn role's
+  defaults are loaded, since `install` runs before the vpn role and does not see them. `down` removes both.
 - **Where each goes.** Each value is decoded through a pipe (`printf '%s' | base64 -d |`) into its user, never a
   here-string, which bash may put into a temporary file; it lives only in the script's memory and that pipe:
   - `vault-new`, `vault`: into `porelo vault init|unlock --passphrase-stdin`, as the account;
@@ -67,13 +69,16 @@ keys); a host gets only its own group and `shared`.
 - **The terminal stays** for what the file does not hold: `porelo-host-stop` without `--stdin`, run by the person as the
   account, works as today.
 - **Touches:** `playbooks/up.yml` (the vpn's needs), `roles/porelo/files/porelo-host-stop` (`--stdin`),
-  `roles/porelo/tasks/install.yml` (`stop.conf`), `needs.yml`, `project.yml`, `down.yml`, `roles/porelo/README.md`,
-  `meta/argument_specs.yml` (`project` no longer reads keys from the drive), `roles/vpn/tasks/needs.yml` (new),
-  `key.yml`, `down.yml`, `roles/vpn/defaults/main.yml`, `meta/argument_specs.yml` (the `needs` entry point,
-  `vpn_private_key_path`), `README.md`, `templates/apparmor-local-wg.j2` and its handler, which go, `doc/decisions.md`
-  (the accepted risk); `roles/forge/tasks/repositories.yml`, `down.yml`, `roles/forge/defaults/main.yml`,
-  `meta/argument_specs.yml`, `README.md` (`forge_central_token_path`), `doc/lines.md`, and `AGENTS.md`'s reason for the
-  stop script, which now also runs as root.
+  `roles/porelo/tasks/install.yml` (`stop.conf`), `needs.yml`, `project.yml`, `down.yml` (`stop.conf` removed, its
+  comments that the keys come from the drive), `roles/porelo/README.md`, `meta/argument_specs.yml` (`project` no longer
+  reads keys from the drive), `roles/vpn/tasks/needs.yml` (new), `key.yml`, `down.yml` (`vpn.conf` removed),
+  `roles/vpn/defaults/main.yml`, `meta/argument_specs.yml` (the `needs` entry point, `vpn_private_key_path`),
+  `README.md`, `templates/apparmor-local-wg.j2` and its handler, which go, `doc/decisions.md` (the accepted risk);
+  `roles/forge/tasks/repositories.yml`, `down.yml`, `roles/forge/defaults/main.yml`, `meta/argument_specs.yml`,
+  `README.md` (`forge_central_token_path`), `doc/lines.md`, `doc/index.md` (the needs, and where the VPN's key and the
+  vault's keys come from), the Molecule scenario's `converge.yml`, `verify.yml` and `side_effect.yml` (the needs it
+  asserts, the key and token it writes on the drive), and `AGENTS.md`'s reason for the stop script, which now also runs
+  as root.
 - **Red first, in Molecule:** with a test key and passphrase the scenario makes, one `--stdin` pipeline at the first
   stop opens the vault, puts the key, and brings the VPN up; a line of an unknown need or bad base64 is refused before
   the vault is touched; the `up` that first names repositories refuses naming `forge-central-token`, and after a
