@@ -38,6 +38,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho39"></a>[HO39](HO39-The-Hosts-Agent-Works-In-A-Porelo-Task.md) | - | - | porelo-host's agent in a Porelo task on the move's host (sprint 8a): the image from `porelo.yml`, Forgejo's build with its Molecule leg off the task's container, the room under the repository's name, and a way back to this machine. |
 | <a id="ho30"></a>[HO30](HO30-The-Forges-Trust-And-Job-Bounds-Measured.md) | - | - | A running job's container measured to carry its bounds, and when Porelo reads the forge's CA, beyond what Molecule reads from the files the roles write. |
 | <a id="ho28"></a>[HO28](HO28-The-Forges-Events-Routed-To-Each-Accounts-Porelo.md) | - | - | Optional speed-up: the forge's webhooks, reviews included, reported to one router on the host, which checks the signature and hands only a wake-up hint to the daemon of the account whose task it concerns, known from the pusher's forge account or the pull request's branch. |
 | <a id="ho27"></a>[HO27](HO27-The-Forges-Jobs-Told-Where-The-Pool-Is.md) | - | porelo-buildtools [BT25](https://github.com/porelo-ai/porelo-buildtools/blob/main/issues/README.md#bt25) | The forge's runner tells every job where the VM pool is, so one workflow takes a pool account on the forge and rents a server on GitHub. |
