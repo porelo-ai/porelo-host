@@ -1283,9 +1283,16 @@
           - verify_forge_lines[4].name == 'JF_URL'
           - verify_forge_lines[4].data == 'https://jfrog.invalid'
           - "'JF_ACCESS_TOKEN' in (verify_forge_lines[5] | map(attribute='name') | list)"
+          - verify_forge_lines[0].allow_fast_forward_only_merge
+          - verify_forge_lines[0].default_merge_style == 'fast-forward-only'
+          - not verify_forge_lines[0].allow_merge_commits
+          - not verify_forge_lines[0].allow_rebase
+          - not verify_forge_lines[0].allow_rebase_explicit
+          - not verify_forge_lines[0].allow_squash_merge
+          - not verify_forge_lines[0].allow_manual_merge
         fail_msg: >-
-          asked for the repository migrated with its content, no mirror, no push mirror, PORELO_PUBLISH=false,
-          JF_URL=https://jfrog.invalid and secret name JF_ACCESS_TOKEN;
+          asked for the repository migrated with its content, no mirror, no push mirror, fast-forward its only and
+          default merge style, PORELO_PUBLISH=false, JF_URL=https://jfrog.invalid and secret name JF_ACCESS_TOKEN;
           got rc {{ verify_forge_repo.rc }}: {{ verify_forge_repo.stdout }} {{ verify_forge_repo.stderr }}
       vars:
         verify_forge_lines: "{{ verify_forge_repo.stdout_lines | select | map('from_json') | list }}"

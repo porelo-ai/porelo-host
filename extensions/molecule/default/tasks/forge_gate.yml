@@ -238,24 +238,36 @@
           | curl -sS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem -H @- \
               -H 'Content-Type: application/json' -o /dev/null -w '%{http_code}' \
               -X POST "$base/pulls/$pull/reviews" -d '{"event": "APPROVED", "body": "Gate review cannot accept"}')
-      refused=$(person -o /dev/null -w '%{http_code}' -X POST "$base/pulls/$pull/merge" -d '{"Do": "merge"}')
+      refused=$(person -o /dev/null -w '%{http_code}' -X POST "$base/pulls/$pull/merge" \
+          -d '{"Do": "fast-forward-only"}')
       code=$(api -o "$answer" -w '%{http_code}' "$base/pulls/$pull")
       [ "$code" = 200 ] || { echo "asked to read the refused PR with HTTP 200, got HTTP $code" >&2; exit 1; }
       open=$(python3 -I -c 'import json,sys; p=json.load(open(sys.argv[1]));
       print(str(p["state"] == "open" and not p["merged"]).lower())' "$answer")
       approved=$(person -o /dev/null -w '%{http_code}' -X POST "$base/pulls/$pull/reviews" \
           -d '{"event": "APPROVED", "body": "Accept the probe"}')
-      admin_refused=$(api -o /dev/null -w '%{http_code}' -X POST "$base/pulls/$pull/merge" -d '{"Do": "merge"}')
-      merged=$(person -o /dev/null -w '%{http_code}' -X POST "$base/pulls/$pull/merge" -d '{"Do": "merge"}')
+      admin_refused=$(api -o /dev/null -w '%{http_code}' -X POST "$base/pulls/$pull/merge" \
+          -d '{"Do": "fast-forward-only"}')
+      # A merge commit would be the forge's own, authored by the person's forge account; only fast-forward is open.
+      merge_commit=$(person -o /dev/null -w '%{http_code}' -X POST "$base/pulls/$pull/merge" -d '{"Do": "merge"}')
+      merged=$(person -o /dev/null -w '%{http_code}' -X POST "$base/pulls/$pull/merge" \
+          -d '{"Do": "fast-forward-only"}')
       code=$(api -o /dev/null -w '%{http_code}' "$base/compare/main...porelo/probe")
       [ "$code" = 200 ] || { echo "asked to compare the merged probe with HTTP 200, got HTTP $code" >&2; exit 1; }
       api -f "$base/compare/main...porelo/probe" > "$answer"
       reached=$(python3 -I -c 'import json,sys
       print(str(json.load(open(sys.argv[1]))["total_commits"] == 0).lower())' \
           "$answer")
+      api -f "$base/branches/main" > "$answer"
+      main_head=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["commit"]["id"])' "$answer")
+      api -f "$base/branches/porelo/probe" > "$answer"
+      probe_head=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["commit"]["id"])' "$answer")
+      [ "$main_head" = "$probe_head" ] && unchanged=true || unchanged=false
       printf '{"gate_review_http": %s, "unapproved_http": %s, "kept_open": %s, "approved_http": %s,
-          "admin_merge_http": %s, "merged_http": %s, "reached": %s}\n' \
-          "$gate_review" "$refused" "$open" "$approved" "$admin_refused" "$merged" "$reached"
+          "admin_merge_http": %s, "merge_commit_http": %s, "merged_http": %s, "reached": %s,
+          "main_is_probe": %s}\n' \
+          "$gate_review" "$refused" "$open" "$approved" "$admin_refused" "$merge_commit" "$merged" "$reached" \
+          "$unchanged"
     executable: /bin/bash
   register: verify_gate_review
   changed_when: true
@@ -271,12 +283,15 @@
       - verify_gate_reviewed.kept_open | default(false)
       - verify_gate_reviewed.approved_http | default(0) == 200
       - verify_gate_reviewed.admin_merge_http | default(0) in [403, 405]
+      - verify_gate_reviewed.merge_commit_http | default(0) in [403, 405]
       - verify_gate_reviewed.merged_http | default(0) == 200
       - verify_gate_reviewed.reached | default(false)
+      - verify_gate_reviewed.main_is_probe | default(false)
     fail_msg: >-
       asked for a gate review accepted or refused (200 or 403), a merge without the person's approval refused
       (403 or 405) with the PR open, then the person's approval (200), an admin merge refused (403 or 405),
-      the person's merge (200) and the probe contained in main; got exit {{ verify_gate_review.rc }}:
+      the person's merge commit refused (403 or 405), the person's fast-forward (200), the probe contained in main
+      and main's head the probe's own commit; got exit {{ verify_gate_review.rc }}:
       {{ verify_gate_review.stdout }} {{ verify_gate_review.stderr }}
   vars:
     verify_gate_reviewed: "{{ verify_gate_review.stdout | default('{}', true) | from_json }}"

@@ -35,7 +35,7 @@
           -d '{"event": "APPROVED", "body": "Accept local work"}')
       [ "$approved" = 200 ] || { echo "asked operator to approve B with HTTP 200, got HTTP $approved" >&2; exit 1; }
       merged=$(person -o /dev/null -w '%{http_code}' -X POST "$base/porelo/stand-in/pulls/$pull/merge" \
-          -d '{"Do": "merge"}')
+          -d '{"Do": "fast-forward-only"}')
       [ "$merged" = 200 ] || { echo "asked operator to merge B with HTTP 200, got HTTP $merged" >&2; exit 1; }
       git_as porelo-admin clone --branch main --single-branch \
           https://10.73.0.1:3000/porelo/stand-in.git "$work/repo"
@@ -196,14 +196,39 @@
       local_after=$(sha porelo/stand-in main)
       central_after=$(sha central/stand-in main)
       back=$(api -o /dev/null -w '%{http_code}' "$base/porelo/stand-in/contents/A?ref=central/main")
+      # Main merges by fast-forward only, so the central work is joined on a branch of its own, as an agent does in a
+      # task: central/main with main merged into it by a commit worded by the shared rule, which main then reaches.
+      (
+          set -e
+          export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
+          take=$(mktemp -d /root/porelo-host-take.XXXXXX)
+          trap 'rm -rf "$take"' EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          # The token's own form of Basic authentication, the one this task's leak check searches for.
+          admin() { GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraHeader GIT_CONFIG_VALUE_0="Authorization: Basic $(\
+              printf 'x-access-token:%s' "$(cat /home/porelo-forge/.config/porelo-forge/api.token)" | base64 -w0)" \
+              GIT_SSL_CAINFO=/etc/porelo-host/forge/ca.pem git "$@"; }
+          admin clone --quiet https://10.73.0.1:3000/porelo/stand-in.git "$take/repo" > /dev/null 2>&1
+          git -C "$take/repo" switch --quiet -c central/take origin/central/main
+          git -C "$take/repo" -c user.name=agent -c user.email=agent@localhost merge --quiet --no-edit \
+              -m "Take the central forge's work" origin/main > /dev/null
+          admin -C "$take/repo" push --quiet origin central/take > /dev/null 2>&1
+      )
+      # Not '( ... ) ||': bash ignores set -e in a subshell that is the left side of ||.
+      take_rc=$?
+      if [ "$take_rc" != 0 ]; then
+          echo "asked to join central/main and main on central/take and push it, got exit $take_rc" >&2
+          exit 1
+      fi
       pull=$(api -X POST "$base/porelo/stand-in/pulls" \
-          -d '{"head": "central/main", "base": "main", "title": "Merge the central forge'"'"'s work"}' \
+          -d '{"head": "central/take", "base": "main", "title": "Take the central forge'"'"'s work"}' \
           | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["number"])')
       approved=$(person -o /dev/null -w '%{http_code}' -X POST "$base/porelo/stand-in/pulls/$pull/reviews" \
           -d '{"event": "APPROVED", "body": "Accept central work"}')
       [ "$approved" = 200 ] || { echo "asked operator to approve A with HTTP 200, got HTTP $approved" >&2; exit 1; }
       merged=$(person -o /dev/null -w '%{http_code}' -X POST "$base/porelo/stand-in/pulls/$pull/merge" \
-          -d '{"Do": "merge"}')
+          -d '{"Do": "fast-forward-only"}')
       out2=$(/usr/local/sbin/porelo-host-push stand-in < "$token" 2>&1)
       rc2=$?
       leaked=no
@@ -250,7 +275,7 @@
     fail_msg: >-
       asked for an unknown repository refused (64), the push over the moved central forge refused naming
       'Keep central work' and central/main with both mains kept and A on central/main (200), the merge taken (200),
-      the second push taken with both mains equal, no token in output or journal and no clone left; got
-      {{ verify_result }}
+      the second push taken with both mains equal, no token in output or journal and no clone left; got exit
+      {{ verify_gathered.rc }}: {{ verify_result }} {{ verify_gathered.stderr | default('') }}
   vars:
     verify_result: "{{ verify_gathered.stdout | default('{}', true) | from_json }}"
