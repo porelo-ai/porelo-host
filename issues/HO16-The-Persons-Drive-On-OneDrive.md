@@ -22,17 +22,12 @@ synced. Many companies keep their files there.
 - **The login.** Microsoft's OAuth device flow fits the stop, since no password is typed on the host. A work account
   may need its tenant admin's consent for the client's app id. Where the refresh token lives on the host, readable by
   whom, and that `down` revokes it or at least removes it.
-- **Encryption.** Tresorit encrypts end to end; OneDrive does not. The host's WireGuard key, which the `vpn` role reads
-  from the drive, and anything secret on it would lie readable at Microsoft and by the company's admins. Whether such
-  files need their own encryption on the drive (rclone's `crypt`, say), or the key is kept elsewhere for OneDrive.
-- **The host's side of an encrypted key.** For a drive that is not encrypted end to end, porelo-frontend writes the
-  host's key into it as `porelo-host/wireguard.key.age`, encrypted to an age recipient whose identity it keeps in the
-  system's secret store and gives the host only at the stop, on stdin, never through the drive. The host runs
-  `age -d -i - <drive>/porelo-host/wireguard.key.age` with the identity on that stdin, into a file 0600 on a
-  filesystem that is `noexec` and not the drive (a tmpfs under `/run`), names that file to `wg` as
-  `vpn_private_key_path` names the drive's today, and removes it at `down`. Measured with Ubuntu 26.04's packaged
-  `age` 1.2.1 and no terminal: an identity from a pipe decrypts; a passphrase is refused ("standard input is not a
-  terminal"), so the secret is an identity, never a passphrase.
+- **Encryption.** Tresorit encrypts end to end; OneDrive does not, so what lies on it is readable at Microsoft and by
+  the company's admins. Once [HO37](README.md#ho37) gives the host every secret on standard input from the person's
+  `secrets.kdbx`, the host's part of the drive ([HO36](README.md#ho36)) holds none, and an age-encrypted
+  `wireguard.key.age` is not needed. `secrets.kdbx` itself may lie on OneDrive, since only its master password opens
+  it, which then carries the whole weight; the host never reads it. What stays open is the person's own files on a
+  private drive, which are theirs to choose for.
 - **Personal or business.** OneDrive personal, or OneDrive for Business and SharePoint libraries: which comes first.
 - **The choice.** How the inventory names the drive's kind, beside `porelo_host_tresor`, so the role picks its
   client; porelo-frontend's matching issue, "OneDrive As The Project's Drive", asks the person for it and gives
