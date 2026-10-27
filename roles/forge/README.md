@@ -37,6 +37,13 @@ The [resource bounds](../../doc/index.md) are set by `forge_cpus`, `forge_memory
 `forge_job_memory`, `forge_job_pids_limit` and `forge_job_omp_num_threads`. Their defaults and types are in
 [`defaults/main.yml`](defaults/main.yml) and [`meta/argument_specs.yml`](meta/argument_specs.yml).
 
+The runner takes `forge_runner_capacity` jobs at once, 4 by default. Before its configuration is written, the role
+checks one budget with the VM pool: capacity × `forge_job_cpus` stays within half the host's processors, and capacity
+× `forge_job_memory` plus the pool's VMs within half its `MemTotal`, so Forgejo, the runner and Porelo's own tasks keep
+the other half. A refusal names both sides; the `capacity` entry point runs this check alone. A job's `actions/cache`
+reaches the runner's cache on the forge's address, its server on `forge_runner_cache_port` (4000) and its proxy on
+`forge_runner_cache_proxy_port` (4001), both published there alone.
+
 The forge's URLs use `https://forge.porelo.internal/` (`forge_name`) with no port. A root-owned system socket
 forwards port 443 on loopback and the VPN's address to Forgejo's original HTTPS port (`forge_http_port`, 3000 by
 default), which stays reachable on the VPN for the runner and existing clients. The role replaces

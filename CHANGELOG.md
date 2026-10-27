@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The forge's runner takes `forge_runner_capacity` jobs at once, 4 by default, in place of one. `up` refuses a capacity
+  whose jobs, with the VM pool, would take more than half the host's processors or memory, naming both sides.
+- A job's `actions/cache` reaches the runner's cache on the forge's address, through two fixed ports published there,
+  so a second run restores what the first saved instead of starting cold.
+
 ### Changed
 
 - Each repository on the host's forge merges pull requests by fast-forward only, every other merge style off, and

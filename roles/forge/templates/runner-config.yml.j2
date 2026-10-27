@@ -3,8 +3,16 @@ log:
   level: info
 runner:
   file: /data/.runner
-  capacity: 1
+  capacity: {{ forge_runner_capacity }}
   labels: {{ forge_runner_labels | to_json }}
+# A job reaches the cache on the forge's address, where the runner's unit publishes both ports; the address the runner
+# would detect itself is the host's public one, which a job's container cannot reach.
+cache:
+  enabled: true
+  dir: /data/cache
+  host: {{ forge_address }}
+  port: {{ forge_runner_cache_port }}
+  proxy_port: {{ forge_runner_cache_proxy_port }}
 container:
   # Jobs get no socket of the runner's podman, so a job cannot start containers beside itself.
   docker_host: "-"

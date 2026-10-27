@@ -1,0 +1,44 @@
+---
+- name: capacity | Read the host's processors and memory before the runner's capacity is written
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  loop: [/proc/cpuinfo, /proc/meminfo]
+  register: __forge_capacity_host
+  check_mode: false
+
+# One budget with the VM pool: what the jobs may take at once and the pool's VMs together stay within half the host,
+# so Forgejo, the runner and Porelo's own tasks keep the other half. The pool is read as vm_pool reads it; vm_pool runs
+# after the forge, so its VM size default, 1536 MiB, is repeated here.
+- name: capacity | Stop when the runner's jobs and the VM pool would take more than half the host
+  ansible.builtin.assert:
+    that:
+      - forge_runner_capacity | int >= 1
+      - forge_job_cpus | int >= 1
+      - __forge_job_kib | int > 0
+      - __forge_pool_kib | int >= 0
+      - __forge_host_cpus | int > 0 and __forge_host_kib | int > 0
+      - (forge_runner_capacity | int) * (forge_job_cpus | int) <= (__forge_host_cpus | int) // 2
+      - (forge_runner_capacity | int) * (__forge_job_kib | int) + (__forge_pool_kib | int)
+        <= (__forge_host_kib | int) // 2
+    fail_msg: >-
+      asked for {{ forge_runner_capacity }} jobs of {{ forge_job_cpus }} CPUs and {{ forge_job_memory }}
+      ({{ __forge_job_kib }} KiB each) beside a VM pool of {{ __forge_pool_kib }} KiB within half the host:
+      {{ (__forge_host_cpus | int) // 2 }} of {{ __forge_host_cpus }} processors and {{ (__forge_host_kib | int) // 2 }}
+      of {{ __forge_host_kib }} KiB; lower forge_runner_capacity or the job bounds
+    quiet: true
+  vars:
+    __forge_host_cpus: >-
+      {{ __forge_capacity_host.results[0].content | b64decode | regex_findall('(?m)^processor\s*:') | length }}
+    __forge_host_kib: >-
+      {{ (__forge_capacity_host.results[1].content | b64decode | regex_findall('(?m)^MemTotal:\s+([0-9]+) kB$')
+          + ['0']) | first }}
+    __forge_job_size: >-
+      {{ forge_job_memory | string | lower | regex_findall('^([0-9]+)([kmg]?)$') | first | default(['0', '']) }}
+    # Podman's size notation: bytes without a unit, else k, m or g.
+    __forge_job_kib: >-
+      {{ {'': (__forge_job_size[0] | int) // 1024, 'k': __forge_job_size[0] | int,
+          'm': (__forge_job_size[0] | int) * 1024, 'g': (__forge_job_size[0] | int) * 1048576}[__forge_job_size[1]] }}
+    __forge_pool_kib: >-
+      {{ (vm_pool_systems | default((porelo_host_vm_pool | default({})).systems | default([])) | length)
+         * (vm_pool_accounts | default((porelo_host_vm_pool | default({})).accounts | default(0)) | int)
+         * (vm_pool_memory | default(1536) | int) * 1024 }}

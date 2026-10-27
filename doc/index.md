@@ -26,8 +26,11 @@ both are mode `0600` in the account's `0700` Porelo configuration directory. `do
 task CA file, and removes the account's CA bundle if only whitespace remains.
 
 Forgejo is bounded to 2 CPUs of time, 2 GiB of memory and 1024 processes and threads; its runner daemon to 1 CPU,
-512 MiB and 256. Each of the runner's jobs gets 4 CPUs of time, 8 GiB and 2048 processes and threads, with
-`OMP_NUM_THREADS=4` to tell tools its core count; these are fixed role defaults, independent of the host's size.
+512 MiB and 256. The runner takes 4 jobs at once, and each gets 4 CPUs of time, 8 GiB and 2048 processes and threads,
+with `OMP_NUM_THREADS=4` to tell tools its core count; these are fixed role defaults, independent of the host's size.
+Before writing the runner's configuration, `up` refuses jobs that, with the VM pool, would take more than half the
+host: capacity × CPUs per job above half the processors, or capacity × memory per job plus the pool's memory above
+half of `MemTotal`, naming both sides.
 `up` refuses Porelo's account, and the forge's two accounts where it runs, if their user managers lack any of
 `cpu`, `memory` and `pids`, naming the account and every missing controller. Before changing libvirt or making VMs,
 it also refuses a pool whose memory (systems × accounts per system × memory per VM) exceeds half of `MemTotal`,

@@ -11,6 +11,8 @@ PidsLimit={{ forge_runner_pids_limit }}
 Memory={{ forge_runner_memory }}
 PodmanArgs=--cpus={{ forge_runner_cpus }}
 UserNS=keep-id:uid=1000,gid=1000
+PublishPort={{ forge_address }}:{{ forge_runner_cache_port }}:{{ forge_runner_cache_port }}
+PublishPort={{ forge_address }}:{{ forge_runner_cache_proxy_port }}:{{ forge_runner_cache_proxy_port }}
 Volume=%h/runner:/data
 Volume=%h/tls:/tls:ro
 Volume=%t/podman/podman.sock:/run/podman/podman.sock

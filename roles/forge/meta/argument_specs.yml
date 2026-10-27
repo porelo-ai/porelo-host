@@ -47,7 +47,7 @@ argument_specs:
       forge_runner_cpus:
         type: int
         default: 1
-        description: The runner daemon's CPU time quota in cores, for coordinating its one job.
+        description: The runner daemon's CPU time quota in cores, for coordinating its jobs.
       forge_runner_memory:
         type: str
         default: 512M
@@ -56,6 +56,18 @@ argument_specs:
         type: int
         default: 256
         description: The runner daemon's maximum number of processes and threads.
+      forge_runner_capacity:
+        type: int
+        default: 4
+        description: How many jobs the runner takes at once, each within the job bounds.
+      forge_runner_cache_port:
+        type: int
+        default: 4000
+        description: The port of the runner's cache server, published on the forge's address.
+      forge_runner_cache_proxy_port:
+        type: int
+        default: 4001
+        description: The port of the runner's cache proxy, the one a job's actions/cache is given.
       forge_job_cpus:
         type: int
         default: 4
@@ -143,6 +155,21 @@ argument_specs:
         type: bool
         default: false
         description: Lets Forgejo migrate from a private address, for a stand-in central forge on the host.
+  capacity:
+    short_description: Refuse runner jobs that, with the VM pool, would take more than half the host.
+    options:
+      forge_runner_capacity:
+        type: int
+        default: 4
+        description: How many jobs the runner takes at once, each within the job bounds.
+      forge_job_cpus:
+        type: int
+        default: 4
+        description: Each job container's CPU time quota in cores.
+      forge_job_memory:
+        type: str
+        default: 8g
+        description: Each job container's memory limit, in podman's size notation.
   down:
     short_description: The forge taken off the host before it is given back, its secrets and units with it.
     options:
