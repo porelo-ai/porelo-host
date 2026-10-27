@@ -26,18 +26,24 @@ Read in the code, nothing measured. Once [HO36](README.md#ho36) reads `machine.y
 - **What names the drive goes with it:** the comments in `roles/base/defaults/main.yml` and
   `roles/base/tasks/account.yml` that the drive is logged in as Porelo's account, `porelo_machine_file`'s old default
   (gone with [HO36](README.md#ho36)), the drive's rows in `doc/index.md`, `doc/lines.md` (`drive` among the needs),
-  `doc/testing.md` (the client's stub), and `doc/decisions.md` (*Tresorit's installer*, and *The order of `up` and
-  `down`*, which names the drive's login). The Build's step that names the stub, if any, follows.
+  `doc/testing.md` (the client's stub), `doc/local-forge.md` (the drive's sync wait at `down`), `doc/decisions.md`
+  (*Tresorit's installer*, and *The order of `up` and `down`*, which names the drive's login),
+  `roles/porelo/README.md` (the stop's drive login), and the Build's step *The plugins' Python and their tests* in
+  `.github/workflows/build.yml`, which compiles `plugins/modules/tresorit_installer.py`. The open issues that name the
+  drive follow in the same commit: [HO14](README.md#ho14) (the module) and [HO15](README.md#ho15) (the drive's mount,
+  daemon and installer on Fedora).
 - **The Molecule scenario** loses the client's stub (`files/tresorit-cli`), the drive's login, the first `up`'s
-  `drive` need, the sync and unmount checks in `verify.yml`, and `side_effect.yml`'s down that waits on an unsynced
-  drive; it gains a check that nothing of Tresorit is on the host after `up`.
+  `drive` need, the sync and unmount checks in `verify.yml`, `side_effect.yml`'s down that waits on an unsynced
+  drive, and the drive's folder in `tasks/secrets_stdin.yml`, whose search for a secret moves to wherever
+  [HO36](README.md#ho36) puts the setup's files; it gains a check that nothing of Tresorit is on the host after `up`.
 - **Touches:** `playbooks/up.yml`, `playbooks/down.yml`, `roles/drive/` (removed), `plugins/modules/tresorit_installer.py`
   (removed), `tests/unit/plugins/modules/` (removed), `tests/unit/plugins/callback/plays/waiting.yml` and
   `test_lines.py` (their example needs), `tests/unit/roles/test_porelo_host_stop.py`,
-  `tests/unit/roles/test_down_after_failed_up.py`, `roles/porelo/files/porelo-host-stop`, `roles/base/defaults/main.yml`,
-  `roles/base/tasks/account.yml`, `README.md`, `doc/index.md`, `doc/lines.md`, `doc/testing.md`, `doc/decisions.md`,
-  `CHANGELOG.md`, `AGENTS.md`'s list of files that cannot be Java (only if it names one that goes), and the Molecule
-  scenario's `converge.yml`, `verify.yml` and `side_effect.yml`.
+  `tests/unit/roles/test_down_after_failed_up.py`, `roles/porelo/files/porelo-host-stop`, `roles/porelo/README.md`,
+  `roles/base/defaults/main.yml`, `roles/base/tasks/account.yml`, `.github/workflows/build.yml`, `doc/index.md`,
+  `doc/lines.md`, `doc/testing.md`, `doc/local-forge.md`, `doc/decisions.md`, `CHANGELOG.md`, the issues
+  [HO14](README.md#ho14) and [HO15](README.md#ho15), and the Molecule scenario's `converge.yml`, `verify.yml`,
+  `side_effect.yml`, `tasks/secrets_stdin.yml` and `files/tresorit-cli` (removed).
 - **Red first:** the unit test of the stop refusing `drive`; in Molecule, the first `up`'s needs without `drive`, and
   after `up` no `tresorit-cli`, no Tresorit unit, and nothing mounted under `/srv/porelo-host/drive`.
 
