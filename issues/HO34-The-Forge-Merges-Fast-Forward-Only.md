@@ -54,9 +54,8 @@ Sprint 5's rented host, 2026-10-27:
   does, it is the same commit of the forge's own one step earlier. Then it is either switched to rebase
   (`default_update_style`, if Forgejo has it) or left out.
 
-## Open questions
+## Decided
 
-1. **QH37:** should `porelo-host-push` also refuse a `main` that holds a commit by the forge's own `operator`
-   identity (`@forge.porelo.internal`), as a guard behind this setting? (a) Yes: it names the commit and pushes
-   nothing, size S on top. (b) No: the merge style alone keeps such commits out, and the public Build's push step
-   would still refuse one.
+- **QH37 (b), the operator, 2026-10-27:** `porelo-host-push` gets no guard of its own against a commit of the forge's
+  `operator` identity. The merge style alone keeps such commits out, and the public Build's push step would still
+  refuse one.
