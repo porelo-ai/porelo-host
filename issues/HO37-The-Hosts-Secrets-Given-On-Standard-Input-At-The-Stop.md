@@ -9,30 +9,31 @@ on it.
 `secrets.kdbx` and the interface holds no secret, gives the host every secret the stop needs in one pipeline on standard
 input, and the host passes each straight to what uses it. The drive holds no secret in the clear, and once `up` has
 ended to its last step no secret given at the stop lies in a file on the host but the VPN's key in `/etc/wireguard`.
+The drive's login is not one of them: it stays the person's, typed at the host as today, until
+[HO38](README.md#ho38) takes the drive out of the host's setup.
 This is the host's part of porelo-project
 [PJ51](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj51).
 
 ## Plan
 
-Read in the code, nothing measured. The file holds a group `shared` (the lasting forge CA, the forge's password, the
-drive's login) and a group per host under `hosts/<name>` (its WireGuard key, its vault passphrase, the machine file's
+Read in the code, nothing measured. The file holds a group `shared` (the lasting forge CA, the forge's password) and
+a group per host under `hosts/<name>` (its WireGuard key, its vault passphrase, the machine file's
 keys); a host gets only its own group and `shared`.
 
 - **One pipeline, as root.** The terminal the interface opens runs `keepassxc-cli` into `ssh <admin>@<host> sudo
-  porelo-host-stop --stdin [--email ADDRESS] NEED...`, as `up` itself is run, with the needs as the stop's line names
-  them, and writes one line per secret: `<need> [<name>] <value in base64>`. Base64 keeps a secret from breaking the
-  framing; the script refuses an unknown need, a second line of one need and name, or a value that does not decode, with
-  exit 64, before it uses any line. A named need the lines do not bring is asked in the terminal where there is one (the
-  one-time code, a first host's passphrase), and refused where there is none. `--stdin` refuses to run but as root; the
-  script stays installed as today, `/usr/local/bin`, `0755`, root's, and without `--stdin` it is the person's terminal
+  porelo-host-stop --stdin NEED...`, as `up` itself is run, with the needs as the stop's line names them, and writes one
+  line per secret: `<need> [<name>] <value in base64>`. Base64 keeps a secret from breaking the framing; the script
+  refuses an unknown need, a second line of one need and name, or a value that does not decode, with exit 64, before it
+  uses any line. A named need the lines do not bring is asked in the terminal where there is one (a first host's
+  passphrase), and refused where there is none. `drive` is never a line, and a `--stdin` call that names it is refused
+  with exit 64: where the stop's line names `drive` too, the interface first runs the person's terminal stop for it, as
+  today, then the pipeline for the rest. `--stdin` refuses to run but as root; the script stays
+  installed as today, `/usr/local/bin`, `0755`, root's, and without `--stdin` it is the person's terminal
   stop as the account, unchanged. As root it reads the account's name and `vpn_private_key_path` from
   `/etc/porelo-host/stop.conf`, no secret, root's `0644`, which `roles/porelo/tasks/install.yml` writes from the
   inventory, and refuses where the file is missing or names an account `getent` does not know.
 - **Where each goes.** Each value is decoded through a pipe (`printf '%s' | base64 -d |`) into its user, never a
   here-string, which bash may put into a temporary file; it lives only in the script's memory and that pipe:
-  - `drive`: the Tresorit password into `tresorit-cli login --email ADDRESS --password-on-stdin`, the address (no
-    secret) from `--email`, run as Porelo's account through `runuser -u <account>` with `XDG_RUNTIME_DIR` set to that
-    account's, the environment the terminal stop has today by being that account;
   - `vault-new`, `vault`: into `porelo vault init|unlock --passphrase-stdin`, as the account;
   - `key <name>`, one line per key, with the need `keys`: every key of the host's group, put after the vault opens into
     `porelo vault put <name>`, as the account. `keys` is named with `vault-new`; a vault that exists holds its keys, and
@@ -54,8 +55,9 @@ keys); a host gets only its own group and `shared`.
     `up` takes it, `down` or a reboot;
   - [HO35](README.md#ho35)'s `forge-certificate`, no secret: the certificate the desktop signed, with the CA's; the CA's
     key never reaches the host.
-- **The stop's needs, all known in the first play, before the drive is synced:** `drive`, `vault-new` with `keys`,
-  `vault` (`roles/porelo/tasks/needs.yml`); `wireguard` while neither `vpn_private_key_path` exists nor `ip link show
+- **The stop's needs, all known in the first play, before the drive is synced:** `drive`, unchanged and given at the
+  terminal; `vault-new` with `keys`, `vault` (`roles/porelo/tasks/needs.yml`); `wireguard` while
+  neither `vpn_private_key_path` exists nor `ip link show
   wg-porelo` finds the interface (iproute2 is there before the vpn role installs `wireguard-tools`), so the resumed `up`
   does not stop again, from a new `roles/vpn/tasks/needs.yml` that `playbooks/up.yml` includes as `porelo.host.vpn` with
   `tasks_from: needs`, so the role's defaults load. A key or token missing later is refused by its user, named, and
@@ -80,13 +82,12 @@ keys); a host gets only its own group and `shared`.
 
 ## Acceptance
 
-- A whole `up` on a fresh host runs with nothing typed but the one-time code and the master password on the desktop.
+- A whole `up` on a fresh host, its drive holding only `machine.yml` and the project's bundle, runs with nothing typed
+  but the drive's login at the host and the master password on the desktop.
 - The drive's folder holds no `wireguard.key`, token or key file, and `up` reads none from it.
 - After an `up` that ended to its last step, `/run/porelo-host/` is empty, and the VPN comes back after a reboot.
 
 ## To be checked
 
-- Whether `tresorit-cli login --password-on-stdin` reads the one-time code from the terminal or from standard input,
-  which decides whether the pipeline can carry the password while the person types the code.
 - With porelo-frontend, whose stop is fed from the file: the line format, the entries' names in `secrets.kdbx`, and that
   the pipeline runs as the admin with sudo.

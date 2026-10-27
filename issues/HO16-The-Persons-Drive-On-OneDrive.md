@@ -24,8 +24,9 @@ synced. Many companies keep their files there.
   whom, and that `down` revokes it or at least removes it.
 - **Encryption.** Tresorit encrypts end to end; OneDrive does not, so what lies on it is readable at Microsoft and by
   the company's admins. Once [HO37](README.md#ho37) gives the host every secret on standard input from the person's
-  `secrets.kdbx`, the host's part of the drive ([HO36](README.md#ho36)) holds none, and an age-encrypted
-  `wireguard.key.age` is not needed. `secrets.kdbx` itself may lie on OneDrive, since only its master password opens
+  `secrets.kdbx` and [HO36](README.md#ho36) uploads its other files, the host's setup reads nothing from the drive, and
+  an age-encrypted `wireguard.key.age` is not needed. Once [HO38](README.md#ho38) makes the drive the person's own, it
+  holds only their own files. `secrets.kdbx` itself may lie on OneDrive, since only its master password opens
   it, which then carries the whole weight; the host never reads it. What stays open is the person's own files on a
   private drive, which are theirs to choose for.
 - **Personal or business.** OneDrive personal, or OneDrive for Business and SharePoint libraries: which comes first.
