@@ -30,7 +30,7 @@ it is left out.
 |---|---|---|---|---|
 | <a id="ho36"></a>[HO36](HO36-The-Host-Reads-Its-Own-Folder-And-The-Shared-One.md) | M | - | 0 | The host's part of porelo-project [PJ50](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj50): its machine file read from `hosts/<name>/` of a tresor several hosts share, beside `shared/`, the host named by `porelo_host_name`, the old `porelo-host/` layout refused. |
 | <a id="ho37"></a>[HO37](HO37-The-Hosts-Secrets-Given-On-Standard-Input-At-The-Stop.md) | L | - | 1 | The host's part of porelo-project [PJ51](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj51): the secrets the stop names given by the interface from `secrets.kdbx` in one root pipeline of base64 lines, each passed straight to its user; the WireGuard key and every token off the drive. |
-| <a id="ho35"></a>[HO35](HO35-The-Forge-Opened-In-The-Browser-Once-The-VPN-Is-Up.md) | M | [HO37](#ho37) | 1 | Once the VPN is up, the person opens the forge in their browser and signs in with their lasting password: the `/etc/hosts` line, one lasting name-constrained CA installed once whose key stays off the host's disk, and the password set over ssh on each new forge, in no file. |
+| <a id="ho35"></a>[HO35](HO35-The-Forge-Opened-In-The-Browser-Once-The-VPN-Is-Up.md) | M | [HO37](#ho37) | 0 | Once the VPN is up, the person opens the forge in their browser and signs in with their lasting password: the `/etc/hosts` line, one lasting name-constrained CA installed once whose key stays off the host's disk, and the password set over ssh on each new forge, in no file. |
 
 ## Accepted
 

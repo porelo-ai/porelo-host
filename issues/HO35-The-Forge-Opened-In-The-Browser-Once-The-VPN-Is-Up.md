@@ -28,7 +28,7 @@ Read in the code, nothing measured; porelo-frontend's part is analyzed in that r
   `nameConstraints=critical,permitted;DNS:porelo.internal,permitted;IP:10.73.0.0/255.255.255.0`, `CA:TRUE,pathlen:0` and
   lives ten years. Its key and its certificate are entries of the `shared` group of the person's `secrets.kdbx`
   ([HO37](README.md#ho37)); nothing of it lies on the drive, and the host reads nothing of it from there.
-- **The host keeps no CA key on disk.** `roles/forge/tasks/tls.yml` stops making `/etc/porelo-host/forge/ca.key`. A new
+- **The host never holds the CA's key.** `roles/forge/tasks/tls.yml` stops making `/etc/porelo-host/forge/ca.key`. A new
   first-play step, `roles/forge/tasks/request.yml`, included from `playbooks/up.yml` as `porelo.host.forge` with
   `tasks_from: request` where `porelo_host_forge` is set, as root, since the forge's accounts come only in the second
   play. A certificate holds where it ends in more than 30 days, names `forge_address` (the checks `tls.yml` makes today)
@@ -38,10 +38,20 @@ Read in the code, nothing measured; porelo-frontend's part is analyzed in that r
   stop wrote waiting and asks nothing. `tls.yml` moves a waiting key and certificate, never copies them, into the forge
   account's `tls/`, so one copy of the key is on the host, and leaves the forge's own pair alone when nothing waits.
   `ca.pem` stays where `trust.yml`, the runner's bundle and the VM pool read it today.
-- **The certificate at [HO37](README.md#ho37)'s stop:** `porelo-host-stop --request`, run as root like the `--stdin`
-  pipeline, prints the request (no secret); a `forge-certificate` line brings the forge's certificate and the CA's,
-  which the stop checks against the request's key and the constraint before it writes them. Who signs is the open
-  question below.
+- **The desktop signs, and the CA's key never leaves it.** At [HO37](README.md#ho37)'s stop, on the wire:
+  - **The request:** `ssh <admin>@<host> sudo porelo-host-stop --request` prints the waiting request as one PEM block,
+    `-----BEGIN CERTIFICATE REQUEST-----`, on standard output and nothing else (no secret), exit 0; 65 where no request
+    waits.
+  - **The signing:** in the terminal that has `secrets.kdbx` open, `openssl x509 -req` signs it with the CA's key on a
+    pipe from `keepassxc-cli`. The desktop sets every extension itself and copies none from the request:
+    `subjectAltName=IP:10.73.0.1,DNS:forge.porelo.internal`, `basicConstraints=critical,CA:FALSE`,
+    `extendedKeyUsage=serverAuth`, 365 days. The host's address and name come from the inventory the interface wrote,
+    never from the request.
+  - **The answer:** a line `forge-certificate <base64>` in the `--stdin` pipeline, the base64 of two PEM blocks, the
+    forge's certificate then the CA's. The stop writes them only where the certificate's key is the waiting key's, it
+    verifies under that CA, it names `forge_address` and `forge_name`, it holds for more than 30 days, the CA carries
+    the critical name constraint, and the CA is the one in `/etc/porelo-host/forge/ca.pem` where one is there; otherwise
+    it refuses with exit 64, naming which check failed.
 - **The person's password: lasting, set on every new forge, in no file.** `roles/forge/tasks/person.yml` makes
   `operator` with a random password it discards, as `admin.yml` does, and no `person.password`; [HO29](README.md#ho29)'s
   first password and its file go. A root-only script, `/usr/local/sbin/porelo-host-forge-password`, run by the admin
@@ -52,8 +62,7 @@ Read in the code, nothing measured; porelo-frontend's part is analyzed in that r
   or log. The interface runs it once `up` has ended, since the forge runs only in the second play.
 - **Kept in the file, never in the interface:** the master password is typed in a terminal on the desktop, where
   `keepassxc-cli` alone reads `secrets.kdbx` and pipes the password over ssh into the script. At the first host the
-  person types the lasting password in that same terminal, and it goes into the file there; the interface holds
-  neither.
+  person types the lasting password in that same terminal, and it goes into the file there; the interface holds neither.
 - **Installed once:** the interface's root step puts the CA's certificate into the system store
   (`/usr/local/share/ca-certificates/porelo-host.crt`) and Firefox's policy (`/etc/firefox/policies/policies.json`,
   `Certificates.Install`) only where that certificate, compared by its SHA-256, is not already there. A new host then
@@ -91,14 +100,6 @@ Read in the code, nothing measured; porelo-frontend's part is analyzed in that r
 - A certificate for a name outside `porelo.internal`, signed by the CA, is refused by `openssl verify` and Firefox.
 - No `ca.key` and no `person.password` exist on the host; a search of the host's files, journal and `up`'s output for
   the password finds nothing.
-
-## Open questions
-
-- **Who signs the forge's certificate.** (a) The interface gives the stop the CA's certificate and its key, and the host
-  signs with `openssl x509 -req -CA ca.pem -CAkey /dev/stdin`, writing the key nowhere; simple for the interface, but
-  root on every rented host sees the key while it signs, and a host taken over keeps it. (b) Recommended: the interface
-  fetches the request with `--request`, signs it on the desktop and gives back the certificate; the key never leaves the
-  desktop. The decision taken so far carries the key to each host; (b) would change it.
 
 ## To be checked
 

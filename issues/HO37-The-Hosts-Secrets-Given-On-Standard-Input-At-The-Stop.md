@@ -46,7 +46,8 @@ keys); a host gets only its own group and `shared`.
     waits in that root `0600` file on the tmpfs until the migration removes it in an `always`, or `down` does. The
     exposure: where that `up` fails before the forge's migration, the token stays there, root's alone, until the next
     `up` takes it, `down` or a reboot;
-  - [HO35](README.md#ho35)'s `forge-certificate`.
+  - [HO35](README.md#ho35)'s `forge-certificate`, no secret: the certificate the desktop signed, with the CA's; the CA's
+    key never reaches the host.
 - **The stop's needs, all known in the first play, before the drive is synced:** `drive`, `vault-new` with `keys`,
   `vault` (`roles/porelo/tasks/needs.yml`); `wireguard` while neither `vpn_private_key_path` exists nor `ip link show
   wg-porelo` finds the interface (iproute2 is there before the vpn role installs `wireguard-tools`), so the resumed `up`
