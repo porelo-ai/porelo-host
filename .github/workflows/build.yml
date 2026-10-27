@@ -23,10 +23,12 @@ jobs:
         runs-on: ubuntu-26.04
         timeout-minutes: 20
         steps:
+            # Every commit, so the push's own range can be read by the commit messages' step.
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   # Nothing here pushes, so the job's token has no business staying in .git/config.
                   persist-credentials: false
+                  fetch-depth: 0
 
             # Maven by the wrapper's pinned distribution and digest; the runner's own Java 25 only runs porelo-machines
             # once, which installs the pinned GraalVM, checked against its digest, as JAVA_HOME for the steps after it.
@@ -75,6 +77,31 @@ jobs:
                   set -eu
                   build/tools.sh ansible-galaxy collection build --output-path target
                   build/check-tarball.sh target/porelo-host-*.tar.gz
+
+            # A direct push to main never meets the pull request's check, so the push's own range is read here, by the
+            # rule of the shared tools this commit pins. A tag checks the commit it names. A new branch or a branch pushed
+            # over has no start this checkout holds, so its range starts at main; main itself cannot be pushed over.
+            - name: The pushed commits' messages
+              if: github.event_name == 'push'
+              env:
+                  PUSH_BEFORE: ${{ github.event.before }}
+              run: |
+                  set -eu
+                  case "$PUSH_BEFORE" in
+                      '') echo "::error::the push names no commit it started from"; exit 1 ;;
+                  esac
+                  start=$PUSH_BEFORE
+                  if [ "$GITHUB_REF_TYPE" = tag ]; then
+                      start="$GITHUB_SHA~1"
+                  elif ! git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then
+                      if [ "$GITHUB_REF" = refs/heads/main ]; then
+                          echo "::error::main moved from $PUSH_BEFORE, a commit this checkout does not hold"
+                          exit 1
+                      fi
+                      start=origin/main
+                  fi
+                  "$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.release.Main \
+                      check-commits "$start..$GITHUB_SHA"
 
     # The roles on a VM made and deleted for the run, as build/molecule.sh runs them locally and as the Forgejo build
     # runs them: GitHub's runner offers KVM, measured by a probe that ran the scenario green there. Never for a fork's
