@@ -50,6 +50,16 @@
           text: Setting up Porelo
           seconds: 10
 
+    # Through the role, so its defaults name the key's path the person's stop writes.
+    - name: Ask whether the host's VPN key is there
+      ansible.builtin.include_role:
+        name: porelo.host.vpn
+        tasks_from: needs
+      vars:
+        porelo_host_step:
+          text: Checking the VPN's key
+          seconds: 5
+
 - name: Bring the host up from the person's step
   hosts: localhost
   connection: local
@@ -69,13 +79,13 @@
           text: Opening the VPN
           seconds: 10
 
-    - name: Put the keys into the vault and follow the project, through Porelo's own commands
+    - name: Check the keys in the vault and follow the project, through Porelo's own commands
       ansible.builtin.include_role:
         name: porelo.host.porelo
         tasks_from: project
       vars:
         porelo_host_step:
-          text: Loading the keys and following the project
+          text: Checking the keys and following the project
           seconds: 10
 
     - name: Run the host's forge on the VPN's address, where the host asks for one

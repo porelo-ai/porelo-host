@@ -13,9 +13,9 @@ vpn_peers:
   - public_key: "{{ porelo_host_vpn_peer_public_key }}"
     allowed_ips: "{{ porelo_host_vpn_peer_address }}"
 
-# The file holding the host's private key, on the person's drive: `porelo-host/wireguard.key` in the person's tresor,
-# synced into the drive's folder. The role names it to wg and checks it is there, never reads it.
-vpn_private_key_path: /srv/porelo-host/drive/porelo-host/wireguard.key
+# The file holding the host's private key, root's alone, which the person's stop writes from their secrets file and
+# down removes; wg reads it at every start of the interface, so a reboot keeps the VPN. The role never reads it.
+vpn_private_key_path: /etc/wireguard/porelo-host.key
 
 # The TCP port ssh listens on, which the public address keeps beside the VPN's port.
 vpn_ssh_port: 22

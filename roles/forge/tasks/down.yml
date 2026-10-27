@@ -5,6 +5,12 @@
     marker: "# {mark} porelo-host forge name"
     state: absent
 
+# An up that failed before the migration leaves the person's token; down takes it.
+- name: down | Remove the person's token for the central forge
+  ansible.builtin.file:
+    path: "{{ __forge_central_token }}"
+    state: absent
+
 # Down takes the forge off the host and keeps nothing: its volumes, the API token, the runner's registration and the
 # CA go with the accounts' linger, so nothing of the forge starts again at the next boot. The next up migrates anew.
 - name: down | Read which HTTPS units up installed

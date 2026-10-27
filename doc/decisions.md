@@ -9,7 +9,9 @@ says why.
 | Where the collection ships | A tarball attached to the repository's GitHub releases; Ansible Galaxy later. | [Why](#where-the-collection-ships) |
 | The systems | Ubuntu 26.04 at first; another system is an issue of its own. | [Why](#the-systems) |
 | Where the playbook runs | On the host itself, with Ubuntu's own `ansible-core` and `-c local`. | [Why](#where-the-playbook-runs) |
-| The order of `up` and `down` | The drive comes before the VPN, around one stop for the person; the store's last copy is to come before `vault clear`. | [Why](#the-order-of-up-and-down) |
+| The order of `up` and `down` | Every need of the stop is known in the first play, before the VPN, around one stop for the person; the store's last copy is to come before `vault clear`. | [Why](#the-order-of-up-and-down) |
+| How the stop's secrets reach the host | On the stop's standard input, from the person's secrets file on the desktop, each passed straight to its user; the drive holds none. | [Why](#how-the-stops-secrets-reach-the-host) |
+| The host's VPN key on its disk | An accepted risk: the key lies in the clear in `/etc/wireguard`, root's alone, for the host's life. | [Why](#the-hosts-vpn-key-on-its-disk) |
 | Where the VM test runs | On a libvirt VM per run everywhere: here, in the GitHub Build and in the Forgejo build. | [Why](#where-the-vm-test-runs) |
 | `ansible-test sanity` | Not run yet, though the collection holds Python; it comes in its own pinned container. | [Why](#ansible-test-sanity) |
 | Tresorit's installer | Run only when signed under a pinned CA, whose fingerprint was read from the installer itself. | [Why](#tresorits-installer) |
@@ -51,8 +53,9 @@ be assumed. The `ansible-core` the host's Ubuntu carries is therefore the versio
 
 ## The order of `up` and `down`
 
-The drive comes before the VPN because the host's WireGuard key lies on the drive, and so the person has one stop for
-both the Tresorit login and the vault; until the VPN is up, the host is reached over its public ssh only. At `down`,
+Every need of the stop, the drive's login, the vault and the VPN's key, is known in the first play, so the person
+has one stop for all of them, and the VPN comes after it; until the VPN is up, the host is reached over its public ssh
+only. At `down`,
 `porelo vault clear` on an account with its own homeserver also runs the transport's `clear`, which removes the
 homeserver's database volume, its port, its registration token and its poll positions. So the store, which no role
 keeps yet, is to take its last copy before `vault clear`, and at `up` to be restored before the first
@@ -180,3 +183,27 @@ an image close to GitHub's, takes actions from github.com by their pins and offe
 the organization holds the variables and placeholder secrets the workflows read; snapshots go to the forge's own Maven
 registry. Where the forges still differ, a job sees it: the runner sets `JAVA_TOOL_OPTIONS` for the host's trust store,
 and the repositories are private.
+
+## How the stop's secrets reach the host
+
+The vault's passphrase, the machine's keys, the VPN's key and the central forge's token are kept in the person's
+`secrets.kdbx` on the desktop, which only `keepassxc-cli` unlocks, and the interface holds none of them. At the stop a
+terminal on the desktop pipes them, one base64 line each, into `porelo-host-stop --stdin` on the host, run as root over
+the admin's ssh as `up` itself is run, and the script passes each through a pipe straight into what uses it: the vault
+as the account, or a file of root's for the VPN's key and the central token. So no secret passes through a drive,
+an inventory, a variable, a command line or Ansible, and none is in the clear on the drive, which another device of
+the person's syncs. Every line is checked before any is used, so a wrong line leaves nothing half done. The drive's
+own login stays the person's, typed at the host, until the drive leaves the host's setup.
+
+## The host's VPN key on its disk
+
+**The exposure.** The host's WireGuard private key lies in the clear in `/etc/wireguard/porelo-host.key`, root's with
+mode `0600`, from the stop until `down`. The host's root and whoever reads the provider's disk images or snapshots can
+read it, as on any WireGuard server.
+
+**Why it stays.** `wg` reads the key at every start of the interface, so a restart or a reboot brings the VPN back on
+its own. Once ssh answers only through the VPN, a key lost at a reboot would lock the person out of their own host.
+The key is the host's alone, made for it, and is given back with it.
+
+**What would change the answer.** WireGuard taking its key from a sealed store such as a TPM, or a reboot no longer
+needing the VPN to reach the host.

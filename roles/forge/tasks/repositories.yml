@@ -1,7 +1,7 @@
 ---
 # Each repository migrated once from the central forge into the owner's organization, as an ordinary repository the
-# tasks' gates push into, with no push mirror. For migration, the shell reads the person's central token from its
-# file into a request body on a pipe, never a variable, a fact, an argument or an output.
+# tasks' gates push into, with no push mirror. For migration, the shell reads the person's central token from the file
+# the person's stop wrote into a request body on a pipe, never a variable, a fact, an argument or an output.
 - name: repositories | Stop on a repository the contract does not allow
   ansible.builtin.assert:
     that:
@@ -14,19 +14,6 @@
     fail_msg: >-
       each repository needs a unique name of letters, digits, '.', '_' or '-' and an https:// address with no user
       in it: {{ forge_repositories }}
-    quiet: true
-
-- name: repositories | Read whether the person's token for the central forge is on the drive
-  ansible.builtin.stat:
-    path: "{{ forge_central_token_path }}"
-  register: __forge_central_token
-
-- name: repositories | Stop while the person's token for the central forge is missing
-  ansible.builtin.assert:
-    that: __forge_central_token.stat.exists and __forge_central_token.stat.size > 0
-    fail_msg: >-
-      the person's token for the central forge is not at {{ forge_central_token_path }}; put it there
-      (porelo-host/forge-central.token in the person's tresor) and run up again
     quiet: true
 
 - name: repositories | Make the owner's organization, unless Forgejo has it
@@ -48,44 +35,102 @@
   changed_when: __forge_org.stdout == 'made'
   no_log: true
 
-- name: repositories | Migrate each repository once from the central forge
+# Only a repository still to migrate needs the person's token, and whether one is, the running forge alone can say.
+- name: repositories | Ask Forgejo which repositories are still to migrate
   ansible.builtin.shell:
     cmd: |
       set -euo pipefail
-      api() { curl -sS --cacert {{ __forge_ca_dir }}/ca.pem -H @<(printf 'Authorization: token %s\n' \
-          "$(cat {{ __forge_token }})") -H 'Content-Type: application/json' "$@"; }
-      base=https://{{ forge_address }}:{{ forge_http_port }}/api/v1
-      repo="$base/repos/{{ forge_owner }}/{{ item.name }}"
-      body() { python3 -I -c 'import json,sys; t=open(sys.argv[1]).read().strip(); d=json.loads(sys.argv[2]); \
-          d[sys.argv[3]]=t; print(json.dumps(d))' {{ forge_central_token_path | quote }} "$1" "$2"; }
-      answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
-      # Forgejo's own message on a refusal; its answers never repeat a request's body, so no token is in them.
-      said() { python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1])).get("message", ""))' \
-          "$answer" 2>/dev/null || true; }
-      changed=
-      code=$(api -o /dev/null -w '%{http_code}' "$repo")
-      if [ "$code" = 404 ]; then
-          code=$(body '{"clone_addr": {{ item.url | to_json }}, "repo_name": {{ item.name | to_json }},
-              "repo_owner": "{{ forge_owner }}", "service": "git", "mirror": false, "private": true}' auth_token \
-              | api -o "$answer" -w '%{http_code}' -X POST "$base/repos/migrate" --data @-)
-          [ "$code" = 201 ] || { echo "Forgejo answered $code migrating {{ item.name }}: $(said)" >&2; exit 1; }
-          changed=yes
-      elif [ "$code" != 200 ]; then
-          echo "Forgejo answered $code for {{ item.name }}" >&2; exit 1
-      fi
-      echo "${changed:-unchanged}"
+      code=$(curl -sS --cacert {{ __forge_ca_dir }}/ca.pem -H @<(printf 'Authorization: token %s\n' \
+          "$(cat {{ __forge_token }})") -o /dev/null -w '%{http_code}' \
+          "https://{{ forge_address }}:{{ forge_http_port }}/api/v1/repos/{{ forge_owner }}/{{ item.name }}") \
+          || { echo "curl ended $?"; exit 1; }
+      case "$code" in 200) echo there ;; 404) echo missing ;; *) echo "Forgejo answered $code"; exit 1 ;; esac
     executable: /bin/bash
   loop: "{{ forge_repositories }}"
   loop_control:
     label: "{{ item.name }}"
-  register: __forge_migrated
-  changed_when: __forge_migrated.stdout == 'yes'
+  register: __forge_repositories_state
+  changed_when: false
   failed_when: false
+  check_mode: false
   no_log: true
 
-# Collect failures to stop once with every repository's answer named; Ansible already runs every loop item.
-- name: repositories | Stop on a repository Forgejo would not take, with its answer
+# The shell's words are its own and hold no token; the task above hides them, so they are named here.
+- name: repositories | Stop where Forgejo would not say whether a repository is there, with its answer
   ansible.builtin.assert:
-    that: __forge_migrated.results | rejectattr('rc', 'equalto', 0) | list | length == 0
-    fail_msg: "{{ __forge_migrated.results | rejectattr('rc', 'equalto', 0) | map(attribute='stderr') | join('; ') }}"
+    that: __forge_repositories_state.results | rejectattr('rc', 'equalto', 0) | list | length == 0
+    fail_msg: >-
+      {{ __forge_repositories_state.results | rejectattr('rc', 'equalto', 0)
+      | map(attribute='item.name') | zip(__forge_repositories_state.results | rejectattr('rc', 'equalto', 0)
+      | map(attribute='stdout')) | map('join', ': ') | join('; ') }}
     quiet: true
+
+- name: repositories | Read whether the person's token for the central forge was given
+  ansible.builtin.stat:
+    path: "{{ __forge_central_token }}"
+  register: __forge_central_token_file
+
+- name: repositories | Stop while a repository is to migrate and the person's token is not given
+  ansible.builtin.assert:
+    that: >-
+      __forge_to_migrate | length == 0
+      or (__forge_central_token_file.stat.isreg | default(false) and __forge_central_token_file.stat.size > 0
+          and __forge_central_token_file.stat.uid == 0 and __forge_central_token_file.stat.mode == '0600')
+    fail_msg: >-
+      forge-central-token: {{ __forge_to_migrate | join(', ') }} still to migrate, and no token for the central forge
+      of root's alone is given; give it with porelo-host-stop --stdin forge-central-token and run up again
+    quiet: true
+
+# The token goes after the migration, and also where it was given with nothing left to migrate.
+- name: repositories | Migrate each repository once from the central forge, then drop the person's token
+  block:
+    - name: repositories | Migrate each repository still to migrate from the central forge
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          api() { curl -sS --cacert {{ __forge_ca_dir }}/ca.pem -H @<(printf 'Authorization: token %s\n' \
+              "$(cat {{ __forge_token }})") -H 'Content-Type: application/json' "$@"; }
+          base=https://{{ forge_address }}:{{ forge_http_port }}/api/v1
+          repo="$base/repos/{{ forge_owner }}/{{ item.name }}"
+          body() { python3 -I -c 'import json,sys; t=open(sys.argv[1]).read().strip(); d=json.loads(sys.argv[2]); \
+              d[sys.argv[3]]=t; print(json.dumps(d))' {{ __forge_central_token | quote }} "$1" "$2"; }
+          answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
+          # Forgejo's own message on a refusal; its answers never repeat a request's body, so no token is in them.
+          said() { python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1])).get("message", ""))' \
+              "$answer" 2>/dev/null || true; }
+          changed=
+          code=$(api -o /dev/null -w '%{http_code}' "$repo")
+          if [ "$code" = 404 ]; then
+              code=$(body '{"clone_addr": {{ item.url | to_json }}, "repo_name": {{ item.name | to_json }},
+                  "repo_owner": "{{ forge_owner }}", "service": "git", "mirror": false, "private": true}' auth_token \
+                  | api -o "$answer" -w '%{http_code}' -X POST "$base/repos/migrate" --data @-)
+              [ "$code" = 201 ] || { echo "Forgejo answered $code migrating {{ item.name }}: $(said)" >&2; exit 1; }
+              changed=yes
+          elif [ "$code" != 200 ]; then
+              echo "Forgejo answered $code for {{ item.name }}" >&2; exit 1
+          fi
+          echo "${changed:-unchanged}"
+        executable: /bin/bash
+      loop: "{{ forge_repositories | selectattr('name', 'in', __forge_to_migrate) | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: __forge_migrated
+      changed_when: __forge_migrated.stdout == 'yes'
+      failed_when: false
+      no_log: true
+      when: __forge_to_migrate | length > 0
+
+    # Collect failures to stop once with every repository's answer named; Ansible already runs every loop item.
+    - name: repositories | Stop on a repository Forgejo would not take, with its answer
+      ansible.builtin.assert:
+        that: __forge_migrated.results | rejectattr('rc', 'equalto', 0) | list | length == 0
+        fail_msg: >-
+          {{ __forge_migrated.results | rejectattr('rc', 'equalto', 0) | map(attribute='stderr') | join('; ') }}
+        quiet: true
+      when: __forge_to_migrate | length > 0
+  always:
+    # The token is needed again only for another migration, and the person's stop gives it anew for that.
+    - name: repositories | Remove the person's token for the central forge
+      ansible.builtin.file:
+        path: "{{ __forge_central_token }}"
+        state: absent

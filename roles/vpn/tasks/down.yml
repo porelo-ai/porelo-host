@@ -13,7 +13,11 @@
     enabled: false
   when: __vpn_conf.stat.exists
 
-- name: down | Remove the interface's file
+- name: down | Remove the interface's file, the host's key and its path the person's stop reads
   ansible.builtin.file:
-    path: "/etc/wireguard/{{ vpn_interface }}.conf"
+    path: "{{ item }}"
     state: absent
+  loop:
+    - "/etc/wireguard/{{ vpn_interface }}.conf"
+    - "{{ vpn_private_key_path }}"
+    - /etc/porelo-host/vpn.conf

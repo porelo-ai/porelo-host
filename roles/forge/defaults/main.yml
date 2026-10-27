@@ -62,9 +62,6 @@ forge_variables:
 
 forge_placeholder_secrets: [JF_ACCESS_TOKEN]
 
-# The person's token for migration from the central forge, on their drive; only the shell reads it into the request.
-forge_central_token_path: /srv/porelo-host/drive/porelo-host/forge-central.token
-
 # Forgejo refuses to migrate from a private address; a stand-in for the central forge on the host itself needs it.
 forge_migrations_allow_local: false
 

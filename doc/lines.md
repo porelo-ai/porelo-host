@@ -59,9 +59,9 @@ with one line in place of a failure:
 
     {"v": 1, "state": "waiting", "needs": ["drive", "vault-new"]}
 
-`needs` names what is missing: `drive` when the person has not logged the drive's client in, `vault-new` when the
-account has no vault yet, `vault` when its vault is shut. `up` installs agents without stopping for their sign-ins
-and starts no task. `ansible-playbook` itself exits 2 on a waiting stop, as on any failure,
+`needs` names what is missing: `drive` when the person has not logged the drive's client in, `vault-new` with `keys`
+when the account has no vault yet, `vault` when its vault is shut, and `wireguard` while the host has neither the VPN's
+key nor its running interface. `up` installs agents without stopping for their sign-ins and starts no task. `ansible-playbook` itself exits 2 on a waiting stop, as on any failure,
 so a program tells the stop from a failure by this line, never by the exit code. A second `up` after the person's step
 runs both plays from the top; what is done is done, so it goes on where it stopped.
 
@@ -74,6 +74,38 @@ shows the command's error and asks `Try again? [Y/n]`; retrying the drive asks f
 The command exits 0 when every named need is done, 75 on `n`, `N` or Ctrl+C, 64 for a wrong call, and 69 when a
 required command is missing. Its last line on success is "The host's stop is done; close this terminal, and setup
 goes on." On cancellation it is "Cancelled; the host waits at this stop. Running up again comes back here."
+
+**The stop on standard input.** Every need but `drive` is given from the person's secrets file by one pipeline, run
+as root:
+
+    <secrets> | ssh <admin>@<host> sudo porelo-host-stop --stdin NEED...
+
+with the needs as `up` names them, `drive` left out: where `up` names `drive` too, the person's terminal stop for it
+runs first. Standard input holds one line per secret, `<need> <value>` or, for a key, `key <name> <value>`, the value
+in base64:
+
+| Need | Its lines | Where the value goes |
+|---|---|---|
+| `vault-new` | `vault-new <passphrase>` | `porelo vault init --passphrase-stdin`, as the account |
+| `vault` | `vault <passphrase>` | `porelo vault unlock --passphrase-stdin`, as the account |
+| `keys` | `key <name> <key>`, one per key of the machine, none or more | `porelo vault put <name>`, as the account, once the vault is open |
+| `wireguard` | `wireguard <private key>` | the VPN's key file, root's with mode `0600`, kept for the host's life |
+| `forge-central-token` | `forge-central-token <token>` | `/run/porelo-host/forge-central.token`, root's with mode `0600`, until the migration |
+
+Every line is checked before any is used: a need not named, an unknown need, a line given twice, a key name other than
+letters, digits, `.`, `_` and `-`, or a value that is not base64 is refused, naming the line and never the value, and
+so is a named need no line gives; only `keys` beside `vault-new` may come with no line, for a machine without keys. `drive` and `--email` are refused with `--stdin`, as is
+a call not made as root. The values then go in the table's order, each decoded on a pipe into its user, and nothing is
+asked. A key the vault lacks later, or the central token, is given by another call with that need alone:
+`forge-central-token` is never named by the stop, since only the running forge knows whether a repository is still to
+migrate; `up` fails there with a message beginning `forge-central-token:`, and with `keys:` for a missing key, then the
+call is made and `up` runs again.
+
+It exits 0 when every line is used, printing "The host's stop is done; run up again."; 64 for a wrong call or a wrong
+line, with nothing used; 65 when the vault refuses a value (`vault-new`, `vault`, a key), naming it; 69 when a required
+command is missing or `/etc/porelo-host/stop.conf` or `vpn.conf`, which `up` writes, is missing, not root's alone, or
+names root or an unknown account; and 73 when a file cannot be written, or its directory or the file in its place is
+not root's alone or not plain.
 
 **The version.** `v` is the contract's version. An added field or state keeps it; a field that changes or goes away
 raises it. A reader skips a `state` it does not know, as it skips a field.

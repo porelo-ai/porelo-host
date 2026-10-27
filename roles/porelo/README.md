@@ -2,18 +2,17 @@
 
 Porelo on the host, everything through Porelo's own commands: Porelo installed from its repository by its pinned key and
 its setup script run for the account (`tasks_from: install`), `porelo setup` and `porelo vault status` naming
-`vault-new` or `vault` in `porelo_host_needs` while the vault is missing or shut, the machine file's keys deposited from
-the drive into the vault and its project followed by its signature (`tasks_from: project`), and every agent offered by
+`vault-new` with `keys`, or `vault`, in `porelo_host_needs` while the vault is missing or shut, the machine file's keys
+checked in the vault and its project followed by its signature (`tasks_from: project`), and every agent offered by
 Porelo's repository installed (`tasks_from: tasks`). The machine file holds only `project` and `keys`; the role reads
 Porelo's inventory version 2 from `porelo project inventory --machine-file` (stopping with Porelo's words on `65` or
-`66`), tells the vault's state from `porelo vault status` (`0` open, `3` shut, `4` missing), deposits each key by
-`porelo vault put --from-file` under `no_log` only while its name is missing from `porelo vault list` (since `put` does
-not report unchanged yet, a key changed on the drive is put again by hand), follows the project only where `porelo
-project following --json` differs, and reads the offered agents and the open vault from the setup script's `--list
---json` and `porelo agents --json`. `up` starts no task and does not stop for an agent's sign-in: the person starts
-tasks and signs an agent in when needed. Where the project names transports, the role installs their packages and, for
-`matrix`, `porelo-matrix-homeserver` through Porelo's setup script, enabling nothing: the transport's `setup` enables
-and starts the homeserver at the first task start.
+`66`), tells the vault's state from `porelo vault status` (`0` open, `3` shut, `4` missing), refuses naming each key of
+the machine file that `porelo vault list` lacks, follows the project only where `porelo project following --json`
+differs, and reads the offered agents and the open vault from the setup script's `--list --json` and `porelo agents
+--json`. `up` starts no task and does not stop for an agent's sign-in: the person starts tasks and signs an agent in
+when needed. Where the project names transports, the role installs their packages and, for `matrix`,
+`porelo-matrix-homeserver` through Porelo's setup script, enabling nothing: the transport's `setup` enables and starts
+the homeserver at the first task start.
 
 Where `porelo_host_forge` is true, `install` also installs `porelo-adapter-forgejo` from Porelo's apt repository,
 providing `/usr/libexec/porelo/builds/forgejo`. The forge role deposits the gate and reader's shared token into the
@@ -26,9 +25,16 @@ task CA file, and removes the account's CA bundle if only whitespace remains.
 containers, since its loopback entry for the forge would hide the gate's address Porelo's resolver gives a task; `down`
 removes it.
 
+The person's stop, `porelo-host-stop` in `/usr/local/bin`, is installed by `install`, which also names the account
+in `/etc/porelo-host/stop.conf`, root's with mode `0644` and no secret. Run by the person as the account, it asks in
+their terminal; run as root with `--stdin`, it takes every need but the drive's login from the person's secrets file,
+one base64 line each, and passes each value on a pipe into its user: the vault's passphrase into `porelo vault init`
+or `unlock`, each key into `porelo vault put`, as the account. The keys reach the vault only so, never through
+Ansible; the [line contract](../../doc/lines.md) has the form and the exits.
+
 At `down` (`tasks_from: down`), `porelo task stop --all` stops every running task of the account, keeping their
-containers and workspaces, before the vault is cleared (`porelo vault clear --yes`, with `--force` on a shut vault). If
-a task survives, `down` fails with Porelo's words and leaves the vault in place.
+containers and workspaces, before the vault is cleared (`porelo vault clear --yes`, with `--force` on a shut vault), and
+removes `stop.conf`. If a task survives, `down` fails with Porelo's words and leaves the vault in place.
 
 ## Requirements
 

@@ -147,10 +147,6 @@ argument_specs:
         default: [JF_ACCESS_TOKEN]
         description: >-
           Organization Actions secret names created with porelo-host-placeholder only when absent; existing values stay.
-      forge_central_token_path:
-        type: path
-        default: /srv/porelo-host/drive/porelo-host/forge-central.token
-        description: The person's token for migration from the central forge on their drive, read only by the shell.
       forge_migrations_allow_local:
         type: bool
         default: false

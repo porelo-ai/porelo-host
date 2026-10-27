@@ -59,6 +59,24 @@
     state: present
   when: porelo_host_forge | default(false) | bool
 
+# The stop's --stdin, run as root, reads the account from here; the file holds no secret.
+- name: install | Make the directory of the host's settings
+  ansible.builtin.file:
+    path: /etc/porelo-host
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: install | Name the account to the person's stop
+  ansible.builtin.copy:
+    dest: /etc/porelo-host/stop.conf
+    content: |
+      account={{ porelo_account }}
+    owner: root
+    group: root
+    mode: "0644"
+
 - name: install | Install the person's stop command
   ansible.builtin.copy:
     src: "{{ role_path }}/files/porelo-host-stop"

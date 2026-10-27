@@ -1,6 +1,7 @@
 ---
-# up's second play, the vault open: the second inventory Porelo writes from the machine file, the keys from the
-# drive into the vault, the project followed by its signature. Every answer is Porelo's own (porelo's doc/hosts.md).
+# up's second play, the vault open: the second inventory Porelo writes from the machine file, the machine's keys
+# checked in the vault, where the person's stop put them, the project followed by its signature. Every answer is
+# Porelo's own (porelo's doc/hosts.md).
 - name: project | Read the account's id
   ansible.builtin.getent:
     database: passwd
@@ -43,21 +44,17 @@
   changed_when: false
   check_mode: false
 
-# Only the key's name and path pass here; porelo reads the file itself. porelo vault put says stored even for a value
-# it already held, so until it can say unchanged, a key is put only while its name is missing from the vault: one the
-# person changes on the drive is put again by hand with porelo vault put.
-- name: project | Put each key from the drive into the vault, read by Porelo from its file
-  ansible.builtin.command:
-    cmd: porelo vault put {{ item.name | quote }} --from-file={{ item.path | quote }}
-  loop: "{{ __porelo_host.porelo_vault_keys | default([])
-    | rejectattr('name', 'in', __porelo_vault_list.stdout_lines | map('split') | map('first') | list) }}"
-  loop_control:
-    label: "{{ item.name }}"
-  become: true
-  become_user: "{{ porelo_account }}"
-  environment: "{{ __porelo_user_environment }}"
-  no_log: true
-  changed_when: true
+# Only names pass here: each key reaches the vault on the stop's pipe, never through Ansible.
+- name: project | Stop on a key of the machine file the vault does not hold, naming it
+  ansible.builtin.assert:
+    that: __porelo_keys_missing | length == 0
+    fail_msg: >-
+      keys: the vault holds no {{ __porelo_keys_missing | join(', ') }}; give them with
+      porelo-host-stop --stdin keys and run up again
+    quiet: true
+  vars:
+    __porelo_keys_missing: "{{ __porelo_host.porelo_vault_keys | default([]) | map(attribute='name')
+      | reject('in', __porelo_vault_list.stdout_lines | map('split') | map('first') | list) | list }}"
 
 - name: project | Ask Porelo which projects the account follows
   ansible.builtin.command:

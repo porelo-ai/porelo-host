@@ -7,15 +7,17 @@ Brings a Porelo project up on a server and takes it down again, owned or rented 
 podman), `porelo`'s install and setup script (which makes Porelo's account with linger and subordinate ids), `base`'s
 account part (the account in `kvm` and `libvirt`, and the person's ssh key on the account for the stop), `drive` (the
 `noexec` folder, and the drive's client syncing the person's folder when logged in: Tresorit's, the one provider
-implemented today), and `porelo setup` with
-`porelo vault status`. Each role that needs the person's step adds what is missing (`drive`, `vault-new` or `vault`) to
-`porelo_host_needs`. The second play stops first with a [waiting line](lines.md) while `porelo_host_needs` is not
-empty; once the drive is synced and the vault is open, it runs `vpn` (WireGuard with the host's key read from the drive
-by `wg` itself, and nftables leaving only ssh and the VPN on the public interfaces), `porelo`'s project part (keys from
-the drive into the vault, `project follow --signed-by`), `forge` and `vm_pool` where the host settings ask for them,
-and `porelo`'s agents part (every offered agent and the project's transport packages installed, with no task started
-or stop for a sign-in). A second `up` runs both plays from the top and changes only what differs, read from the
-commands' own exit codes and `--json` output, so resuming is idempotence, with no marker file of the playbook's own.
+implemented today), and `porelo setup` with `porelo vault status`, and `vpn`'s needs part (whether the host's VPN key is
+there). Each role that needs the person's step adds what is missing (`drive`, `vault-new` with `keys`, `vault`, or
+`wireguard`) to `porelo_host_needs`. The second play stops first with a [waiting line](lines.md) while
+`porelo_host_needs` is not empty; the person's stop gives every need but the drive's login on [standard
+input](lines.md), from their secrets file on the desktop. Once the drive is synced and the vault is open, it runs `vpn`
+(WireGuard with the host's key, which the stop wrote into `/etc/wireguard`, read by `wg` itself, and nftables leaving
+only ssh and the VPN on the public interfaces), `porelo`'s project part (each key of the machine file checked in the
+vault, where the stop put it, `project follow --signed-by`), `forge` and `vm_pool` where the host settings ask for them,
+and `porelo`'s agents part (every offered agent and the project's transport packages installed, with no task started or
+stop for a sign-in). A second `up` runs both plays from the top and changes only what differs, read from the commands'
+own exit codes and `--json` output, so resuming is idempotence, with no marker file of the playbook's own.
 
 The [local forge](local-forge.md) connects task branches and independent builds to the person's merge and gathered-push
 decisions.

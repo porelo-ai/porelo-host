@@ -169,8 +169,10 @@ documentation](https://github.com/porelo-ai/porelo/blob/main/doc/credentials.md)
 
 The gathered push asks for the central token with hidden input in the SSH terminal and stores it nowhere; git
 receives it only as a header in its environment, never on a command line, and the command's output names no token. The
-token for initial repository migration has a different lifetime: the forge role reads it from the person's drive into
-the migration request.
+token for initial repository migration has a different lifetime: `up` asks for it, naming `forge-central-token`, only
+while a repository is still to migrate; the person's stop writes it from their secrets file into
+`/run/porelo-host/forge-central.token`, root's alone on the tmpfs, the forge role reads it from there into the
+migration request, and the migration, or else `down` or a reboot, removes it.
 
 ## If the host is lost
 

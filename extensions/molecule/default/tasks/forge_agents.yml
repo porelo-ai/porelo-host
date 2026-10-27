@@ -112,7 +112,7 @@
           refused=true
       fi
       central=$(curl -sS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem -o /dev/null -w '%{http_code}' \
-          -H @<(sed 's/^/Authorization: token /' /srv/porelo-host/drive/porelo-host/forge-central.token) \
+          -H @<(sed 's/^/Authorization: token /' /root/forge-central.token) \
           https://10.73.0.1:3000/api/v1/repos/central/stand-in/branches/agent-probe-push)
       same=false
       [ "$head" != "$branch" ] || same=true

@@ -17,11 +17,16 @@ it is left out.
 |---|---|---|---|
 | <a id="ho12"></a>[HO12](HO12-The-VM-Pool.md) | L | - | Role `vm_pool`: VMs with run accounts `porelo-machines` rents from, made by the same code as the test VM, deleted by name at `down`. |
 
-## Backlog
+## Implementing
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho37"></a>[HO37](HO37-The-Hosts-Secrets-Given-On-Standard-Input-At-The-Stop.md) | L | - | The host's part of porelo-project [PJ51](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj51): the secrets the stop names given from `secrets.kdbx` by a desktop terminal through `keepassxc-cli`, the interface holding none, in one root pipeline of base64 lines, each passed straight to its user; the WireGuard key and every token off the drive. |
+
+## Backlog
+
+| # | Size | Blocked by | What it covers |
+|---|---|---|---|
 | <a id="ho36"></a>[HO36](HO36-The-Host-Reads-The-Files-Its-Setup-Uploaded.md) | M | [HO37](#ho37) | The host's setup reads nothing from the drive: `machine.yml` and the project's bundle uploaded by the interface into `/etc/porelo-host/setup/`, root's and readable by the account alone, refused where the account can write them, removed at `down`. |
 | <a id="ho38"></a>[HO38](HO38-The-Drive-Leaves-The-Hosts-Setup.md) | M | [HO36](#ho36) | Nothing of Tresorit on a host: the drive's role, its installer module and the stop's `drive` go, so `up` asks no login and `down` waits on no sync; a user's own drive is the interface's per-user setup. |
 | <a id="ho35"></a>[HO35](HO35-The-Forge-Opened-In-The-Browser-Once-The-VPN-Is-Up.md) | M | [HO37](#ho37) | Once the VPN is up, the person opens the forge in their browser and signs in with their lasting password: the `/etc/hosts` line, one lasting name-constrained CA installed once whose key stays off the host's disk, and the password kept in `secrets.kdbx` and set over ssh on each new forge, in no host file. |

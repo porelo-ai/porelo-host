@@ -9,7 +9,7 @@
       trap 'rm -rf "$work"' EXIT
       trap 'exit 130' INT
       trap 'exit 143' TERM
-      token=/srv/porelo-host/drive/porelo-host/forge-central.token
+      token=/root/forge-central.token
       api() { curl -sS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem \
           -H @<(printf 'Authorization: token %s\n' "$(cat "$token")") -H 'Content-Type: application/json' "$@"; }
       person() { curl -sS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem \
@@ -39,7 +39,7 @@
       [ "$merged" = 200 ] || { echo "asked operator to merge B with HTTP 200, got HTTP $merged" >&2; exit 1; }
       git_as porelo-admin clone --branch main --single-branch \
           https://10.73.0.1:3000/porelo/stand-in.git "$work/repo"
-      token=/srv/porelo-host/drive/porelo-host/forge-central.token
+      token=/root/forge-central.token
       push_rc=0
       push_error=$(git_as central -C "$work/repo" push \
           https://10.73.0.1:3000/central/stand-in.git main:main 2>&1 > /dev/null) || push_rc=$?
@@ -48,7 +48,7 @@
       import base64, json, sys
       from pathlib import Path
       error, central = sys.stdin.read().split("\0", 1)
-      for user, path in [("central", "/srv/porelo-host/drive/porelo-host/forge-central.token"),
+      for user, path in [("central", "/root/forge-central.token"),
                          ("porelo-admin", "/home/porelo-forge/.config/porelo-forge/api.token")]:
           secret = Path(path).read_text().strip()
           if not secret:
@@ -134,7 +134,7 @@
         cmd: |
           set -uo pipefail
           started=$(date +%s)
-          /usr/local/sbin/porelo-host-push stand-in < /srv/porelo-host/drive/porelo-host/forge-central.token \
+          /usr/local/sbin/porelo-host-push stand-in < /root/forge-central.token \
               > /dev/null 2>&1
           rc=$?
           seen=$(journalctl -q --no-pager --since "@$started" 2>/dev/null \
@@ -175,7 +175,7 @@
     cmd: |
       set -uo pipefail
       started=$(date +%s)
-      token=/srv/porelo-host/drive/porelo-host/forge-central.token
+      token=/root/forge-central.token
       clones() { find /tmp -maxdepth 1 -name 'tmp.*' -type d | sort; }
       api() { curl -sS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem -H @<(printf 'Authorization: token %s\n' \
           "$(cat /home/porelo-forge/.config/porelo-forge/api.token)") -H 'Content-Type: application/json' "$@"; }

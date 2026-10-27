@@ -74,15 +74,13 @@
         cmd: loginctl enable-linger {{ converge_account }}
         creates: /var/lib/systemd/linger/{{ converge_account }}
 
-    # Stands in for the person's drive: the host's VPN key is a file the role only names, never reads; here it is made
-    # for the run, with the test peer's, which verify uses from a network namespace of its own.
+    # Stands in for the person's secrets file: the host's VPN key, made for the run under /root, reaches the host only
+    # through the stop's --stdin; the test peer's is used by verify from a network namespace of its own.
     - name: Install WireGuard's tools to make the run's keys
       ansible.builtin.apt:
         name: wireguard-tools
         state: present
 
-    # The host's key outside /etc/wireguard, where Ubuntu's AppArmor profile lets wg read it only by the role's rule;
-    # the test peer's inside it, where the profile lets wg read it as it is.
     - name: Make the run's VPN keys, the host's and the test peer's
       ansible.builtin.shell:
         cmd: >-
@@ -128,7 +126,6 @@
               porelo_host_vpn_peer_public_key: {{ converge_peer_public.content | b64decode | trim }}
               porelo_host_vpn_peer_address: 10.73.0.2/32
               porelo_host_authorized_key: {{ converge_person_public.content | b64decode | trim }}
-              vpn_private_key_path: /root/vpn-host.key
               porelo_host_forge: {{ (converge_forge == 'on') | lower }}
               # The stand-in for the central forge is a repository on the host's own forge, at a private address.
               forge_migrations_allow_local: true
@@ -186,12 +183,12 @@
       changed_when: true
       failed_when: false
 
-    - name: Assert the first up stopped for the drive alone, with ansible-playbook's 2
+    - name: Assert the first up stopped for the drive, the new vault with its keys and the VPN's key, with rc 2
       ansible.builtin.assert:
         that:
           - converge_first_up.rc == 2
           - converge_first_waiting | length == 1
-          - converge_first_waiting[0].needs == ['drive', 'vault-new']
+          - converge_first_waiting[0].needs == ['drive', 'vault-new', 'keys', 'wireguard']
           - converge_first_failed | length == 0
         fail_msg: "the first up gave rc {{ converge_first_up.rc }} and these lines: {{ converge_first_up.stdout }}"
       vars:
@@ -226,7 +223,7 @@
 
     # Stands in for the person's project and their machine file on the drive: a project of its own in a local
     # repository, its commit signed by a key made for the run, the machine file naming that key's fingerprint and one
-    # key file for the vault.
+    # key for the vault, whose value is in the secrets file alone, never on the drive.
     - name: Make the run's project, signed, and the machine file on the drive
       ansible.builtin.shell:
         cmd: |
@@ -250,7 +247,7 @@
           git -c user.name=converge -c user.email=converge@example.invalid -c gpg.format=ssh \
               -c user.signingkey="$HOME/.ssh/converge-signer.pub" commit -q -S -m "The run's project"
           drive=/srv/porelo-host/drive/porelo-host
-          mkdir -p "$drive/keys" && (umask 077 && head -c 20 /dev/urandom | base64 > "$drive/keys/converge-key")
+          mkdir -p "$drive"
           signer=$(ssh-keygen -lf ~/.ssh/converge-signer.pub | cut -d' ' -f2)
           {
               echo 'project:'
@@ -265,16 +262,68 @@
       become: true
       become_user: "{{ converge_account }}"
 
-    # The person's step for the vault, as porelo-frontend gives it: the passphrase on porelo's stdin, as the account.
-    # On stdin and under no_log: in a command line Ansible would log the passphrase into the journal.
-    - name: Make the account's vault, as the person's step does
+    # Stands in for the person's secrets file on the desktop: the vault's passphrase and the machine's key, root's.
+    - name: Make the run's secrets, the vault's passphrase and the machine's key
       ansible.builtin.shell:
-        cmd: XDG_RUNTIME_DIR=/run/user/$(id -u) porelo vault init --passphrase-stdin
-        stdin: converge-passphrase
+        cmd: |
+          set -euo pipefail
+          umask 077
+          mkdir -p /root/secrets
+          printf '%s' converge-passphrase > /root/secrets/vault-passphrase
+          head -c 20 /dev/urandom | base64 > /root/secrets/converge-key
+        creates: /root/secrets/converge-key
+        executable: /bin/bash
+      no_log: true
+
+    - name: Read whether the account has a vault yet
+      ansible.builtin.stat:
+        path: /home/{{ converge_account }}/.local/share/porelo/vault.bin
+      register: converge_vault_file
+
+    # Each refusal must come before any line is used: the vault stays missing after all three.
+    - name: Give the stop a line of an unknown need, a value that is no base64, and drive
+      ansible.builtin.shell:
+        cmd: |
+          set -uo pipefail
+          b64() { printf '%s' "$1" | base64 -w0; }
+          printf 'vault-new %s\nbogus %s\n' "$(b64 x)" "$(b64 y)" | porelo-host-stop --stdin vault-new
+          echo "unknown=$?"
+          printf 'vault-new %s\nwireguard not*base64\n' "$(b64 x)" | porelo-host-stop --stdin vault-new wireguard
+          echo "base64=$?"
+          porelo-host-stop --stdin drive < /dev/null
+          echo "drive=$?"
+          rc=0
+          runuser -u {{ converge_account }} -- env XDG_RUNTIME_DIR=/run/user/$(id -u {{ converge_account }}) \
+              porelo vault status > /dev/null 2>&1 || rc=$?
+          echo "vault=$rc"
+        executable: /bin/bash
+      register: converge_refused
+      changed_when: false
+      when: not converge_vault_file.stat.exists
+
+    - name: Assert the stop refused all three with 64 before the vault was made
+      ansible.builtin.assert:
+        that:
+          - converge_refused.stdout_lines == ['unknown=64', 'base64=64', 'drive=64', 'vault=4']
+          - converge_refused.stderr is search('line 2 gives an unknown need')
+          - converge_refused.stderr is search('line 2 holds no base64 value')
+          - converge_refused.stderr is search('drive is never given on standard input')
+        fail_msg: "the refusals gave {{ converge_refused.stdout_lines }}: {{ converge_refused.stderr }}"
+      when: not converge_vault_file.stat.exists
+
+    # The pipeline the desktop's terminal runs from the secrets file, as root, every value base64 on its own line.
+    - name: Give the new vault, its key and the VPN's key on the stop's standard input, as the desktop does
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          b64() { base64 -w0 < "$1"; }
+          {
+              printf 'vault-new %s\n' "$(b64 /root/secrets/vault-passphrase)"
+              printf 'key converge-key %s\n' "$(b64 /root/secrets/converge-key)"
+              printf 'wireguard %s\n' "$(b64 /root/vpn-host.key)"
+          } | porelo-host-stop --stdin vault-new keys wireguard
         creates: /home/{{ converge_account }}/.local/share/porelo/vault.bin
         executable: /bin/bash
-      become: true
-      become_user: "{{ converge_account }}"
       no_log: true
 
     # The person's step, as porelo-frontend gives it: the password on the client's stdin, run as the account.
@@ -461,7 +510,7 @@
           as_forge() { runuser -u porelo-forge -- env XDG_RUNTIME_DIR=/run/user/$uid "$@"; }
           as_forge podman exec forgejo forgejo admin user create --username central \
               --email central@example.invalid --random-password --must-change-password=false > /dev/null
-          token=/srv/porelo-host/drive/porelo-host/forge-central.token
+          token=/root/forge-central.token
           (umask 077 && as_forge podman exec forgejo forgejo admin user generate-access-token --username central \
               --token-name stand-in --scopes all --raw > "$token")
           curl -fsS -o /dev/null --cacert /etc/porelo-host/forge/ca.pem \
@@ -490,6 +539,49 @@
               porelo_host_forge_central_ca: /etc/porelo-host/forge/ca.pem
       when: converge_forge == 'on'
 
+    - name: Read whether the up with repositories was refused for the central token once
+      ansible.builtin.stat:
+        path: /root/porelo-host-forge-token-given
+      register: converge_token_given
+
+    - name: Run up with the forge's repositories before the central token is given
+      ansible.builtin.command:
+        cmd: >-
+          ansible-playbook -c local -i /root/porelo-host-inventory.yml -i /root/porelo-host-forge.yml porelo.host.up
+      environment:
+        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
+        LC_ALL: C.UTF-8
+      register: converge_up_no_token
+      changed_when: true
+      failed_when: false
+      when: converge_forge == 'on' and not converge_token_given.stat.exists
+
+    - name: Assert up refused naming forge-central-token and the repository still to migrate
+      ansible.builtin.assert:
+        that:
+          - converge_up_no_token.rc == 2
+          - converge_no_token_failed | length == 1
+          - >-
+            converge_no_token_failed[0].msg is search('forge-central-token: stand-in still to migrate')
+        fail_msg: >-
+          up without the central token gave rc {{ converge_up_no_token.rc }}: {{ converge_up_no_token.stdout }}
+      vars:
+        converge_no_token_failed: "{{ converge_up_no_token.stdout_lines | select | map('from_json')
+          | selectattr('state', 'equalto', 'failed') | list }}"
+      when: converge_forge == 'on' and not converge_token_given.stat.exists
+
+    - name: Give the central token on the stop's standard input, as the desktop does after that refusal
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          printf 'forge-central-token %s\n' "$(base64 -w0 < /root/forge-central.token)" \
+              | porelo-host-stop --stdin forge-central-token
+          touch /root/porelo-host-forge-token-given
+        creates: /root/porelo-host-forge-token-given
+        executable: /bin/bash
+      when: converge_forge == 'on'
+      no_log: true
+
     - name: Run up with the forge's repositories, its steps as JSON lines
       # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.
       ansible.builtin.shell:
@@ -504,6 +596,18 @@
       register: converge_up_forge
       changed_when: >-
         converge_up_forge.stdout is search('"state": "changed"')
+      when: converge_forge == 'on'
+
+    - name: Read whether the central token is left on the host after the migration
+      ansible.builtin.stat:
+        path: /run/porelo-host/forge-central.token
+      register: converge_token_left
+      when: converge_forge == 'on'
+
+    - name: Assert the migration took the central token off the host
+      ansible.builtin.assert:
+        that: not converge_token_left.stat.exists
+        fail_msg: /run/porelo-host/forge-central.token is still there after up migrated the repositories
       when: converge_forge == 'on'
 
     # A digest kept before idempotence catches an up that replaces a working credential.

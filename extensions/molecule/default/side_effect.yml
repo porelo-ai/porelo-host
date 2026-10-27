@@ -85,17 +85,28 @@
       register: side_effect_forge_https_before
       when: side_effect_forge == 'on'
 
-    # The person's token for the central forge, kept aside before down unmounts the drive, to search what down leaves.
-    - name: Keep the stand-in's token aside, root's alone, to search the forge's accounts for it after down
-      ansible.builtin.copy:
-        src: /srv/porelo-host/drive/porelo-host/forge-central.token
-        dest: /root/forge-central.token
-        remote_src: true
-        owner: root
-        group: root
-        mode: "0600"
-      when: side_effect_forge == 'on'
+    # A token given at the stop for an up that then failed before the migration: down must take it.
+    - name: Give the central token on the stop's standard input, as before an up that does not get to migrate
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail && printf 'forge-central-token %s\n' "$(base64 -w0 < /root/forge-central.token)"
+          | porelo-host-stop --stdin forge-central-token
+        executable: /bin/bash
+      changed_when: true
       no_log: true
+      when: side_effect_forge == 'on'
+
+    - name: Read the central token before down
+      ansible.builtin.stat:
+        path: /run/porelo-host/forge-central.token
+      register: side_effect_token_before
+      when: side_effect_forge == 'on'
+
+    - name: Assert the central token is there before down, so its removal is down's
+      ansible.builtin.assert:
+        that: side_effect_token_before.stat.exists
+        fail_msg: /run/porelo-host/forge-central.token is not there after the stop was given it
+      when: side_effect_forge == 'on'
 
     # First a down whose drive never reads synced: it must stop on the drive, saying what would be lost, and keep it.
     - name: Keep the stub's tresor syncing
@@ -322,12 +333,29 @@
         path: /etc/wireguard/wg-porelo.conf
       register: side_effect_vpn_conf
 
+    - name: Read whether the host's key, the central token and what the person's stop reads are still there
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/wireguard/porelo-host.key
+        - /run/porelo-host/forge-central.token
+        - /etc/porelo-host/stop.conf
+        - /etc/porelo-host/vpn.conf
+      register: side_effect_stop_files
+
     - name: Assert down took the VPN's interface and its file
       ansible.builtin.assert:
         that:
           - side_effect_vpn.rc != 0
           - not side_effect_vpn_conf.stat.exists
         fail_msg: "after down: interface rc {{ side_effect_vpn.rc }}, file {{ side_effect_vpn_conf.stat.exists }}"
+
+    - name: Assert down took the host's key, the central token and what the person's stop reads
+      ansible.builtin.assert:
+        that: side_effect_stop_files.results | selectattr('stat.exists') | list | length == 0
+        fail_msg: >-
+          after down these are still there:
+          {{ side_effect_stop_files.results | selectattr('stat.exists') | map(attribute='item') | list }}
 
     - name: Read the client's stub's state after down
       ansible.builtin.find:

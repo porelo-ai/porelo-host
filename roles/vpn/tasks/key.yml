@@ -1,5 +1,5 @@
 ---
-# Only the file's kind is read, never its content: wg itself reads the key when the interface comes up.
+# Only the file's kind and owner are read, never its content: wg itself reads the key when the interface comes up.
 - name: key | Read whether the host's key file is there
   ansible.builtin.stat:
     path: "{{ vpn_private_key_path }}"
@@ -7,23 +7,12 @@
     get_mime: false
   register: __vpn_key
 
-- name: key | Stop if the host's key file is missing
+- name: key | Stop if the host's key file is missing or not root's alone
   ansible.builtin.assert:
-    that: __vpn_key.stat.exists and __vpn_key.stat.isreg
-    fail_msg: "no key file at {{ vpn_private_key_path }}, which the host's VPN key is read from"
+    that:
+      - __vpn_key.stat.exists and __vpn_key.stat.isreg
+      - __vpn_key.stat.uid == 0 and __vpn_key.stat.mode == '0600'
+    fail_msg: >-
+      wireguard: no key file of root's alone, mode 0600, at {{ vpn_private_key_path }}; give it with
+      porelo-host-stop --stdin wireguard and run up again
     quiet: true
-
-# Ubuntu's AppArmor profile for wg reads only /etc/wireguard; this lets it read the one key file as well, and, since
-# the drive's file is the account's, read it past its owner's mode.
-- name: key | Let wg read the host's key file, and that file alone
-  ansible.builtin.template:
-    src: "{{ role_path }}/templates/apparmor-local-wg.j2"
-    dest: /etc/apparmor.d/local/wg
-    owner: root
-    group: root
-    mode: "0644"
-    backup: true
-  notify: Load wg's AppArmor profile again
-
-- name: key | Load it before the VPN comes up
-  ansible.builtin.meta: flush_handlers

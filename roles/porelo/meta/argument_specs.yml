@@ -36,7 +36,7 @@ argument_specs:
         default: /usr/share/porelo/setup/porelo-setup.sh
         description: Porelo's setup script, as the package porelo ships it.
   project:
-    short_description: The second inventory from the machine file, the keys into the vault, the project followed.
+    short_description: The second inventory from the machine file, its keys checked in the vault, the project followed.
     options:
       porelo_account:
         type: str
@@ -66,7 +66,9 @@ argument_specs:
         description: >-
           Porelo's setup script, which lists agents with --list --json and installs missing packages with --with.
   down:
-    short_description: Every running task of the account stopped and its vault cleared before the host is given back.
+    short_description: >-
+      Every running task of the account stopped, its vault cleared and the stop's account file removed before the host
+      is given back.
     options:
       porelo_account:
         type: str

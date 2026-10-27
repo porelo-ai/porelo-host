@@ -11,7 +11,7 @@ it sets up the host - packages, the VPN, KVM, the forge, the homeserver, Porelo 
 data the project keeps, and installs every offered agent; the person starts tasks and signs agents in as needed.
 At down it stops every running task of the account, copies that data off and leaves the machine to be given
 back. What keeps a guarantee stays Porelo's: the playbook calls Porelo's own commands for following a signed
-project and depositing keys.
+project, and the person's stop deposits the keys through them, from the person's secrets file on standard input.
 
 The [host lifecycle](doc/index.md) explains setup and teardown. The [local forge](doc/local-forge.md) explains
 how task work is built and accepted locally, and which steps toward central publication remain unbuilt.

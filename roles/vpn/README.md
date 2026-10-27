@@ -5,14 +5,19 @@ leaves only ssh and the VPN's UDP port on the public interfaces, those the defau
 the host offers is reached through the VPN or the host's own bridges. The firewall is an nftables table of its own,
 `inet porelo_host`, loaded by `porelo-host-firewall.service`, so libvirt's and podman's tables stay as they are.
 
-The host's private key never passes through Ansible: the interface's file names its path in a `PostUp`, and `wg`
-reads it. The role checks the file is there and lets Ubuntu's AppArmor profile for `wg` read that one file.
+The host's private key never passes through Ansible: the person's stop (`porelo-host-stop --stdin wireguard`, run as
+root) writes it from the person's secrets file into `vpn_private_key_path`, root's alone with mode `0600`, the
+interface's file names that path in a `PostUp`, and `wg` reads it at every start of the interface, so a reboot keeps
+the VPN. The role checks the file is root's alone and refuses otherwise, naming `wireguard`. The key lies in the clear
+on the host's disk, an accepted risk ([decisions](../../doc/decisions.md#the-hosts-vpn-key-on-its-disk)).
 
-`tasks_from: down` stops the interface and removes its file.
+`tasks_from: needs`, in `up`'s first play, writes the key's path into `/etc/porelo-host/vpn.conf` for the stop and
+adds `wireguard` to `porelo_host_needs` while neither the key's file nor the interface is there. `tasks_from: down`
+stops the interface and removes its file, the key and `vpn.conf`.
 
 ## Requirements
 
-Ubuntu 26.04, run as root on the host itself (`-c local`), after the drive is synced, since the key is on it.
+Ubuntu 26.04, run as root on the host itself (`-c local`), after the person's stop has given the key.
 
 ## Variables
 
@@ -22,7 +27,7 @@ Ubuntu 26.04, run as root on the host itself (`-c local`), after the drive is sy
 | `vpn_port` | `51820` | The UDP port the VPN listens on. |
 | `vpn_address` | `10.73.0.1/24` | The host's address inside the VPN with its prefix. |
 | `vpn_peers` | the one peer of `porelo_host_vpn_peer_public_key` and `porelo_host_vpn_peer_address` | The person's peers, each `public_key` and `allowed_ips`. |
-| `vpn_private_key_path` | `/srv/porelo-host/drive/porelo-host/wireguard.key` | The file on the person's drive holding the host's private key. |
+| `vpn_private_key_path` | `/etc/wireguard/porelo-host.key` | The file holding the host's private key, written by the person's stop. |
 | `vpn_ssh_port` | `22` | The TCP port ssh listens on, kept open on the public address. |
 
 ## Example

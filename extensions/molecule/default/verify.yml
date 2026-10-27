@@ -544,8 +544,8 @@
         state: absent
       when: verify_forge == 'on'
 
-    # Removing the drive's key before up with -vvv makes that run put it back while its output is searched.
-    - name: Remove the drive's key from the vault before up with -vvv
+    # Removing the machine's key before up with -vvv makes up refuse naming it, and the stop give it again.
+    - name: Remove the machine's key from the vault before up with -vvv
       ansible.builtin.command:
         cmd: porelo vault remove converge-key
       become: true
@@ -622,10 +622,43 @@
       register: verify_vault_before_vvv
       changed_when: false
 
-    - name: Assert the drive's key is not in the vault before up with -vvv
+    - name: Assert the machine's key is not in the vault before up with -vvv
       ansible.builtin.assert:
         that: verify_vault_before_vvv.stdout is not search('^converge-key ', multiline=True)
         fail_msg: "asked for converge-key to be absent from the vault, got: {{ verify_vault_before_vvv.stdout }}"
+
+    - name: Run up while the vault lacks the machine's key, its steps as JSON lines
+      ansible.builtin.command:
+        cmd: >-
+          ansible-playbook -c local -i /root/porelo-host-inventory.yml {{ verify_forge_inventory }} porelo.host.up
+      environment:
+        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
+        LC_ALL: C.UTF-8
+      register: verify_keyless_up
+      changed_when: false
+      failed_when: false
+
+    - name: Assert up refused naming the missing key and how to give it
+      ansible.builtin.assert:
+        that:
+          - verify_keyless_up.rc == 2
+          - verify_keyless_failed | length == 1
+          - >-
+            verify_keyless_failed[0].msg is search('keys: the vault holds no converge-key; give them with')
+          - verify_keyless_failed[0].msg is search('porelo-host-stop --stdin keys')
+        fail_msg: "up without the key gave rc {{ verify_keyless_up.rc }}: {{ verify_keyless_up.stdout }}"
+      vars:
+        verify_keyless_failed: "{{ verify_keyless_up.stdout_lines | select | map('from_json')
+          | selectattr('state', 'equalto', 'failed') | list }}"
+
+    - name: Give the machine's key on the stop's standard input, as the desktop does after that refusal
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail && printf 'key converge-key %s\n' "$(base64 -w0 < /root/secrets/converge-key)"
+          | porelo-host-stop --stdin keys
+        executable: /bin/bash
+      changed_when: true
+      no_log: true
 
     - name: Assert the gate's token is absent before up with -vvv
       ansible.builtin.assert:
@@ -670,7 +703,7 @@
 
     - name: Read the person's token for the central forge, only to search the run's output for it
       ansible.builtin.slurp:
-        src: /srv/porelo-host/drive/porelo-host/forge-central.token
+        src: /root/forge-central.token
       register: verify_central_token
       no_log: true
       when: verify_forge == 'on'
@@ -785,7 +818,7 @@
         fail_msg: "{{ verify_pool_keys_vvv.stderr }}"
       when: verify_vm_pool == 'on'
 
-    # The drive's key put by up with -vvv is in no output, journal or ~/.ansible file (no fact cache is configured).
+    # The machine's key given by the stop is in no output, journal or ~/.ansible file (no fact cache is configured).
     - name: Ask Porelo what the vault holds after up with -vvv
       ansible.builtin.command:
         cmd: porelo vault list
@@ -796,20 +829,20 @@
       register: verify_vault_after_vvv
       changed_when: false
 
-    - name: Read the drive's key, only to search the run's output for it
+    - name: Read the machine's key, only to search the run's output for it
       ansible.builtin.slurp:
-        src: /srv/porelo-host/drive/porelo-host/keys/converge-key
+        src: /root/secrets/converge-key
       register: verify_drive_key
       no_log: true
 
-    - name: Search the journal and Ansible's directories for the drive's key
+    - name: Search the journal and Ansible's directories for the machine's key
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
           umask 077
           key=$(mktemp) journal=$(mktemp)
           trap 'rm -f "$key" "$journal"' EXIT
-          tr -d '\r\n' < /srv/porelo-host/drive/porelo-host/keys/converge-key > "$key"
+          tr -d '\r\n' < /root/secrets/converge-key > "$key"
           echo >> "$key"
           [ "$(wc -c < "$key")" -gt 21 ] || { echo "key file too short" >&2; exit 1; }
           journalctl -o cat --no-pager > "$journal"
@@ -834,7 +867,7 @@
       changed_when: false
       no_log: true
 
-    - name: Assert up with -vvv put the drive's key back and left its value in no output, journal or Ansible file
+    - name: Assert the stop put the machine's key back and its value is in no output, journal or Ansible file
       ansible.builtin.assert:
         that:
           - verify_vault_after_vvv.stdout is search('^converge-key ', multiline=True)
@@ -891,6 +924,8 @@
               }
               echo "/root/.ansible/tmp: excluded"
               echo "{{ verify_account_home }}/.ansible/tmp: excluded"
+              # The run's stand-in for the person's secrets file, the one place the passphrase is meant to be.
+              echo "/root/secrets: excluded"
               result=$(search "$work/verbose")
               echo "up -vvv: $result"
               result=$(search "$work/journal")
@@ -898,7 +933,7 @@
               # One grep per batch of files, not per file: the account's container storage holds very many.
               for dir in /root /home /srv/porelo-host /etc /var/log; do
                   : > "$work/hits"; : > "$work/errors"
-                  find "$dir" \( -path /root/.ansible/tmp \
+                  find "$dir" \( -path /root/.ansible/tmp -o -path /root/secrets \
                       -o -path {{ (verify_account_home ~ '/.ansible/tmp') | quote }} \) \
                       -prune -o -type f -print0 2> "$work/find-errors" |
                       xargs -0 -r grep -lF -D skip -f "$pattern" -- > "$work/hits" 2> "$work/errors" || true
@@ -949,6 +984,7 @@
         verify_passphrase_expected:
           - '/root/.ansible/tmp: excluded'
           - "{{ ansible_facts['getent_passwd'][verify_account][4] }}/.ansible/tmp: excluded"
+          - '/root/secrets: excluded'
           - 'up -vvv: clean'
           - 'journal: clean'
           - '/root: clean'
@@ -957,8 +993,8 @@
           - '/etc: clean'
           - '/var/log: clean'
 
-    # A shut vault stops up with needs: ["vault"] before any key from the drive is deposited into the vault.
-    - name: Remove the drive's key from the vault and lock the vault
+    # A shut vault stops up with needs: ["vault"] alone; the stop's pipeline then unlocks it and gives the key.
+    - name: Remove the machine's key from the vault and lock the vault
       ansible.builtin.command:
         cmd: "{{ item }}"
       loop: [porelo vault remove converge-key, porelo vault lock]
@@ -995,14 +1031,15 @@
       changed_when: false
       failed_when: false
 
-    - name: Unlock the vault again as the account
-      ansible.builtin.command:
-        cmd: porelo vault unlock --passphrase-stdin
-        stdin: "{{ verify_vault_passphrase }}"
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
+    - name: Unlock the vault and give the machine's key on the stop's standard input, as the desktop does
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          {
+              printf 'vault %s\n' "$(base64 -w0 < /root/secrets/vault-passphrase)"
+              printf 'key converge-key %s\n' "$(base64 -w0 < /root/secrets/converge-key)"
+          } | porelo-host-stop --stdin vault keys
+        executable: /bin/bash
       changed_when: true
       no_log: true
 
@@ -1018,7 +1055,7 @@
       changed_when: false
       failed_when: false
 
-    - name: Assert up stopped for the vault alone without depositing the key, and unlock opened the vault
+    - name: Assert up stopped for the vault alone, and the stop opened the vault and put the key
       ansible.builtin.assert:
         that:
           - verify_locked_up.rc == 2
@@ -1026,7 +1063,7 @@
           - verify_locked_waiting[0].needs == ['vault']
           - verify_locked_failed | length == 0
           - verify_after_locked_up.results[0].rc == 0
-          - verify_after_locked_up.results[1].stdout is not search('^converge-key ', multiline=True)
+          - verify_after_locked_up.results[1].stdout is search('^converge-key ', multiline=True)
         fail_msg: >-
           up on shut vault gave rc {{ verify_locked_up.rc }} and lines {{ verify_locked_up.stdout }};
           after unlock, vault status rc {{ verify_after_locked_up.results[0].rc }},
@@ -1057,7 +1094,7 @@
       register: verify_vault_restored
       changed_when: false
 
-    - name: Assert up after unlocking the vault put the drive's key back
+    - name: Assert up after unlocking the vault runs to its end with the key in the vault
       ansible.builtin.assert:
         that:
           - verify_unlocked_up.rc == 0
@@ -1672,7 +1709,9 @@
       ansible.builtin.assert:
         that:
           - verify_no_key.rc == 2
-          - verify_no_key.stdout is search('no key file at /srv/porelo-host/drive/porelo-host/no-such.key')
+          - >-
+            verify_no_key.stdout is search('wireguard: no key file of root.s alone, mode 0600, at
+            /srv/porelo-host/drive/porelo-host/no-such.key')
           - verify_rules_after.stat.checksum == verify_rules_before.stat.checksum
         fail_msg: "up without the key gave rc {{ verify_no_key.rc }}: {{ verify_no_key.stdout_lines | select('search',
           'failed') | list }}; rules {{ verify_rules_before.stat.checksum }} -> {{ verify_rules_after.stat.checksum }}"
@@ -1855,3 +1894,7 @@
         fail_msg: "the last up's lines: {{ verify_lines }}"
       vars:
         verify_lines: "{{ (verify_lines_file.content | b64decode).splitlines() | select | map('from_json') | list }}"
+
+    # Last, since it restarts the VPN the other checks reach the forge through.
+    - name: Verify the secrets given on the stop's standard input
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/secrets_stdin.yml"

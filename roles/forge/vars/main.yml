@@ -3,6 +3,12 @@
 __forge_image: >-
   codeberg.org/forgejo/forgejo:17.0.0-rootless@sha256:6554520f7574602100b7d6620c6ac5b18cec30325f823777497eac36234f5cf8
 
+# The person's token for migration from the central forge, where porelo-host-stop --stdin forge-central-token writes
+# it, root's alone on the tmpfs; only the shell reads it into the request, and the migration removes it.
+__forge_central_token: /run/porelo-host/forge-central.token
+__forge_to_migrate: "{{ __forge_repositories_state.results | selectattr('stdout', 'equalto', 'missing')
+  | map(attribute='item.name') | list }}"
+
 # The host's CA for the forge, made on the host and kept there; its certificate is what a client trusts.
 __forge_ca_dir: /etc/porelo-host/forge
 __forge_environment:

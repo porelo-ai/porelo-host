@@ -1,7 +1,168 @@
 #!/bin/bash
 # The person's step at up's stop, run in their terminal on the host: each login and passphrase asked again in place
 # until it is done or cancelled, so a typo never costs a whole up run. The client and the vault read the secrets.
+# With --stdin, run as root by the desktop's pipeline from the person's secrets file: one line per secret, each
+# checked before any is used, then each decoded on a pipe straight into what uses it; nothing is asked.
 set -u
+
+stdin_stop_conf=/etc/porelo-host/stop.conf
+stdin_vpn_conf=/etc/porelo-host/vpn.conf
+# The forge role's tasks read the token from here; the tmpfs keeps it from outliving a reboot.
+stdin_central_token=/run/porelo-host/forge-central.token
+stdin_max_lines=256
+
+stdin_refuse() {
+    printf '%s\n' "porelo-host-stop: $1" >&2
+    exit "${2:-64}"
+}
+
+# A value of root's own configuration, refused where another account could have written it.
+stdin_conf_value() {
+    local file=$1 key=$2 pattern=$3 owner_mode line value=
+    [ -f "$file" ] && [ ! -L "$file" ] || stdin_refuse "$file is missing; run up first" 69
+    owner_mode=$(stat -c '%u %a' -- "$file") || stdin_refuse "cannot read $file" 69
+    case "$owner_mode" in
+        '0 '[0-7][0145][0145]|'0 '[0-7][0-7][0145][0145]) ;;
+        *) stdin_refuse "$file is not root's alone to write ($owner_mode)" 69 ;;
+    esac
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in "$key="*) value=${line#"$key="} ;; esac
+    done < "$file"
+    [[ $value =~ $pattern ]] || stdin_refuse "$file names no valid $key" 69
+    printf '%s' "$value"
+}
+
+# Runs as the account, with nothing of root's environment, from a directory the account can enter.
+stdin_as_account() {
+    (cd / && runuser -u "$stdin_account" -- env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="$stdin_home" \
+        XDG_RUNTIME_DIR=/run/user/"$stdin_uid" LANG=C.UTF-8 "$@")
+}
+
+stdin_decode() {
+    printf '%s' "$1" | base64 -d
+}
+
+# Written beside the target and moved over it, so a reader never sees a half-written key; only into a directory of
+# root's alone, and never through a link or into a directory standing where the file belongs.
+stdin_write_root_file() {
+    local value=$1 target=$2 dir tmp owner_mode
+    dir=$(dirname -- "$target")
+    if [ ! -e "$dir" ] && [ ! -L "$dir" ]; then
+        install -d -m 0700 -o root -g root -- "$dir" || stdin_refuse "cannot make $dir" 73
+    fi
+    [ -d "$dir" ] && [ ! -L "$dir" ] || stdin_refuse "$dir is no directory" 73
+    owner_mode=$(stat -c '%u %a' -- "$dir") || stdin_refuse "cannot read $dir" 73
+    case "$owner_mode" in
+        '0 '[0-7][0145][0145]|'0 '[0-7][0-7][0145][0145]) ;;
+        *) stdin_refuse "$dir is not root's alone to write ($owner_mode)" 73 ;;
+    esac
+    if [ -L "$target" ] || { [ -e "$target" ] && [ ! -f "$target" ]; }; then
+        stdin_refuse "$target is no plain file" 73
+    fi
+    tmp=$(umask 077 && mktemp -- "$dir/.porelo-host-stop.XXXXXX") || stdin_refuse "cannot write in $dir" 73
+    if ! stdin_decode "$value" > "$tmp" || ! chmod 0600 -- "$tmp" || ! mv -fT -- "$tmp" "$target"; then
+        rm -f -- "$tmp"
+        stdin_refuse "cannot write $target" 73
+    fi
+}
+
+stdin_stop() {
+    # Run as root by sudo: nothing of the caller's search path or locale decides what runs or what a pattern matches.
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C
+    local -A named=() given=()
+    local -a key_names=()
+    local need line count=0 rest name value
+    [ "$#" -gt 0 ] || stdin_refuse 'at least one need is required: vault-new, vault, keys, wireguard, forge-central-token'
+    for need in "$@"; do
+        case "$need" in
+            vault-new|vault|keys|wireguard|forge-central-token) ;;
+            drive) stdin_refuse "drive is never given on standard input; run porelo-host-stop drive as the account" ;;
+            --email) stdin_refuse '--email belongs to drive, which --stdin does not take' ;;
+            *) stdin_refuse "unknown need or option: $need" ;;
+        esac
+        [ -z "${named[$need]+x}" ] || stdin_refuse "need named twice: $need"
+        named[$need]=1
+    done
+    [ -z "${named[vault-new]+x}" ] || [ -z "${named[vault]+x}" ] || stdin_refuse 'vault-new and vault exclude each other'
+    [ "$(id -u)" = 0 ] || stdin_refuse '--stdin runs only as root'
+    require_command base64
+    require_command runuser
+
+    # Every line is checked before any is used, so a bad line never leaves half the needs done.
+    while IFS= read -r line || [ -n "$line" ]; do
+        count=$((count + 1))
+        [ "$count" -le "$stdin_max_lines" ] || stdin_refuse "more than $stdin_max_lines lines"
+        need=${line%% *}
+        rest=${line#* }
+        [ "$rest" != "$line" ] || stdin_refuse "line $count holds no value"
+        name=
+        case "$need" in
+            key)
+                [ -n "${named[keys]+x}" ] || stdin_refuse "line $count gives a key, but keys is not named"
+                name=${rest%% *}
+                value=${rest#* }
+                [ "$value" != "$rest" ] || stdin_refuse "line $count holds no value"
+                [[ $name =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || stdin_refuse "line $count names no valid key"
+                ;;
+            vault-new|vault|wireguard|forge-central-token)
+                [ -n "${named[$need]+x}" ] || stdin_refuse "line $count gives $need, which is not named"
+                value=$rest
+                ;;
+            *) stdin_refuse "line $count gives an unknown need" ;;
+        esac
+        # The value is never echoed: a refusal names the line and the need alone.
+        if ! [[ $value =~ ^[A-Za-z0-9+/]+={0,2}$ ]] || [ $(( ${#value} % 4 )) != 0 ] \
+            || ! stdin_decode "$value" > /dev/null 2>&1; then
+            stdin_refuse "line $count holds no base64 value"
+        fi
+        [ -z "${given["$need $name"]+x}" ] || stdin_refuse "line $count gives ${name:-$need} a second time"
+        given["$need $name"]=$value
+        [ "$need" != key ] || key_names+=("$name")
+    done
+    for need in vault-new vault wireguard forge-central-token; do
+        if [ -n "${named[$need]+x}" ] && [ -z "${given["$need "]+x}" ]; then
+            stdin_refuse "no line gives $need"
+        fi
+    done
+    # A new vault's machine may have no keys; keys named alone are given because a key is missing.
+    if [ -n "${named[keys]+x}" ] && [ -z "${named[vault-new]+x}" ] && [ "${#key_names[@]}" = 0 ]; then
+        stdin_refuse 'no line gives keys'
+    fi
+
+    if [ -n "${named[vault-new]+x}" ] || [ -n "${named[vault]+x}" ] || [ -n "${named[keys]+x}" ]; then
+        stdin_account=$(stdin_conf_value "$stdin_stop_conf" account '^[a-z_][a-z0-9_-]{0,31}$') || exit $?
+        local entry
+        entry=$(getent passwd "$stdin_account") || stdin_refuse "the account $stdin_account is not known" 69
+        IFS=: read -r _ _ stdin_uid _ _ stdin_home _ <<< "$entry"
+        [ "$stdin_uid" != 0 ] || stdin_refuse "$stdin_stop_conf names root, not Porelo's account" 69
+        require_command porelo
+    fi
+    if [ -n "${named[wireguard]+x}" ]; then
+        stdin_key_path=$(stdin_conf_value "$stdin_vpn_conf" key '^/[A-Za-z0-9._/-]+$') || exit $?
+        case "$stdin_key_path/" in */../*|*/./*|*//*) stdin_refuse "$stdin_vpn_conf names no valid key" 69 ;; esac
+    fi
+
+    if [ -n "${named[vault-new]+x}" ]; then
+        stdin_decode "${given["vault-new "]}" | stdin_as_account porelo vault init --passphrase-stdin \
+            || stdin_refuse 'porelo vault init refused vault-new' 65
+    fi
+    if [ -n "${named[vault]+x}" ]; then
+        stdin_decode "${given["vault "]}" | stdin_as_account porelo vault unlock --passphrase-stdin \
+            || stdin_refuse 'porelo vault unlock refused vault' 65
+    fi
+    for name in "${key_names[@]}"; do
+        stdin_decode "${given["key $name"]}" | stdin_as_account porelo vault put "$name" > /dev/null \
+            || stdin_refuse "porelo vault put refused the key $name" 65
+    done
+    if [ -n "${named[wireguard]+x}" ]; then
+        stdin_write_root_file "${given["wireguard "]}" "$stdin_key_path"
+    fi
+    if [ -n "${named[forge-central-token]+x}" ]; then
+        stdin_write_root_file "${given["forge-central-token "]}" "$stdin_central_token"
+    fi
+    printf '%s\n' "The host's stop is done; run up again."
+    exit 0
+}
 
 cancel() {
     printf '\n%s\n' 'Cancelled; the host waits at this stop. Running up again comes back here.'
@@ -42,6 +203,11 @@ ask_email() {
         printf '%s\n' 'Enter a plain e-mail address.'
     done
 }
+
+if [ "${1-}" = --stdin ]; then
+    shift
+    stdin_stop "$@"
+fi
 
 trap cancel INT
 drive=false

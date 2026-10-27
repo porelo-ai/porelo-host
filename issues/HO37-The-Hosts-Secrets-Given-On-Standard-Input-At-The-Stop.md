@@ -1,6 +1,6 @@
 # HO37 — The Host's Secrets Given On Standard Input At The Stop
 
-**Status:** Backlog.
+**Status:** Implementing.
 **Size:** L - every need of the stop changes, the stop runs as root, the VPN's key and the central token leave the
 drive, and the stop's standard input is a contract porelo-frontend builds against, with [HO35](README.md#ho35) waiting
 on it.
@@ -91,8 +91,3 @@ keys); a host gets only its own group and `shared`.
   but the drive's login at the host and the master password on the desktop.
 - The drive's folder holds no `wireguard.key`, token or key file, and `up` reads none from it.
 - After an `up` that ended to its last step, `/run/porelo-host/` is empty, and the VPN comes back after a reboot.
-
-## To be checked
-
-- With porelo-frontend, whose stop is fed from the file: the line format, the entries' names in `secrets.kdbx`, and that
-  the pipeline runs as the admin with sudo.

@@ -27,9 +27,13 @@ commits reach `main` unchanged, with their author, signature and message, and th
 Up reads the settings back and keeps a matching rule unchanged.
 
 Each repository is migrated once from the central forge, with its content, as an ordinary repository with no push
-mirror. The person's central token is read from `forge_central_token_path` by the shell into the migration request
-on a pipe. The gathered push runs elsewhere as a plain `git push` without force and refuses when central main moved;
-Forgejo's push mirrors force-push and can erase central commits.
+mirror. Only while a repository is still to migrate, the person's central token is needed: `up` refuses naming
+`forge-central-token` until `porelo-host-stop --stdin forge-central-token`, run as root, has written it into
+`/run/porelo-host/forge-central.token`, root's alone on the tmpfs, from where the shell reads it into the migration
+request on a pipe. The migration removes it in an `always`, also when nothing was left to migrate; an `up` that fails
+before the migration leaves it, root's alone, until the next `up` takes it, `down` or a reboot. The gathered push runs
+elsewhere as a plain `git push` without force and refuses when central main moved; Forgejo's push mirrors force-push
+and can erase central commits.
 Previously configured push mirrors remain until `down` removes the forge's volumes; the next `up` migrates anew.
 
 The [resource bounds](../../doc/index.md) are set by `forge_cpus`, `forge_memory`, `forge_pids_limit`,
