@@ -17,8 +17,8 @@ Read in the code, nothing measured.
   `porelo_host_tresor`, checked against `^[a-z][a-z0-9-]{0,30}$` by the first task of `roles/porelo/tasks/main.yml`, in
   `up`'s first play, before any path is built from it. Each role that needs it maps it to a prefixed variable of its own
   in `defaults/main.yml` (`porelo_name: "{{ porelo_host_name }}"`), declared in its `meta/argument_specs.yml`, as
-  `drive_tresor` maps `porelo_host_tresor`. It is the person's name for the host, not the provider's, so it survives
-  renting the host again.
+  `drive_tresor` maps `porelo_host_tresor`. It is the project's name, since a project has one host, not the
+  provider's, so it survives renting the host again.
 - **The layout on the drive**, every file without a secret ([HO37](README.md#ho37) takes the secrets off it):
   - `hosts/<name>/machine.yml`: `porelo_machine_file` in `roles/porelo/defaults/main.yml` becomes
     `/srv/porelo-host/drive/hosts/{{ porelo_name }}/machine.yml`, from `porelo-host/machine.yml`; its entry in
@@ -50,5 +50,4 @@ Read in the code, nothing measured.
 
 ## To be checked
 
-- With porelo-frontend, how the wizard moves an existing tresor's `porelo-host/` files into the new layout, and where
-  the host's name comes from today (the project's tag).
+- With porelo-frontend, how the wizard moves an existing tresor's `porelo-host/` files into the new layout.
