@@ -1,6 +1,6 @@
 # HO35 — The Forge Opened In The Browser Once The VPN Is Up
 
-**Status:** Analyzed; blocked by [HO37](README.md#ho37).
+**Status:** Backlog; blocked by [HO37](README.md#ho37).
 **Size:** M - a first-play step and three forge task files, a need of [HO37](README.md#ho37)'s stop and a password
 script, and the stop's contract porelo-frontend reads.
 

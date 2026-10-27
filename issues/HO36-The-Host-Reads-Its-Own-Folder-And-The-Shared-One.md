@@ -1,6 +1,6 @@
 # HO36 — The Host Reads Its Own Folder And The Shared One
 
-**Status:** Analyzed.
+**Status:** Backlog.
 **Size:** M - a few lines in one role, but a contract porelo-frontend writes (the host's name and the drive's
 layout), its docs and a Molecule check.
 
