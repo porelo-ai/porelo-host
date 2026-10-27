@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Each repository on the host's forge merges pull requests by fast-forward only, every other merge style off, and
+  `up` reads the setting back. A merged pull request leaves its own commits on `main` unchanged; the forge no longer
+  makes a merge commit authored by the person's forge account, which the pushed commits' check refused.
+
 ## [0.5.4] - 2026-10-27
 
 ### Added

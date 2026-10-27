@@ -22,8 +22,9 @@ all of the organization's repositories. Its token (`write:repository,read:organi
 pipe straight into that account's vault as `git.token.forge.porelo.internal`, only while the entry is missing.
 No token file is made. Each configured repository's `main` refuses direct pushes and requires one approval; only
 `forge_person` may approve and merge, with administrator merge overrides disabled and no required status checks.
-Up reads the settings
-back and keeps a matching rule unchanged.
+Each such repository merges a pull request by fast-forward only, every other style off, so a pull request's own
+commits reach `main` unchanged, with their author, signature and message, and the forge adds no commit of its own.
+Up reads the settings back and keeps a matching rule unchanged.
 
 Each repository is migrated once from the central forge, with its content, as an ordinary repository with no push
 mirror. The person's central token is read from `forge_central_token_path` by the shell into the migration request

@@ -1,6 +1,6 @@
 # HO34 — The Forge Merges Fast-Forward Only
 
-**Status:** Backlog, set by the operator on 2026-10-27.
+**Status:** Implementing.
 **Size:** S - one task in the role `forge`'s `protection.yml` that sets and reads back each repository's merge
 styles, Molecule's check of them, and the role's README.
 
@@ -34,10 +34,16 @@ Sprint 5's rented host, 2026-10-27:
 
   *Rebase* is not kept: Forgejo rewrites the committer when it rebases. The task reads the repository back and fails
   unless every field matches, as the branch protection's task does. It reports `changed` only when it patched.
+- **The central work after a refused gathered push** ([HO32](README.md#ho32)) arrives as `central/main`, which has
+  diverged from local `main` and cannot be merged by fast-forward. A task joins it on a branch of its own: it starts
+  from `central/main` and merges local `main` into it with a commit worded by the shared rule. The person approves
+  that pull request, and `main` reaches it by fast-forward. Molecule's `forge_push.yml` does so on `central/take`, and
+  `doc/local-forge.md` says it. `porelo-host-push` is unchanged; its refusal already asks for the merge in a task.
 - **A pull request behind `main`** cannot be merged fast-forward. Its author brings the branch up to date by a rebase
   of their own and pushes it, as the agents already do before opening one.
-- **Molecule** (`extensions/molecule/default`): the migrated repository's settings read back through the API, every
-  field as above. The check is seen red against today's role. `tasks/forge_push.yml` merges its two pull requests
+- **Molecule** (`extensions/molecule/default`): `verify.yml` reads the migrated repository's settings back through
+  the API, every field as above. `tasks/forge_gate.yml` has the person's merge commit refused after the approval,
+  then the fast-forward taken, with `main`'s head the probe's own commit. Both are seen red against today's role. `tasks/forge_push.yml` merges its two pull requests
   with `{"Do": "merge"}`, a merge commit, which the setting refuses; both become `{"Do": "fast-forward-only"}`.
 - **Docs:** the role's README says that the forge merges fast-forward only, and why. Changelog under *Changed*.
 
@@ -60,3 +66,5 @@ Sprint 5's rented host, 2026-10-27:
 - **QH37 (b), the operator, 2026-10-27:** `porelo-host-push` gets no guard of its own against a commit of the forge's
   `operator` identity. The merge style alone keeps such commits out, and the public Build's push step would still
   refuse one.
+- **QH38 (a), the operator, 2026-10-27:** fast-forward only stays, and the central work is joined on a branch of its
+  own by a task, as above, not by a merge commit of the forge's.

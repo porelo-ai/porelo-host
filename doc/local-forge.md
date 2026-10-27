@@ -92,7 +92,9 @@ both forges let workflows select their destinations without editing the workflow
 **First, accept the work by merging `porelo/<task>` into local `main`.** The person reads the pull request and its local
 build before merging in Forgejo. On every configured repository, `up` protects local `main`: direct pushes are disabled,
 one approval is required, and only the person's account (`forge_person`, default `operator`) can supply the counted
-approval and merge the pull request. Administrator merge overrides are disabled. Status checks are not required; the
+approval and merge the pull request. Administrator merge overrides are disabled. The pull request reaches `main` by
+fast-forward only, so its own commits arrive unchanged and the forge adds no commit of its own. Status checks are not
+required; the
 person reads the build before approving. Repeating `up` keeps a matching protection rule and corrects different
 settings.
 
@@ -118,9 +120,10 @@ default; the host's own CA is never trusted for it. `up` writes the file where r
 `down` removes it with the command.
 
 When central `main` holds commits local `main` lacks, the push is refused and nothing is lost on either forge. The
-command names those commits and brings central `main` to the local forge as the branch `central/main`, which a task
-merges into the local work. That task's branch receives a local build and the person's merge decision before the
-person runs the push again. The repositories named after a refused one are not pushed, and the command says which.
+command names those commits and brings central `main` to the local forge as the branch `central/main`. A task joins
+them on a branch of its own: it starts from `central/main` and merges local `main` into it with a commit worded by the
+shared rule on commit messages. That branch receives a local build and the person's merge decision, and local `main`
+reaches it by fast-forward, before the person runs the push again. The repositories named after a refused one are not pushed, and the command says which.
 Starting that merge task automatically is not built.
 
 ## Credentials belong to their destination
