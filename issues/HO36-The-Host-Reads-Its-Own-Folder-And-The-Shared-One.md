@@ -28,7 +28,8 @@ Read in the code, nothing measured.
     [HO35](README.md#ho35) are secrets and live in the `shared` group of `secrets.kdbx`, not here;
   - `wireguard.key` and `forge-central.token` leave the drive for `secrets.kdbx`, with [HO37](README.md#ho37).
 - **The old layout is refused, not read:** where `hosts/<name>/machine.yml` is missing and `porelo-host/machine.yml` is
-  there, `up` stops naming both paths and the move, so a person's old tresor is never read half.
+  there, `up` stops with a sentence naming both paths and the new place, so a person's old tresor is never read half;
+  nothing is migrated. The layout is the same in a tresor of the host's own.
 - **One mechanism for the drive, unchanged:** Tresorit syncs the whole tresor, as `roles/drive/tasks/sync.yml` does
   today; with no secret on the drive, no subfolder sync is needed.
 - **Split out, not in this issue:** the person's own account on the host and their private drives mounted there, which
@@ -47,7 +48,3 @@ Read in the code, nothing measured.
 - Two inventories with different names and one drive folder holding both `hosts/<name>/` each read their own
   `machine.yml`.
 - An old tresor with only `porelo-host/` is refused with both paths named.
-
-## To be checked
-
-- With porelo-frontend, how the wizard moves an existing tresor's `porelo-host/` files into the new layout.

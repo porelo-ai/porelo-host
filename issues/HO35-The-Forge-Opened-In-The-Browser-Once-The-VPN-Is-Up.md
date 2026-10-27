@@ -50,8 +50,10 @@ Read in the code, nothing measured; porelo-frontend's part is analyzed in that r
   `must_change_password: false` as a JSON body on curl's standard input, and deletes the token; the shared admin token
   keeps its scopes. The password lives only in that process's memory: in no file, argument, Ansible variable, register
   or log. The interface runs it once `up` has ended, since the forge runs only in the second play.
-- **The first host:** where standard input is a terminal, the script asks the password twice, unechoed, compares the two
-  in memory and sets it. Where it is kept after that is the open question below.
+- **Kept in the file, never in the interface:** the master password is typed in a terminal on the desktop, where
+  `keepassxc-cli` alone reads `secrets.kdbx` and pipes the password over ssh into the script. At the first host the
+  person types the lasting password in that same terminal, and it goes into the file there; the interface holds
+  neither.
 - **Installed once:** the interface's root step puts the CA's certificate into the system store
   (`/usr/local/share/ca-certificates/porelo-host.crt`) and Firefox's policy (`/etc/firefox/policies/policies.json`,
   `Certificates.Install`) only where that certificate, compared by its SHA-256, is not already there. A new host then
@@ -97,10 +99,6 @@ Read in the code, nothing measured; porelo-frontend's part is analyzed in that r
   root on every rented host sees the key while it signs, and a host taken over keeps it. (b) Recommended: the interface
   fetches the request with `--request`, signs it on the desktop and gives back the certificate; the key never leaves the
   desktop. The decision taken so far carries the key to each host; (b) would change it.
-- **Where the lasting password is kept after the first host.** The decision so far keeps it out of the interface; the
-  shape of `secrets.kdbx` keeps it in that file, which only the interface unlocks and feeds to the host. Either (a) the
-  interface asks it once, writes it into `secrets.kdbx` and pipes it to each host, or (b) the person adds it to
-  `secrets.kdbx` in KeePassXC and the interface pipes it from there. Both hold it in the interface on every later host.
 
 ## To be checked
 
