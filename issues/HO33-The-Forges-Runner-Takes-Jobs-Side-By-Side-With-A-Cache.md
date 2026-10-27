@@ -1,6 +1,6 @@
 # HO33 — The Forge's Runner Takes Jobs Side By Side, With A Cache
 
-**Status:** Analyzed. Accepted by the operator on 2026-10-27.
+**Status:** Estimated by the operator on 2026-10-27.
 **Size:** M - the role `forge`'s runner configuration and unit, two variables with their argument specs and a
 refusal in the style of the VM pool's, Molecule's checks of the written files, and one measurement on a rented host.
 

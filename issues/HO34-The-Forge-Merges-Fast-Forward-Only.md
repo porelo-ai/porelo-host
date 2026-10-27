@@ -1,6 +1,6 @@
 # HO34 — The Forge Merges Fast-Forward Only
 
-**Status:** Analyzed. Accepted by the operator on 2026-10-27.
+**Status:** Estimated by the operator on 2026-10-27.
 **Size:** S - one task in the role `forge`'s `protection.yml` that sets and reads back each repository's merge
 styles, Molecule's check of them, and the role's README.
 

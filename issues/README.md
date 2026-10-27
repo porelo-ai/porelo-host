@@ -25,13 +25,6 @@ it is left out.
 | <a id="ho29"></a>[HO29](HO29-The-Persons-Own-Web-Login-On-The-Forge.md) | S | - | The person signs in to the host's forge through the VPN as `operator`, an owner of the organization, the first password generated and fetched over ssh, then changed at the first sign-in. |
 | <a id="ho31"></a>[HO31](HO31-The-Accounts-Gate-And-Reader-On-The-Hosts-Forge.md) | M | - | Gate, reader; main review |
 
-## Analyzed
-
-| # | Size | Blocked by | Open questions | What it covers |
-|---|---|---|---|---|
-| <a id="ho34"></a>[HO34](HO34-The-Forge-Merges-Fast-Forward-Only.md) | S | - | 0 | Each repository on the host's forge allows only the fast-forward merge, so a pull request's own commits reach `main` unchanged and no commit of the forge's `operator` does. |
-| <a id="ho33"></a>[HO33](HO33-The-Forges-Runner-Takes-Jobs-Side-By-Side-With-A-Cache.md) | M | - | 1 | The forge's runner takes as many jobs at once as half the machine holds within their bounds, and a job's `actions/cache` reaches the runner's cache on the forge's address. |
-
 ## Backlog
 
 | # | Size | Blocked by | What it covers |
@@ -60,6 +53,8 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho33"></a>[HO33](HO33-The-Forges-Runner-Takes-Jobs-Side-By-Side-With-A-Cache.md) | M | - | The forge's runner takes as many jobs at once as half the machine holds within their bounds, and a job's `actions/cache` reaches the runner's cache on the forge's address. |
+| <a id="ho34"></a>[HO34](HO34-The-Forge-Merges-Fast-Forward-Only.md) | S | - | Each repository on the host's forge allows only the fast-forward merge, so a pull request's own commits reach `main` unchanged and no commit of the forge's `operator` does. |
 | <a id="ho23"></a>[HO23](HO23-A-Machine-Rented-And-Given-Back-By-OpenTofu.md) | L | - | An administrator rents and gives back a host by one OpenTofu module per provider, its state kept encrypted with the administrator, outside the interface. |
 
 ## Finished
