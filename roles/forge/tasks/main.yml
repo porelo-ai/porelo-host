@@ -13,7 +13,7 @@
   loop_control:
     loop_var: __forge_controller_account
 
-- name: Make the host's CA and the forge's certificate
+- name: Take the forge's certificate, signed by the person's CA
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/tls.yml"
 
 - name: Run Forgejo on the VPN's address

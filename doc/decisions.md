@@ -11,6 +11,7 @@ says why.
 | Where the playbook runs | On the host itself, with Ubuntu's own `ansible-core` and `-c local`. | [Why](#where-the-playbook-runs) |
 | The order of `up` and `down` | Every need of the stop is known in the first play, before the VPN, around one stop for the person; the store's last copy is to come before `vault clear`. | [Why](#the-order-of-up-and-down) |
 | How the stop's secrets reach the host | On the stop's standard input, from the person's secrets file on the desktop, each passed straight to its user; the drive holds none. | [Why](#how-the-stops-secrets-reach-the-host) |
+| The forge's CA on the desktop | One lasting CA of the person's, name-constrained to `porelo.internal` and the VPN's network, signs every host's forge; its key never reaches a host. | [Why](#the-forges-ca-on-the-desktop) |
 | The host's VPN key on its disk | An accepted risk: the key lies in the clear in `/etc/wireguard`, root's alone, for the host's life. | [Why](#the-hosts-vpn-key-on-its-disk) |
 | Where the VM test runs | On a libvirt VM per run everywhere: here, in the GitHub Build and in the Forgejo build. | [Why](#where-the-vm-test-runs) |
 | `ansible-test sanity` | Not run yet, though the collection holds Python; it comes in its own pinned container. | [Why](#ansible-test-sanity) |
@@ -52,12 +53,12 @@ be assumed. The `ansible-core` the host's Ubuntu carries is therefore the versio
 
 ## The order of `up` and `down`
 
-Every need of the stop, the vault and the VPN's key, is known in the first play, so the person has one stop for both,
-and the VPN comes after it; until the VPN is up, the host is reached over its public ssh only. At `down`, `porelo vault
-clear` on an account with its own homeserver also runs the transport's `clear`, which removes the homeserver's database
-volume, its port, its registration token and its poll positions. So the store, which no role keeps yet, is to take its
-last copy before `vault clear`, and at `up` to be restored before the first `porelo task start`, which would otherwise
-make a fresh homeserver.
+Every need of the stop, the vault with its keys, the VPN's key and the forge's certificate, is known in the first play,
+so the person has one stop for all of them, and the VPN comes after it; until the VPN is up, the host is reached over
+its public ssh only. At `down`, `porelo vault clear` on an account with its own homeserver also runs the transport's
+`clear`, which removes the homeserver's database volume, its port, its registration token and its poll positions. So the
+store, which no role keeps yet, is to take its last copy before `vault clear`, and at `up` to be restored before the
+first `porelo task start`, which would otherwise make a fresh homeserver.
 
 ## Where the VM test runs
 
@@ -186,3 +187,25 @@ The key is the host's alone, made for it, and is given back with it.
 
 **What would change the answer.** WireGuard taking its key from a sealed store such as a TPM, or a reboot no longer
 needing the VPN to reach the host.
+
+## The forge's CA on the desktop
+
+**What holds.** The person's computer trusts one CA for the forges of all their hosts, made once on the desktop, its
+key kept in their secrets file. Each host makes its own key and a request; the desktop signs it, setting every
+extension itself, and the host takes the certificate only after checking it against its waiting key, the CA, its
+names and its time. The person's forge password is lasting too, set on each new forge from the secrets file by a root
+script that holds it only in memory; the admin token that script needs is made for the call and kept only in memory,
+since Forgejo's command line deletes no token, so it stays in Forgejo's store as a hash until the forge goes with
+`down`. Root on the host commands the forge's admin anyway, so that token adds no power.
+
+**The exposure.** A stolen CA key vouches, to every client that trusts the CA, for any name under `porelo.internal` and
+any address in `10.73.0.0/24`, for ten years, and for no other site, since the constraint is critical. That reaches the
+person's forge on every host: whoever holds the key and the person's traffic can stand in for the forge and read the
+password and pushes. There is no revocation; a key seen stolen is replaced by a new CA, which the interface installs in
+place of the old; a host takes a new CA only when it is set up again, since its stop keeps the CA it has.
+
+**Why it stays.** A CA made per host would need its import and a first password again on every host; the key kept
+only in the secrets file, unlocked on the desktop, is as safe as that file, and the constraint bounds what it can do.
+
+**What would change the answer.** A public CA's certificate for the forge's name, or a browser that can pin one
+certificate per host without a CA.

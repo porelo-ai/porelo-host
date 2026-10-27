@@ -1,20 +1,25 @@
 # Role `forge`
 
 The host's forge: Forgejo with its package registry in rootless podman, as a quadlet user unit of an account of its
-own (`porelo-forge`), serving HTTPS with a certificate from a CA made on the host. It runs
+own (`porelo-forge`), serving HTTPS with a certificate the person's own CA signed on their desktop. It runs
 where the host setting `porelo_host_forge` is true, in `up`'s second play after the VPN; `down` stops it and keeps
 nothing. Its runner gets an account of its own (`porelo-runner`), never Porelo's: what holds the forge's admin and the
 person's token for the central forge shares no user namespace with a task.
 
-The CA's certificate is `/etc/porelo-host/forge/ca.pem`; its key stays on the host, root's alone.
+The CA is the person's lasting one, made on their desktop; its certificate is `/etc/porelo-host/forge/ca.pem`, written
+by the stop, and its key never reaches the host. `tasks_from: request`, in `up`'s first play, makes the forge's key and
+a certificate request in `/etc/porelo-host/forge/` where no certificate signed by that CA holds for 30 days more and
+names the forge's address and name, and adds `forge-certificate` to `porelo_host_needs`; `tls` moves the signed
+certificate and its key into the forge account's `tls/`, never copying them, and refuses naming `forge-certificate`
+where none holds. `/etc/porelo-host/forge.conf` names the forge's address, name, port, person and account to the stop
+and the password script; it holds no secret.
 
 With repositories configured, `forge_person` (default `operator`, matching `^[a-z][a-z0-9-]{0,30}$`) is the person's
-web login in the organization's `Owners` team. Forgejo creates it only when absent, with a random first password
-piped straight into `/etc/porelo-host/forge/person.password`, root:root `0600`, and requires a password change at the
-first sign-in. Up keeps an existing account and password; it does not recreate a first password file the person
-deleted. Fetch the file over SSH into a private file, then delete both copies after signing in as described in the
-[local forge guide](../../doc/local-forge.md#credentials-belong-to-their-destination). Down removes the password file
-with the forge's CA directory.
+web login in the organization's `Owners` team, made only when absent, its generated password discarded.
+`/usr/local/sbin/porelo-host-forge-password`, root's alone, takes the person's lasting password on standard input and
+sets it through the admin API with a token it makes for the call and keeps in memory; see the
+[local forge guide](../../doc/local-forge.md#credentials-belong-to-their-destination). Down removes the script and
+`forge.conf`.
 
 `forge_porelo_account` defaults to `porelo_host_account` and matches `^[a-z][a-z0-9-]{0,30}$`. With repositories
 configured, `porelo-<account>` belongs to `gates`, with code and pull request write access and Actions read access on

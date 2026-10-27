@@ -16,88 +16,28 @@
   check_mode: false
   no_log: true
 
-# Strict extraction keeps an unexpected CLI sentence from becoming the person's password file. A user made without its
-# file is taken out again, so the next up makes both anew instead of leaving the person with no first password. The
-# task says only how it ended, one word, so the refusal after it can be shown while the password never is.
-- name: person | Pipe the generated first password straight into its root-only file
+# The person's password is theirs, kept in their secrets file and set on each new forge by porelo-host-forge-password
+# over ssh; the one Forgejo generates here goes nowhere, so no password of the person's is ever in a host file.
+- name: person | Make the person's account, its generated password discarded
   ansible.builtin.shell:
-    cmd: |
-      set -uo pipefail
-      cd /
-      umask 077
-      file={{ (__forge_ca_dir ~ '/person.password') | quote }}
-      forgejo() {
-          runuser -u {{ forge_account }} -- env XDG_RUNTIME_DIR=/run/user/{{ __forge_uid }} \
-              podman exec forgejo forgejo "$@"
-      }
-      ended=interrupted
-      take_back() {
-          [ "$ended" = made ] && return
-          rm -f "$file"
-          if forgejo admin user delete --username {{ forge_person }} > /dev/null 2>&1; then
-              echo "$ended"
-          else
-              echo "$ended-and-kept"
-          fi
-      }
-      trap take_back EXIT
-      trap 'exit 130' INT
-      trap 'exit 143' TERM
-      rm -f "$file"
-      # Forgejo 17 says: generated random password is '<password>' (measured on the pinned image).
-      if ! forgejo admin user create --username {{ forge_person }} \
-          --email {{ forge_person }}@{{ forge_name }} --random-password --must-change-password=true 2> /dev/null \
-          | sed -n "s/^generated random password is '\([^'[:space:]]\{1,\}\)'$/\1/p" > "$file"; then
-          ended=refused
-          exit 0
-      fi
-      if [ ! -s "$file" ] || [ "$(wc -l < "$file")" != 1 ] || ! grep -Eqx '[^[:space:]]+' "$file"; then
-          ended=unexpected
-          exit 0
-      fi
-      chown root:root "$file" && chmod 0600 "$file" || { ended=unowned; exit 0; }
-      ended=made
-      echo made
-    executable: /bin/bash
+    cmd: >-
+      podman exec forgejo forgejo admin user create --username {{ forge_person }}
+      --email {{ forge_person }}@{{ forge_name }} --random-password --must-change-password=false > /dev/null
   become: true
-  become_user: root
+  become_user: "{{ forge_account }}"
   environment: "{{ __forge_environment }}"
   when: forge_person not in
     (__forge_person_users_listed.stdout_lines[1:] | map('split') | map(attribute=1) | list)
-  register: __forge_person_made
   changed_when: true
-  failed_when: false
   no_log: true
 
-- name: person | Stop where the person's first password could not be kept
-  ansible.builtin.assert:
-    that: __forge_person_made.stdout == 'made'
-    fail_msg: >-
-      asked Forgejo to make {{ forge_person }} with a first password kept in {{ __forge_ca_dir }}/person.password;
-      got '{{ __forge_person_made.stdout | regex_search('^[a-z-]{1,40}$') | default('no answer', true) }}'
-      (refused: Forgejo refused the user; unexpected: its answer held no password in the measured form; unowned: the
-      file could not be made root's alone; interrupted: the run ended early;{{ ' ' }}-and-kept: the user is still there
-      and must be deleted before the next up)
-    quiet: true
-  when: __forge_person_made is not skipped
-
-- name: person | Read whether the first password file is still on the host
-  ansible.builtin.stat:
-    path: "{{ __forge_ca_dir }}/person.password"
-    get_checksum: false
-    get_mime: false
-  register: __forge_person_file
-  no_log: true
-
-- name: person | Keep an existing first password file owned and readable by root alone
-  ansible.builtin.file:
-    path: "{{ __forge_ca_dir }}/person.password"
-    state: file
+- name: person | Install the script that sets the person's lasting password, root's alone
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/porelo-host-forge-password"
+    dest: /usr/local/sbin/porelo-host-forge-password
     owner: root
     group: root
-    mode: "0600"
-  when: __forge_person_file.stat.exists
-  no_log: true
+    mode: "0700"
 
 - name: person | Let the person own the organization's repositories through its Owners team
   ansible.builtin.shell:

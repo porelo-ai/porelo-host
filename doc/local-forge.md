@@ -139,28 +139,18 @@ An agent's push starts the workflows' `push` and `pull_request` runs, but the fo
 (`403`) and not its own user (`403`, no `read:user` scope).
 
 With repositories configured, the person's web login is `operator` (`forge_person`). It belongs to the organization's
-`Owners` team, so the person can read private repositories, build runs and packages and merge pull requests. Connect
-through the VPN, resolve `forge.porelo.internal` (`forge_name`) to the host's VPN address (`forge_address`), and trust
-the host's CA certificate, `/etc/porelo-host/forge/ca.pem`, in the browser before opening
-`https://forge.porelo.internal/`.
+`Owners` team, so the person can read private repositories, build runs and packages and merge pull requests. The
+interface's VPN step resolves `forge.porelo.internal` (`forge_name`) to the host's VPN address (`forge_address`), and
+the person's computer trusts their own lasting CA, made once on the desktop with a name constraint that holds it to
+`porelo.internal` and the VPN's network; its key stays in the person's secrets file and never reaches a host. Each
+host's forge certificate is signed by that CA at the stop: the host makes a key and a request, the stop's `--request`
+prints the request, and the desktop's answer comes back as `forge-certificate` on the stop's standard input, checked
+before it is written (the [line contract](lines.md)).
 
-Forgejo generates the first password into `/etc/porelo-host/forge/person.password`, owned by root with mode `0600`.
-On the person's machine, fetch it over SSH straight into a new file only they read; substitute the host's SSH address:
-
-```sh
-(umask 077; set -C; ssh root@host.example.org 'cat /etc/porelo-host/forge/person.password' > forge-person.password)
-```
-
-Read that local file privately and sign in as `operator`. Forgejo requires a new password before continuing; the first
-password then stops working. Delete both copies after that first sign-in:
-
-```sh
-rm forge-person.password
-ssh root@host.example.org 'rm /etc/porelo-host/forge/person.password'
-```
-
-Another `up` keeps the existing account and password and does not recreate a deleted first password file. `down`
-removes any remaining first password file with the forge's other credentials.
+The person's password is lasting too, kept in the secrets file: once `up` has ended, the desktop pipes it over ssh into
+`porelo-host-forge-password`, a root script on the host, which sets it on the new forge with no change asked at the
+next sign-in. The password lives only in that script's memory and the request to the forge's admin API; no host file
+holds it, and Forgejo's own generated first password goes nowhere.
 
 The registry publisher is a separate account. Its package token stays with Forgejo and runner jobs as
 `PORELO_PUBLISHER_TOKEN`; it is not handed to tasks. The host build reader's credential and a task's declared service

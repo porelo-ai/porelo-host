@@ -9,7 +9,7 @@ __forge_central_token: /run/porelo-host/forge-central.token
 __forge_to_migrate: "{{ __forge_repositories_state.results | selectattr('stdout', 'equalto', 'missing')
   | map(attribute='item.name') | list }}"
 
-# The host's CA for the forge, made on the host and kept there; its certificate is what a client trusts.
+# Where the person's CA certificate, which a client trusts, and the forge's waiting key and request lie; no CA key.
 __forge_ca_dir: /etc/porelo-host/forge
 __forge_environment:
   XDG_RUNTIME_DIR: "/run/user/{{ __forge_uid }}"

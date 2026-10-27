@@ -17,7 +17,7 @@
     src: /etc/porelo-host/forge/ca.pem
   register: __porelo_forge_ca
 
-# The person's other certificates stay outside the block, including when the host's CA is renewed.
+# The person's other certificates stay outside the block, including when the forge's CA is replaced.
 - name: trust | Add the forge's CA to the account's trusted certificates
   ansible.builtin.blockinfile:
     path: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo/ca-certificates.pem"

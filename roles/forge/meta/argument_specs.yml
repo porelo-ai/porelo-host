@@ -119,7 +119,7 @@ argument_specs:
         default: operator
         description: >-
           The person's web login matching ^[a-z][a-z0-9-]{0,30}$, made only with repositories, in the Owners team.
-          Its first password is written to /etc/porelo-host/forge/person.password and must change at first sign-in.
+          Its generated password goes nowhere; porelo-host-forge-password sets the person's lasting one.
       forge_variables:
         type: dict
         default:
@@ -151,6 +151,30 @@ argument_specs:
         type: bool
         default: false
         description: Lets Forgejo migrate from a private address, for a stand-in central forge on the host.
+  request:
+    short_description: >-
+      Before the stop, a key and a request for the forge's certificate where none signed by the person's CA holds, and
+      forge-certificate named as a need.
+    options:
+      forge_address:
+        type: str
+        description: The forge's address on the VPN, which the certificate must name.
+      forge_name:
+        type: str
+        default: forge.porelo.internal
+        description: The forge's name, which the certificate must name.
+      forge_http_port:
+        type: int
+        default: 3000
+        description: The forge's HTTPS port, named to the password script.
+      forge_person:
+        type: str
+        default: operator
+        description: The person's web login, named to the password script.
+      forge_account:
+        type: str
+        default: porelo-forge
+        description: The forge's account, whose tls/ holds the certificate once moved there.
   capacity:
     short_description: Refuse runner jobs that, with the VM pool, would take more than half the host.
     options:

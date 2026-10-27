@@ -1,0 +1,82 @@
+---
+# up's first play, before the stop: the forge's certificate is signed on the person's desktop by their lasting CA, whose
+# key never reaches the host. Where no certificate holds, the host makes a key and a request, which the stop's
+# --request prints and whose answer forge-certificate brings back; the key stays root's alone until tls moves it.
+- name: request | Make the forge's directory of root's
+  ansible.builtin.file:
+    path: "{{ __forge_ca_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The stop checks a certificate against these; none of them is a secret.
+- name: request | Name the forge's address, name, port and person to the stop
+  ansible.builtin.copy:
+    dest: /etc/porelo-host/forge.conf
+    content: |
+      address={{ forge_address }}
+      name={{ forge_name }}
+      port={{ forge_http_port }}
+      person={{ forge_person }}
+      account={{ forge_account }}
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: request | Read the forge account's home, if it is there yet
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ forge_account }}"
+    fail_key: false
+
+# A certificate holds where it ends in more than 30 days, names the forge's address and name, and matches its key.
+- name: request | Make a key and a request for the forge, unless a certificate for it holds or waits
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      # A certificate holds where it ends in more than 30 days, verifies under the person's CA, names exactly the
+      # forge's address and name, and is for its key; each public key read on its own, so none compares on nothing.
+      holds() {
+          [ -f "$1" ] && [ -f "$2" ] && [ -f "$wait/ca.pem" ] && [ ! -L "$1" ] && [ ! -L "$2" ] || return 1
+          [ "$(stat -c '%a' -- "$2")" = 600 ] || return 1
+          openssl x509 -checkend 2592000 -noout -in "$1" > /dev/null || return 1
+          openssl verify -CAfile "$wait/ca.pem" "$1" > /dev/null 2>&1 || return 1
+          names=$(openssl x509 -noout -ext subjectAltName -in "$1" | tail -n +2 | tr ',' '\n' | sed 's/^ *//; s/ *$//')
+          grep -qxF 'IP Address:{{ forge_address }}' <<< "$names" && grep -qxF 'DNS:{{ forge_name }}' <<< "$names" \
+              || return 1
+          cert_pub=$(openssl x509 -noout -pubkey -in "$1") && key_pub=$(openssl pkey -pubout -in "$2") || return 1
+          [ -n "$cert_pub" ] && [ "$cert_pub" = "$key_pub" ]
+      }
+      wait={{ __forge_ca_dir }}
+      if holds "$wait/forge.pem" "$wait/forge.key"; then echo waiting; exit 0; fi
+      home={{ __forge_request_home | quote }}
+      if [ -n "$home" ] && holds "$home/tls/forge.pem" "$home/tls/forge.key"; then echo holds; exit 0; fi
+      rm -f "$wait/forge.pem"
+      # A key from a run that stopped is kept only while it is a plain file of root's alone that can be read, so a
+      # request already signed stays good; any other is replaced. A new key is made beside its name and moved there,
+      # so it is never read half written.
+      if [ -L "$wait/forge.key" ] || [ ! -f "$wait/forge.key" ] \
+          || [ "$(stat -c '%u %a' -- "$wait/forge.key")" != '0 600' ] \
+          || ! openssl pkey -noout -in "$wait/forge.key" > /dev/null 2>&1; then
+          rm -f -- "$wait/forge.key"
+          key=$(umask 077 && mktemp "$wait/.forge.key.XXXXXX")
+          trap 'rm -f -- "$key" "$wait/forge.csr.new"' EXIT
+          openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$key"
+          mv -fT -- "$key" "$wait/forge.key"
+      fi
+      openssl req -new -key "$wait/forge.key" -subj "/CN={{ forge_name }}" -out "$wait/forge.csr.new"
+      chmod 0644 "$wait/forge.csr.new" && mv -f "$wait/forge.csr.new" "$wait/forge.csr"
+      echo requested
+    executable: /bin/bash
+  vars:
+    __forge_request_home: "{{ (ansible_facts['getent_passwd'][forge_account] or ['', '', '', '', '', ''])[4] }}"
+  register: __forge_request
+  changed_when: __forge_request.stdout == 'requested'
+
+- name: request | Name the forge's certificate as what the person must give
+  ansible.builtin.set_fact:
+    porelo_host_needs: "{{ porelo_host_needs | default([]) + __forge_need }}"  # noqa: var-naming[no-role-prefix]
+  vars:
+    __forge_need: [forge-certificate]
+  when: __forge_request.stdout == 'requested'

@@ -52,6 +52,17 @@
           text: Checking the VPN's key
           seconds: 5
 
+    # The forge's certificate is signed on the person's desktop, so its request is made before the stop.
+    - name: Ask whether the forge's certificate holds, and request one where it does not
+      ansible.builtin.include_role:
+        name: porelo.host.forge
+        tasks_from: request
+      vars:
+        porelo_host_step:
+          text: Checking the forge's certificate
+          seconds: 5
+      when: porelo_host_forge | default(false) | bool
+
 - name: Bring the host up from the person's step
   hosts: localhost
   connection: local

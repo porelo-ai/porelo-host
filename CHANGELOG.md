@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The host's forge takes its certificate from the person's lasting CA, made once on their desktop with a name
+  constraint, whose key never reaches a host: `up` makes a key and a request and names `forge-certificate` at the stop,
+  `porelo-host-stop --request` prints the request, and the signed certificate comes back on standard input, checked
+  before it is written. No CA key and no first password file are made on the host any more; the person's lasting
+  password is set by `porelo-host-forge-password` from standard input, over ssh.
 - The stop's secrets come on its standard input: `porelo-host-stop --stdin NEED...`, run as root over the admin's ssh,
   takes the vault's passphrase, the machine's keys, the host's VPN key and the central forge's token from the person's
   secrets file, one base64 line each, checks every line before using any, and pipes each value straight into its user.

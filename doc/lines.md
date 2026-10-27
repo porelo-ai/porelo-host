@@ -60,10 +60,11 @@ with one line in place of a failure:
     {"v": 1, "state": "waiting", "needs": ["vault-new", "keys", "wireguard"]}
 
 `needs` names what is missing: `vault-new` with `keys` when the account has no vault yet, `vault` when its vault is
-shut, and `wireguard` while the host has neither the VPN's key nor its running interface. `up` installs agents without
-stopping for their sign-ins and starts no task. `ansible-playbook` itself exits 2 on a waiting stop, as on any failure,
-so a program tells the stop from a failure by this line, never by the exit code. A second `up` after the person's step
-runs both plays from the top; what is done is done, so it goes on where it stopped.
+shut, `wireguard` while the host has neither the VPN's key nor its running interface, and `forge-certificate` where the
+host runs a forge and no certificate signed by the person's CA holds for it. `up` installs agents without stopping for
+their sign-ins and starts no task. `ansible-playbook` itself exits 2 on a waiting stop, as on any failure, so a program
+tells the stop from a failure by this line, never by the exit code. A second `up` after the person's step runs both
+plays from the top; what is done is done, so it goes on where it stopped.
 
 A person at the host's terminal may instead run `porelo-host-stop NEED...` as the account, with `vault-new` or
 `vault`: `vault-new` asks for a new vault passphrase twice, `vault` for the existing one to unlock it. A failed attempt
@@ -87,6 +88,7 @@ with the needs as `up` names them. Standard input holds one line per secret, `<n
 | `keys` | `key <name> <key>`, one per key of the machine, none or more | `porelo vault put <name>`, as the account, once the vault is open |
 | `wireguard` | `wireguard <private key>` | the VPN's key file, root's with mode `0600`, kept for the host's life |
 | `forge-central-token` | `forge-central-token <token>` | `/run/porelo-host/forge-central.token`, root's with mode `0600`, until the migration |
+| `forge-certificate` | `forge-certificate <the forge's certificate, then the CA's, as PEM>` | `/etc/porelo-host/forge/forge.pem` and `ca.pem`, once every check below holds |
 
 Every line is checked before any is used: a need not named, an unknown need, a line given twice, a key name other than
 letters, digits, `.`, `_` and `-`, or a value that is not base64 is refused, naming the line and never the value, and so
@@ -97,11 +99,18 @@ alone: `forge-central-token` is never named by the stop, since only the running 
 still to migrate; `up` fails there with a message beginning `forge-central-token:`, and with `keys:` for a missing key,
 then the call is made and `up` runs again.
 
+`forge-certificate` answers the request `up` made where no certificate signed by the person's CA holds for the forge;
+`porelo-host-stop --request` prints that request as one PEM block and nothing else, exit 0, or exits 65 where none
+waits. The line is taken only where it holds two certificates, the forge's then the CA's; the forge's is for the
+waiting key, verifies under that CA, names the forge's address and name, and holds for more than 30 days; the CA
+carries a critical name constraint; and where `/etc/porelo-host/forge/ca.pem` is there already, the CA is that one.
+Otherwise it is refused with 64, naming the check that failed, before anything is written.
+
 It exits 0 when every line is used, printing "The host's stop is done; run up again."; 64 for a wrong call or a wrong
 line, with nothing used; 65 when the vault refuses a value (`vault-new`, `vault`, a key), naming it; 69 when a required
-command is missing or `/etc/porelo-host/stop.conf` or `vpn.conf`, which `up` writes, is missing, not root's alone, or
-names root or an unknown account; and 73 when a file cannot be written, or its directory or the file in its place is
-not root's alone or not plain.
+command is missing, or `/etc/porelo-host/stop.conf`, `vpn.conf` or `forge.conf`, which `up` writes, or the forge's
+waiting key, is missing, not root's alone, or names root or an unknown account; and 73 when a file cannot be written, or
+its directory or the file in its place is not root's alone or not plain.
 
 **The version.** `v` is the contract's version. An added field or state keeps it; a field that changes or goes away
 raises it. A reader skips a `state` it does not know, as it skips a field.

@@ -6,12 +6,13 @@ Brings a Porelo project up on a server and takes it down again, owned or rented 
 **`porelo.host.up`, in two plays around the person's step.** The first play runs `base` (packages, KVM with libvirt,
 podman), `porelo`'s install and setup script (which makes Porelo's account with linger and subordinate ids), `base`'s
 account part (the account in `kvm` and `libvirt`, and the person's ssh key on the account for the stop), `porelo setup`
-with `porelo vault status`, and `vpn`'s needs part (whether the host's VPN key is there). Each role that needs the
-person's step adds what is missing (`vault-new` with `keys`, `vault`, or `wireguard`) to `porelo_host_needs`. The second
-play stops first with a [waiting line](lines.md) while `porelo_host_needs` is not empty; the person's stop gives every
-need on [standard input](lines.md), from their secrets file on the desktop. Once the vault is open, it runs `vpn`
-(WireGuard with the host's key, which the stop wrote into `/etc/wireguard`, read by `wg` itself, and nftables leaving
-only ssh and the VPN on the public interfaces), `porelo`'s project part (the machine file read from
+with `porelo vault status`, `vpn`'s needs part (whether the host's VPN key is there), and, where the host runs a forge,
+`forge`'s request part (whether a certificate signed by the person's CA holds for it). Each role that needs the person's
+step adds what is missing (`vault-new` with `keys`, `vault`, `wireguard` or `forge-certificate`) to `porelo_host_needs`.
+The second play stops first with a [waiting line](lines.md) while `porelo_host_needs` is not empty; the person's stop
+gives every need on [standard input](lines.md), from their secrets file on the desktop. Once the vault is open, it runs
+`vpn` (WireGuard with the host's key, which the stop wrote into `/etc/wireguard`, read by `wg` itself, and nftables
+leaving only ssh and the VPN on the public interfaces), `porelo`'s project part (the machine file read from
 `/etc/porelo-host/setup/`, where the interface uploaded it, each key of the machine file checked in the vault, where the
 stop put it, `project follow --signed-by`), `forge` and `vm_pool` where the host settings ask for them, and `porelo`'s
 agents part (every offered agent and the project's transport packages installed, with no task started or stop for a

@@ -181,27 +181,6 @@
   vars:
     verify_gate_build: "{{ verify_gate_reader.stdout | default('{}', true) | from_json }}"
 
-# The forced-change sign-in was checked first; this fixture unlocks Basic authentication for the API-only PR checks.
-# Forgejo's command line, since the role's admin token holds no write:admin scope (the admin API answers 403).
-- name: Allow the test person's first password to authenticate the approval API after checking its forced change
-  ansible.builtin.shell:
-    cmd: >-
-      runuser -u porelo-forge -- env XDG_RUNTIME_DIR="/run/user/$(id -u porelo-forge)"
-      podman exec forgejo forgejo admin user must-change-password --unset operator
-    chdir: /
-    executable: /bin/bash
-  register: verify_gate_person_ready
-  changed_when: true
-  failed_when: false
-
-- name: Assert the test person's API authentication was enabled
-  ansible.builtin.assert:
-    that: verify_gate_person_ready.rc == 0 and verify_gate_person_ready.stdout is search('^Updated 1 users')
-    fail_msg: >-
-      asked Forgejo to clear operator's forced password change and say it updated 1 user,
-      got exit {{ verify_gate_person_ready.rc }}: {{ verify_gate_person_ready.stdout }}
-      {{ verify_gate_person_ready.stderr }}
-
 - name: Refuse the person's unapproved merge and accept it only after the person's approval
   ansible.builtin.shell:
     cmd: |
@@ -212,7 +191,7 @@
           -H @<(sed 's/^/Authorization: token /' /home/porelo-forge/.config/porelo-forge/api.token) \
           -H 'Content-Type: application/json' "$@"; }
       person() { curl -sS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem \
-          -H @<({ printf 'operator:'; tr -d '\r\n' < /etc/porelo-host/forge/person.password; } \
+          -H @<({ printf 'operator:'; tr -d '\r\n' < /root/secrets/forge-person-password; } \
               | base64 -w0 | sed 's/^/Authorization: Basic /') -H 'Content-Type: application/json' "$@"; }
       base=https://forge.porelo.internal/api/v1/repos/porelo/stand-in
       code=$(api -o "$answer" -w '%{http_code}' -X POST "$base/pulls" \

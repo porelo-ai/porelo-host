@@ -1,8 +1,9 @@
 # HO35 — The Forge Opened In The Browser Once The VPN Is Up
 
-**Status:** Backlog.
-**Size:** M - a first-play step and three forge task files, a need of [HO37](README.md#ho37)'s stop and a password
-script, and the stop's contract porelo-frontend reads.
+**Status:** Implementing.
+**Size:** L - a first-play step and three forge task files, a need of [HO37](README.md#ho37)'s stop and a password
+script, the stop's contract porelo-frontend reads, and every place of the Molecule scenario that signed in with the
+first password (grown from M while building).
 
 **What must be true.** Once the interface has brought the VPN up, the person opens `https://forge.porelo.internal/` in
 their browser and signs in with their own lasting password: no `/etc/hosts` line, CA import or password file by hand, on
@@ -57,11 +58,13 @@ Read in the code, nothing measured; porelo-frontend's part is analyzed in that r
   `roles/forge/tasks/person.yml` makes `operator` with a random password it discards, as `admin.yml` does, and no
   `person.password`; [HO29](README.md#ho29)'s first password and its file go. A root-only script,
   `/usr/local/sbin/porelo-host-forge-password`, run by the admin over ssh with sudo, reads the password from standard
-  input into one `python3 -I` process, makes a token of `write:admin` for itself with Forgejo's command line, sends
-  `PATCH /api/v1/admin/users/operator` with `must_change_password: false` as a JSON body on curl's standard input, and
-  deletes the token; the shared admin token keeps its scopes. On the host the password lives only in that process's
-  memory: in no file, argument, Ansible variable, register or log. The terminal runs it once `up` has ended, since the
-  forge runs only in the second play.
+  input into one `python3 -I` process, makes a token of `write:admin` for itself with Forgejo's command line, and sends
+  `PATCH /api/v1/admin/users/operator` with `must_change_password: false` as a JSON body; the shared admin token keeps
+  its scopes. Forgejo 17's command line deletes no token (measured on the pinned image; the API's token deletion is not
+  measured), so the token is kept only in that process's memory and stays in Forgejo's store as a hash until `down`;
+  root on the host commands the forge's admin anyway. On the host the password lives only in that process's memory: in
+  no file, argument, Ansible variable, register or log. The terminal runs it once `up` has ended, since the forge runs
+  only in the second play.
 - **Kept in the file, never in the interface:** the master password is typed in a terminal on the desktop, where
   `keepassxc-cli` alone reads `secrets.kdbx` and pipes the password over ssh into the script. At the first host the
   person types the lasting password in that same terminal, and it goes into the file there; the interface holds neither.
@@ -74,8 +77,8 @@ Read in the code, nothing measured; porelo-frontend's part is analyzed in that r
   critical. That reaches the person's forge on every host, not one: whoever holds the key and the person's traffic can
   stand in for the forge and read the password and pushes. Kept only in `secrets.kdbx`, unlocked on the desktop, it is
   as safe as that file. There is no revocation: a key seen stolen is replaced by a new CA, which the interface installs
-  in place of the old, compared by its SHA-256, and every forge's certificate is signed again at its next stop. The
-  interface warns 90 days before the CA ends, and the terminal makes the next one the same way.
+  in place of the old, compared by its SHA-256; a host takes the new CA when it is set up again, since its stop keeps
+  the CA it has. The interface warns 90 days before the CA ends, and the terminal makes the next one the same way.
 - **Weighed and not proposed:** Forgejo's reverse-proxy authentication (rootless podman's port forwarding may give every
   client one source address, so any job setting the header becomes `operator`, the approver porelo-project
   [PJ61](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj61) rests on); OIDC from the vault (no
@@ -105,7 +108,8 @@ Read in the code, nothing measured; porelo-frontend's part is analyzed in that r
 
 ## To be checked
 
+Measured on a throwaway VM in the Molecule scenario, 2026-10-27 23:06Z to 23:28Z: Forgejo's admin API changes the
+person's password with a token of `write:admin`, and the password signs in with no change asked.
+
 - That snap Firefox on Ubuntu 26.04 reads `/etc/firefox/policies/policies.json`, installs the certificate from a path
   the snap can read, and honors the name constraint.
-- That Forgejo's admin API changes a password with a token of `write:admin`, refuses one without it, and that `forgejo
-  admin user generate-access-token` and the API's token deletion do what the plan reads.

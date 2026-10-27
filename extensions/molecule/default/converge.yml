@@ -90,6 +90,23 @@
         creates: "{{ item }}.key"
       loop: [/root/vpn-host, /etc/wireguard/verify-peer]
 
+    # Stands in for the person's lasting CA on the desktop, made once there with the name constraint, its key never on
+    # the host; and for the person's lasting forge password in their secrets file.
+    - name: Make the desktop's CA, constrained to porelo.internal and the VPN's network, and the person's forge password
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          umask 077
+          mkdir -p /root/desktop-ca /root/secrets
+          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 3650 -subj "/CN=Porelo desktop" \
+              -addext basicConstraints=critical,CA:TRUE,pathlen:0 -addext keyUsage=critical,keyCertSign,cRLSign \
+              -addext 'nameConstraints=critical,permitted;DNS:porelo.internal,permitted;IP:10.73.0.0/255.255.255.0' \
+              -keyout /root/desktop-ca/ca.key -out /root/desktop-ca/ca.pem 2> /dev/null
+          head -c 24 /dev/urandom | base64 > /root/secrets/forge-person-password
+        creates: /root/desktop-ca/ca.pem
+        executable: /bin/bash
+      no_log: true
+
     # Stands in for the person's ssh key, which porelo-host passes as porelo_host_authorized_key and logs in with as
     # the account itself, for the vault's step at the host's terminal.
     - name: Make the person's ssh key for the run
@@ -220,6 +237,7 @@
           - converge_first_up.rc == 2
           - converge_first_waiting | length == 1
           - converge_first_waiting[0].needs == ['vault-new', 'keys', 'wireguard']
+            + (['forge-certificate'] if converge_forge == 'on' else [])
           - converge_first_failed | length == 0
         fail_msg: "the first up gave rc {{ converge_first_up.rc }} and these lines: {{ converge_first_up.stdout }}"
       vars:
@@ -301,17 +319,63 @@
         fail_msg: "the refusals gave {{ converge_refused.stdout_lines }}: {{ converge_refused.stderr }}"
       when: not converge_vault_file.stat.exists
 
+    # As the desktop signs the waiting request, every extension set there: the host's address and name, a server's
+    # certificate, a year. Signed for another name or key too, which the stop must refuse before writing anything.
+    - name: Sign the forge's waiting request with the desktop's CA, and two certificates the stop must refuse
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          umask 077
+          d=/root/desktop-ca
+          porelo-host-stop --request > "$d/forge.csr"
+          sign() {
+              printf 'subjectAltName=%s\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\n' "$2" \
+                  > "$d/ext"
+              openssl x509 -req -in "$1" -CA "$d/ca.pem" -CAkey "$d/ca.key" -CAcreateserial -days 365 \
+                  -extfile "$d/ext" -out "$3" 2> /dev/null
+          }
+          sign "$d/forge.csr" IP:10.73.0.1,DNS:forge.porelo.internal "$d/forge.pem"
+          sign "$d/forge.csr" IP:10.73.0.1,DNS:example.org "$d/elsewhere.pem"
+          sign "$d/forge.csr" IP:10.73.0.10,DNS:forge.porelo.internal.porelo.internal "$d/nearby.pem"
+          openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj /CN=other -keyout "$d/other.key" \
+              -out "$d/other.csr" 2> /dev/null
+          sign "$d/other.csr" IP:10.73.0.1,DNS:forge.porelo.internal "$d/other.pem"
+          for wrong in elsewhere nearby other; do
+              printf 'forge-certificate %s\n' "$(cat "$d/$wrong.pem" "$d/ca.pem" | base64 -w0)" \
+                  | porelo-host-stop --stdin forge-certificate 2>&1 | sed "s/^/$wrong: /" || true
+          done
+          test ! -e /etc/porelo-host/forge/forge.pem && echo 'nothing written'
+        creates: /root/desktop-ca/forge.pem
+        executable: /bin/bash
+      register: converge_signed
+      when: converge_forge == 'on'
+
+    - name: Assert the stop refused the other name and the other key, and wrote nothing
+      ansible.builtin.assert:
+        that:
+          - converge_signed.stdout is search('elsewhere. .*the certificate does not verify under the CA given')
+          - converge_signed.stdout is search('nearby. .*the certificate does not name 10.73.0.1 and forge.porelo.int')
+          - converge_signed.stdout is search('other. .*the certificate is for another key')
+          - converge_signed.stdout is search('nothing written')
+        fail_msg: "signing and refusals gave {{ converge_signed.stdout_lines }}"
+      when: converge_forge == 'on' and converge_signed is changed
+
     # The pipeline the desktop's terminal runs from the secrets file, as root, every value base64 on its own line.
     - name: Give the new vault, its key and the VPN's key on the stop's standard input, as the desktop does
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
           b64() { base64 -w0 < "$1"; }
+          needs='vault-new keys wireguard'
           {
               printf 'vault-new %s\n' "$(b64 /root/secrets/vault-passphrase)"
               printf 'key converge-key %s\n' "$(b64 /root/secrets/converge-key)"
               printf 'wireguard %s\n' "$(b64 /root/vpn-host.key)"
-          } | porelo-host-stop --stdin vault-new keys wireguard
+              if [ -f /root/desktop-ca/forge.pem ]; then
+                  printf 'forge-certificate %s\n' \
+                      "$(cat /root/desktop-ca/forge.pem /root/desktop-ca/ca.pem | base64 -w0)"
+              fi
+          } | porelo-host-stop --stdin $needs {{ 'forge-certificate' if converge_forge == 'on' else '' }}
         creates: /home/{{ converge_account }}/.local/share/porelo/vault.bin
         executable: /bin/bash
       no_log: true
@@ -588,6 +652,29 @@
         that: not converge_token_left.stat.exists
         fail_msg: /run/porelo-host/forge-central.token is still there after up migrated the repositories
       when: converge_forge == 'on'
+
+    # As the desktop's terminal does once up has ended: the person's lasting password from the secrets file, piped over
+    # ssh into the root script, which sets it on the forge. The person's account comes with the repositories.
+    - name: Set the person's lasting forge password on standard input, as the desktop does
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          porelo-host-forge-password < /root/secrets/forge-person-password
+          touch /root/porelo-host-person-password-set
+        creates: /root/porelo-host-person-password-set
+        executable: /bin/bash
+      register: converge_person_password
+      failed_when: false
+      when: converge_forge == 'on'
+      no_log: true
+
+    # The script's own words name no password, so they are shown when it fails.
+    - name: Assert the script set the person's password
+      ansible.builtin.assert:
+        that: converge_person_password.rc == 0
+        fail_msg: >-
+          porelo-host-forge-password gave rc {{ converge_person_password.rc }}: {{ converge_person_password.stderr }}
+      when: converge_forge == 'on' and converge_person_password is changed
 
     # A digest kept before idempotence catches an up that replaces a working credential.
     - name: Keep the agent's first token file digest before the second up

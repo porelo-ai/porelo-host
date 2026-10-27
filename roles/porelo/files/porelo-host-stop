@@ -9,6 +9,9 @@ stdin_stop_conf=/etc/porelo-host/stop.conf
 stdin_vpn_conf=/etc/porelo-host/vpn.conf
 # The forge role's tasks read the token from here; the tmpfs keeps it from outliving a reboot.
 stdin_central_token=/run/porelo-host/forge-central.token
+stdin_forge_conf=/etc/porelo-host/forge.conf
+# Where up's request leaves the forge's key and request, and where its signed certificate and the CA's wait.
+stdin_forge_dir=/etc/porelo-host/forge
 stdin_max_lines=256
 
 stdin_refuse() {
@@ -43,9 +46,11 @@ stdin_decode() {
 }
 
 # Written beside the target and moved over it, so a reader never sees a half-written key; only into a directory of
-# root's alone, and never through a link or into a directory standing where the file belongs.
+# root's alone, and never through a link or into a directory standing where the file belongs. The value is base64, or
+# with a third argument the path of a file to copy, and a fourth its mode, 0600 by default.
 stdin_write_root_file() {
-    local value=$1 target=$2 dir tmp owner_mode
+    local value=$1 target=$2 source=${3-} mode=${4:-0600} dir tmp owner_mode
+    stdin_check_target "$target"
     dir=$(dirname -- "$target")
     if [ ! -e "$dir" ] && [ ! -L "$dir" ]; then
         install -d -m 0700 -o root -g root -- "$dir" || stdin_refuse "cannot make $dir" 73
@@ -60,9 +65,100 @@ stdin_write_root_file() {
         stdin_refuse "$target is no plain file" 73
     fi
     tmp=$(umask 077 && mktemp -- "$dir/.porelo-host-stop.XXXXXX") || stdin_refuse "cannot write in $dir" 73
-    if ! stdin_decode "$value" > "$tmp" || ! chmod 0600 -- "$tmp" || ! mv -fT -- "$tmp" "$target"; then
+    if [ -n "$source" ]; then
+        cat -- "$source" > "$tmp" || { rm -f -- "$tmp"; stdin_refuse "cannot write $target" 73; }
+    elif ! stdin_decode "$value" > "$tmp"; then
+        rm -f -- "$tmp"; stdin_refuse "cannot write $target" 73
+    fi
+    if ! chmod "$mode" -- "$tmp" || ! mv -fT -- "$tmp" "$target"; then
         rm -f -- "$tmp"
         stdin_refuse "cannot write $target" 73
+    fi
+}
+
+# The forge's certificate, signed on the desktop, is taken only as the answer to the waiting request: two PEM blocks,
+# the certificate then the CA's, every check made before anything is written, each refusal naming the check.
+# The names a certificate's subjectAltName carries, one per line, exactly as openssl prints each.
+stdin_cert_names() {
+    openssl x509 -noout -ext subjectAltName -in "$1" 2> /dev/null | tail -n +2 | tr ',' '\n' | sed 's/^ *//; s/ *$//'
+}
+
+# A file to be written must not stand as a link or anything but a plain file of root's alone, nor lie in a directory
+# anybody but root can write; checked for every target before anything is written.
+stdin_check_target() {
+    local dir owner_mode
+    dir=$(dirname -- "$1")
+    if [ -e "$dir" ] || [ -L "$dir" ]; then
+        [ -d "$dir" ] && [ ! -L "$dir" ] || stdin_refuse "$dir is no directory" 73
+        owner_mode=$(stat -c '%u %a' -- "$dir") || stdin_refuse "cannot read $dir" 73
+        case "$owner_mode" in
+            '0 '[0-7][0145][0145]|'0 '[0-7][0-7][0145][0145]) ;;
+            *) stdin_refuse "$dir is not root's alone to write ($owner_mode)" 73 ;;
+        esac
+    fi
+    if [ -L "$1" ] || { [ -e "$1" ] && [ ! -f "$1" ]; }; then
+        stdin_refuse "$1 is no plain file" 73
+    fi
+    if [ -e "$1" ]; then
+        owner_mode=$(stat -c '%u %a' -- "$1") || stdin_refuse "cannot read $1" 73
+        case "$owner_mode" in
+            '0 '[0-7][0145][0145]|'0 '[0-7][0-7][0145][0145]) ;;
+            *) stdin_refuse "$1 is not root's alone to write ($owner_mode)" 73 ;;
+        esac
+    fi
+}
+
+stdin_check_forge_certificate() {
+    local address name net key_pub cert_pub names constraints existing given_ca
+    address=$(stdin_conf_value "$stdin_forge_conf" address '^[0-9]{1,3}(\.[0-9]{1,3}){3}$') || exit $?
+    name=$(stdin_conf_value "$stdin_forge_conf" name '^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$') || exit $?
+    net=${address%.*}.0
+    [ -f "$stdin_forge_dir/forge.key" ] && [ ! -L "$stdin_forge_dir/forge.key" ] \
+        || stdin_refuse 'forge-certificate: no request waits for a certificate; run up first' 69
+    [ "$(stat -c '%u %a' -- "$stdin_forge_dir/forge.key")" = '0 600' ] \
+        || stdin_refuse "forge-certificate: $stdin_forge_dir/forge.key is not root's alone" 69
+    stdin_check_target "$stdin_forge_dir/forge.pem"
+    stdin_check_target "$stdin_forge_dir/ca.pem"
+    stdin_decode "$1" > "$stdin_work/both.pem"
+    awk -v out="$stdin_work" '
+        /^-----BEGIN CERTIFICATE-----$/ { n++; inside = 1 }
+        inside { print > (out "/" (n == 1 ? "forge.pem" : n == 2 ? "ca.pem" : "extra.pem")) }
+        /^-----END CERTIFICATE-----$/ { inside = 0 }
+        END { print n + 0 > (out "/count") }' "$stdin_work/both.pem"
+    [ "$(cat "$stdin_work/count")" = 2 ] \
+        || stdin_refuse 'forge-certificate: the line must hold two certificates, the forge'"'"'s then the CA'"'"'s'
+    # Each public key read on its own, so a key or certificate that cannot be read never compares equal to another.
+    key_pub=$(openssl pkey -pubout -in "$stdin_forge_dir/forge.key" 2> /dev/null) && [ -n "$key_pub" ] \
+        || stdin_refuse 'forge-certificate: the waiting key cannot be read' 69
+    cert_pub=$(openssl x509 -noout -pubkey -in "$stdin_work/forge.pem" 2> /dev/null) && [ -n "$cert_pub" ] \
+        || stdin_refuse 'forge-certificate: the certificate cannot be read'
+    [ "$cert_pub" = "$key_pub" ] || stdin_refuse 'forge-certificate: the certificate is for another key'
+    openssl x509 -noout -ext basicConstraints -in "$stdin_work/forge.pem" 2> /dev/null | grep -qx ' *CA:FALSE' \
+        || stdin_refuse 'forge-certificate: the forge'"'"'s certificate is no leaf certificate'
+    openssl x509 -noout -ext basicConstraints -in "$stdin_work/ca.pem" 2> /dev/null | grep -q '^ *CA:TRUE' \
+        || stdin_refuse 'forge-certificate: the second certificate is no CA'
+    openssl verify -CAfile "$stdin_work/ca.pem" "$stdin_work/forge.pem" > /dev/null 2>&1 \
+        || stdin_refuse 'forge-certificate: the certificate does not verify under the CA given'
+    names=$(stdin_cert_names "$stdin_work/forge.pem")
+    if ! grep -qxF "IP Address:$address" <<< "$names" || ! grep -qxF "DNS:$name" <<< "$names"; then
+        stdin_refuse "forge-certificate: the certificate does not name $address and $name"
+    fi
+    openssl x509 -checkend 2592000 -noout -in "$stdin_work/forge.pem" > /dev/null \
+        || stdin_refuse 'forge-certificate: the certificate ends within 30 days'
+    # The CA is held to the forge's names and the VPN's network, and nothing more.
+    constraints=$(openssl x509 -noout -ext nameConstraints -in "$stdin_work/ca.pem" 2> /dev/null \
+        | sed 's/^ *//; s/ *$//')
+    [ "$constraints" = "X509v3 Name Constraints: critical
+Permitted:
+DNS:porelo.internal
+IP:$net/255.255.255.0" ] \
+        || stdin_refuse "forge-certificate: the CA is not held to porelo.internal and $net/24 alone, critically"
+    if [ -e "$stdin_forge_dir/ca.pem" ]; then
+        existing=$(openssl x509 -noout -fingerprint -sha256 -in "$stdin_forge_dir/ca.pem" 2> /dev/null) \
+            && [ -n "$existing" ] || stdin_refuse "forge-certificate: $stdin_forge_dir/ca.pem cannot be read" 69
+        given_ca=$(openssl x509 -noout -fingerprint -sha256 -in "$stdin_work/ca.pem" 2> /dev/null)
+        [ "$existing" = "$given_ca" ] \
+            || stdin_refuse "forge-certificate: the CA is not the one in $stdin_forge_dir/ca.pem"
     fi
 }
 
@@ -70,17 +166,20 @@ stdin_stop() {
     local -A named=() given=()
     local -a key_names=()
     local need line count=0 rest name value
-    [ "$#" -gt 0 ] || stdin_refuse 'at least one need is required: vault-new, vault, keys, wireguard, forge-central-token'
+    [ "$#" -gt 0 ] || stdin_refuse 'at least one need is required: vault-new, vault, keys, wireguard,'\
+' forge-central-token, forge-certificate'
     for need in "$@"; do
         case "$need" in
-            vault-new|vault|keys|wireguard|forge-central-token) ;;
+            vault-new|vault|keys|wireguard|forge-central-token|forge-certificate) ;;
             drive) stdin_refuse 'drive is no need of the host any more' ;;
             *) stdin_refuse "unknown need or option: $need" ;;
         esac
         [ -z "${named[$need]+x}" ] || stdin_refuse "need named twice: $need"
         named[$need]=1
     done
-    [ -z "${named[vault-new]+x}" ] || [ -z "${named[vault]+x}" ] || stdin_refuse 'vault-new and vault exclude each other'
+    if [ -n "${named[vault-new]+x}" ] && [ -n "${named[vault]+x}" ]; then
+        stdin_refuse 'vault-new and vault exclude each other'
+    fi
     # Run as root by sudo: nothing of the caller's search path or locale decides what runs or what a pattern matches.
     # Set after the needs are read with builtins alone, so a wrong call refuses before any command is looked up.
     export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C
@@ -104,7 +203,7 @@ stdin_stop() {
                 [ "$value" != "$rest" ] || stdin_refuse "line $count holds no value"
                 [[ $name =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || stdin_refuse "line $count names no valid key"
                 ;;
-            vault-new|vault|wireguard|forge-central-token)
+            vault-new|vault|wireguard|forge-central-token|forge-certificate)
                 [ -n "${named[$need]+x}" ] || stdin_refuse "line $count gives $need, which is not named"
                 value=$rest
                 ;;
@@ -119,7 +218,7 @@ stdin_stop() {
         given["$need $name"]=$value
         [ "$need" != key ] || key_names+=("$name")
     done
-    for need in vault-new vault wireguard forge-central-token; do
+    for need in vault-new vault wireguard forge-central-token forge-certificate; do
         if [ -n "${named[$need]+x}" ] && [ -z "${given["$need "]+x}" ]; then
             stdin_refuse "no line gives $need"
         fi
@@ -140,6 +239,16 @@ stdin_stop() {
     if [ -n "${named[wireguard]+x}" ]; then
         stdin_key_path=$(stdin_conf_value "$stdin_vpn_conf" key '^/[A-Za-z0-9._/-]+$') || exit $?
         case "$stdin_key_path/" in */../*|*/./*|*//*) stdin_refuse "$stdin_vpn_conf names no valid key" 69 ;; esac
+        stdin_check_target "$stdin_key_path"
+    fi
+    if [ -n "${named[forge-central-token]+x}" ]; then
+        stdin_check_target "$stdin_central_token"
+    fi
+    if [ -n "${named[forge-certificate]+x}" ]; then
+        require_command openssl
+        stdin_work=$(umask 077 && mktemp -d) || stdin_refuse 'cannot make a working directory' 73
+        trap 'rm -rf -- "$stdin_work"' EXIT
+        stdin_check_forge_certificate "${given["forge-certificate "]}"
     fi
 
     if [ -n "${named[vault-new]+x}" ]; then
@@ -159,6 +268,10 @@ stdin_stop() {
     fi
     if [ -n "${named[forge-central-token]+x}" ]; then
         stdin_write_root_file "${given["forge-central-token "]}" "$stdin_central_token"
+    fi
+    if [ -n "${named[forge-certificate]+x}" ]; then
+        stdin_write_root_file '' "$stdin_forge_dir/ca.pem" "$stdin_work/ca.pem" 0644
+        stdin_write_root_file '' "$stdin_forge_dir/forge.pem" "$stdin_work/forge.pem" 0644
     fi
     printf '%s\n' "The host's stop is done; run up again."
     exit 0
@@ -190,6 +303,17 @@ try_again() {
 if [ "${1-}" = --stdin ]; then
     shift
     stdin_stop "$@"
+fi
+# The forge's waiting request, no secret, for the desktop to sign.
+if [ "${1-}" = --request ]; then
+    [ "$#" = 1 ] || wrong_call '--request takes nothing more'
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C
+    [ -f "$stdin_forge_dir/forge.csr" ] && [ ! -L "$stdin_forge_dir/forge.csr" ] || {
+        printf '%s\n' 'porelo-host-stop: no request waits for the forge'"'"'s certificate' >&2
+        exit 65
+    }
+    cat -- "$stdin_forge_dir/forge.csr" || exit 69
+    exit 0
 fi
 
 trap cancel INT

@@ -5,37 +5,9 @@
     marker: "# {mark} porelo-host forge name"
     block: "127.0.0.1 {{ forge_name }}"
 
-# A CA made on the host for this host, its key root's alone; the forge's certificate signed by it for the VPN's address
-# and the forge's name, its key the forge account's alone. Made once; nothing of either leaves the host but the CA's
-# certificate, which a client trusts.
-- name: tls | Make the CA's directory
-  ansible.builtin.file:
-    path: "{{ __forge_ca_dir }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
-# Made again when it would end within 30 days; a CA made again takes the forge's certificate with it.
-- name: tls | Make the host's CA, unless one holds for 30 days more
-  ansible.builtin.shell:
-    cmd: |
-      set -euo pipefail
-      ca={{ __forge_ca_dir }}
-      if [ -f "$ca/ca.pem" ] && openssl x509 -checkend 2592000 -noout -in "$ca/ca.pem" > /dev/null; then
-          echo unchanged; exit 0
-      fi
-      umask 077
-      openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 365 -subj "/CN=Porelo host CA" \
-          -addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCertSign,cRLSign \
-          -keyout "$ca/ca.key" -out "$ca/ca.pem" 2> /dev/null
-      chmod 0644 "$ca/ca.pem"
-      rm -f {{ __forge_home }}/tls/forge.pem
-      echo made
-    executable: /bin/bash
-  register: __forge_ca
-  changed_when: __forge_ca.stdout == 'made'
-
+# The CA is the person's, made once on their desktop, and its key never reaches the host; the stop wrote its
+# certificate as ca.pem and the forge's certificate beside the key request made. Moved, never copied, into the forge
+# account's tls/, so one copy of the key is on the host.
 - name: tls | Make the forge's certificate directory
   ansible.builtin.file:
     path: "{{ __forge_home }}/tls"
@@ -44,29 +16,54 @@
     group: "{{ forge_account }}"
     mode: "0700"
 
-# Made again when it would end within 30 days, or names another address than the forge's.
-- name: tls | Make the forge's key and certificate, signed by the host's CA, unless they still hold
+- name: tls | Move a signed certificate and its key from where the stop left them, or keep the forge's own
   ansible.builtin.shell:
     cmd: |
       set -euo pipefail
+      # A certificate holds where it ends in more than 30 days, verifies under the person's CA, names exactly the
+      # forge's address and name, and is for its key; each public key read on its own, so none compares on nothing.
+      holds() {
+          [ -f "$1" ] && [ -f "$2" ] && [ -f "$wait/ca.pem" ] && [ ! -L "$1" ] && [ ! -L "$2" ] || return 1
+          [ "$(stat -c '%a' -- "$2")" = 600 ] || return 1
+          openssl x509 -checkend 2592000 -noout -in "$1" > /dev/null || return 1
+          openssl verify -CAfile "$wait/ca.pem" "$1" > /dev/null 2>&1 || return 1
+          names=$(openssl x509 -noout -ext subjectAltName -in "$1" | tail -n +2 | tr ',' '\n' | sed 's/^ *//; s/ *$//')
+          grep -qxF 'IP Address:{{ forge_address }}' <<< "$names" && grep -qxF 'DNS:{{ forge_name }}' <<< "$names" \
+              || return 1
+          cert_pub=$(openssl x509 -noout -pubkey -in "$1") && key_pub=$(openssl pkey -pubout -in "$2") || return 1
+          [ -n "$cert_pub" ] && [ "$cert_pub" = "$key_pub" ]
+      }
+      cd /
+      wait={{ __forge_ca_dir }}
       tls={{ __forge_home }}/tls
-      if [ -f "$tls/forge.pem" ] && openssl x509 -checkend 2592000 -noout -in "$tls/forge.pem" > /dev/null \
-          && openssl x509 -noout -ext subjectAltName -in "$tls/forge.pem" | grep -qF 'IP Address:{{ forge_address }}'
-      then
+      # Written by the forge's account itself into its own directory, which root never writes into, each beside its name
+      # and moved there; the waiting copies go only once both are in place, so an interrupted run keeps them.
+      put() {
+          runuser -u {{ forge_account }} -- sh -c 'set -e; umask 077; t=$(mktemp "$1/.forge.XXXXXX"); cat > "$t";
+              chmod "$2" "$t"; mv -fT "$t" "$1/$3"' put "$tls" "$2" "$3" < "$1"
+      }
+      if holds "$wait/forge.pem" "$wait/forge.key"; then
+          put "$wait/forge.key" 0600 forge.key
+          put "$wait/forge.pem" 0644 forge.pem
+          rm -f "$wait/forge.key" "$wait/forge.pem" "$wait/forge.csr"
+          echo moved; exit 0
+      fi
+      if holds "$tls/forge.pem" "$tls/forge.key"; then
           echo unchanged; exit 0
       fi
-      umask 077
-      openssl req -x509 -CA {{ __forge_ca_dir }}/ca.pem -CAkey {{ __forge_ca_dir }}/ca.key \
-          -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 365 -subj "/CN={{ forge_name }}" \
-          -addext "subjectAltName=IP:{{ forge_address }},DNS:{{ forge_name }}" \
-          -addext basicConstraints=critical,CA:FALSE -addext extendedKeyUsage=serverAuth \
-          -keyout "$tls/forge.key" -out "$tls/forge.pem" 2> /dev/null
-      chown {{ forge_account }}: "$tls/forge.key" "$tls/forge.pem"
-      echo made
+      echo missing
     executable: /bin/bash
   register: __forge_certificate
-  changed_when: __forge_certificate.stdout == 'made'
+  changed_when: __forge_certificate.stdout == 'moved'
   notify: Restart Forgejo
+
+- name: tls | Stop where no certificate signed by the person's CA holds for the forge
+  ansible.builtin.assert:
+    that: __forge_certificate.stdout != 'missing'
+    fail_msg: >-
+      forge-certificate: no certificate for {{ forge_name }} signed by the CA in {{ __forge_ca_dir }}/ca.pem holds;
+      give it with porelo-host-stop --stdin forge-certificate and run up again
+    quiet: true
 
 # One bundle, the system's CAs and the host's, which Forgejo's Go and its git both read whole; a directory of
 # certificates would need OpenSSL's hashed names for git.

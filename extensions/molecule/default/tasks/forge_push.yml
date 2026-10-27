@@ -13,7 +13,7 @@
       api() { curl -sS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem \
           -H @<(printf 'Authorization: token %s\n' "$(cat "$token")") -H 'Content-Type: application/json' "$@"; }
       person() { curl -sS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem \
-          -H @<({ printf 'operator:'; tr -d '\r\n' < /etc/porelo-host/forge/person.password; } \
+          -H @<({ printf 'operator:'; tr -d '\r\n' < /root/secrets/forge-person-password; } \
               | base64 -w0 | sed 's/^/Authorization: Basic /') -H 'Content-Type: application/json' "$@"; }
       git_as() {
           local user=$1
@@ -180,7 +180,7 @@
       api() { curl -sS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem -H @<(printf 'Authorization: token %s\n' \
           "$(cat /home/porelo-forge/.config/porelo-forge/api.token)") -H 'Content-Type: application/json' "$@"; }
       person() { curl -sS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem \
-          -H @<({ printf 'operator:'; tr -d '\r\n' < /etc/porelo-host/forge/person.password; } \
+          -H @<({ printf 'operator:'; tr -d '\r\n' < /root/secrets/forge-person-password; } \
               | base64 -w0 | sed 's/^/Authorization: Basic /') -H 'Content-Type: application/json' "$@"; }
       base=https://10.73.0.1:3000/api/v1/repos
       sha() {
