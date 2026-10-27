@@ -29,6 +29,7 @@ it is left out.
 
 | # | Size | Blocked by | Open questions | What it covers |
 |---|---|---|---|---|
+| <a id="ho34"></a>[HO34](HO34-The-Forge-Merges-Fast-Forward-Only.md) | S | - | 1 | Each repository on the host's forge allows only the fast-forward merge, so a pull request's own commits reach `main` unchanged and no commit of the forge's `operator` does. |
 | <a id="ho33"></a>[HO33](HO33-The-Forges-Runner-Takes-Jobs-Side-By-Side-With-A-Cache.md) | M | - | 1 | The forge's runner takes as many jobs at once as half the machine holds within their bounds, and a job's `actions/cache` reaches the runner's cache on the forge's address. |
 
 ## Backlog
