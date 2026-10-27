@@ -17,8 +17,8 @@ Read in the code, nothing measured.
   `porelo_host_tresor`, checked against `^[a-z][a-z0-9-]{0,30}$` by the first task of `roles/porelo/tasks/main.yml`, in
   `up`'s first play, before any path is built from it. Each role that needs it maps it to a prefixed variable of its own
   in `defaults/main.yml` (`porelo_name: "{{ porelo_host_name }}"`), declared in its `meta/argument_specs.yml`, as
-  `drive_tresor` maps `porelo_host_tresor`. It is the project's name, since a project has one host, not the
-  provider's, so it survives renting the host again.
+  `drive_tresor` maps `porelo_host_tresor`. It is the project's name, since a project has one host, not the provider's,
+  so it survives renting the host again.
 - **The layout on the drive**, every file without a secret ([HO37](README.md#ho37) takes the secrets off it):
   - `hosts/<name>/machine.yml`: `porelo_machine_file` in `roles/porelo/defaults/main.yml` becomes
     `/srv/porelo-host/drive/hosts/{{ porelo_name }}/machine.yml`, from `porelo-host/machine.yml`; its entry in
@@ -28,8 +28,7 @@ Read in the code, nothing measured.
     [HO35](README.md#ho35) are secrets and live in the `shared` group of `secrets.kdbx`, not here;
   - `wireguard.key` and `forge-central.token` leave the drive for `secrets.kdbx`, with [HO37](README.md#ho37).
 - **The old layout is refused, not read:** where `hosts/<name>/machine.yml` is missing and `porelo-host/machine.yml` is
-  there, `up` stops with a sentence naming both paths and the new place, so a person's old tresor is never read half;
-  nothing is migrated. The layout is the same in a tresor of the host's own.
+  there, `up` stops with a sentence naming both paths, so a person's old tresor is never read half; nothing is migrated.
 - **One mechanism for the drive, unchanged:** Tresorit syncs the whole tresor, as `roles/drive/tasks/sync.yml` does
   today; with no secret on the drive, no subfolder sync is needed.
 - **Split out, not in this issue:** the person's own account on the host and their private drives mounted there, which
@@ -40,8 +39,8 @@ Read in the code, nothing measured.
   `roles/porelo/meta/argument_specs.yml`, `roles/porelo/README.md`, `roles/porelo/tasks/project.yml` (the refusal),
   `doc/index.md`, the Molecule scenario's inventory, and porelo-frontend's inventory and wizard, which write the name
   and the layout.
-- **Red first, in Molecule:** with only `porelo-host/machine.yml` on the drive, `up` stops naming the move; with a name
-  outside the pattern, `up` stops before any path is built.
+- **Red first, in Molecule:** with only `porelo-host/machine.yml` on the drive, `up` stops naming both paths; with a
+  name outside the pattern, `up` stops before any path is built.
 
 ## Acceptance
 

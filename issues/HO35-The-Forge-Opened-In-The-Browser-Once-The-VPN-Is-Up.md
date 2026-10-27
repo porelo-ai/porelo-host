@@ -24,7 +24,8 @@ Read in the code, nothing measured; porelo-frontend's part is analyzed in that r
 - **The name: the interface's VPN step writes a marked `/etc/hosts` line** `10.73.0.1 forge.porelo.internal` and removes
   it at `down`. Split DNS on the `porelo` link waits until several names or hosts come, since it needs a resolver on
   `10.73.0.1:53` the host does not run.
-- **One lasting CA, made once on the person's desktop, not on a host.** It carries
+- **One lasting CA, made once on the person's desktop, not on a host,** in the terminal that has `secrets.kdbx` open,
+  its key piped straight into the file. It carries
   `nameConstraints=critical,permitted;DNS:porelo.internal,permitted;IP:10.73.0.0/255.255.255.0`, `CA:TRUE,pathlen:0` and
   lives ten years. Its key and its certificate are entries of the `shared` group of the person's `secrets.kdbx`
   ([HO37](README.md#ho37)); nothing of it lies on the drive, and the host reads nothing of it from there.
@@ -52,14 +53,15 @@ Read in the code, nothing measured; porelo-frontend's part is analyzed in that r
     verifies under that CA, it names `forge_address` and `forge_name`, it holds for more than 30 days, the CA carries
     the critical name constraint, and the CA is the one in `/etc/porelo-host/forge/ca.pem` where one is there; otherwise
     it refuses with exit 64, naming which check failed.
-- **The person's password: lasting, set on every new forge, in no file.** `roles/forge/tasks/person.yml` makes
-  `operator` with a random password it discards, as `admin.yml` does, and no `person.password`; [HO29](README.md#ho29)'s
-  first password and its file go. A root-only script, `/usr/local/sbin/porelo-host-forge-password`, run by the admin
-  over ssh with sudo, reads the password from standard input into one `python3 -I` process, makes a token of
-  `write:admin` for itself with Forgejo's command line, sends `PATCH /api/v1/admin/users/operator` with
-  `must_change_password: false` as a JSON body on curl's standard input, and deletes the token; the shared admin token
-  keeps its scopes. The password lives only in that process's memory: in no file, argument, Ansible variable, register
-  or log. The interface runs it once `up` has ended, since the forge runs only in the second play.
+- **The person's password: lasting, set on every new forge, in no file but `secrets.kdbx`.**
+  `roles/forge/tasks/person.yml` makes `operator` with a random password it discards, as `admin.yml` does, and no
+  `person.password`; [HO29](README.md#ho29)'s first password and its file go. A root-only script,
+  `/usr/local/sbin/porelo-host-forge-password`, run by the admin over ssh with sudo, reads the password from standard
+  input into one `python3 -I` process, makes a token of `write:admin` for itself with Forgejo's command line, sends
+  `PATCH /api/v1/admin/users/operator` with `must_change_password: false` as a JSON body on curl's standard input, and
+  deletes the token; the shared admin token keeps its scopes. On the host the password lives only in that process's
+  memory: in no file, argument, Ansible variable, register or log. The terminal runs it once `up` has ended, since the
+  forge runs only in the second play.
 - **Kept in the file, never in the interface:** the master password is typed in a terminal on the desktop, where
   `keepassxc-cli` alone reads `secrets.kdbx` and pipes the password over ssh into the script. At the first host the
   person types the lasting password in that same terminal, and it goes into the file there; the interface holds neither.
@@ -73,7 +75,7 @@ Read in the code, nothing measured; porelo-frontend's part is analyzed in that r
   stand in for the forge and read the password and pushes. Kept only in `secrets.kdbx`, unlocked on the desktop, it is
   as safe as that file. There is no revocation: a key seen stolen is replaced by a new CA, which the interface installs
   in place of the old, compared by its SHA-256, and every forge's certificate is signed again at its next stop. The
-  interface warns 90 days before the CA ends and makes the next one the same way.
+  interface warns 90 days before the CA ends, and the terminal makes the next one the same way.
 - **Weighed and not proposed:** Forgejo's reverse-proxy authentication (rootless podman's port forwarding may give every
   client one source address, so any job setting the header becomes `operator`, the approver porelo-project
   [PJ61](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj61) rests on); OIDC from the vault (no

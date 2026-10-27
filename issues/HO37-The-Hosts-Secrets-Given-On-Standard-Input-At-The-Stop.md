@@ -5,10 +5,11 @@
 drive, and the stop's standard input is a contract porelo-frontend builds against, with [HO35](README.md#ho35) waiting
 on it.
 
-**What must be true.** At a host's stop the interface, having unlocked the person's `secrets.kdbx` on the desktop, gives
-the host every secret the stop needs in one pipeline on standard input, and the host passes each straight to what uses
-it. The drive holds no secret in the clear, and once `up` has ended to its last step no secret given at the stop lies in
-a file on the host but the VPN's key in `/etc/wireguard`. This is the host's part of porelo-project
+**What must be true.** At a host's stop a terminal on the desktop, where `keepassxc-cli` alone unlocks the person's
+`secrets.kdbx` and the interface holds no secret, gives the host every secret the stop needs in one pipeline on standard
+input, and the host passes each straight to what uses it. The drive holds no secret in the clear, and once `up` has
+ended to its last step no secret given at the stop lies in a file on the host but the VPN's key in `/etc/wireguard`.
+This is the host's part of porelo-project
 [PJ51](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj51).
 
 ## Plan
@@ -17,16 +18,16 @@ Read in the code, nothing measured. The file holds a group `shared` (the lasting
 drive's login) and a group per host under `hosts/<name>` (its WireGuard key, its vault passphrase, the machine file's
 keys); a host gets only its own group and `shared`.
 
-- **One pipeline, as root.** The interface runs `ssh <admin>@<host> sudo porelo-host-stop --stdin [--email ADDRESS]
-  NEED...`, as `up` itself is run, with the needs as the stop's line names them, and writes one line per secret: `<need>
-  [<name>] <value in base64>`. Base64 keeps a secret from breaking the framing; the script refuses an unknown need, a
-  second line of one need and name, or a value that does not decode, with exit 64, before it uses any line. A named need
-  the lines do not bring is asked in the terminal where there is one (the one-time code, a first host's passphrase), and
-  refused where there is none. `--stdin` refuses to run but as root; the script stays installed as today,
-  `/usr/local/bin`, `0755`, root's, and without `--stdin` it is the person's terminal stop as the account, unchanged. As
-  root it reads the account's name and `vpn_private_key_path` from `/etc/porelo-host/stop.conf`, no secret, root's
-  `0644`, which `roles/porelo/tasks/install.yml` writes from the inventory, and refuses where the file is missing or
-  names an account `getent` does not know.
+- **One pipeline, as root.** The terminal the interface opens runs `keepassxc-cli` into `ssh <admin>@<host> sudo
+  porelo-host-stop --stdin [--email ADDRESS] NEED...`, as `up` itself is run, with the needs as the stop's line names
+  them, and writes one line per secret: `<need> [<name>] <value in base64>`. Base64 keeps a secret from breaking the
+  framing; the script refuses an unknown need, a second line of one need and name, or a value that does not decode, with
+  exit 64, before it uses any line. A named need the lines do not bring is asked in the terminal where there is one (the
+  one-time code, a first host's passphrase), and refused where there is none. `--stdin` refuses to run but as root; the
+  script stays installed as today, `/usr/local/bin`, `0755`, root's, and without `--stdin` it is the person's terminal
+  stop as the account, unchanged. As root it reads the account's name and `vpn_private_key_path` from
+  `/etc/porelo-host/stop.conf`, no secret, root's `0644`, which `roles/porelo/tasks/install.yml` writes from the
+  inventory, and refuses where the file is missing or names an account `getent` does not know.
 - **Where each goes.** Each value is decoded through a pipe (`printf '%s' | base64 -d |`) into its user, never a
   here-string, which bash may put into a temporary file; it lives only in the script's memory and that pipe:
   - `drive`: the Tresorit password into `tresorit-cli login --email ADDRESS --password-on-stdin`, the address (no
@@ -47,7 +48,7 @@ keys); a host gets only its own group and `shared`.
   - `forge-central-token`: not a need of the first play, since whether repositories are still to migrate is known only
     once the forge runs. `roles/forge/tasks/repositories.yml` refuses, naming `forge-central-token`, where a repository
     is to migrate and `/run/porelo-host/forge-central.token` is missing, as it refuses a missing file on the drive
-    today; the interface gives it with `porelo-host-stop --stdin forge-central-token` and runs `up` again. The token
+    today; such a terminal gives it with `porelo-host-stop --stdin forge-central-token` and runs `up` again. The token
     waits in that root `0600` file on the tmpfs until the migration removes it in an `always`, or `down` does. The
     exposure: where that `up` fails before the forge's migration, the token stays there, root's alone, until the next
     `up` takes it, `down` or a reboot;
