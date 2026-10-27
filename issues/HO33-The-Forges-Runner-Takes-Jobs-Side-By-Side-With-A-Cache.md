@@ -68,8 +68,7 @@ Sprint 5's rented host, `EM-I220E-NVME` (16 cores, 32 threads, 128 GB), porelo-b
 - Whether jobs of one workflow, such as the matrix *Snapshot* jobs, lease more from the VM pool when they run side by
   side. Today they never run at once.
 
-## Open questions
+## Decided
 
-1. **QH36:** the capacity's default, `4`, against the rule of half the machine. (a) `4`, as planned. (b) As many as
-   half the machine holds, worked out at `up`. On `EM-I220E-NVME` that is 4 by CPU and 8 by memory, so 4. It would
-   follow a larger offer by itself, at the cost of a variable whose value depends on the host.
+- **QH36 (a), the operator, 2026-10-27:** `forge_runner_capacity` defaults to `4`, refused above half the machine as
+  planned; it is not worked out at `up`.
