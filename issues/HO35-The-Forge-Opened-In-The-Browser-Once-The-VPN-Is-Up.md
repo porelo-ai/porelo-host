@@ -1,6 +1,6 @@
 # HO35 — The Forge Opened In The Browser Once The VPN Is Up
 
-**Status:** Idea.
+**Status:** Accepted.
 
 **What must be true.** Once the interface has brought the VPN up, the person opens `https://forge.porelo.internal/` in
 their browser and signs in with a password they chose in the interface: no `/etc/hosts` line, CA import or password
@@ -33,7 +33,7 @@ Read in the code, nothing measured; porelo-frontend's part is Frontend's to anal
 - **The password: the person's own, set over ssh, no file.** The interface asks for it once and pipes it over ssh into
   a root-only script on the host, which hands it to Forgejo's admin API on standard input (`PATCH
   /api/v1/admin/users/operator`, `must_change_password: false`).
-  [HO29](HO29-The-Persons-Own-Web-Login-On-The-Forge.md)'s generated first password and its file go. The password is
+  [HO29](README.md#ho29)'s generated first password and its file go. The password is
   in no file, argument, variable or log on either side.
 - **Weighed and not proposed:**
   - **Forgejo's reverse-proxy authentication** (the person signed in by their WireGuard peer). WireGuard does prove
@@ -49,9 +49,9 @@ Read in the code, nothing measured; porelo-frontend's part is Frontend's to anal
 - **What stays by hand:** restarting Firefox once after the policy is written; the first sign-in; a browser other
   than Firefox (Chromium's store is per user, `certutil` on `~/.pki/nssdb`); the agents' forge tokens of the test
   setup, which are for this computer's agents, not the person.
-- **Touches:** [HO29](HO29-The-Persons-Own-Web-Login-On-The-Forge.md) (its first password goes),
+- **Touches:** [HO29](README.md#ho29) (its first password goes),
   `doc/local-forge.md`, `roles/forge/README.md`; the CA's trust in jobs
-  ([HO30](HO30-The-Forges-Trust-And-Job-Bounds-Measured.md)) is unchanged, since every name they reach lies inside the
+  ([HO30](README.md#ho30)) is unchanged, since every name they reach lies inside the
   constraint.
 - **Size, guessed until Analyzed:** here S (the constraint, the password script, Molecule checks that a certificate for
   another name signed by the CA fails `openssl verify`, and that the password set over stdin signs in); in
