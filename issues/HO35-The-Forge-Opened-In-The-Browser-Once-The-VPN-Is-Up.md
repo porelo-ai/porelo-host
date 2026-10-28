@@ -116,7 +116,7 @@ person's password with a token of `write:admin`, and the password signs in with 
 
 ## What [PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78) changes
 
-Recorded 2026-10-28, nothing reworked yet. The certificate's issuer becomes the host admin's lasting CA, constrained to
+Nothing reworked yet. The certificate's issuer becomes the host admin's lasting CA, constrained to
 the host's own names `*.<host>.porelo.internal` and its network `10.73.<n>.0/24`, signing the forge's and the
 homeserver's names ([HO42](README.md#ho42)). The person's login and lasting password become each person's:
 `porelo-host-forge-password` runs for the caller's own login only, taken from `SUDO_USER` ([HO43](README.md#ho43)).

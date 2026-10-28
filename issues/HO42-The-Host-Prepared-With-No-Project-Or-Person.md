@@ -1,6 +1,6 @@
 # HO42 — The Host Prepared With No Project Or Person
 
-**Status:** Estimated (Accepted and Estimated by the operator, 2026-10-28).
+**Status:** Estimated.
 **Size:** L - `up` reduced to the host's own parts, the Matrix homeserver moved to an account of the host's, the
 host admin's constrained CA for two names, a VPN network per host, and the Molecule scenario's first act.
 
@@ -10,7 +10,7 @@ host's own names with certificates of the host admin's lasting CA.
 
 ## Why
 
-[PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78), the operator's split of a host's life into three roles. Today `up` brings one person's project up with the host
+[PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78), which splits a host's life into three roles. Today `up` brings one person's project up with the host
 in one run; the forge, runner, pool and homeserver are the host's and shared (QH56), so they come first and alone.
 
 ## Plan
@@ -45,9 +45,9 @@ Read in the code (`9f883ec`), nothing measured.
 
 - That the homeserver's user unit under `porelo-matrix` survives a reboot with linger, as the forge's does.
 
-## The operator's correction, 2026-10-28
+## The host's own forge is optional
 
-The host's own forge is optional: on by default when the host is prepared, and switched off there where the people use
+It is on by default when the host is prepared, and switched off there where the people use
 a central forge. Then nothing of a forge is set up on the host, and a project put on it brings nothing into a local one.
 `porelo_host_forge` keeps its default off in porelo-host; the interface writes the person's choice. The person's login
 and password script come with the forge itself ([HO49](README.md#ho49)), not with repositories.

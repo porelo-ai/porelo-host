@@ -68,6 +68,6 @@ Read in the code (`9f883ec`), nothing measured.
 
 ## What [PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78) changes
 
-Recorded 2026-10-28. This stays the move's only, with the operator's laptop homeserver; it is not the split's model.
+This stays the move's only, with the operator's laptop homeserver; it is not the split's model.
 Under the split's (b) the project's Matrix settings live in its private `access.yml`, so the play reads
 `registration_token_file` from the inventory's `files`, which porelo takes from the applied access file. Size unchanged.

@@ -1,6 +1,6 @@
 # HO49 — The Person's Forge Login Without Repositories
 
-**Status:** Implementing (sprint 6h; filed and estimated on the operator's word, 2026-10-28).
+**Status:** Implementing (sprint 6h).
 **Size:** S - the forge role's person tasks moved ahead of the migration and out of its condition, the Owners team
 kept behind it, one Molecule check, the docs.
 
@@ -9,8 +9,7 @@ whether or not repositories are migrated into it.
 
 ## Why
 
-The operator, 2026-10-28: migrating repositories is the organization's matter, and the person's login must not hang on
-it. Today `roles/forge/tasks/main.yml` makes the login and installs `porelo-host-forge-password` only
+Migrating repositories is the organization's matter, and the person's login must not hang on it. Today `roles/forge/tasks/main.yml` makes the login and installs `porelo-host-forge-password` only
 `when: forge_repositories | length > 0`, so a forge with no repositories has nobody to sign in, and
 [HO35](README.md#ho35)'s sign-in step cannot be walked there.
 

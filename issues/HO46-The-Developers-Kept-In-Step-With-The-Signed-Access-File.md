@@ -1,6 +1,6 @@
 # HO46 — The Developers Kept In Step With The Signed Access File
 
-**Status:** Estimated (Accepted and Estimated by the operator, 2026-10-28).
+**Status:** Estimated.
 **Size:** L - root verifying through Porelo's own check as a throwaway user, the `host:` check, the whole diff
 checked before acting, add and lock per laptop, and the project admin's timer.
 
@@ -10,7 +10,7 @@ even from a taken-over project admin account.
 
 ## Why
 
-[PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78), the operator's answer to QF73: developers are listed with their public keys in the signed file, kept private in
+[PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78): developers are listed with their public keys in the signed file, kept private in
 `access.yml` (b).
 
 ## Plan

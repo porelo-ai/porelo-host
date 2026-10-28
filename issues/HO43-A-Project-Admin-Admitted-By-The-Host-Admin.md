@@ -1,6 +1,6 @@
 # HO43 — A Project Admin Admitted By The Host Admin
 
-**Status:** Estimated (Accepted and Estimated by the operator, 2026-10-28).
+**Status:** Estimated.
 **Size:** L - a root helper with its records, two sudoers lines, an account with its keys, VPN peers and forge
 identities, the Matrix token, the lock and the purge.
 

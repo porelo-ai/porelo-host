@@ -1,6 +1,6 @@
 # HO48 — Every Role Tested On One Host
 
-**Status:** Estimated (Accepted and Estimated by the operator, 2026-10-28).
+**Status:** Estimated.
 **Size:** L - the Molecule scenario rebuilt around the three roles, grown with each issue it tests.
 
 **What must be true.** One throwaway VM runs a host admin, two project admins and a developer with two laptops in both

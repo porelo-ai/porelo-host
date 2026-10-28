@@ -94,6 +94,6 @@ keys); a host gets only its own group and `shared`.
 
 ## What [PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78) changes
 
-Recorded 2026-10-28, nothing reworked yet. The root stop keeps only `wireguard` and `forge-certificate`
+Nothing reworked yet. The root stop keeps only `wireguard` and `forge-certificate`
 ([HO42](README.md#ho42)); `vault-new`, `vault`, `keys` and `forge-central-token` move to the stop's own-account mode,
 run without `sudo` on the caller's own account ([HO45](README.md#ho45)).
