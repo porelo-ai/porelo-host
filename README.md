@@ -18,7 +18,7 @@ how task work is built and accepted locally, and which steps toward central publ
 
 **Requirements**: a host with Ubuntu 26.04; the playbook runs on the host itself, with the `ansible-core` Ubuntu
 carries (2.20; the collection needs 2.19 or newer), so the person's computer needs only ssh. Porelo in the version
-the collection's own follows (`0.5.8`, Porelo 0.5.1, its snapshots until Porelo releases it). It is
+the collection's own follows (`0.5.9-snapshot`, Porelo 0.5.1, its snapshots until Porelo releases it). It is
 installed from the tarball a release attaches, `ansible-galaxy collection install porelo-host-<version>.tar.gz`.
 
 **Documentation: [porelo-ai.github.io](https://porelo-ai.github.io)**, all of Porelo's documentation in one site.
