@@ -554,6 +554,34 @@
           is-active '{{ converge_homeserver_after_up.results[1].stdout }}'
           ({{ converge_homeserver_after_up.results[1].stderr }})
 
+    # The person's login and its password script come with the forge itself: checked after the up with no repositories,
+    # before any inventory names one.
+    - name: Ask the forge which users it has on a forge with no repositories
+      ansible.builtin.shell:
+        cmd: XDG_RUNTIME_DIR=/run/user/$(id -u) podman exec forgejo forgejo admin user list
+      become: true
+      become_user: porelo-forge
+      register: converge_users_before_migration
+      changed_when: false
+      when: converge_forge == 'on'
+
+    - name: Read whether the password script is there on a forge with no repositories
+      ansible.builtin.stat:
+        path: /usr/local/sbin/porelo-host-forge-password
+      register: converge_password_script_early
+      when: converge_forge == 'on'
+
+    - name: Assert the person's login and the password script are there on a forge with no repositories
+      ansible.builtin.assert:
+        that:
+          - "'operator' in (converge_users_before_migration.stdout_lines[1:] | map('split') | map(attribute=1) | list)"
+          - converge_password_script_early.stat.exists
+        fail_msg: >-
+          asked for operator and porelo-host-forge-password with the forge alone, got users
+          {{ converge_users_before_migration.stdout_lines[1:] | map('split') | map(attribute=1) | list }} and the script
+          {{ 'there' if converge_password_script_early.stat.exists else 'missing' }}
+      when: converge_forge == 'on'
+
     # The central forge's stand-in needs the host's forge to be up first.
     - name: Make the stand-in for the central forge, its repository and the person's token for it
       ansible.builtin.shell:
@@ -625,33 +653,6 @@
           | selectattr('state', 'equalto', 'failed') | list }}"
       when: converge_forge == 'on' and not converge_token_given.stat.exists
 
-    # The person's login and its password script come with the forge itself, before any repository is migrated.
-    - name: Ask the forge which users it has while no repository is migrated yet
-      ansible.builtin.shell:
-        cmd: XDG_RUNTIME_DIR=/run/user/$(id -u) podman exec forgejo forgejo admin user list
-      become: true
-      become_user: porelo-forge
-      register: converge_users_before_migration
-      changed_when: false
-      when: converge_forge == 'on' and not converge_token_given.stat.exists
-
-    - name: Read whether the password script is there while no repository is migrated yet
-      ansible.builtin.stat:
-        path: /usr/local/sbin/porelo-host-forge-password
-      register: converge_password_script_early
-      when: converge_forge == 'on' and not converge_token_given.stat.exists
-
-    - name: Assert the person's login and the password script are there before any repository is migrated
-      ansible.builtin.assert:
-        that:
-          - "'operator' in (converge_users_before_migration.stdout_lines[1:] | map('split') | map(attribute=1) | list)"
-          - converge_password_script_early.stat.exists
-        fail_msg: >-
-          asked for operator and porelo-host-forge-password with the forge alone, got users
-          {{ converge_users_before_migration.stdout_lines[1:] | map('split') | map(attribute=1) | list }} and the script
-          {{ 'there' if converge_password_script_early.stat.exists else 'missing' }}
-      when: converge_forge == 'on' and not converge_token_given.stat.exists
-
     - name: Give the central token on the stop's standard input, as the desktop does after that refusal
       ansible.builtin.shell:
         cmd: |
@@ -693,7 +694,7 @@
       when: converge_forge == 'on'
 
     # As the desktop's terminal does once up has ended: the person's lasting password from the secrets file, piped over
-    # ssh into the root script, which sets it on the forge. The person's account comes with the repositories.
+    # ssh into the root script, which sets it on the forge. The person's account comes with the forge itself.
     - name: Set the person's lasting forge password on standard input, as the desktop does
       ansible.builtin.shell:
         cmd: |
