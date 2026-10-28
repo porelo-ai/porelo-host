@@ -1,6 +1,6 @@
 # HO44 — A Project Registered On The Host
 
-**Status:** Analyzed (Accepted by the operator, 2026-10-28; estimated by its agent, for the operator to set Estimated).
+**Status:** Estimated (Accepted and Estimated by the operator, 2026-10-28).
 **Size:** M - a root helper making and deleting one forge organization with its publisher, the pinned signing
 key, and the refusal while anything is unpushed.
 

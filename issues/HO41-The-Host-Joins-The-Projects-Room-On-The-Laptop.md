@@ -1,6 +1,6 @@
 # HO41 — The Host Joins The Project's Room On The Laptop
 
-**Status:** Analyzed (Accepted by the operator, 2026-10-28; estimated by its agent, for the operator to set Estimated).
+**Status:** Estimated (Accepted and Estimated by the operator, 2026-10-28).
 **Size:** M - one need of the stop with its unit tests, the hosts line in the VPN role, a refusal in `up`'s second
 play, what `down` removes, the Molecule scenario's part, and the line contract; it waits on one field in porelo's
 inventory.

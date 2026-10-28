@@ -1,6 +1,6 @@
 # HO46 — The Developers Kept In Step With The Signed Access File
 
-**Status:** Analyzed (Accepted by the operator, 2026-10-28; estimated by its agent, for the operator to set Estimated).
+**Status:** Estimated (Accepted and Estimated by the operator, 2026-10-28).
 **Size:** L - root verifying through Porelo's own check as a throwaway user, the `host:` check, the whole diff
 checked before acting, add and lock per laptop, and the project admin's timer.
 

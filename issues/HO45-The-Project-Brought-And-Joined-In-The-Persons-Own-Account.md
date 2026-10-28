@@ -1,6 +1,6 @@
 # HO45 — The Project Brought And Joined In The Person's Own Account
 
-**Status:** Analyzed (Accepted by the operator, 2026-10-28; estimated by its agent, for the operator to set Estimated).
+**Status:** Estimated (Accepted and Estimated by the operator, 2026-10-28).
 **Size:** L - two playbooks run as the person, the stop's own-account mode, the setup's files in the person's home
 with two bundles, and the forge's per-project parts with the person's own token.
 

@@ -28,19 +28,6 @@ it is left out.
 | <a id="ho14"></a>[HO14](HO14-The-Collections-Python-Under-Ansible-Test-Sanity.md) | S | - | `ansible-test sanity` on the collection's Python in the Build, from a pinned image of its own. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | [HO37](#ho37), porelo-project [PJ45](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj45), porelo-message-matrix [MX24](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx24), porelo [B231](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b231), porelo-message-matrix [MX39](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx39) | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 
-## Analyzed
-
-| # | Size | Blocked by | Open questions | What it covers |
-|---|---|---|---|---|
-| <a id="ho42"></a>[HO42](HO42-The-Host-Prepared-With-No-Project-Or-Person.md) | L | - | 0 | The host admin prepares a host with no project or person: the VPN per host, the shared forge, runner, pool and Matrix homeserver, under the host's names and the host admin's constrained CA. |
-| <a id="ho43"></a>[HO43](HO43-A-Project-Admin-Admitted-By-The-Host-Admin.md) | L | [HO42](#ho42), porelo-message-matrix's `machine-token` ([PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78)) | 0 | `porelo-host-person`: a person admitted from their public keys (account, laptops' ssh keys and VPN peers, forge login and identities, Matrix token), locked and purged. |
-| <a id="ho44"></a>[HO44](HO44-A-Project-Registered-On-The-Host.md) | M | [HO42](#ho42) | 0 | `porelo-host-project`: a project's forge organization and publisher with its pinned signing key, deleted once nothing is unpushed. |
-| <a id="ho45"></a>[HO45](HO45-The-Project-Brought-And-Joined-In-The-Persons-Own-Account.md) | L | [HO43](#ho43), [HO44](#ho44), porelo's access file and inventory ([PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78)) | 0 | `bring.yml` and `join.yml` in the person's own account, with the stop's own-account mode and two bundles. |
-| <a id="ho46"></a>[HO46](HO46-The-Developers-Kept-In-Step-With-The-Signed-Access-File.md) | L | [HO45](#ho45), porelo's `project verify --json` ([PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78)) | 0 | `sync`: the developers on the host kept to the signed `access.yml`, verified by Porelo's own check as a throwaway user, added or locked. |
-| <a id="ho47"></a>[HO47](HO47-The-Gathered-Push-Run-By-Any-Developer.md) | S | [HO45](#ho45) | 0 | `porelo-host-push` as a user tool with the person's own config and token. |
-| <a id="ho48"></a>[HO48](HO48-Every-Role-Tested-On-One-Host.md) | L | [HO46](#ho46), [HO47](#ho47) | 0 | The Molecule scenario with a host admin, two project admins and a developer with two laptops, every act and refusal. |
-| <a id="ho41"></a>[HO41](HO41-The-Host-Joins-The-Projects-Room-On-The-Laptop.md) | M | - | 0 | A rented host's tasks in the project's room on the laptop during the move: the hosts line for `matrix.porelo.internal`, and the host's registration token on the stop's standard input into the file the signed project names. |
-
 ## Accepted
 
 | # | Size | Blocked by | What it covers |
@@ -63,6 +50,14 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho42"></a>[HO42](HO42-The-Host-Prepared-With-No-Project-Or-Person.md) | L | - | The host admin prepares a host with no project or person: the VPN per host, the shared forge, runner, pool and Matrix homeserver, under the host's names and the host admin's constrained CA. |
+| <a id="ho43"></a>[HO43](HO43-A-Project-Admin-Admitted-By-The-Host-Admin.md) | L | [HO42](#ho42), porelo-message-matrix [MX44](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx44) | `porelo-host-person`: a person admitted from their public keys (account, laptops' ssh keys and VPN peers, forge login and identities, Matrix token), locked and purged. |
+| <a id="ho44"></a>[HO44](HO44-A-Project-Registered-On-The-Host.md) | M | [HO42](#ho42) | `porelo-host-project`: a project's forge organization and publisher with its pinned signing key, deleted once nothing is unpushed. |
+| <a id="ho45"></a>[HO45](HO45-The-Project-Brought-And-Joined-In-The-Persons-Own-Account.md) | L | [HO43](#ho43), [HO44](#ho44), porelo's access file and inventory ([PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78)) | `bring.yml` and `join.yml` in the person's own account, with the stop's own-account mode and two bundles. |
+| <a id="ho46"></a>[HO46](HO46-The-Developers-Kept-In-Step-With-The-Signed-Access-File.md) | L | [HO45](#ho45), porelo's `project verify --json` ([PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78)) | `sync`: the developers on the host kept to the signed `access.yml`, verified by Porelo's own check as a throwaway user, added or locked. |
+| <a id="ho47"></a>[HO47](HO47-The-Gathered-Push-Run-By-Any-Developer.md) | S | [HO45](#ho45) | `porelo-host-push` as a user tool with the person's own config and token. |
+| <a id="ho48"></a>[HO48](HO48-Every-Role-Tested-On-One-Host.md) | L | [HO46](#ho46), [HO47](#ho47) | The Molecule scenario with a host admin, two project admins and a developer with two laptops, every act and refusal. |
+| <a id="ho41"></a>[HO41](HO41-The-Host-Joins-The-Projects-Room-On-The-Laptop.md) | M | - | A rented host's tasks in the project's room on the laptop during the move: the hosts line for `matrix.porelo.internal`, and the host's registration token on the stop's standard input into the file the signed project names. |
 | <a id="ho23"></a>[HO23](HO23-A-Machine-Rented-And-Given-Back-By-OpenTofu.md) | L | - | An administrator rents and gives back a host by one OpenTofu module per provider, its state kept encrypted with the administrator, outside the interface. |
 
 ## Finished

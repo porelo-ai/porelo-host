@@ -1,6 +1,6 @@
 # HO47 — The Gathered Push Run By Any Developer
 
-**Status:** Analyzed (Accepted by the operator, 2026-10-28; estimated by its agent, for the operator to set Estimated).
+**Status:** Estimated (Accepted and Estimated by the operator, 2026-10-28).
 **Size:** S - `porelo-host-push` turned from a root tool with one config into a user tool reading the person's
 own config and token.
 
