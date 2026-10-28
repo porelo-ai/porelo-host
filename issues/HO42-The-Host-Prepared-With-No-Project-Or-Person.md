@@ -1,6 +1,6 @@
 # HO42 — The Host Prepared With No Project Or Person
 
-**Status:** Estimated (Accepted by the operator, 2026-10-28; estimated the same day).
+**Status:** Analyzed (Accepted by the operator, 2026-10-28; estimated by its agent, for the operator to set Estimated).
 **Size:** L - `up` reduced to the host's own parts, the Matrix homeserver moved to an account of the host's, the
 host admin's constrained CA for two names, a VPN network per host, and the Molecule scenario's first act.
 
