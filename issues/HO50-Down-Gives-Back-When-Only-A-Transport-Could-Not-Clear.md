@@ -1,9 +1,8 @@
 # HO50 — Down Gives Back When Only A Transport Could Not Clear
 
-**Status:** Analyzed.
+**Status:** Estimated.
 **Size:** S - one task of the porelo role's `down` reading `vault clear --json`, its end line, one Molecule check.
 **Blocked by:** porelo [B318](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b318).
-**Open questions:** none.
 
 **What must be true.** `down` on a host whose vault a transport could not clear, and nothing else kept, clears the
 vault anyway and gives the server back. Its end names what the person still has to do for that transport. Any other

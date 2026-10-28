@@ -23,12 +23,6 @@ it is left out.
 | <a id="ho41"></a>[HO41](HO41-The-Host-Joins-The-Projects-Room-On-The-Laptop.md) | M | - | A rented host's tasks in the project's room on the laptop during the move: the hosts line for `matrix.porelo.internal`, and the host's registration token on the stop's standard input into the file the signed project names. |
 | <a id="ho49"></a>[HO49](HO49-The-Persons-Forge-Login-Without-Repositories.md) | S | - | Wherever the host runs its own forge, the person's login and the password script are there, repositories or none. |
 
-## Analyzed
-
-| # | Size | Blocked by | What it covers | Open questions |
-|---|---|---|---|---|
-| <a id="ho50"></a>[HO50](HO50-Down-Gives-Back-When-Only-A-Transport-Could-Not-Clear.md) | S | porelo [B318](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b318) | `down` clears the vault and gives the server back when only a transport could not clear, naming what is left for the person; any other refusal still stops it. | 0 |
-
 ## Backlog
 
 | # | Size | Blocked by | What it covers |
@@ -58,6 +52,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho50"></a>[HO50](HO50-Down-Gives-Back-When-Only-A-Transport-Could-Not-Clear.md) | S | porelo [B318](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b318) | `down` clears the vault and gives the server back when only a transport could not clear, naming what is left for the person; any other refusal still stops it. |
 | <a id="ho42"></a>[HO42](HO42-The-Host-Prepared-With-No-Project-Or-Person.md) | L | - | The host admin prepares a host with no project or person: the VPN per host, the shared forge, runner, pool and Matrix homeserver, under the host's names and the host admin's constrained CA. |
 | <a id="ho43"></a>[HO43](HO43-A-Project-Admin-Admitted-By-The-Host-Admin.md) | L | [HO42](#ho42), porelo-message-matrix [MX44](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx44) | `porelo-host-person`: a person admitted from their public keys (account, laptops' ssh keys and VPN peers, forge login and identities, Matrix token), locked and purged. |
 | <a id="ho44"></a>[HO44](HO44-A-Project-Registered-On-The-Host.md) | M | [HO42](#ho42) | `porelo-host-project`: a project's forge organization and publisher with its pinned signing key, deleted once nothing is unpushed. |
