@@ -1,6 +1,6 @@
 # HO38 — The Drive Leaves The Host's Setup
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** M - mostly removal: a role, a module and its tests, the stop's `drive` and `--email`, and the drive's part of
 the Molecule scenario, with the docs that describe them; no new contract, since porelo-frontend's
 [F201](https://github.com/porelo-ai/porelo-frontend/blob/main/issues/README.md#f201) mounts a user's drive outside the
