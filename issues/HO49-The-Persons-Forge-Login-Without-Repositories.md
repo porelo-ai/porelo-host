@@ -1,6 +1,6 @@
 # HO49 — The Person's Forge Login Without Repositories
 
-**Status:** Implementing (sprint 6h).
+**Status:** Review.
 **Size:** S - the forge role's person tasks moved ahead of the migration and out of its condition, the Owners team
 kept behind it, one Molecule check, the docs.
 
