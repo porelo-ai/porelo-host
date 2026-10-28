@@ -11,5 +11,8 @@
 - name: Run the VPN
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/service.yml"
 
+- name: Name the project's room on the person's computer
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/names.yml"
+
 - name: Leave only ssh and the VPN on the public address
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/firewall.yml"

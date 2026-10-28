@@ -107,6 +107,23 @@
         fail_msg: /run/porelo-host/forge-central.token is not there after the stop was given it
       when: side_effect_forge == 'on'
 
+    - name: Read the room's token and the host's names before down
+      ansible.builtin.slurp:
+        src: /etc/hosts
+      register: side_effect_hosts_before
+
+    - name: Read whether the room's token is there before down
+      ansible.builtin.stat:
+        path: /home/porelo-test/.config/porelo/matrix/host-registration-token
+      register: side_effect_matrix_token_before
+
+    - name: Assert the room's token and name are there before down, so their removal is down's
+      ansible.builtin.assert:
+        that:
+          - side_effect_matrix_token_before.stat.exists
+          - "'porelo-host room name' in (side_effect_hosts_before.content | b64decode)"
+        fail_msg: the room's token or its marked name is not there before down
+
     - name: Run down on the host itself, as host down does, its steps as JSON lines
       # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.
       ansible.builtin.shell:
@@ -226,7 +243,23 @@
       ansible.builtin.slurp:
         src: /etc/hosts
       register: side_effect_hosts_after
-      when: side_effect_forge == 'on'
+
+    - name: Assert down removed the room's marked name
+      ansible.builtin.assert:
+        that:
+          - "'porelo-host room name' not in (side_effect_hosts_after.content | b64decode)"
+          - "'matrix.porelo.internal' not in (side_effect_hosts_after.content | b64decode)"
+        fail_msg: asked for no room name block after down, got {{ side_effect_hosts_after.content | b64decode }}
+
+    - name: Read whether the room's registration token outlived down
+      ansible.builtin.stat:
+        path: /home/porelo-test/.config/porelo/matrix/host-registration-token
+      register: side_effect_matrix_token
+
+    - name: Assert down removed the room's registration token
+      ansible.builtin.assert:
+        that: not side_effect_matrix_token.stat.exists
+        fail_msg: asked for no host-registration-token after down, found one
 
     - name: Assert down removed the forge's marked name mapping
       ansible.builtin.assert:
@@ -240,13 +273,11 @@
         path: "{{ ansible_facts['getent_passwd']['porelo-test'][4]
           }}/.config/containers/containers.conf.d/porelo-host-hosts.conf"
       register: side_effect_hosts_dropin
-      when: side_effect_forge == 'on'
 
     - name: Assert down removed the account's Podman setting for the host's names
       ansible.builtin.assert:
         that: not side_effect_hosts_dropin.stat.exists
         fail_msg: asked for no porelo-host-hosts.conf in porelo-test's Podman configuration after down, got one
-      when: side_effect_forge == 'on'
 
     - name: Read whether the gathered push and its settings are left after down
       ansible.builtin.stat:

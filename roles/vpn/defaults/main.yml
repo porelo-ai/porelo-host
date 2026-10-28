@@ -19,3 +19,9 @@ vpn_private_key_path: /etc/wireguard/porelo-host.key
 
 # The TCP port ssh listens on, which the public address keeps beside the VPN's port.
 vpn_ssh_port: 22
+
+# The name the project's room is reached under on the person's own computer during the move, and the address it
+# answers on: the first peer's own address inside the VPN. Written as a marked line of /etc/hosts, which the account's
+# containers do not take, so only the host's own processes resolve it.
+vpn_room_name: matrix.porelo.internal
+vpn_room_address: "{{ ((vpn_peers | first).allowed_ips.split(',') | first).split('/') | first | trim }}"

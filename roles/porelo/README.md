@@ -21,9 +21,9 @@ account's vault as `git.token.forge.porelo.internal` when repositories are confi
 the person's own certificates, and `~/.config/porelo/task-ca-certificates.pem` holds the forge's CA alone; both are
 owned by the account with mode `0600`, in its `0700` Porelo configuration directory. `down` removes that block and the
 task CA file, and removes the account's CA bundle if only whitespace remains.
-`~/.config/containers/containers.conf.d/porelo-host-hosts.conf` keeps the host's `/etc/hosts` out of the account's
-containers, since its loopback entry for the forge would hide the gate's address Porelo's resolver gives a task; `down`
-removes it.
+Whatever the forge, `~/.config/containers/containers.conf.d/porelo-host-hosts.conf` keeps the host's `/etc/hosts` out
+of the account's containers, since its loopback entry for the forge would hide the gate's address Porelo's resolver
+gives a task, and the room's name would name the person's computer; `down` removes it.
 
 The machine file and the project's bundle it names come from the interface, which uploads them over ssh into
 `/etc/porelo-host/setup/` before `up`, each root's alone. Once Porelo's setup script has made the account, `install`
@@ -36,12 +36,16 @@ The person's stop, `porelo-host-stop` in `/usr/local/bin`, is installed by `inst
 `/etc/porelo-host/stop.conf`, root's with mode `0644` and no secret. Run by the person as the account, it asks in their
 terminal; run as root with `--stdin`, it takes every need from the person's secrets file, one base64 line each, and
 passes each value on a pipe into its user: the vault's passphrase into `porelo vault init` or `unlock`, each key into
-`porelo vault put`, as the account. The keys reach the vault only so, never through Ansible; the [line
-contract](../../doc/lines.md) has the form and the exits.
+`porelo vault put`, as the account, and the room's registration token (`matrix-token`) into the account's
+`~/.config/porelo/matrix/host-registration-token`, written as the account. The keys reach the vault only so, never
+through Ansible; the [line contract](../../doc/lines.md) has the form and the exits. Where the followed project names
+that file as `registration_token_file` (Porelo's inventory names a transport's `*_file` settings), `project` refuses
+another path with a message beginning `registration_token_file:`, and refuses with `matrix-token:` while the account
+holds no such token of its own with mode `0600` in its own directories of mode `0700`.
 
 At `down` (`tasks_from: down`), `porelo task stop --all` stops every running task of the account, keeping their
 containers and workspaces, before the vault is cleared (`porelo vault clear --yes`, with `--force` on a shut vault), and
-removes `stop.conf` and `/etc/porelo-host/setup/`. If a task survives, `down` fails with Porelo's words and leaves the vault in place.
+removes `stop.conf`, `/etc/porelo-host/setup/` and the account's room token, which `vault clear` does not reach. If a task survives, `down` fails with Porelo's words and leaves the vault in place.
 
 ## Requirements
 

@@ -13,7 +13,7 @@ on the host's disk, an accepted risk ([decisions](../../doc/decisions.md#the-hos
 
 `tasks_from: needs`, in `up`'s first play, writes the key's path into `/etc/porelo-host/vpn.conf` for the stop and
 adds `wireguard` to `porelo_host_needs` while neither the key's file nor the interface is there. `tasks_from: down`
-stops the interface and removes its file, the key and `vpn.conf`.
+stops the interface and removes its file, the key, `vpn.conf` and the room's marked name in `/etc/hosts`.
 
 ## Requirements
 
@@ -29,6 +29,8 @@ Ubuntu 26.04, run as root on the host itself (`-c local`), after the person's st
 | `vpn_peers` | the one peer of `porelo_host_vpn_peer_public_key` and `porelo_host_vpn_peer_address` | The person's peers, each `public_key` and `allowed_ips`. |
 | `vpn_private_key_path` | `/etc/wireguard/porelo-host.key` | The file holding the host's private key, written by the person's stop. |
 | `vpn_ssh_port` | `22` | The TCP port ssh listens on, kept open on the public address. |
+| `vpn_room_name` | `matrix.porelo.internal` | The project's room on the person's own computer during the move, a marked line of `/etc/hosts` that `down` removes. |
+| `vpn_room_address` | the first peer's own address | The address that name resolves to, a peer's in the VPN's `/24`. |
 
 ## Example
 

@@ -104,6 +104,20 @@
         path: "{{ __porelo_hosts_dropin }}"
         state: absent
 
+# vault clear does not reach the room's registration token the person's stop wrote into the account's home; removed
+# as the account, so no link of the account's leads root's hand elsewhere.
+- name: down | Remove the room's registration token from the account's home
+  ansible.builtin.command:
+    argv:
+      - rm
+      - -f
+      - --
+      - "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo/matrix/host-registration-token"
+  become: true
+  become_user: "{{ porelo_account }}"
+  when: ansible_facts['getent_passwd'][porelo_account] is not none
+  changed_when: false
+
 - name: down | Remove the account's name the person's stop reads
   ansible.builtin.file:
     path: /etc/porelo-host/stop.conf

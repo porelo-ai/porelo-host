@@ -192,6 +192,8 @@ def test_unlock_retries_a_wrong_passphrase(terminal_home):
         (("vault-new", "vault"), "exclude"),
         (("vault", "vault"), "twice"),
         (("--stdin", "vault-new", "vault"), "exclude"),
+        (("--stdin", "matrix-token", "matrix-token"), "twice"),
+        (("matrix-token",), "matrix-token"),
     ],
 )
 def test_invalid_calls_run_no_command(terminal_home, args, diagnostic):

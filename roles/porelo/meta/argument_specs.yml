@@ -72,8 +72,8 @@ argument_specs:
           Porelo's setup script, which lists agents with --list --json and installs missing packages with --with.
   down:
     short_description: >-
-      Every running task of the account stopped, its vault cleared, and the stop's account file and the setup's files
-      removed before the host is given back.
+      Every running task of the account stopped, its vault cleared, and the stop's account file, the setup's files and
+      the room's registration token removed before the host is given back.
     options:
       porelo_account:
         type: str

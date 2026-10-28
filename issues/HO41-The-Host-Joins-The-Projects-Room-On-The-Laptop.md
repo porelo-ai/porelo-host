@@ -1,6 +1,6 @@
 # HO41 — The Host Joins The Project's Room On The Laptop
 
-**Status:** Estimated (Accepted and Estimated by the operator, 2026-10-28).
+**Status:** Implementing (sprint 6i).
 **Size:** M - one need of the stop with its unit tests, the hosts line in the VPN role, a refusal in `up`'s second
 play, what `down` removes, the Molecule scenario's part, and the line contract; it waits on one field in porelo's
 inventory.
@@ -32,7 +32,8 @@ Read in the code (`9f883ec`), nothing measured.
 - **How the play knows:** `porelo project inventory` lists `porelo_transports` with `scheme` and `package` only. The
   play needs the matrix transport's `registration_token_file` from the signed settings, which is a path and no secret.
   Agreed with porelo: a map `files` of the transport's `_file` settings in its entry. It is additive, so the
-  inventory stays version 2 ("a play ignores what it does not read"). Until it is there, this is not buildable.
+  inventory stays version 2 ("a play ignores what it does not read"). It comes first from the public `project.yml`,
+  placed in 6i beside this; a project naming no such file is never asked, and one naming another path is refused.
 - **`down`** removes the token file and the hosts line. `vault clear` does not reach the file.
 - **The host's own homeserver** (`porelo-matrix-homeserver`, [HO11](README.md#ho11)) is not the room during the move.
   Its own token file `~/.config/porelo/matrix/registration-token` is never touched.
@@ -59,11 +60,11 @@ Read in the code (`9f883ec`), nothing measured.
 
 ## To be checked
 
-- porelo adds to each `porelo_transports` entry a map `files` of the transport's `_file` settings, paths only, the
-  inventory staying version 2 (agreed by porelo's agent, 2026-10-28, an S of its own, after the split's plan); the play
-  reads `files.registration_token_file`.
-- That porelo-message-matrix's `admit` token has a fixed form the stop can check, or the stop checks only one line of
-  printable ASCII.
+- The refusal in `up` reads `files.registration_token_file` of porelo's inventory, which [B313](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b313)'s first part adds from
+  the public `project.yml`; until a porelo with it is published, an inventory without `files` names no token and `up`
+  asks for none. Its Molecule check, a project naming the file with no token given, is added once that porelo is out.
+- The stop checks the token as one line of 1 to 1024 graphic ASCII characters, since porelo-message-matrix's `admit` gives
+  no fixed form.
 
 ## What [PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78) changes
 

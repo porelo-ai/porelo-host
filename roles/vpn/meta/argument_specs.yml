@@ -40,6 +40,14 @@ argument_specs:
         type: int
         default: 22
         description: The TCP port ssh listens on, kept open on the public address.
+      vpn_room_name:
+        type: str
+        default: matrix.porelo.internal
+        description: >-
+          The name of the project's room on the person's own computer during the move, a marked line of /etc/hosts.
+      vpn_room_address:
+        type: str
+        description: The address that name resolves to; by default the first peer's own address inside the VPN.
   needs:
     short_description: >-
       Before the stop, the key's path named to the person's stop, and the key named as a need while neither its file
@@ -54,7 +62,9 @@ argument_specs:
         default: /etc/wireguard/porelo-host.key
         description: The file the person's stop writes the host's private key into.
   down:
-    short_description: The VPN stopped, and its file, the host's key and the key's path for the stop removed.
+    short_description: >-
+      The VPN stopped, and its file, the host's key, the key's path for the stop and the room's marked name in
+      /etc/hosts removed.
     options:
       vpn_interface:
         type: str

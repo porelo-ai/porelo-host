@@ -21,3 +21,9 @@
     - "/etc/wireguard/{{ vpn_interface }}.conf"
     - "{{ vpn_private_key_path }}"
     - /etc/porelo-host/vpn.conf
+
+- name: down | Remove the room's name from the host's names
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} porelo-host room name"
+    state: absent

@@ -661,10 +661,18 @@
       no_log: true
       when: verify_forge == 'on'
 
-    - name: Assert up with -vvv ran, and its output holds no trace of the host's private key or either token
+    - name: Read the room's registration token given at the stop, only to search the run's output for it
+      ansible.builtin.slurp:
+        src: /root/secrets/matrix-token
+      register: verify_matrix_token
+      no_log: true
+
+    - name: Assert up with -vvv ran, and its output holds no trace of the host's private key or any token
       ansible.builtin.assert:
         that:
           - verify_vvv.rc == 0
+          - (verify_matrix_token.content | b64decode | trim) | length > 20
+          - (verify_matrix_token.content | b64decode | trim) not in (verify_vvv.stdout + verify_vvv.stderr)
           - (verify_host_key.content | b64decode | trim) not in (verify_vvv.stdout + verify_vvv.stderr)
           - verify_forge != 'on' or (verify_central_token.content | b64decode | trim) | length > 20
           - verify_forge != 'on' or (verify_central_token.content | b64decode | trim)
@@ -673,7 +681,7 @@
           - verify_forge != 'on' or (verify_forge_token.content | b64decode | trim)
             not in (verify_vvv.stdout + verify_vvv.stderr)
         fail_msg: "up with -vvv gave rc {{ verify_vvv.rc }}, or its output holds the host's private VPN key, the
-          person's token for the central forge or the forge's API token"
+          room's registration token, the person's token for the central forge or the forge's API token"
       no_log: true
 
     - name: Set the person's lasting password again on the forge up with -vvv made them anew

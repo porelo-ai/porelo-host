@@ -13,6 +13,9 @@ stdin_forge_conf=/etc/porelo-host/forge.conf
 # Where up's request leaves the forge's key and request, and where its signed certificate and the CA's wait.
 stdin_forge_dir=/etc/porelo-host/forge
 stdin_max_lines=256
+# The registration token of the homeserver the project's room is on, in Porelo's account, where the signed project file
+# names it; the account's own, written as the account.
+stdin_matrix_token=.config/porelo/matrix/host-registration-token
 
 stdin_refuse() {
     printf '%s\n' "porelo-host-stop: $1" >&2
@@ -108,6 +111,54 @@ stdin_check_target() {
     fi
 }
 
+# The token is the account's own: checked as one line of graphic ASCII characters (no space, no NUL), then written as
+# the account into its home, each directory entered on its own and never through a link, beside its name and moved over
+# it, so the token is never half written and never lands outside the account's own directories.
+stdin_check_matrix_token() {
+    # Command substitution would drop a NUL byte silently, so a token holding one is refused before it is read.
+    [ "$(stdin_decode "$1" | wc -c)" = "$(stdin_decode "$1" | tr -d '\0' | wc -c)" ] \
+        || stdin_refuse 'matrix-token: the token holds a NUL byte'
+    stdin_token=$(stdin_decode "$1" && printf x) || stdin_refuse 'matrix-token: the token cannot be read'
+    stdin_token=${stdin_token%x}
+    stdin_token=${stdin_token%$'\n'}
+    [[ $stdin_token =~ ^[!-~]{1,1024}$ ]] \
+        || stdin_refuse 'matrix-token: the token must be one line of 1 to 1024 graphic ASCII characters'
+}
+
+# Run as the account, with "check" before any need is used and "write" after; the token comes on standard input.
+stdin_matrix_token_as_account() {
+    # shellcheck disable=SC2016 # the script expands in the account's own shell, not here
+    stdin_as_account sh -c '
+        set -eu
+        case $HOME in /?*) ;; *) echo "the home $HOME is no absolute path" >&2; exit 73 ;; esac
+        [ -d "$HOME" ] && [ ! -L "$HOME" ] || { echo "the home $HOME is no directory" >&2; exit 73; }
+        cd -P -- "$HOME"
+        home=$PWD
+        umask 077
+        for d in .config porelo matrix; do
+            [ ! -L "$d" ] || { echo "$PWD/$d is a link" >&2; exit 73; }
+            if [ ! -e "$d" ]; then
+                [ -O . ] && [ -w . ] || { echo "$PWD is not the account'"'"'s to write" >&2; exit 73; }
+                [ "$1" = write ] || exit 0
+                mkdir -- "$d"
+            fi
+            [ -d "$d" ] || { echo "$PWD/$d is no directory" >&2; exit 73; }
+            cd -P -- "$d"
+        done
+        [ "$PWD" = "$home/.config/porelo/matrix" ] || { echo "cannot enter $home/.config/porelo/matrix" >&2; exit 73; }
+        [ -O . ] && [ -O .. ] && [ -w . ] || { echo "$PWD is not the account'"'"'s to write" >&2; exit 73; }
+        f=host-registration-token
+        [ ! -L "$f" ] && { [ ! -e "$f" ] || [ -f "$f" ]; } || { echo "$PWD/$f is no plain file" >&2; exit 73; }
+        [ "$1" = write ] || exit 0
+        chmod 0700 . ..
+        t=$(mktemp .host-registration-token.XXXXXX)
+        trap '\''rm -f -- "$t"'\'' EXIT HUP INT TERM
+        cat > "$t"
+        chmod 0600 "$t"
+        mv -fT -- "$t" "$f"
+        trap - EXIT HUP INT TERM' matrix-token "$1"
+}
+
 stdin_check_forge_certificate() {
     local address name net key_pub cert_pub names constraints existing given_ca
     address=$(stdin_conf_value "$stdin_forge_conf" address '^[0-9]{1,3}(\.[0-9]{1,3}){3}$') || exit $?
@@ -167,10 +218,10 @@ stdin_stop() {
     local -a key_names=()
     local need line count=0 rest name value
     [ "$#" -gt 0 ] || stdin_refuse 'at least one need is required: vault-new, vault, keys, wireguard,'\
-' forge-central-token, forge-certificate'
+' forge-central-token, forge-certificate, matrix-token'
     for need in "$@"; do
         case "$need" in
-            vault-new|vault|keys|wireguard|forge-central-token|forge-certificate) ;;
+            vault-new|vault|keys|wireguard|forge-central-token|forge-certificate|matrix-token) ;;
             drive) stdin_refuse 'drive is no need of the host any more' ;;
             *) stdin_refuse "unknown need or option: $need" ;;
         esac
@@ -203,7 +254,7 @@ stdin_stop() {
                 [ "$value" != "$rest" ] || stdin_refuse "line $count holds no value"
                 [[ $name =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || stdin_refuse "line $count names no valid key"
                 ;;
-            vault-new|vault|wireguard|forge-central-token|forge-certificate)
+            vault-new|vault|wireguard|forge-central-token|forge-certificate|matrix-token)
                 [ -n "${named[$need]+x}" ] || stdin_refuse "line $count gives $need, which is not named"
                 value=$rest
                 ;;
@@ -218,7 +269,7 @@ stdin_stop() {
         given["$need $name"]=$value
         [ "$need" != key ] || key_names+=("$name")
     done
-    for need in vault-new vault wireguard forge-central-token forge-certificate; do
+    for need in vault-new vault wireguard forge-central-token forge-certificate matrix-token; do
         if [ -n "${named[$need]+x}" ] && [ -z "${given["$need "]+x}" ]; then
             stdin_refuse "no line gives $need"
         fi
@@ -228,12 +279,15 @@ stdin_stop() {
         stdin_refuse 'no line gives keys'
     fi
 
-    if [ -n "${named[vault-new]+x}" ] || [ -n "${named[vault]+x}" ] || [ -n "${named[keys]+x}" ]; then
+    if [ -n "${named[vault-new]+x}" ] || [ -n "${named[vault]+x}" ] || [ -n "${named[keys]+x}" ] \
+        || [ -n "${named[matrix-token]+x}" ]; then
         stdin_account=$(stdin_conf_value "$stdin_stop_conf" account '^[a-z_][a-z0-9_-]{0,31}$') || exit $?
         local entry
         entry=$(getent passwd "$stdin_account") || stdin_refuse "the account $stdin_account is not known" 69
         IFS=: read -r _ _ stdin_uid _ _ stdin_home _ <<< "$entry"
         [ "$stdin_uid" != 0 ] || stdin_refuse "$stdin_stop_conf names root, not Porelo's account" 69
+    fi
+    if [ -n "${named[vault-new]+x}" ] || [ -n "${named[vault]+x}" ] || [ -n "${named[keys]+x}" ]; then
         require_command porelo
     fi
     if [ -n "${named[wireguard]+x}" ]; then
@@ -243,6 +297,11 @@ stdin_stop() {
     fi
     if [ -n "${named[forge-central-token]+x}" ]; then
         stdin_check_target "$stdin_central_token"
+    fi
+    if [ -n "${named[matrix-token]+x}" ]; then
+        stdin_check_matrix_token "${given["matrix-token "]}"
+        stdin_matrix_token_as_account check < /dev/null \
+            || stdin_refuse "matrix-token: cannot write $stdin_home/$stdin_matrix_token" 73
     fi
     if [ -n "${named[forge-certificate]+x}" ]; then
         require_command openssl
@@ -272,6 +331,10 @@ stdin_stop() {
     if [ -n "${named[forge-certificate]+x}" ]; then
         stdin_write_root_file '' "$stdin_forge_dir/ca.pem" "$stdin_work/ca.pem" 0644
         stdin_write_root_file '' "$stdin_forge_dir/forge.pem" "$stdin_work/forge.pem" 0644
+    fi
+    if [ -n "${named[matrix-token]+x}" ]; then
+        printf '%s' "$stdin_token" | stdin_matrix_token_as_account write \
+            || stdin_refuse "matrix-token: cannot write $stdin_home/$stdin_matrix_token" 73
     fi
     printf '%s\n' "The host's stop is done; run up again."
     exit 0

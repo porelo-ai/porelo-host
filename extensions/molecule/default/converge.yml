@@ -279,6 +279,7 @@
           mkdir -p /root/secrets
           printf '%s' converge-passphrase > /root/secrets/vault-passphrase
           head -c 20 /dev/urandom | base64 > /root/secrets/converge-key
+          head -c 24 /dev/urandom | base64 > /root/secrets/matrix-token
         creates: /root/secrets/converge-key
         executable: /bin/bash
       no_log: true
@@ -377,6 +378,17 @@
               fi
           } | porelo-host-stop --stdin $needs {{ 'forge-certificate' if converge_forge == 'on' else '' }}
         creates: /home/{{ converge_account }}/.local/share/porelo/vault.bin
+        executable: /bin/bash
+      no_log: true
+
+    # The room's registration token comes on a stop of its own, as the desktop gives it once up refuses for it.
+    - name: Give the room's registration token on the stop's standard input
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          printf 'matrix-token %s\n' "$(base64 -w0 < /root/secrets/matrix-token)" \
+              | porelo-host-stop --stdin matrix-token
+        creates: /home/{{ converge_account }}/.config/porelo/matrix/host-registration-token
         executable: /bin/bash
       no_log: true
 
