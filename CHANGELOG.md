@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `down` gives the host back when only a room's transport could not clear what it keeps with the vault, such as a
+  homeserver taken off the VPN before the give-back. An open vault is then cleared with `--force` in a step of its own
+  name; anything else Porelo does not remove still stops `down`. It needs Porelo's `vault clear --json`.
+
 ## [0.5.8] - 2026-10-28
 
 ### Fixed

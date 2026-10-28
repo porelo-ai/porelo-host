@@ -5,8 +5,8 @@
 **Blocked by:** porelo [B318](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b318).
 
 **What must be true.** `down` on a host whose vault a transport could not clear, and nothing else kept, clears the
-vault anyway and gives the server back. Its end names what the person still has to do for that transport. Any other
-reason `vault clear` keeps the vault still stops `down`.
+vault anyway and gives the server back, in a step whose name says so. Any other reason `vault clear` keeps the vault
+still stops `down`.
 
 ## Why
 
@@ -19,15 +19,16 @@ goes with its disk either way.
 
 ## Plan
 
-- `roles/porelo/tasks/down.yml`: *Clear the vault* runs `porelo vault clear --yes --json` ([B318](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b318)). Where it refuses,
-  `refused` is true and the vault was kept for `transports` alone, it runs again with `--force`. Its items name each
-  transport and project that could not clear.
-- `down`'s last line names them: what each transport left, and that the person dismisses the host there if they have
-  not.
-- **Red first:** Molecule, a stand-in transport whose `clear` answers 75. `down` today stops at the vault, and with
-  this it ends green, naming the transport. A second stand-in reason (a task still running) still stops `down`.
+- `roles/porelo/tasks/down.yml`: *Clear the vault* runs `porelo vault clear --yes --json`
+  ([B318](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b318)). Where it refuses with `kept`
+  `transports`, a step of its own, *Clear the vault although a transport could not clear what it keeps*, runs it again
+  with `--force`, and fails only where the vault itself was not removed.
+- Naming each transport's words in `down`'s last line waits: the lines callback writes a message on a failed line
+  only.
+- **Red first:** Molecule, a stand-in matrix transport in the account's own directory whose `clear` answers 75.
+  Today `down` stops at the vault. With this it ends green, through that step.
 
 ## Acceptance
 
-- Molecule: both checks above, red, then green.
+- Molecule: the check above, red, then green.
 - The next rental's give-back runs after M5.3 with no hand step.

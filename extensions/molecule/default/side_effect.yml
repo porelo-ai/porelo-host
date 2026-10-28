@@ -124,6 +124,31 @@
           - "'porelo-host room name' in (side_effect_hosts_before.content | b64decode)"
         fail_msg: the room's token or its marked name is not there before down
 
+    # As in the guide, where the person's homeserver leaves the VPN before the give-back: the room's transport then
+    # cannot clear what it keeps with the vault and answers 75, and down still gives the host back. The account's own
+    # transports directory comes before the packaged one, so this stand-in answers clear and hands on everything else.
+    - name: Make the account's own transports directory
+      ansible.builtin.file:
+        path: /home/porelo-test/.local/share/porelo/transports
+        state: directory
+        owner: porelo-test
+        group: porelo-test
+        mode: "0755"
+
+    - name: Put a room's transport in the account's own directory that cannot reach its homeserver at clear
+      ansible.builtin.copy:
+        dest: /home/porelo-test/.local/share/porelo/transports/porelo-message-transport-matrix
+        content: |
+          #!/bin/sh
+          if [ "${1-}" = clear ]; then
+              echo "porelo-message-transport-matrix clear: the homeserver is not reachable" >&2
+              exit 75
+          fi
+          exec /usr/libexec/porelo/transports/porelo-message-transport-matrix "$@"
+        owner: porelo-test
+        group: porelo-test
+        mode: "0755"
+
     - name: Run down on the host itself, as host down does, its steps as JSON lines
       # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.
       ansible.builtin.shell:
@@ -210,6 +235,20 @@
       ansible.builtin.assert:
         that: side_effect_down.rc == 0
         fail_msg: "asked for down rc 0, got {{ side_effect_down.rc }}: {{ side_effect_down.stdout }}"
+
+    - name: Take the stand-in transport off the account, so the checks after down read the packaged one
+      ansible.builtin.file:
+        path: /home/porelo-test/.local/share/porelo/transports
+        state: absent
+
+    - name: Assert down cleared the vault past the room's transport that could not clear
+      ansible.builtin.assert:
+        that: >-
+          side_effect_down_lines | selectattr('state', 'equalto', 'changed') | map(attribute='task')
+          | select('search', 'Clear the vault') | list | length >= 1
+        fail_msg: "asked for the vault cleared past the transport, got: {{ side_effect_down.stdout }}"
+      vars:
+        side_effect_down_lines: "{{ side_effect_down.stdout_lines | select | map('from_json') | list }}"
 
     - name: Read whether the task's CA file is left after down
       ansible.builtin.stat:

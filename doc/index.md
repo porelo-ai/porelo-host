@@ -39,6 +39,7 @@ it also refuses a pool whose memory (systems × accounts per system × memory pe
 naming the pool's memory and the host's total memory.
 
 **`porelo.host.down`, the other way round.** Takes the VM pool and the forge off the host, stops every running task of
-the account with `porelo task stop --all` and clears the vault (`porelo vault clear --yes`), stops the VPN, and takes
+the account with `porelo task stop --all` and clears the vault (`porelo vault clear --yes`, also where only a
+transport could not clear what it keeps), stops the VPN, and takes
 the person's ssh key off the account last. Every step takes down only what is there, so `down` after a failed `up` works
 too.

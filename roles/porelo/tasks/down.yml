@@ -58,12 +58,49 @@
 # A shut vault is cleared unread, since no one at down opens it and its keys are the secrets file's.
 - name: down | Clear the vault, its cached passphrase and its shares
   ansible.builtin.command:
-    argv: "{{ ['porelo', 'vault', 'clear', '--yes'] + (['--force'] if __porelo_vault.rc == 3 else []) }}"
+    argv: "{{ ['porelo', 'vault', 'clear', '--yes', '--json'] + (['--force'] if __porelo_vault.rc == 3 else []) }}"
   become: true
   become_user: "{{ porelo_account }}"
   environment: "{{ __porelo_user_environment }}"
+  register: __porelo_vault_clear
   when: __porelo_vault.rc | default(-1) in [0, 3]
   changed_when: true
+  failed_when: >-
+    __porelo_vault_clear.rc != 0
+    and __porelo_vault_clear_answer.kept | default('') != 'transports'
+    and not __porelo_vault_clear_left_for_transports
+  vars:
+    __porelo_vault_clear_answer: "{{ __porelo_vault_clear.stdout | default('', true) | from_json
+      if __porelo_vault_clear.stdout | default('', true) is match('\\s*\\{') else {} }}"
+    __porelo_vault_clear_left_for_transports: "{{ __porelo_vault_clear_answer | length > 0
+      and not __porelo_vault_clear_answer.refused | default(true)
+      and __porelo_vault_clear_answer['items'] | selectattr('status', 'equalto', 'NOT_REMOVED')
+      | rejectattr('kind', 'in', __porelo_transport_kinds) | rejectattr('transport', 'truthy') | list | length == 0 }}"
+
+# Kept only because a transport could not clear what it keeps, such as a homeserver taken off the VPN before the
+# give-back: the host goes with its disk, so the vault is cleared all the same. porelo then still exits 1 for that
+# transport, so the step fails only where something not a transport's was not removed.
+- name: down | Clear the vault although a transport could not clear what it keeps
+  ansible.builtin.command:
+    argv: [porelo, vault, clear, --yes, --json, --force]
+  become: true
+  become_user: "{{ porelo_account }}"
+  environment: "{{ __porelo_user_environment }}"
+  register: __porelo_vault_forced
+  when:
+    - __porelo_vault_clear is not skipped
+    - __porelo_vault_clear.rc != 0
+    - (__porelo_vault_clear.stdout | from_json).kept | default('') == 'transports'
+  changed_when: true
+  failed_when: >-
+    __porelo_vault_forced.rc != 0
+    and not (__porelo_vault_forced_answer | length > 0
+    and not __porelo_vault_forced_answer.refused | default(true)
+    and __porelo_vault_forced_answer['items'] | selectattr('status', 'equalto', 'NOT_REMOVED')
+    | rejectattr('kind', 'in', __porelo_transport_kinds) | rejectattr('transport', 'truthy') | list | length == 0)
+  vars:
+    __porelo_vault_forced_answer: "{{ __porelo_vault_forced.stdout | default('', true) | from_json
+      if __porelo_vault_forced.stdout | default('', true) is match('\\s*\\{') else {} }}"
 
 - name: down | Take the host's forge trust out of the account
   when: ansible_facts['getent_passwd'][porelo_account] is not none

@@ -44,8 +44,9 @@ another path with a message beginning `registration_token_file:`, and refuses wi
 holds no such token of its own with mode `0600` in its own directories of mode `0700`.
 
 At `down` (`tasks_from: down`), `porelo task stop --all` stops every running task of the account, keeping their
-containers and workspaces, before the vault is cleared (`porelo vault clear --yes`, with `--force` on a shut vault), and
-removes `stop.conf`, `/etc/porelo-host/setup/` and the account's room token, which `vault clear` does not reach. If a task survives, `down` fails with Porelo's words and leaves the vault in place.
+containers and workspaces, before the vault is cleared (`porelo vault clear --yes --json`, with `--force` on a shut
+vault). Where only a transport could not clear what it keeps, such as a homeserver no longer reached, `down` goes on:
+on an open vault it clears it again with `--force` in a step of its own name. It then removes `stop.conf`, `/etc/porelo-host/setup/` and the account's room token, which `vault clear` does not reach. If a task survives, `down` fails with Porelo's words and leaves the vault in place.
 
 ## Requirements
 
