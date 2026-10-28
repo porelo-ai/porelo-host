@@ -625,6 +625,33 @@
           | selectattr('state', 'equalto', 'failed') | list }}"
       when: converge_forge == 'on' and not converge_token_given.stat.exists
 
+    # The person's login and its password script come with the forge itself, before any repository is migrated.
+    - name: Ask the forge which users it has while no repository is migrated yet
+      ansible.builtin.shell:
+        cmd: XDG_RUNTIME_DIR=/run/user/$(id -u) podman exec forgejo forgejo admin user list
+      become: true
+      become_user: porelo-forge
+      register: converge_users_before_migration
+      changed_when: false
+      when: converge_forge == 'on' and not converge_token_given.stat.exists
+
+    - name: Read whether the password script is there while no repository is migrated yet
+      ansible.builtin.stat:
+        path: /usr/local/sbin/porelo-host-forge-password
+      register: converge_password_script_early
+      when: converge_forge == 'on' and not converge_token_given.stat.exists
+
+    - name: Assert the person's login and the password script are there before any repository is migrated
+      ansible.builtin.assert:
+        that:
+          - "'operator' in (converge_users_before_migration.stdout_lines[1:] | map('split') | map(attribute=1) | list)"
+          - converge_password_script_early.stat.exists
+        fail_msg: >-
+          asked for operator and porelo-host-forge-password with the forge alone, got users
+          {{ converge_users_before_migration.stdout_lines[1:] | map('split') | map(attribute=1) | list }} and the script
+          {{ 'there' if converge_password_script_early.stat.exists else 'missing' }}
+      when: converge_forge == 'on' and not converge_token_given.stat.exists
+
     - name: Give the central token on the stop's standard input, as the desktop does after that refusal
       ansible.builtin.shell:
         cmd: |

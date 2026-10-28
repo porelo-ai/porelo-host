@@ -25,6 +25,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho49"></a>[HO49](HO49-The-Persons-Forge-Login-Without-Repositories.md) | S | - | Wherever the host runs its own forge, the person's login and the password script are there, repositories or none. |
 | <a id="ho41"></a>[HO41](HO41-The-Host-Joins-The-Projects-Room-On-The-Laptop.md) | M | - | A rented host's tasks in the project's room on the laptop during the move: the hosts line for `matrix.porelo.internal`, and the host's registration token on the stop's standard input into the file the signed project names. |
 
 ## Backlog

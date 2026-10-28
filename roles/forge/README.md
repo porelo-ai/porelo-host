@@ -14,8 +14,9 @@ certificate and its key into the forge account's `tls/`, never copying them, and
 where none holds. `/etc/porelo-host/forge.conf` names the forge's address, name, port, person and account to the stop
 and the password script; it holds no secret.
 
-With repositories configured, `forge_person` (default `operator`, matching `^[a-z][a-z0-9-]{0,30}$`) is the person's
-web login in the organization's `Owners` team, made only when absent, its generated password discarded.
+With every forge, repositories or none, `forge_person` (default `operator`, matching `^[a-z][a-z0-9-]{0,30}$`) is the
+person's web login, made only when absent, its generated password discarded; with repositories configured, it is also
+in the organization's `Owners` team.
 `/usr/local/sbin/porelo-host-forge-password`, root's alone, takes the person's lasting password on standard input and
 sets it through the admin API with a token it makes for the call and keeps in memory; see the
 [local forge guide](../../doc/local-forge.md#credentials-belong-to-their-destination). Down removes the script and

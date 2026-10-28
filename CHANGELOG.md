@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   into the account's `~/.config/porelo/matrix/host-registration-token`, `up` refuses with `matrix-token:` while a
   project naming that file finds it missing, and `down` removes both.
 
+### Changed
+
+- The person's forge login and `porelo-host-forge-password` come with every forge on a host, whether repositories are
+  migrated into it or not; only the organization's `Owners` team waits for the repositories.
+
 ## [0.5.6] - 2026-10-28
 
 ### Removed

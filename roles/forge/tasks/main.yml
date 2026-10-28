@@ -25,12 +25,16 @@
 - name: Make the forge's admin and its API token
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/admin.yml"
 
+# The person's login and the script that sets their lasting password come with every forge, repositories or none.
+- name: Make the person's web login and install the script for their lasting password
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/person.yml"
+
 - name: Migrate the repositories once from the central forge
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/repositories.yml"
   when: forge_repositories | length > 0
 
 - name: Make the person's web login an owner of the organization
-  ansible.builtin.include_tasks: "{{ role_path }}/tasks/person.yml"
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/owner.yml"
   when: forge_repositories | length > 0
 
 - name: Give Porelo's gate its forge identity and put its token into the account's vault

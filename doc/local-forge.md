@@ -138,8 +138,9 @@ An agent's push starts the workflows' `push` and `pull_request` runs, but the fo
 (`403`), since the team only reads Actions. Its token also reads no job's log (`404` through the API), no push mirror
 (`403`) and not its own user (`403`, no `read:user` scope).
 
-With repositories configured, the person's web login is `operator` (`forge_person`). It belongs to the organization's
-`Owners` team, so the person can read private repositories, build runs and packages and merge pull requests. The
+The person's web login is `operator` (`forge_person`), made with every forge, whether repositories are migrated into it
+or not. With repositories configured it belongs to the organization's `Owners` team, so the person can read private
+repositories, build runs and packages and merge pull requests. The
 interface's VPN step resolves `forge.porelo.internal` (`forge_name`) to the host's VPN address (`forge_address`), and
 the person's computer trusts their own lasting CA, made once on the desktop with a name constraint that holds it to
 `porelo.internal` and the VPN's network; its key stays in the person's secrets file and never reaches a host. Each
