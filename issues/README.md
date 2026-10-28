@@ -23,6 +23,12 @@ it is left out.
 | <a id="ho41"></a>[HO41](HO41-The-Host-Joins-The-Projects-Room-On-The-Laptop.md) | M | - | A rented host's tasks in the project's room on the laptop during the move: the hosts line for `matrix.porelo.internal`, and the host's registration token on the stop's standard input into the file the signed project names. |
 | <a id="ho49"></a>[HO49](HO49-The-Persons-Forge-Login-Without-Repositories.md) | S | - | Wherever the host runs its own forge, the person's login and the password script are there, repositories or none. |
 
+## Analyzed
+
+| # | Size | Blocked by | What it covers | Open questions |
+|---|---|---|---|---|
+| <a id="ho50"></a>[HO50](HO50-Down-Gives-Back-When-Only-A-Transport-Could-Not-Clear.md) | S | porelo [B318](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b318) | `down` clears the vault and gives the server back when only a transport could not clear, naming what is left for the person; any other refusal still stops it. | 0 |
+
 ## Backlog
 
 | # | Size | Blocked by | What it covers |
