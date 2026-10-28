@@ -91,3 +91,9 @@ keys); a host gets only its own group and `shared`.
   but the drive's login at the host and the master password on the desktop.
 - The drive's folder holds no `wireguard.key`, token or key file, and `up` reads none from it.
 - After an `up` that ended to its last step, `/run/porelo-host/` is empty, and the VPN comes back after a reboot.
+
+## What [PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78) changes
+
+Recorded 2026-10-28, nothing reworked yet. The root stop keeps only `wireguard` and `forge-certificate`
+([HO42](README.md#ho42)); `vault-new`, `vault`, `keys` and `forge-central-token` move to the stop's own-account mode,
+run without `sudo` on the caller's own account ([HO45](README.md#ho45)).

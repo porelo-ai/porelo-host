@@ -46,3 +46,9 @@ Read in the code, nothing measured. Agreed with porelo-frontend, whose
 - A rented host's `up` comes up with the uploaded files, and the drive's folder holds no `machine.yml` or bundle.
 - A `machine.yml` the account can write, or one not root's, is refused with its path before Porelo reads it.
 - After `down`, `/etc/porelo-host/setup/` is gone.
+
+## What [PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78) changes
+
+Recorded 2026-10-28, nothing reworked yet. The setup's files move from `/etc/porelo-host/setup/` into each person's own
+home, two bundles each (the project's and its private access repository's), with the same checks and the person as
+owner ([HO45](README.md#ho45)).
