@@ -681,6 +681,12 @@
         converge_up_forge.stdout is search('"state": "changed"')
       when: converge_forge == 'on'
 
+    # Names in the log the steps a second run would count against idempotence.
+    - name: Name the steps of the forge's up that changed
+      ansible.builtin.debug:
+        msg: "{{ converge_up_forge.stdout_lines | select('search', '\"state\": \"changed\"') | list }}"
+      when: converge_forge == 'on'
+
     - name: Read whether the central token is left on the host after the migration
       ansible.builtin.stat:
         path: /run/porelo-host/forge-central.token
