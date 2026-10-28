@@ -1,0 +1,87 @@
+---
+# A reboot of a host set up by up, with the ordering Scaleway's Ubuntu image has and the test image lacks: cloud-init's
+# network stage after networkd's wait-online and before sysinit.target. A firewall unit after sysinit.target and before
+# network-pre.target closes a cycle with it (networkd starts after network-pre.target); systemd then drops a job to
+# break it, which on Scaleway left the boot hanging, and here at least says so in the journal.
+# Afterwards the host is as down expects it: the vault open again and the forge answering.
+- name: Reboot the host with Scaleway's ordering, and always take that ordering back
+  block:
+    - name: Make the drop-in directory of cloud-init's network stage
+      ansible.builtin.file:
+        path: /etc/systemd/system/cloud-init-network.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Order cloud-init's network stage after networkd and before sysinit.target, as Scaleway's image does
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/cloud-init-network.service.d/before-sysinit.conf
+        content: |
+          [Unit]
+          After=systemd-networkd-wait-online.service
+          Before=sysinit.target
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Read the changed ordering before the reboot
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: Reboot the host and wait for its ssh
+      ansible.builtin.reboot:
+        reboot_timeout: 600
+        msg: Molecule reboots the host to see it come back
+
+    - name: Read the firewall's and the VPN's state after the reboot
+      ansible.builtin.command:
+        cmd: "{{ item }}"
+      loop:
+        - systemctl is-active porelo-host-firewall.service wg-quick@wg-porelo.service
+        - nft list table inet porelo_host
+        - journalctl --boot _PID=1 --grep 'ordering cycle' --no-pager --quiet
+      register: verify_reboot_state
+      changed_when: false
+      # systemd's own lines alone, not this command's in the journal; its grep ends with 1 when nothing matches.
+      failed_when: verify_reboot_state.rc not in [0, 1]
+
+    - name: Assert the reboot brought the firewall and the VPN back
+      ansible.builtin.assert:
+        that:
+          - verify_reboot_state.results[0].stdout_lines == ['active', 'active']
+          - verify_reboot_state.results[1].stdout is search('tcp dport 22 accept')
+          - verify_reboot_state.results[2].stdout == ''
+        fail_msg: >-
+          after the reboot: {{ verify_reboot_state.results[0].stdout_lines }};
+          table: {{ verify_reboot_state.results[1].stdout }};
+          cycles: {{ verify_reboot_state.results[2].stdout }}
+  always:
+    - name: Take the image's ordering back, so down runs as on the test image
+      ansible.builtin.file:
+        path: /etc/systemd/system/cloud-init-network.service.d
+        state: absent
+
+    - name: Read the ordering without it
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+# A reboot shuts the vault and stops the task, which down's checks start again from an open vault.
+- name: Open the vault again after the reboot, as the desktop does
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      printf 'vault %s\n' "$(base64 -w0 < /root/secrets/vault-passphrase)" | porelo-host-stop --stdin vault
+    executable: /bin/bash
+  changed_when: true
+  no_log: true
+
+- name: Wait until the forge answers again after the reboot
+  ansible.builtin.uri:
+    url: https://10.73.0.1:3000/api/v1/version
+    ca_path: /etc/porelo-host/forge/ca.pem
+  register: verify_reboot_forge
+  until: verify_reboot_forge.status == 200
+  retries: 30
+  delay: 2
+  when: verify_forge == 'on'

@@ -1929,3 +1929,6 @@
     # Last, since it restarts the VPN the other checks reach the forge through.
     - name: Verify the secrets given on the stop's standard input
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/secrets_stdin.yml"
+
+    - name: Verify that the host comes back from a reboot with its firewall and VPN
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/reboot.yml"

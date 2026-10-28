@@ -1,8 +1,12 @@
 {{ ansible_managed | comment }}
 [Unit]
 Description=The host's firewall: only ssh and the VPN on the public address
+# Out of the default ordering after sysinit.target: an image that runs cloud-init's network stage before sysinit.target
+# would otherwise close a cycle through network-pre.target, and the boot never comes back.
+DefaultDependencies=no
 Wants=network-pre.target
-Before=network-pre.target
+Before=network-pre.target shutdown.target
+Conflicts=shutdown.target
 
 [Service]
 Type=oneshot
