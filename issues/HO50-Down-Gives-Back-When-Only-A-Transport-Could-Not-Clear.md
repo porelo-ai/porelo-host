@@ -19,7 +19,7 @@ goes with its disk either way.
 
 ## Plan
 
-- `roles/porelo/tasks/down.yml`: *Clear the vault* runs `porelo vault clear --yes --json` (B318). Where it refuses,
+- `roles/porelo/tasks/down.yml`: *Clear the vault* runs `porelo vault clear --yes --json` ([B318](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b318)). Where it refuses,
   `refused` is true and the vault was kept for `transports` alone, it runs again with `--force`. Its items name each
   transport and project that could not clear.
 - `down`'s last line names them: what each transport left, and that the person dismisses the host there if they have
