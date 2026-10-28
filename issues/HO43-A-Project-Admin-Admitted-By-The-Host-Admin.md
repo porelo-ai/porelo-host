@@ -44,4 +44,4 @@ project's signed `access.yml` ([HO46](README.md#ho46)), through the same helper.
 ## To be checked
 
 - That porelo-message-matrix's `machine-token issue/revoke/expel` ([MX44](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx44)) answer as agreed.
-- Porelo's machine name `<host>-<account>` (porelo's issue for [PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78)).
+- Porelo's machine name `<host>-<account>` ([B312](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b312)).

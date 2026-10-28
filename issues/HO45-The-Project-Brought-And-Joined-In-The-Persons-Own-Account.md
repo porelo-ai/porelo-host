@@ -35,4 +35,4 @@ the forge's parts of the project are made with the admin's own forge token.
 
 ## To be checked
 
-- porelo's access file and inventory with two bundles (porelo's issues for [PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78)).
+- porelo's access file and inventory with two bundles ([B310](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b310), [B313](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b313)).

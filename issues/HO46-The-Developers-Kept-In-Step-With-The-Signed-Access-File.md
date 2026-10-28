@@ -37,5 +37,5 @@ even from a taken-over project admin account.
 
 ## To be checked
 
-- porelo's `project verify --json` with `--access-repository` (porelo's issue for [PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78)), and that it runs under
+- porelo's `project verify --json` with `--access-repository` ([B311](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b311)), and that it runs under
   `DynamicUser` with no home and no network.
