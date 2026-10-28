@@ -20,13 +20,13 @@ it is left out.
 | <a id="ho36"></a>[HO36](HO36-The-Host-Reads-The-Files-Its-Setup-Uploaded.md) | M | - | The host's setup reads nothing from the drive: `machine.yml` and the project's bundle uploaded by the interface into `/etc/porelo-host/setup/`, root's and readable by the account alone, refused where the account can write them, removed at `down`. |
 | <a id="ho38"></a>[HO38](HO38-The-Drive-Leaves-The-Hosts-Setup.md) | M | - | Nothing of Tresorit on a host: the drive's role, its installer module and the stop's `drive` go, so `up` asks no login and `down` waits on no sync; a user's own drive is the interface's per-user setup. |
 | <a id="ho35"></a>[HO35](HO35-The-Forge-Opened-In-The-Browser-Once-The-VPN-Is-Up.md) | L | - | Once the VPN is up, the person opens the forge in their browser and signs in with their lasting password: the `/etc/hosts` line, one lasting name-constrained CA installed once whose key stays off the host's disk, and the password kept in `secrets.kdbx` and set over ssh on each new forge, in no host file. |
+| <a id="ho41"></a>[HO41](HO41-The-Host-Joins-The-Projects-Room-On-The-Laptop.md) | M | - | A rented host's tasks in the project's room on the laptop during the move: the hosts line for `matrix.porelo.internal`, and the host's registration token on the stop's standard input into the file the signed project names. |
 
 ## Implementing
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho49"></a>[HO49](HO49-The-Persons-Forge-Login-Without-Repositories.md) | S | - | Wherever the host runs its own forge, the person's login and the password script are there, repositories or none. |
-| <a id="ho41"></a>[HO41](HO41-The-Host-Joins-The-Projects-Room-On-The-Laptop.md) | M | - | A rented host's tasks in the project's room on the laptop during the move: the hosts line for `matrix.porelo.internal`, and the host's registration token on the stop's standard input into the file the signed project names. |
 
 ## Backlog
 

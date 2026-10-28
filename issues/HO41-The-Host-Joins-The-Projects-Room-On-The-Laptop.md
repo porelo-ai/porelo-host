@@ -1,6 +1,6 @@
 # HO41 — The Host Joins The Project's Room On The Laptop
 
-**Status:** Implementing (sprint 6i).
+**Status:** Review.
 **Size:** M - one need of the stop with its unit tests, the hosts line in the VPN role, a refusal in `up`'s second
 play, what `down` removes, the Molecule scenario's part, and the line contract; it waits on one field in porelo's
 inventory.
