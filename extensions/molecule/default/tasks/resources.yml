@@ -70,7 +70,7 @@
     that:
       - verify_job_options | select('match', '^--(cpus=|memory=|pids-limit=|env=OMP_NUM_THREADS=)') | sort
         == ['--cpus=1', '--env=OMP_NUM_THREADS=1', '--memory=768m', '--pids-limit=2048']
-      - (verify_runner_config.content | b64decode | from_yaml).runner.capacity == 2
+      - (verify_runner_config.content | b64decode | from_yaml).runner.capacity == 1
       - verify_job_options | select('match', '^--volume=.*/tls/ca-bundle[.]p12:') | list
         == ['--volume=/home/porelo-runner/tls/ca-bundle.p12:/etc/ssl/certs/porelo-host-java.p12:ro']
       - verify_job_options | select('match', '^--env=JAVA_TOOL_OPTIONS=') | list
@@ -86,7 +86,7 @@
       - verify_job_configuration.valid_volumes | select('equalto', verify_job_jdk_dir) | list
         == [verify_job_jdk_dir]
     fail_msg: >-
-      asked for capacity 2, --cpus=1 --memory=768m --pids-limit=2048 --env=OMP_NUM_THREADS=1 (the test VM's job bounds)
+      asked for capacity 1, --cpus=1 --memory=768m --pids-limit=2048 --env=OMP_NUM_THREADS=1 (the test VM's job bounds)
       and one read-only Java PKCS12
       mount allowed in valid_volumes, with the trust store in JAVA_TOOL_OPTIONS, and one read-only JDK
       mount allowed in valid_volumes at /opt/porelo-jdk-25 with JAVA_HOME_25_X64 set to that path;

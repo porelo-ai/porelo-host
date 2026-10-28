@@ -2,7 +2,7 @@
 - name: capacity | Read the host's processors and memory before the runner's capacity is written
   ansible.builtin.slurp:
     src: "{{ item }}"
-  loop: [/proc/cpuinfo, /proc/meminfo]
+  loop: ["{{ __forge_cpuinfo }}", "{{ __forge_meminfo }}"]
   register: __forge_capacity_host
   check_mode: false
 

@@ -1,0 +1,10 @@
+---
+- name: Check the forge's capacity
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Run the forge's capacity check with its defaults against the given cpuinfo and meminfo
+        ansible.builtin.include_role:
+            name: porelo.host.forge
+            tasks_from: capacity

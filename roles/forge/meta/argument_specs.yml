@@ -58,7 +58,7 @@ argument_specs:
         description: The runner daemon's maximum number of processes and threads.
       forge_runner_capacity:
         type: int
-        default: 4
+        default: 2
         description: How many jobs the runner takes at once, each within the job bounds.
       forge_runner_cache_port:
         type: int
@@ -181,7 +181,7 @@ argument_specs:
     options:
       forge_runner_capacity:
         type: int
-        default: 4
+        default: 2
         description: How many jobs the runner takes at once, each within the job bounds.
       forge_job_cpus:
         type: int

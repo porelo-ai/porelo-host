@@ -20,8 +20,9 @@ forge_runner_cpus: 1
 forge_runner_memory: 512M
 forge_runner_pids_limit: 256
 
-# How many jobs the runner takes at once, each within the job bounds below.
-forge_runner_capacity: 4
+# How many jobs the runner takes at once, each within the job bounds below: two of 4 CPUs fit half of the 16
+# processors of the server Porelo rents.
+forge_runner_capacity: 2
 
 # The runner's cache, which a job's actions/cache reaches on the forge's address: its server's port and the proxy's
 # port the jobs are given.

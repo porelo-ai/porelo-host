@@ -1,0 +1,48 @@
+processor	: 0
+vendor_id	: AuthenticAMD
+
+processor	: 1
+vendor_id	: AuthenticAMD
+
+processor	: 2
+vendor_id	: AuthenticAMD
+
+processor	: 3
+vendor_id	: AuthenticAMD
+
+processor	: 4
+vendor_id	: AuthenticAMD
+
+processor	: 5
+vendor_id	: AuthenticAMD
+
+processor	: 6
+vendor_id	: AuthenticAMD
+
+processor	: 7
+vendor_id	: AuthenticAMD
+
+processor	: 8
+vendor_id	: AuthenticAMD
+
+processor	: 9
+vendor_id	: AuthenticAMD
+
+processor	: 10
+vendor_id	: AuthenticAMD
+
+processor	: 11
+vendor_id	: AuthenticAMD
+
+processor	: 12
+vendor_id	: AuthenticAMD
+
+processor	: 13
+vendor_id	: AuthenticAMD
+
+processor	: 14
+vendor_id	: AuthenticAMD
+
+processor	: 15
+vendor_id	: AuthenticAMD
+

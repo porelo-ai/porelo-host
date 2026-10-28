@@ -1,4 +1,8 @@
 ---
+# Where the capacity check reads the host's processors and memory; a test hands it others.
+__forge_cpuinfo: /proc/cpuinfo
+__forge_meminfo: /proc/meminfo
+
 # Forgejo's rootless image, by version and digest: the newest release at least three days old when it was pinned.
 __forge_image: >-
   codeberg.org/forgejo/forgejo:17.0.0-rootless@sha256:6554520f7574602100b7d6620c6ac5b18cec30325f823777497eac36234f5cf8

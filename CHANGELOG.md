@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The forge's runner takes 2 jobs at once by default, not 4, so `up` with the defaults passes the capacity check on the
+  16 processors of the server Porelo rents instead of refusing it.
+
 ## [0.5.7] - 2026-10-28
 
 ### Added
