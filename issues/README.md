@@ -35,6 +35,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho51"></a>[HO51](HO51-Down-Names-What-A-Transport-Left.md) | - | - | Where `down` cleared the vault past a transport, its protocol names that transport and project in Porelo's words. |
 | <a id="ho40"></a>[HO40](HO40-The-Build-Runs-On-The-Hosts-Forge-As-On-GitHub.md) | - | - | The move's builds on the host's forge (sprint 8a): `build.yml` green on the host's Forgejo and on GitHub unchanged, with task branches built, the tools without `podman run`, snapshots by variable and Molecule on a machine with KVM. |
 | <a id="ho39"></a>[HO39](HO39-The-Hosts-Agent-Works-In-A-Porelo-Task.md) | - | [HO40](#ho40) | porelo-host's agent, `Agent Host`, in a Porelo task on the move's host (sprint 8a), with a way back: the image from `porelo.yml`. |
 | <a id="ho30"></a>[HO30](HO30-The-Forges-Trust-And-Job-Bounds-Measured.md) | - | - | A running job's container measured to carry its bounds, and when Porelo reads the forge's CA, beyond what Molecule reads from the files the roles write. |
@@ -47,7 +48,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho50"></a>[HO50](HO50-Down-Gives-Back-When-Only-A-Transport-Could-Not-Clear.md) | S | porelo [B318](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b318) | `down` clears the vault and gives the server back when only a transport could not clear, naming what is left for the person; any other refusal still stops it. |
 | <a id="ho42"></a>[HO42](HO42-The-Host-Prepared-With-No-Project-Or-Person.md) | L | - | The host admin prepares a host with no project or person: the VPN per host, the shared forge, runner, pool and Matrix homeserver, under the host's names and the host admin's constrained CA. |
 | <a id="ho43"></a>[HO43](HO43-A-Project-Admin-Admitted-By-The-Host-Admin.md) | L | [HO42](#ho42), porelo-message-matrix [MX44](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx44) | `porelo-host-person`: a person admitted from their public keys (account, laptops' ssh keys and VPN peers, forge login and identities, Matrix token), locked and purged. |
 | <a id="ho44"></a>[HO44](HO44-A-Project-Registered-On-The-Host.md) | M | [HO42](#ho42) | `porelo-host-project`: a project's forge organization and publisher with its pinned signing key, deleted once nothing is unpushed. |
@@ -61,6 +61,7 @@ it is left out.
 
 | # | Title | What was built |
 |---|---|---|
+| <a id="ho50"></a>HO50 | Down Gives Back When Only A Transport Could Not Clear | `down` clears the vault and gives the server back where only a transport could not clear what it keeps, through `porelo vault clear --json`, and with `--force` in a step of its own where Porelo kept the vault for its transports; any other refusal still stops it. |
 | <a id="ho37"></a>HO37 | The Host's Secrets Given On Standard Input At The Stop | The host's part of porelo-project [PJ51](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj51): the secrets the stop names given from `secrets.kdbx` by a desktop terminal through `keepassxc-cli`, the interface holding none, in one root pipeline of base64 lines, each passed straight to its user; the WireGuard key and every token off the drive. |
 | <a id="ho36"></a>HO36 | The Host Reads The Files Its Setup Uploaded | The host's setup reads nothing from the drive: `machine.yml` and the project's bundle uploaded by the interface into `/etc/porelo-host/setup/`, root's and readable by the account alone, refused where the account can write them, removed at `down`. |
 | <a id="ho38"></a>HO38 | The Drive Leaves The Host's Setup | Nothing of Tresorit on a host: the drive's role, its installer module and the stop's `drive` go, so `up` asks no login and `down` waits on no sync; a user's own drive is the interface's per-user setup. |
