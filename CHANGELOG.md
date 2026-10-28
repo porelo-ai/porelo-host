@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `up` and `down`, and the stop's `drive` and `--email`, which `porelo-host-stop` now refuses with 64. `up` asks no
   drive login and `down` waits on no sync; a user's own drive is the interface's, outside the host's setup.
 
+### Security
+
+- `tresorit_installer` in 0.5.1 to 0.5.5 checked that the installer's signature covers the file from line 3 on, but
+  ran the file from line 1, which it never checked: whoever controlled the download could put a command on line 1 and
+  still pass every check. The module is gone with the drive; a host set up by those releases with a drive ran an
+  installer checked that way.
+
 ### Changed
 
 - The host's forge takes its certificate from the person's lasting CA, made once on their desktop with a name
