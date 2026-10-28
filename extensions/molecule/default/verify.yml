@@ -1926,6 +1926,9 @@
     - name: Verify that a project naming the room's token file is refused without it, or at another path
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/matrix_token.yml"
 
+    - name: Verify that a newer bundle at the same path is followed again
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/refollow.yml"
+
     # Last, since it restarts the VPN the other checks reach the forge through.
     - name: Verify the secrets given on the stop's standard input
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/secrets_stdin.yml"

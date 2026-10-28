@@ -160,7 +160,16 @@
   changed_when: false
   check_mode: false
 
-# Followed again only where the address or the pinned key differs; never --unverified.
+# A bundle is read once when followed, so a newer one the interface uploads at the same path is only seen here.
+- name: project | Read the commits the bundle's heads point at
+  ansible.builtin.command:
+    argv: [git, bundle, list-heads, "{{ __porelo_host.porelo_project.url }}"]
+  register: __porelo_bundle_heads
+  changed_when: false
+  check_mode: false
+
+# Followed again only where the address or the pinned key differs, or the followed commit is none of the bundle's heads;
+# never --unverified.
 - name: project | Follow the project, checked against the key the machine file names
   ansible.builtin.command:
     argv:
@@ -174,6 +183,7 @@
     __porelo_followed | length == 0
     or __porelo_followed[0].url != __porelo_host.porelo_project.url
     or __porelo_host.porelo_project.signed_by not in (__porelo_followed[0].signed_by | default([]))
+    or __porelo_followed[0].commit not in (__porelo_bundle_heads.stdout_lines | map('split') | map('first') | list)
   become: true
   become_user: "{{ porelo_account }}"
   environment: "{{ __porelo_user_environment }}"

@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The host comes back from a reboot: the firewall's unit leaves systemd's default ordering, which on an image running
   cloud-init's network stage before `sysinit.target`, such as Scaleway's Ubuntu, closed a cycle that held the boot.
+- `up` follows the project again when the interface uploads a newer bundle at the same path: before, a commit the
+  person signed after the first `up` stayed unfollowed, since only a changed address or key led to a new follow.
 - The forge's runner takes 2 jobs at once by default, not 4, so `up` with the defaults passes the capacity check on the
   16 processors of the server Porelo rents instead of refusing it.
 
