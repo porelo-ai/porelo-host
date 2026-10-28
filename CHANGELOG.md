@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The person's forge login and `porelo-host-forge-password` come with every forge on a host, whether repositories are
   migrated into it or not; only the organization's `Owners` team waits for the repositories.
+- The host's `/etc/hosts` stays out of the account's containers on every host, with its own forge or without one.
 
 ## [0.5.6] - 2026-10-28
 
