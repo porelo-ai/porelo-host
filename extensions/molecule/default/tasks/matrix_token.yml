@@ -1,0 +1,142 @@
+---
+# A project naming the room's registration token file: up refuses another path than the one the stop writes, and the
+# missing token, before the project is followed. Two stand-in projects, signed by the run's key, are checked through the
+# role's project step alone, so neither is ever followed.
+- name: Make two signed projects naming the room's token file, one at another path
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      signer=$(ssh-keygen -lf ~/.ssh/converge-signer.pub | cut -d' ' -f2)
+      for name in roomright roomwrong; do
+          rm -rf ~/$name-project && mkdir ~/$name-project && cd ~/$name-project && git init -q -b main
+          [ "$name" = roomright ] && path='~/.config/porelo/matrix/host-registration-token' \
+              || path='~/.config/porelo/matrix/other-token'
+          printf 'project:\n  name: "%s"\n  security_class: "offline"\nimage:\n  base_image: "ubuntu:24.04"\n' "$name" \
+              > project.yml
+          printf 'repositories:\n  code:\n    description: "Kept on this machine alone"\n' >> project.yml
+          printf 'mail:\n  transports:\n    matrix:\n      registration_token_file: "%s"\n' "$path" >> project.yml
+          git add project.yml
+          git -c user.name=verify -c user.email=verify@example.invalid -c gpg.format=ssh \
+              -c user.signingkey="$HOME/.ssh/converge-signer.pub" commit -q -S -m "A room's token file"
+          git bundle create -q ~/$name.bundle --all
+          printf 'project:\n  name: %s\n  url: "/etc/porelo-host/setup/%s.bundle"\n  signed_by: "%s"\n' \
+              "$name" "$name" "$signer" > ~/$name.yml
+      done
+    executable: /bin/bash
+  become: true
+  become_user: "{{ verify_account }}"
+  changed_when: true
+
+- name: Place both projects in the setup's directory as the interface does, root's and the account's to read
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      for name in roomright roomwrong; do
+          for f in $name.yml $name.bundle; do
+              install -m 0640 -o root -g {{ verify_account }} /home/{{ verify_account }}/$f /etc/porelo-host/setup/$f
+          done
+      done
+    executable: /bin/bash
+  changed_when: true
+
+# Without porelo naming the file, the refusals below could not happen and the checks would prove nothing.
+- name: Ask Porelo's inventory for the right project's transport files
+  ansible.builtin.shell:
+    cmd: XDG_RUNTIME_DIR=/run/user/$(id -u) porelo project inventory --machine-file /etc/porelo-host/setup/roomright.yml
+  become: true
+  become_user: "{{ verify_account }}"
+  register: verify_room_inventory
+  changed_when: false
+
+- name: Assert the inventory names the room's token file
+  ansible.builtin.assert:
+    that: >-
+      (verify_room_inventory.stdout | from_yaml).all.hosts.localhost.porelo_transports
+      | selectattr('scheme', 'equalto', 'matrix') | map(attribute='files', default={})
+      | map(attribute='registration_token_file', default='') | list
+      == ['~/.config/porelo/matrix/host-registration-token']
+    fail_msg: "porelo's inventory names no registration_token_file: {{ verify_room_inventory.stdout }}"
+
+- name: Write a play running the role's project step alone
+  ansible.builtin.copy:
+    dest: /root/room-project-step.yml
+    content: |
+      - name: The project step alone
+        hosts: localhost
+        connection: local
+        gather_facts: false
+        tasks:
+          - name: Check and follow the project
+            ansible.builtin.include_role:
+              name: porelo.host.porelo
+              tasks_from: project
+    mode: "0600"
+
+- name: Run the project step for the project naming another path
+  ansible.builtin.command:
+    argv: [ansible-playbook, -i, /root/porelo-host-inventory.yml, /root/room-project-step.yml,
+           -e, porelo_machine_file=/etc/porelo-host/setup/roomwrong.yml]
+  register: verify_room_wrong
+  changed_when: false
+  failed_when: false
+
+- name: Set the room's token aside, as the account
+  ansible.builtin.command:
+    argv:
+      - mv
+      - /home/{{ verify_account }}/.config/porelo/matrix/host-registration-token
+      - /home/{{ verify_account }}/.config/porelo/matrix/host-registration-token.aside
+  become: true
+  become_user: "{{ verify_account }}"
+  changed_when: true
+
+- name: Run the project step for the project naming the token while the account holds none
+  ansible.builtin.command:
+    argv: [ansible-playbook, -i, /root/porelo-host-inventory.yml, /root/room-project-step.yml,
+           -e, porelo_machine_file=/etc/porelo-host/setup/roomright.yml]
+  register: verify_room_missing
+  changed_when: false
+  failed_when: false
+
+- name: Put the room's token back, as the account
+  ansible.builtin.command:
+    argv:
+      - mv
+      - /home/{{ verify_account }}/.config/porelo/matrix/host-registration-token.aside
+      - /home/{{ verify_account }}/.config/porelo/matrix/host-registration-token
+  become: true
+  become_user: "{{ verify_account }}"
+  changed_when: true
+
+- name: Ask Porelo which projects the account follows after both refusals
+  ansible.builtin.shell:
+    cmd: XDG_RUNTIME_DIR=/run/user/$(id -u) porelo project following --json
+  become: true
+  become_user: "{{ verify_account }}"
+  register: verify_room_following
+  changed_when: false
+
+- name: Take the two projects off the setup's directory and the account's home
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      rm -f /etc/porelo-host/setup/roomright.* /etc/porelo-host/setup/roomwrong.* /root/room-project-step.yml
+      rm -rf /home/{{ verify_account }}/room*-project /home/{{ verify_account }}/room*.bundle \
+          /home/{{ verify_account }}/room*.yml
+    executable: /bin/bash
+  changed_when: true
+
+- name: Assert both were refused before either was followed, each naming its cause
+  ansible.builtin.assert:
+    that:
+      - verify_room_wrong.rc == 2
+      - verify_room_wrong.stdout is search('registration_token_file:[^"]*other-token')
+      - verify_room_wrong.stdout is not search('matrix-token:')
+      - verify_room_missing.rc == 2
+      - verify_room_missing.stdout is search('matrix-token:[^"]*host-registration-token')
+      - (verify_room_following.stdout | from_json).follows | map(attribute='name') | list == ['converge']
+    fail_msg: >-
+      asked for a registration_token_file: refusal, then a matrix-token: refusal, and converge followed alone; got
+      rc {{ verify_room_wrong.rc }} {{ verify_room_wrong.stdout | regex_search('fatal:.*') }},
+      rc {{ verify_room_missing.rc }} {{ verify_room_missing.stdout | regex_search('fatal:.*') }},
+      following {{ (verify_room_following.stdout | from_json).follows | map(attribute='name') | list }}

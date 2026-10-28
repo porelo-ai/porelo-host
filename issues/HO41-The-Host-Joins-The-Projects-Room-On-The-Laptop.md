@@ -49,7 +49,8 @@ Read in the code (`9f883ec`), nothing measured.
 
 ## Acceptance
 
-- Molecule, each check seen red first:
+- Molecule, each check seen red first (the refusals read porelo's inventory `files`, from
+  [B313](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b313)'s first part):
   - a project naming the file and no token given: `up` stops with `matrix-token:`;
   - after `--stdin matrix-token`: the file is the account's, `0600` in a `0700` directory, equal to the given token;
   - a project naming another path is refused, naming it;
@@ -60,11 +61,8 @@ Read in the code (`9f883ec`), nothing measured.
 
 ## To be checked
 
-- The refusal in `up` reads `files.registration_token_file` of porelo's inventory, which [B313](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b313)'s first part adds from
-  the public `project.yml`; until a porelo with it is published, an inventory without `files` names no token and `up`
-  asks for none. Its Molecule check, a project naming the file with no token given, is added once that porelo is out.
-- The stop checks the token as one line of 1 to 1024 graphic ASCII characters, since porelo-message-matrix's `admit` gives
-  no fixed form.
+- The stop checks the token as one line of 1 to 1024 graphic ASCII characters, since porelo-message-matrix's `admit`
+  gives no fixed form.
 
 ## What [PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78) changes
 

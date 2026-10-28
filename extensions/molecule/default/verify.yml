@@ -1923,6 +1923,9 @@
       vars:
         verify_lines: "{{ (verify_lines_file.content | b64decode).splitlines() | select | map('from_json') | list }}"
 
+    - name: Verify that a project naming the room's token file is refused without it, or at another path
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/matrix_token.yml"
+
     # Last, since it restarts the VPN the other checks reach the forge through.
     - name: Verify the secrets given on the stop's standard input
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/secrets_stdin.yml"
