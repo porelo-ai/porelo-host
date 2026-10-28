@@ -44,3 +44,10 @@ Read in the code (`9f883ec`), nothing measured.
 ## To be checked
 
 - That the homeserver's user unit under `porelo-matrix` survives a reboot with linger, as the forge's does.
+
+## The operator's correction, 2026-10-28
+
+The host's own forge is optional: on by default when the host is prepared, and switched off there where the people use
+a central forge. Then nothing of a forge is set up on the host, and a project put on it brings nothing into a local one.
+`porelo_host_forge` keeps its default off in porelo-host; the interface writes the person's choice. The person's login
+and password script come with the forge itself ([HO49](README.md#ho49)), not with repositories.
