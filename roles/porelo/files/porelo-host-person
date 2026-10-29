@@ -386,8 +386,11 @@ class Host:
 
     def porelo(self, user, *arguments):
         """Porelo as the person, with their own user manager's runtime, which rootless podman needs."""
-        uid = self.accounts[user] if self.accounts is not None else pwd.getpwnam(user).pw_uid
-        return ["runuser", "-u", user, "--", "env", f"XDG_RUNTIME_DIR=/run/user/{uid}", "porelo", *arguments]
+        return ["runuser", "-u", user, "--", "env", f"XDG_RUNTIME_DIR=/run/user/{self.uid(user)}", "porelo", *arguments]
+
+    def uid(self, user):
+        """The person's uid, from the accounts this call read."""
+        return self.accounts[user] if self.accounts is not None else pwd.getpwnam(user).pw_uid
 
     def as_account(self, user, arguments, **kwargs):
         """Pass credentials on stdin only, with a fixed runtime and the account's own home."""
@@ -844,17 +847,33 @@ class Host:
         record["locked"] = True
         self.record(user, record)
 
+    def clear_vault(self, user):
+        """Porelo's lock-out order as the person: no task left that could hold a token, then the vault, no terminal.
+
+        The lock expired the account, which PAM refuses to runuser and to the user manager the vault's runtime needs;
+        only the expiry is lifted for this, the password stays locked and no key or peer lets anyone in. Any failure
+        expires the account again, as the lock left it.
+        """
+        self.command(["usermod", "--expiredate", "", user])
+        try:
+            self.command(["systemctl", "start", f"user@{self.uid(user)}.service"])
+            self.command(self.porelo(user, "task", "stop", "--all"))
+            self.command(self.porelo(user, "vault", "clear", "--yes", "--force"))
+        except Refusal:
+            self.command(["usermod", "--expiredate", "1", user])
+            raise
+
     def purge(self, user, record, porelo, account_exists):
         """Lock before clearing the vault, deleting the account and releasing recorded IDs."""
         if not record["locked"]:
             self.lock(user, record, porelo)
         self.remove_forge_tokens(user)
         if account_exists:
-            # Porelo's lock-out order: no task left that could hold a token, then the vault, with no terminal.
             if porelo:
-                self.command(self.porelo(user, "task", "stop", "--all"))
-                self.command(self.porelo(user, "vault", "clear", "--yes", "--force"))
+                self.clear_vault(user)
             self.command(["loginctl", "disable-linger", user])
+            if porelo:
+                self.command(["loginctl", "terminate-user", user])
             self.command(["userdel", "--remove", user])
         for kind in ("subuid", "subgid"):
             path = self.path("/etc/" + kind)
@@ -931,6 +950,8 @@ class Host:
             porelo = self.available("porelo")
             if porelo and uid is not None:
                 programs.append("runuser")
+                if verb == "purge":
+                    programs.extend(["usermod", "systemctl"])
             if verb == "purge":
                 self.subids("subuid")
                 self.subids("subgid")
