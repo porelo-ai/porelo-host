@@ -22,6 +22,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `up` installs every agent package the repository publishes, read from the packages providing `porelo-agent`, and
   Porelo's message filter with rootless networking; a repository publishing no agent stops `up`.
 
+### Changed
+
+- Person records in `/etc/porelo-host/people/` store ordered `member=hand` and `member=<project> project-admin|developer`
+  memberships in place of `role=` and `projects=`; an existing `role=project-admin` record with no `member=` line is
+  read as `member=hand` and rewritten on its next write. `porelo-host-person add` records `member=hand`, `lock` keeps
+  memberships, `porelo-host-project add` records `member=<project> project-admin` for any unlocked member, and
+  `porelo-host-project remove` drops the project's memberships, locks anyone left with none, and reports `"locked"` in
+  its JSON answer. `porelo.host.down` checks `/etc/porelo-host/people/` first and refuses before stopping anything
+  while any record holds a membership, naming each person and their memberships with `"Take the project off"` and
+  `"Purge"`.
+
 ### Fixed
 
 - A failed admission after the account exists leaves the person locked and recorded, so purge can remove them; a

@@ -29,6 +29,7 @@ ETC = "/etc/porelo-host"
 CONF = "/etc/porelo-host/forge.conf"
 CA = "/etc/porelo-host/forge/ca.pem"
 PUSH = "/usr/local/sbin/porelo-host-push"
+PERSON = "/usr/local/sbin/porelo-host-person"
 ROOT_UID = 0
 TRUST_ANCHOR = "/"
 PROJECT_PATTERN = r"[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?"
@@ -128,6 +129,85 @@ def setting(values, key, pattern, path=CONF, code=69):
     if not re.fullmatch(pattern, value):
         refuse(f"{path} names no valid {key}", code)
     return value
+
+
+def member_key(value):
+    """Return the canonical sort key for one membership value, refusing unknown shapes."""
+    if value == "hand":
+        return (0, "", 0)
+    parts = value.split(" ")
+    if len(parts) == 2 and re.fullmatch(PROJECT_PATTERN, parts[0]) and parts[1] in ("project-admin", "developer"):
+        return (1, parts[0], 0 if parts[1] == "project-admin" else 1)
+    refuse("a person record holds an invalid membership", 65)
+
+
+def read_person(user, path):
+    """Read and validate one trusted person record, accepting the legacy role-based shape."""
+    trusted(path, private=True)
+    try:
+        with open(path, encoding="utf-8") as stream:
+            lines = stream.read().splitlines()
+    except UnicodeError:
+        refuse(f"{path} is not UTF-8", 69)
+    if (
+        len(lines) >= 4
+        and lines[0] == "role=project-admin"
+        and lines[1] == "projects="
+        and lines[2] in ("locked=false", "locked=true")
+        and all(line.startswith("laptop=") and len(line) > 7 for line in lines[3:])
+    ):
+        return ["hand"], lines[2] == "locked=true", lines[3:]
+    members, previous = [], None
+    index = 0
+    while index < len(lines) and lines[index].startswith("member="):
+        member = lines[index][7:]
+        order = member_key(member)
+        if previous is not None and order <= previous:
+            refuse(f"the record for {user} is malformed", 65)
+        members.append(member)
+        previous = order
+        index += 1
+    if (
+        len(lines) < index + 2
+        or lines[index] not in ("locked=false", "locked=true")
+        or any(not line.startswith("laptop=") or len(line) <= 7 for line in lines[index + 1 :])
+    ):
+        refuse(f"the record for {user} is malformed", 65)
+    return members, lines[index] == "locked=true", lines[index + 1 :]
+
+
+def format_person(members, locked, laptops):
+    """Serialize a person's record in canonical membership order."""
+    ordered = sorted(set(members), key=member_key)
+    return (
+        "".join(f"member={item}\n" for item in ordered)
+        + f"locked={'true' if locked else 'false'}\n"
+        + "".join(f"{line}\n" for line in laptops)
+    )
+
+
+def stage_file(destination, prefix, content):
+    """Write and sync one private staging file beside its destination before publication."""
+    descriptor = temporary = None
+    try:
+        with writing(destination):
+            descriptor, temporary = tempfile.mkstemp(prefix=prefix, dir=os.path.dirname(destination))
+            output = os.fdopen(descriptor, "w", encoding="utf-8")
+            descriptor = None
+            with output:
+                os.fchmod(output.fileno(), 0o600)
+                output.write(content)
+                output.flush()
+                os.fsync(output.fileno())
+        return temporary
+    except BaseException:
+        if temporary is not None:
+            with writing(temporary):
+                if descriptor is not None:
+                    os.close(descriptor)
+                if os.path.lexists(temporary):
+                    os.unlink(temporary)
+        raise
 
 
 def forge_command(account, *arguments):
@@ -271,7 +351,7 @@ class Forge:
         refuse(f"the forge did not finish listing {path} in 100 pages")
 
 
-def add(forge, project, admin, key, record):
+def add(forge, project, admin, key, record, person, person_content):
     """Validate all existing identities before making one organization and an isolated package publisher."""
     publisher = "porelo-publisher-" + project
     for kind, path in (
@@ -288,8 +368,10 @@ def add(forge, project, admin, key, record):
             os.makedirs(os.path.join(ETC, name), mode=0o700, exist_ok=True)
     with writing(record):
         descriptor, temporary = tempfile.mkstemp(prefix=f".{project}-", dir=os.path.dirname(record))
+    person_temporary = None
     organization_made = publisher_made = False
     try:
+        person_temporary = stage_file(person, f".{admin}-", person_content)
         forge.request("POST", f"/admin/users/{admin}/orgs", {"username": project, "visibility": "private"}, (201,))
         organization_made = True
         owners = [team for team in forge.listing(f"/orgs/{project}/teams") if team.get("name") == "Owners"]
@@ -340,6 +422,13 @@ def add(forge, project, admin, key, record):
                 os.link(temporary, record)
             except FileExistsError:
                 refuse(f"{record} exists")
+        try:
+            with writing(person):
+                os.replace(person_temporary, person)
+        except BaseException:
+            with writing(record):
+                os.unlink(record)
+            raise
     except (Refusal, OSError, subprocess.SubprocessError, KeyboardInterrupt) as error:
         left = []
         for made, kind, name, path in (
@@ -357,6 +446,10 @@ def add(forge, project, admin, key, record):
             refuse(f"{cause}; cleanup left {', '.join(left)}", code)
         raise
     finally:
+        if person_temporary is not None:
+            with writing(person_temporary):
+                if os.path.lexists(person_temporary):
+                    os.unlink(person_temporary)
         with writing(temporary):
             if descriptor is not None:
                 os.close(descriptor)
@@ -392,8 +485,59 @@ def central_forge_token():
     return given
 
 
-def remove(forge, project, record, publisher):
-    """Check every repository without pushing anything, then delete the forge identities and record."""
+def people_after_removal(project):
+    """Validate every person record before forge deletion and collect records losing this project."""
+    people_dir = os.path.join(ETC, "people")
+    affected = []
+    to_lock = []
+    if not os.path.lexists(people_dir):
+        return affected, to_lock
+    trusted_directory(people_dir, private=True)
+    for entry_name in sorted(os.listdir(people_dir)):
+        if not entry_name.endswith(".conf") or not re.fullmatch(PERSON_PATTERN, entry_name[:-5]):
+            refuse("the people directory holds an unknown record", 65)
+        user = entry_name[:-5]
+        person_path = os.path.join(people_dir, entry_name)
+        members, locked, laptops = read_person(user, person_path)
+        remaining = [item for item in members if item == "hand" or item.split(" ", 1)[0] != project]
+        if remaining != members:
+            affected.append((user, person_path, format_person(remaining, locked, laptops)))
+            if not remaining and not locked:
+                to_lock.append(user)
+    if to_lock:
+        trusted(PERSON)
+    return affected, to_lock
+
+
+def lock_people(project, users):
+    """Lock each person left with no membership after releasing forge.conf's lock."""
+    failed = []
+    code = 69
+    for user in users:
+        locked = subprocess.run(
+            [PERSON, "lock", user],
+            env=SAFE_ENV,
+            check=False,
+            cwd="/",
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        try:
+            answer = json.loads(locked.stdout) if not locked.returncode else None
+        except ValueError:
+            answer = None
+        if locked.returncode or answer != {"person": user, "locked": True}:
+            if not failed and locked.returncode in (65, 69, 73):
+                code = locked.returncode
+            failed.append(user)
+    if failed:
+        refuse(f"removed {project}, but could not lock {', '.join(failed)}", code)
+
+
+def remove(forge, project, record, publisher, affected):
+    """Check every repository without pushing anything, then delete the forge identities and update records."""
     for kind, path in (("organization", f"/orgs/{project}"), ("publisher", f"/users/{publisher}")):
         if forge.request("GET", path, expected=(200, 404)) is None:
             refuse(f"the forge has no {kind} for registered project {project}")
@@ -439,35 +583,41 @@ def remove(forge, project, record, publisher):
                 f"gathered push check exited {checked.returncode}",
                 code,
             )
-    for name in names:
-        forge.request("DELETE", f"/repos/{project}/{name}", expected=(204,))
-    for path in package_paths:
-        forge.request("DELETE", path, expected=(204,))
-    forge.request("DELETE", f"/orgs/{project}", expected=(204,))
-    forge.request("DELETE", f"/admin/users/{publisher}", expected=(204,))
-    for path in (f"/orgs/{project}", f"/users/{publisher}"):
-        if forge.request("GET", path, expected=(200, 404)) is not None:
-            refuse(f"the forge still holds an identity for {project}; keeping its record")
-    with writing(record):
-        os.unlink(record)
-    with writing("standard output"):
-        print(json.dumps(dict(project=project, removed=True), separators=(",", ":")), flush=True)
+    staged = []
+    try:
+        for user, person_path, content in affected:
+            staged.append((person_path, stage_file(person_path, f".{user}-", content)))
+        for name in names:
+            forge.request("DELETE", f"/repos/{project}/{name}", expected=(204,))
+        for path in package_paths:
+            forge.request("DELETE", path, expected=(204,))
+        forge.request("DELETE", f"/orgs/{project}", expected=(204,))
+        forge.request("DELETE", f"/admin/users/{publisher}", expected=(204,))
+        for path in (f"/orgs/{project}", f"/users/{publisher}"):
+            if forge.request("GET", path, expected=(200, 404)) is not None:
+                refuse(f"the forge still holds an identity for {project}; keeping its record")
+        for person_path, temporary in staged:
+            with writing(person_path):
+                os.replace(temporary, person_path)
+        with writing(record):
+            os.unlink(record)
+    finally:
+        for _, temporary in staged:
+            with writing(temporary):
+                if os.path.lexists(temporary):
+                    os.unlink(temporary)
 
 
 def admitted(admin, person):
-    """Under the lock, the admin must still be a project admin the host has not locked out or purged."""
+    """Under the lock, the admin must still hold a membership and not be locked out or purged."""
     if not os.path.lexists(person):
         refuse(f"{admin} is no person on this host", 65)
-    trusted(person, private=True)
-    try:
-        with open(person, encoding="utf-8") as text:
-            lines = text.read().splitlines()
-    except UnicodeError:
-        refuse(f"{person} is not UTF-8", 69)
-    if "role=project-admin" not in lines:
-        refuse(f"{admin} is no project admin on this host", 65)
-    if [line for line in lines if line.startswith("locked=")] != ["locked=false"]:
+    members, locked, laptops = read_person(admin, person)
+    if locked:
         refuse(f"{admin} is locked on this host", 65)
+    if not members:
+        refuse(f"{admin} holds no membership on this host", 65)
+    return members, locked, laptops
 
 
 def run():
@@ -507,6 +657,7 @@ def run():
     else:
         trusted(record, private=True)
     trusted(CONF)
+    to_lock = []
     with open(CONF, encoding="utf-8") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         if action == "add" and os.path.lexists(record):
@@ -514,13 +665,23 @@ def run():
         if action == "remove" and not os.path.lexists(record):
             refuse(f"unknown project {project}")
         if action == "add":
-            admitted(admin, person)
-        publisher = registered_publisher(project, record) if action == "remove" else None
+            members, locked, laptops = admitted(admin, person)
+            person_content = format_person([*members, f"{project} project-admin"], locked, laptops)
+            affected = None
+            publisher = None
+        else:
+            publisher = registered_publisher(project, record)
+            affected, to_lock = people_after_removal(project)
+            person_content = None
         forge = Forge(read_values(CONF))
         if action == "add":
-            add(forge, project, admin, key, record)
+            add(forge, project, admin, key, record, person, person_content)
         else:
-            remove(forge, project, record, publisher)
+            remove(forge, project, record, publisher, affected)
+    if action == "remove":
+        lock_people(project, to_lock)
+        with writing("standard output"):
+            print(json.dumps(dict(project=project, removed=True, locked=to_lock), separators=(",", ":")), flush=True)
 
 
 def main():

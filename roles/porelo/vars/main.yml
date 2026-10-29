@@ -28,3 +28,5 @@ __porelo_matrix_token_path: >-
   {{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo/matrix/host-registration-token
 # What porelo's vault clear names as a transport's own, whether or not it fills the item's transport.
 __porelo_transport_kinds: [transport, conversation]
+# Where down reads the people's records before stopping anything; the unit tests name another directory in its place.
+__porelo_people_dir: /etc/porelo-host/people

@@ -1,7 +1,8 @@
 ---
-# What `host down` runs on the host itself, with `-c local`, before the host is given back. Its steps come with the
-# roles that bring something up, the other way round: the homeserver, the VM pool, the forge and its CA, then the VPN
-# last. Each takes down only what is there, so it also follows a failed `up`.
+# What `host down` runs on the host itself, with `-c local`, before the host is given back. It refuses first while any
+# person still holds a membership, then runs the steps of the roles that bring something up, the other way round: the
+# homeserver, the VM pool, the forge and its CA, then the VPN last. Each takes down only what is there, so it also
+# follows a failed `up`.
 - name: Take the host down
   hosts: localhost
   connection: local
@@ -40,6 +41,15 @@
           porelo_host_network must be an integer from 0 to 255;
           got {{ porelo_host_network | to_json if porelo_host_network is defined else 'undefined' }}
         quiet: true
+
+    - name: Stop while any person still holds a membership on the host
+      ansible.builtin.include_role:
+        name: porelo.host.porelo
+        tasks_from: people
+      vars:
+        porelo_host_step:
+          text: Checking admitted people
+          seconds: 5
 
     - name: Stop the host's Matrix homeserver and remove its account
       ansible.builtin.include_role:
