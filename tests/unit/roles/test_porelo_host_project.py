@@ -124,35 +124,45 @@ class Forge:
         return 500, {"unexpected": [method, path, body]}
 
 
+def self_signed(cert, key):
+    """Writes a certificate for 127.0.0.1 and its key, made in Python, so the suite needs no openssl on its machine."""
+    import datetime
+    import ipaddress
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    private = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "127.0.0.1")])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    certificate = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(private.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(minutes=5))
+        .not_valid_after(now + datetime.timedelta(days=1))
+        .add_extension(x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address("127.0.0.1"))]), critical=False)
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .sign(private, hashes.SHA256())
+    )
+    cert.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
+    key.write_bytes(
+        private.private_bytes(
+            serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
+        )
+    )
+
+
 @pytest.fixture
 def forge(tmp_path):
     state = Forge()
     cert = tmp_path / "ca.pem"
     key = tmp_path / "server-key.pem"
-    made = subprocess.run(
-        [
-            "openssl",
-            "req",
-            "-x509",
-            "-newkey",
-            "rsa:2048",
-            "-nodes",
-            "-days",
-            "1",
-            "-subj",
-            "/CN=127.0.0.1",
-            "-addext",
-            "subjectAltName=IP:127.0.0.1",
-            "-keyout",
-            str(key),
-            "-out",
-            str(cert),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert made.returncode == 0, made.stderr
+    self_signed(cert, key)
     cert.chmod(0o644)
     state.port = 443
     state.ca = cert
