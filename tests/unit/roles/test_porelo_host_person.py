@@ -512,7 +512,7 @@ def test_purge_locks_first_clears_vault_then_removes_account_and_ranges(host, ca
     capsys.readouterr()
     assert host.invoke("purge", "alice", data=b"") == 0
     assert json.loads(capsys.readouterr().out) == {"person": "alice", "purged": True}
-    assert host.calls[-8:] == [
+    assert host.calls[-9:] == [
         ["usermod", "--lock", "--expiredate", "1", "alice"],
         # A locked account is expired, which PAM refuses to runuser and to the user manager; its password stays locked.
         ["usermod", "--expiredate", "", "alice"],
@@ -533,6 +533,8 @@ def test_purge_locks_first_clears_vault_then_removes_account_and_ranges(host, ca
         ],
         ["loginctl", "disable-linger", "alice"],
         ["loginctl", "terminate-user", "alice"],
+        # terminate-user returns before the manager ends; userdel refuses an account still running anything.
+        ["systemctl", "stop", "user@1000.service"],
         ["userdel", "--remove", "alice"],
     ]
     assert not host.path("/etc/porelo-host/people/alice.conf").exists()

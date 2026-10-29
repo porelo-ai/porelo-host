@@ -874,6 +874,8 @@ class Host:
             self.command(["loginctl", "disable-linger", user])
             if porelo:
                 self.command(["loginctl", "terminate-user", user])
+                # terminate-user returns before the manager ends; userdel refuses an account still running anything.
+                self.command(["systemctl", "stop", f"user@{self.uid(user)}.service"])
             self.command(["userdel", "--remove", user])
         for kind in ("subuid", "subgid"):
             path = self.path("/etc/" + kind)
