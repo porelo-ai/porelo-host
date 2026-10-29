@@ -29,7 +29,6 @@
       name={{ forge_name }}
       matrix_name={{ forge_matrix_name }}
       port={{ forge_http_port }}
-      person={{ forge_person }}
       {% if porelo_host_forge | default(false) | bool %}
       account={{ forge_account }}
       agents={{ forge_agents | join(',') }}

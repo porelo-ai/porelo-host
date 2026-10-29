@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `up` installs every agent package the repository publishes, read from the packages providing `porelo-agent`, and
   Porelo's message filter with rootless networking; a repository publishing no agent stops `up`.
 
+### Removed
+
+- The default `operator` forge login, `forge_person`, `person=` in `/etc/porelo-host/forge.conf`, and direct-root calls
+  to `porelo-host-forge-password` (now refused with `64` unless run through `sudo` as an admitted person). On an
+  existing host, `up` deletes a forge user `operator` that has no record in `/etc/porelo-host/people/` and rewrites
+  `forge.conf` without `person=`, so a person named `operator` can be admitted like anyone else.
+
 ### Fixed
 
 - A failed admission after the account exists leaves the person locked and recorded, so purge can remove them; a
@@ -29,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   project. A forge failing in itself is reported as something missing (69). SSH reads the people's keys as soon as
   `up` has written its drop-in.
 - A sudo call to the forge-password helper changes only the caller's own login and requires their unlocked,
-  root-owned person record. Direct root calls retain the configured login.
+  root-owned person record.
 - SSH for the `porelo-people` group reads only root's VPN-restricted authorized keys, so a person cannot add an
   unrestricted key in their home. Other accounts retain their existing key lookup.
 - `down` gives the host back when only a room's transport could not clear what it keeps with the vault, such as a

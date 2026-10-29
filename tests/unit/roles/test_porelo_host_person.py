@@ -183,6 +183,12 @@ def test_account_names_cannot_take_over_an_existing_account(host, capsys, user, 
     refused(host, capsys, code, "add", user, "--role", "project-admin")
 
 
+def test_a_name_a_group_already_holds_is_no_new_persons(host, capsys):
+    """Prevent a person from being refused half-way by useradd, or put into a system group such as Ubuntu's operator."""
+    host.groups.add("operator")
+    refused(host, capsys, 65, "add", "operator", "--role", "project-admin", diagnostic="group")
+
+
 @pytest.mark.parametrize(
     "data",
     [
