@@ -19,7 +19,9 @@ project's signed `access.yml` ([HO46](README.md#ho46)), through the same helper.
   `/etc/porelo-host/`: `people/<user>.conf` (role, projects, laptops and their keys and addresses) and
   `projects/<project>.conf` (written by [HO44](README.md#ho44)).
 - **`add <user> --role project-admin`**, public keys on standard input (the person's *Copy my public keys*):
-  - the account by `porelo-setup.sh --user`, with KVM and libvirt groups;
+  - the account as `porelo-setup.sh --user` makes it (linger, subordinate IDs), but with each person's own ID range,
+    which the script would give every person alike, and with KVM and libvirt groups; what the script installs,
+    Porelo, its filter and rootless networking, `up` installs;
   - per laptop, the ssh key in `/etc/ssh/authorized_keys/<user>` (root's) and a VPN peer at its address;
   - the forge login; the gate's and agents' identities `porelo-<user>` and `<agent>-<user>`, their tokens in a
     `0600` `identities.tokens` in the person's own `0700` `/run/porelo-host/people/<user>/`, under root's `0755`

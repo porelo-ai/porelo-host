@@ -43,3 +43,7 @@
     group: root
     mode: "0644"
   notify: Reload SSH to read the people's keys
+
+# A later failure in up would leave the drop-in on disk, and a rerun that changes nothing would never reload.
+- name: person | Reload SSH before the play goes on
+  ansible.builtin.meta: flush_handlers

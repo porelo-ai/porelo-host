@@ -46,9 +46,16 @@
     group: root
     mode: "0644"
 
-- name: install | Install Porelo from it
+# What porelo-setup.sh always installs: Porelo, its message filter and rootless networking. The people's accounts
+# are made by porelo-host-person, each with its own subordinate ID range, which the script would give them alike.
+- name: install | Install Porelo from it, with its filter and rootless networking
   ansible.builtin.apt:
-    name: porelo
+    name:
+      - porelo
+      - porelo-message-sluice-filter
+      - uidmap
+      - slirp4netns
+      - passt
     state: present
     update_cache: true
 

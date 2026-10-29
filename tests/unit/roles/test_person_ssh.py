@@ -43,3 +43,14 @@ def test_sshd_accepts_the_person_drop_in(tmp_path):
     config.write_text(f"HostKey {key}\nAuthorizedKeysFile .ssh/authorized_keys\nInclude {drop}\n")
     result = subprocess.run([sshd, "-t", "-f", str(config)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_ssh_reads_the_drop_in_before_the_play_goes_on():
+    """Prevent a later failure in up from leaving the drop-in on disk and a rerun from never reloading SSH."""
+    tasks = yaml.safe_load((ROOT / "roles/porelo/tasks/person.yml").read_text())
+    index = next(
+        number
+        for number, task in enumerate(tasks)
+        if task.get("ansible.builtin.copy", {}).get("dest") == "/etc/ssh/sshd_config.d/porelo-host-person.conf"
+    )
+    assert tasks[index + 1].get("ansible.builtin.meta") == "flush_handlers"
