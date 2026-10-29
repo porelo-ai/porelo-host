@@ -16,13 +16,17 @@
       ansible.builtin.getent:
         database: passwd
 
-    # The VM's own login user comes from Molecule's inventory (ansible_user, set to molecule by build/molecule.sh);
-    # Debian/Ubuntu's unmapped overflow account nobody sits at uid 65534 and is excluded by name and uid pair.
-    - name: List every account in getent passwd with uid >= 1000 aside from nobody (65534)
+    # The VM's own login user comes from Molecule's inventory (ansible_user, set to molecule by build/molecule.sh).
+    # A person's account lies in login.defs' UID_MIN..UID_MAX; packages' accounts such as libvirt-qemu and nobody
+    # lie above it, in the range Debian reserves for them.
+    - name: List every account in getent passwd within login.defs' range for people's accounts
       ansible.builtin.shell:
         cmd: >-
-          set -o pipefail && getent passwd
-          | awk -F: '$3 >= 1000 && !($1 == "nobody" && $3 == 65534) {print $1}' | sort
+          set -o pipefail &&
+          min=$(awk '$1 == "UID_MIN" {print $2}' /etc/login.defs) &&
+          max=$(awk '$1 == "UID_MAX" {print $2}' /etc/login.defs) &&
+          [ -n "$min" ] && [ -n "$max" ] && getent passwd
+          | awk -F: -v min="$min" -v max="$max" '$3 >= min && $3 <= max {print $1}' | sort
         executable: /bin/bash
       register: verify_regular_accounts
       changed_when: false
@@ -31,7 +35,7 @@
       ansible.builtin.assert:
         that: verify_regular_accounts.stdout_lines == verify_expected_accounts
         fail_msg: >-
-          asked getent passwd (uid >= 1000, excluding nobody=65534) for only the inventory login user
+          asked getent passwd (uid within login.defs' UID_MIN..UID_MAX) for only the inventory login user
           '{{ ansible_user }}' and host service accounts {{ verify_expected_accounts }};
           got {{ verify_regular_accounts.stdout_lines }}
       vars:
