@@ -1,11 +1,13 @@
 ---
 # Projects registered and removed through /usr/local/sbin/porelo-host-project as root when the forge is on: two
 # projects owned by bo and cy alone, package publishing isolated to each project's own organization, refusals leaving
-# records untouched, empty-project removal deleting the organization and publisher, and removal of a project holding a
-# committed repository refused while keeping the organization and its record.
+# records untouched, down refusing while people hold memberships, empty-project removal deleting the organization and
+# publisher while locking only people left with no membership (keeping hand-admitted cy unlocked and locking
+# project-only di), removal of a project holding a committed repository refused, and every project and person removed
+# at the end so side_effect's down goes through.
 - name: Verify project registration, ownership, package isolation, refusals and removal guards
   block:
-    - name: Create the root-only workspace, cy's laptop keys and two canonical project signing keys
+    - name: Create the root-only workspace, cy's and di's laptop keys and two canonical project signing keys
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
@@ -13,11 +15,13 @@
           d=/root/verify-projects
           rm -rf "$d"
           mkdir -p "$d"
-          ssh-keygen -q -t ed25519 -N "" -C "" -f "$d/cy.ssh"
-          awk '{print $1, $2}' "$d/cy.ssh.pub" > "$d/cy.ssh.line"
-          wg genkey > "$d/cy.wg"
-          wg pubkey < "$d/cy.wg" | tr -d '\r\n' > "$d/cy.wg.line"
-          printf 'cy-laptop %s %s\n' "$(cat "$d/cy.ssh.line")" "$(cat "$d/cy.wg.line")" > "$d/cy.in"
+          for who in cy di; do
+              ssh-keygen -q -t ed25519 -N "" -C "" -f "$d/$who.ssh"
+              awk '{print $1, $2}' "$d/$who.ssh.pub" > "$d/$who.ssh.line"
+              wg genkey > "$d/$who.wg"
+              wg pubkey < "$d/$who.wg" | tr -d '\r\n' > "$d/$who.wg.line"
+              printf '%s-laptop %s %s\n' "$who" "$(cat "$d/$who.ssh.line")" "$(cat "$d/$who.wg.line")" > "$d/$who.in"
+          done
           for name in signer1 signer2; do
               ssh-keygen -q -t ed25519 -N "" -C "" -f "$d/$name"
               awk '{print $1, $2}' "$d/$name.pub" > "$d/$name.line"
@@ -26,12 +30,16 @@
       changed_when: true
       no_log: true
 
-    - name: Read the two canonical comment-free ssh-ed25519 project signing keys
+    - name: Read the two canonical project signing keys and cy's and di's public laptop keys
       ansible.builtin.slurp:
         src: "{{ item }}"
       loop:
         - /root/verify-projects/signer1.line
         - /root/verify-projects/signer2.line
+        - /root/verify-projects/cy.ssh.line
+        - /root/verify-projects/cy.wg.line
+        - /root/verify-projects/di.ssh.line
+        - /root/verify-projects/di.wg.line
       register: verify_projects_signers
 
     - name: Admit cy as project-admin for the second project
@@ -60,6 +68,33 @@
           laptops:
             - laptop: cy-laptop
               vpn_address: 10.73.7.3
+
+    - name: Admit di so alpha-two can hold a person whose only membership is that project
+      ansible.builtin.shell:
+        cmd: >-
+          set -euo pipefail
+          && /usr/local/sbin/porelo-host-person add di --role project-admin < /root/verify-projects/di.in
+        executable: /bin/bash
+      register: verify_projects_add_di
+      changed_when: true
+
+    - name: Assert admitting di prints one JSON line assigning VPN address 10.73.7.4
+      ansible.builtin.assert:
+        that:
+          - verify_projects_add_di.rc == 0
+          - verify_projects_add_di.stdout_lines | length == 1
+          - (verify_projects_add_di.stdout | from_json) == verify_projects_di_expected
+        fail_msg: >-
+          asked 'porelo-host-person add di --role project-admin' for {{ verify_projects_di_expected }};
+          got rc {{ verify_projects_add_di.rc }}: {{ verify_projects_add_di.stdout }}
+          ({{ verify_projects_add_di.stderr }})
+      vars:
+        verify_projects_di_expected:
+          person: di
+          role: project-admin
+          laptops:
+            - laptop: di-laptop
+              vpn_address: 10.73.7.4
 
     - name: Register alpha-one for bo and alpha-two for cy with porelo-host-project
       ansible.builtin.command:
@@ -100,6 +135,51 @@
       loop: "{{ verify_projects_added.results }}"
       loop_control:
         label: "{{ item.item.project }}"
+
+    - name: Record di as a developer of alpha-two alone, without hand admission
+      ansible.builtin.copy:
+        dest: /etc/porelo-host/people/di.conf
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          member=alpha-two developer
+          locked=false
+          laptop=di-laptop {{ verify_projects_di_ssh }} {{ verify_projects_di_wg }} 10.73.7.4
+      vars:
+        verify_projects_di_ssh: "{{ verify_projects_signers.results[4].content | b64decode | trim }}"
+        verify_projects_di_wg: "{{ verify_projects_signers.results[5].content | b64decode | trim }}"
+
+    - name: Read bo's, cy's and di's person records after project registration
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /etc/porelo-host/people/bo.conf
+        - /etc/porelo-host/people/cy.conf
+        - /etc/porelo-host/people/di.conf
+      register: verify_projects_people_before
+
+    - name: Assert porelo-host-project add recorded each admin's project membership after hand
+      ansible.builtin.assert:
+        that:
+          - (verify_projects_people_before.results[0].content | b64decode)
+            is match('^member=hand\nmember=alpha-one project-admin\nlocked=false\nlaptop=bo-laptop ')
+          - (verify_projects_people_before.results[1].content | b64decode)
+            == ('member=hand\nmember=alpha-two project-admin\nlocked=false\nlaptop=cy-laptop '
+                ~ verify_projects_cy_ssh ~ ' ' ~ verify_projects_cy_wg ~ ' 10.73.7.3\n')
+          - (verify_projects_people_before.results[2].content | b64decode)
+            == ('member=alpha-two developer\nlocked=false\nlaptop=di-laptop '
+                ~ verify_projects_di_ssh ~ ' ' ~ verify_projects_di_wg ~ ' 10.73.7.4\n')
+        fail_msg: >-
+          asked bo.conf, cy.conf and di.conf for fixed-order memberships;
+          got bo '{{ verify_projects_people_before.results[0].content | b64decode }}',
+          cy '{{ verify_projects_people_before.results[1].content | b64decode }}',
+          di '{{ verify_projects_people_before.results[2].content | b64decode }}'
+      vars:
+        verify_projects_cy_ssh: "{{ verify_projects_signers.results[2].content | b64decode | trim }}"
+        verify_projects_cy_wg: "{{ verify_projects_signers.results[3].content | b64decode | trim }}"
+        verify_projects_di_ssh: "{{ verify_projects_signers.results[4].content | b64decode | trim }}"
+        verify_projects_di_wg: "{{ verify_projects_signers.results[5].content | b64decode | trim }}"
 
     - name: Query each organization's Owners team members with the forge's admin token
       ansible.builtin.command:
@@ -342,6 +422,42 @@
       loop_control:
         label: "{{ item.item.label }}"
 
+    - name: Run down while bo, cy and di hold hand and project memberships
+      ansible.builtin.command:
+        argv: [ansible-playbook, -c, local, -i, /root/porelo-host-inventory.yml, porelo.host.down]
+      environment:
+        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
+        LC_ALL: C.UTF-8
+      register: verify_projects_down_refused
+      changed_when: false
+      failed_when: false
+
+    - name: Assert down refuses naming each person with their hand and project memberships and stops nothing
+      ansible.builtin.assert:
+        that:
+          - verify_projects_down_refused.rc == 2
+          - verify_projects_down_failed | length == 1
+          - "'bo (hand, alpha-one project-admin)' in verify_projects_down_failed[0].msg"
+          - "'cy (hand, alpha-two project-admin)' in verify_projects_down_failed[0].msg"
+          - "'di (alpha-two developer)' in verify_projects_down_failed[0].msg"
+          - "'Take the project off' in verify_projects_down_failed[0].msg"
+          - "'Purge' in verify_projects_down_failed[0].msg"
+          - verify_projects_down_tasks | intersect(verify_projects_teardown_tasks) | length == 0
+        fail_msg: >-
+          asked down to refuse with rc 2 naming bo, cy and di with their memberships and both ways back without
+          running any teardown task; got rc {{ verify_projects_down_refused.rc }}: {{ verify_projects_down_lines }}
+      vars:
+        verify_projects_down_lines: "{{ verify_projects_down_refused.stdout_lines | select | map('from_json') | list }}"
+        verify_projects_down_failed: >-
+          {{ verify_projects_down_lines | selectattr('state', 'equalto', 'failed') | list }}
+        verify_projects_down_tasks: >-
+          {{ verify_projects_down_lines | selectattr('task', 'defined') | map(attribute='task') | list }}
+        verify_projects_teardown_tasks:
+          - Stop the host's Matrix homeserver and remove its account
+          - Take the host's VM pool off it, before the forge whose runner rents from it
+          - Stop the host's forge, keeping nothing
+          - Take the VPN down
+
     - name: Remove alpha-two with no repository through /usr/local/sbin/porelo-host-project remove alpha-two
       ansible.builtin.command:
         argv: [/usr/local/sbin/porelo-host-project, remove, alpha-two]
@@ -405,25 +521,152 @@
       changed_when: false
       no_log: true
 
-    - name: Assert remove alpha-two answers removed true and deletes alpha-two's record, organization and publisher
+    - name: Assert remove alpha-two answers locked di and deletes alpha-two's record, organization and publisher
       ansible.builtin.assert:
         that:
           - verify_projects_remove_two.rc == 0
           - verify_projects_remove_two.stdout_lines | length == 1
-          - "(verify_projects_remove_two.stdout | from_json) == {'project': 'alpha-two', 'removed': true}"
+          - "(verify_projects_remove_two.stdout | from_json)
+            == {'project': 'alpha-two', 'removed': true, 'locked': ['di']}"
           - not verify_projects_two_record.stat.exists
           - verify_projects_two_state.alpha_two_org == 404
           - not verify_projects_two_state.publisher_two_present
           - verify_projects_two_state.alpha_one_org == 200
           - verify_projects_two_state.publisher_one_present
         fail_msg: >-
-          asked 'porelo-host-project remove alpha-two' for {"project":"alpha-two","removed":true}, alpha-two.conf gone,
-          alpha-two org 404 and porelo-publisher-alpha-two deleted while keeping alpha-one;
+          asked 'porelo-host-project remove alpha-two' for {"project":"alpha-two","removed":true,"locked":["di"]},
+          alpha-two.conf gone, alpha-two org 404 and porelo-publisher-alpha-two deleted while keeping alpha-one;
           got rc {{ verify_projects_remove_two.rc }}: {{ verify_projects_remove_two.stdout }}
           ({{ verify_projects_remove_two.stderr }}), record exists={{ verify_projects_two_record.stat.exists }},
           forge {{ verify_projects_two_state }}
       vars:
         verify_projects_two_state: "{{ verify_projects_two_forge.stdout | from_json }}"
+
+    - name: Read cy's and di's person records after remove alpha-two
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /etc/porelo-host/people/cy.conf
+        - /etc/porelo-host/people/di.conf
+      register: verify_projects_people_after
+
+    - name: Read cy's and di's SSH, VPN, Matrix and runtime token paths after remove alpha-two
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/ssh/authorized_keys/cy
+        - /etc/wireguard/porelo-host-peers/cy.conf
+        - /home/cy/.config/porelo/matrix/host-registration-token
+        - /etc/ssh/authorized_keys/di
+        - /etc/wireguard/porelo-host-peers/di.conf
+        - /home/di/.config/porelo/matrix/host-registration-token
+        - /run/porelo-host/people/di
+      register: verify_projects_access_after
+
+    - name: Read wg-porelo's live peers after remove alpha-two
+      ansible.builtin.command:
+        argv: [wg, show, wg-porelo, peers]
+      register: verify_projects_peers_after
+      changed_when: false
+
+    - name: Read prohibit_login and token counts on cy's and di's Forgejo identities after remove alpha-two
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, pathlib, secrets, ssl, subprocess, urllib.request
+            conf = dict(
+                line.split("=", 1)
+                for line in pathlib.Path("/etc/porelo-host/forge.conf").read_text(encoding="utf-8").splitlines()
+                if "=" in line
+            )
+            account = conf["account"]
+            agents = [a for a in conf.get("agents", "").split(",") if a]
+            uid = subprocess.check_output(["/usr/bin/id", "-u", account], text=True).strip()
+            tname = "verify-remove-lock-" + secrets.token_hex(12)
+            token = subprocess.check_output(
+                [
+                    "/usr/sbin/runuser", "-u", account, "--",
+                    "/usr/bin/env", f"XDG_RUNTIME_DIR=/run/user/{uid}",
+                    "/usr/bin/podman", "exec", "forgejo", "forgejo", "admin", "user",
+                    "generate-access-token", "--username", "porelo-admin",
+                    "--token-name", tname, "--scopes", "write:admin,read:user", "--raw",
+                ],
+                text=True,
+                cwd="/",
+            ).strip()
+            ctx = ssl.create_default_context(cafile="/etc/porelo-host/forge/ca.pem")
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}),
+                urllib.request.HTTPSHandler(context=ctx),
+            )
+            base = f"https://{conf['address']}:{conf['port']}/api/v1"
+            def call(method, path):
+                req = urllib.request.Request(
+                    base + path,
+                    method=method,
+                    headers={"Authorization": "token " + token, "Content-Type": "application/json"},
+                )
+                with opener.open(req, timeout=30) as resp:
+                    body = resp.read()
+                    return resp.status, (json.loads(body) if body else None)
+            cleaned = False
+            try:
+                people = {}
+                for who in ("cy", "di"):
+                    identities = [who, f"porelo-{who}", *(f"{a}-{who}" for a in agents)]
+                    prohibited = {}
+                    tokens = {}
+                    for identity in identities:
+                        _, user_obj = call("GET", f"/users/{identity}")
+                        _, tok_list = call("GET", f"/admin/users/{identity}/tokens?limit=50&page=1")
+                        prohibited[identity] = bool(user_obj.get("prohibit_login"))
+                        tokens[identity] = len(tok_list)
+                    people[who] = {"prohibited": prohibited, "tokens": tokens}
+            finally:
+                _, admin_tokens = call("GET", "/admin/users/porelo-admin/tokens?limit=50&page=1")
+                for entry in admin_tokens:
+                    if entry.get("name") == tname:
+                        status, _ = call("DELETE", f"/admin/users/porelo-admin/tokens/{entry['id']}")
+                        cleaned = status == 204
+            print(json.dumps({"people": people, "cleaned": cleaned}))
+      register: verify_projects_identities_after
+      changed_when: false
+      no_log: true
+
+    - name: Assert hand-admitted cy keeps access after remove alpha-two while project-only di is locked
+      ansible.builtin.assert:
+        that:
+          - (verify_projects_people_after.results[0].content | b64decode)
+            == ('member=hand\nlocked=false\nlaptop=cy-laptop '
+                ~ verify_projects_cy_ssh ~ ' ' ~ verify_projects_cy_wg ~ ' 10.73.7.3\n')
+          - (verify_projects_people_after.results[1].content | b64decode)
+            == ('locked=true\nlaptop=di-laptop '
+                ~ verify_projects_di_ssh ~ ' ' ~ verify_projects_di_wg ~ ' 10.73.7.4\n')
+          - verify_projects_access_after.results[:3] | rejectattr('stat.exists') | list | length == 0
+          - verify_projects_access_after.results[3:] | selectattr('stat.exists') | list | length == 0
+          - verify_projects_cy_wg in verify_projects_peers_after.stdout_lines
+          - verify_projects_di_wg not in verify_projects_peers_after.stdout_lines
+          - verify_projects_id_state.cleaned
+          - verify_projects_id_state.people.cy.prohibited | dict2items | selectattr('value') | list | length == 0
+          - verify_projects_id_state.people.di.prohibited | dict2items | rejectattr('value') | list | length == 0
+          - verify_projects_id_state.people.di.tokens | dict2items
+            | rejectattr('value', 'equalto', 0) | list | length == 0
+        fail_msg: >-
+          asked remove alpha-two to keep hand-admitted cy unlocked with SSH, VPN, Matrix and Forgejo access and lock
+          project-only di with zero memberships, revoked SSH/VPN/Matrix files and disabled tokenless Forgejo accounts;
+          got cy '{{ verify_projects_people_after.results[0].content | b64decode }}',
+          di '{{ verify_projects_people_after.results[1].content | b64decode }}',
+          stats {{ verify_projects_access_after.results | map(attribute='stat.exists') | list }},
+          peers {{ verify_projects_peers_after.stdout_lines }},
+          identities {{ verify_projects_id_state }}
+      vars:
+        verify_projects_cy_ssh: "{{ verify_projects_signers.results[2].content | b64decode | trim }}"
+        verify_projects_cy_wg: "{{ verify_projects_signers.results[3].content | b64decode | trim }}"
+        verify_projects_di_ssh: "{{ verify_projects_signers.results[4].content | b64decode | trim }}"
+        verify_projects_di_wg: "{{ verify_projects_signers.results[5].content | b64decode | trim }}"
+        verify_projects_id_state: "{{ verify_projects_identities_after.stdout | from_json }}"
 
     - name: Create one repository with one commit in alpha-one and ask remove alpha-one with a piped token to refuse
       ansible.builtin.command:
@@ -516,6 +759,74 @@
           piped token; got {{ verify_projects_one_result }}, record exists={{ verify_projects_one_record.stat.exists }}
       vars:
         verify_projects_one_result: "{{ verify_projects_remove_one.stdout | from_json }}"
+
+    - name: Delete alpha-one's probe repository and remove alpha-one before purging the remaining people
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, pathlib, ssl, subprocess, urllib.request
+            token = pathlib.Path("/home/porelo-forge/.config/porelo-forge/api.token").read_text(
+                encoding="utf-8"
+            ).strip()
+            ctx = ssl.create_default_context(cafile="/etc/porelo-host/forge/ca.pem")
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}),
+                urllib.request.HTTPSHandler(context=ctx),
+            )
+            req = urllib.request.Request(
+                "https://10.73.7.1:3000/api/v1/repos/alpha-one/code",
+                method="DELETE",
+                headers={"Authorization": "token " + token},
+            )
+            with opener.open(req, timeout=30) as resp:
+                deleted = resp.status
+            run = subprocess.run(
+                ["/usr/local/sbin/porelo-host-project", "remove", "alpha-one"],
+                input="",
+                capture_output=True,
+                text=True,
+            )
+            print(json.dumps({"repo_deleted": deleted, "rc": run.returncode, "out": run.stdout, "err": run.stderr}))
+      register: verify_projects_cleanup_one
+      changed_when: true
+      no_log: true
+
+    - name: Assert removing emptied alpha-one succeeds without locking hand-admitted bo
+      ansible.builtin.assert:
+        that:
+          - verify_projects_cleanup_result.repo_deleted == 204
+          - verify_projects_cleanup_result.rc == 0
+          - >-
+            (verify_projects_cleanup_result.out | from_json)
+            == {'project': 'alpha-one', 'removed': true, 'locked': []}
+        fail_msg: >-
+          asked DELETE /repos/alpha-one/code for 204 and 'porelo-host-project remove alpha-one' for
+          {"project":"alpha-one","removed":true,"locked":[]}; got {{ verify_projects_cleanup_result }}
+      vars:
+        verify_projects_cleanup_result: "{{ verify_projects_cleanup_one.stdout | from_json }}"
+
+    - name: Purge bo, cy and di so side_effect's down runs with every membership gone
+      ansible.builtin.command:
+        argv: [/usr/local/sbin/porelo-host-person, purge, "{{ item }}"]
+        stdin: ""
+      loop: [bo, cy, di]
+      register: verify_projects_purge_all
+      changed_when: true
+
+    - name: Assert bo, cy and di are purged before side_effect runs down
+      ansible.builtin.assert:
+        that:
+          - item.rc == 0
+          - item.stdout_lines | length == 1
+          - "(item.stdout | from_json) == {'person': item.item, 'purged': true}"
+        fail_msg: >-
+          asked 'porelo-host-person purge {{ item.item }}' for {'person': '{{ item.item }}', 'purged': true};
+          got rc {{ item.rc }}: {{ item.stdout }} ({{ item.stderr }})
+      loop: "{{ verify_projects_purge_all.results }}"
+      loop_control:
+        label: "{{ item.item }}"
   always:
     - name: Remove the temporary project registration key directory
       ansible.builtin.file:

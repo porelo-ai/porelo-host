@@ -113,3 +113,19 @@ def test_direct_root_without_sudo_user_is_refused(password_host, capsys, sudo):
     assert "sudo" in err and "person" in err
     assert "fixture-password" not in err
     assert password_host.changes == []
+
+
+@pytest.mark.parametrize("locked", [False, True], ids=["unlocked", "locked"])
+def test_sudo_accepts_membership_records_and_refuses_locked_ones(password_host, capsys, locked):
+    """Prevent replacing role= and projects= with member= lines from breaking or unlocking a password change."""
+    state = "true" if locked else "false"
+    password_host.record.write_text(f"member=hand\nmember=alpha project-admin\nlocked={state}\nlaptop=fixture\n")
+    if locked:
+        with pytest.raises(SystemExit) as error:
+            password_host.scope["main"]()
+        assert error.value.code == 65
+        assert password_host.changes == []
+        assert "fixture-password" not in capsys.readouterr().err
+    else:
+        password_host.scope["main"]()
+        assert password_host.changes[0][2] == "alice"

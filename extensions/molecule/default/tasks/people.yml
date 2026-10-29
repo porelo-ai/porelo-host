@@ -1,7 +1,9 @@
 ---
 # Project admins admitted, checked, locked and purged through /usr/local/sbin/porelo-host-person as root: refusals
 # leave accounts and records untouched, SSH works only over the VPN, forge identities and Matrix tokens stay private
-# and leak nowhere, sudo allows only porelo-host-forge-password without arguments, and bo remains admitted at the end.
+# and leak nowhere, sudo allows only porelo-host-forge-password without arguments, down refuses while any record holds a
+# membership (locked or unlocked), and bo remains admitted for the project tasks when the forge is on or is purged first
+# when it is off.
 - name: Verify project admins admitted, checked, locked and purged by the root helper
   block:
     - name: Create the root-only workspace and test laptop keys for ada, bo and refusal probes
@@ -258,6 +260,33 @@
           laptops:
             - laptop: bo-laptop
               vpn_address: 10.73.7.9
+
+    - name: Read ada's and bo's person records after admission
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /etc/porelo-host/people/ada.conf
+        - /etc/porelo-host/people/bo.conf
+      register: verify_people_admitted_records
+
+    - name: Assert ada's and bo's records store member=hand before locked=false and their laptop lines
+      ansible.builtin.assert:
+        that:
+          - (verify_people_admitted_records.results[0].content | b64decode)
+            == ('member=hand\nlocked=false\nlaptop=ada-laptop ' ~ verify_people_ada_ssh ~ ' '
+                ~ verify_people_ada_wg ~ ' 10.73.7.3\n')
+          - (verify_people_admitted_records.results[1].content | b64decode)
+            == ('member=hand\nlocked=false\nlaptop=bo-laptop ' ~ verify_people_bo_ssh ~ ' '
+                ~ verify_people_bo_wg ~ ' 10.73.7.9\n')
+        fail_msg: >-
+          asked ada.conf and bo.conf to hold member=hand before locked=false and their laptop lines;
+          got ada '{{ verify_people_admitted_records.results[0].content | b64decode }}',
+          bo '{{ verify_people_admitted_records.results[1].content | b64decode }}'
+      vars:
+        verify_people_ada_ssh: "{{ verify_people_public_inputs.results[0].content | b64decode | trim }}"
+        verify_people_ada_wg: "{{ verify_people_public_inputs.results[1].content | b64decode | trim }}"
+        verify_people_bo_ssh: "{{ verify_people_public_inputs.results[2].content | b64decode | trim }}"
+        verify_people_bo_wg: "{{ verify_people_public_inputs.results[3].content | b64decode | trim }}"
 
     - name: Read passwd, host groups and ada's and bo's group memberships
       ansible.builtin.command:
@@ -871,6 +900,74 @@
           got rc {{ verify_people_lock_ada_again.rc }}: {{ verify_people_lock_ada_again.stdout }}
           ({{ verify_people_lock_ada_again.stderr }})
 
+    - name: Read ada's person record after lock ada
+      ansible.builtin.slurp:
+        src: /etc/porelo-host/people/ada.conf
+      register: verify_people_locked_record
+
+    - name: Assert lock ada keeps member=hand on the locked record
+      ansible.builtin.assert:
+        that:
+          - (verify_people_locked_record.content | b64decode)
+            == ('member=hand\nlocked=true\nlaptop=ada-laptop ' ~ verify_people_ada_ssh ~ ' '
+                ~ verify_people_ada_wg ~ ' 10.73.7.3\n')
+        fail_msg: >-
+          asked lock ada to keep member=hand with locked=true;
+          got '{{ verify_people_locked_record.content | b64decode }}'
+      vars:
+        verify_people_ada_ssh: "{{ verify_people_public_inputs.results[0].content | b64decode | trim }}"
+        verify_people_ada_wg: "{{ verify_people_public_inputs.results[1].content | b64decode | trim }}"
+
+    - name: Run down while locked ada and unlocked bo still hold memberships
+      ansible.builtin.command:
+        argv: [ansible-playbook, -c, local, -i, /root/porelo-host-inventory.yml, porelo.host.down]
+      environment:
+        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
+        LC_ALL: C.UTF-8
+      register: verify_people_down_refused
+      changed_when: false
+      failed_when: false
+
+    - name: Check that wg-porelo and porelo-matrix still exist after the refused down
+      ansible.builtin.command:
+        argv: "{{ item }}"
+      loop:
+        - [ip, link, show, wg-porelo]
+        - [getent, passwd, porelo-matrix]
+      register: verify_people_down_untouched
+      changed_when: false
+      failed_when: false
+
+    - name: Assert down refuses before stopping anything, naming locked ada, unlocked bo and the ways back
+      ansible.builtin.assert:
+        that:
+          - verify_people_down_refused.rc == 2
+          - verify_people_down_failed | length == 1
+          - "'ada (hand)' in verify_people_down_failed[0].msg"
+          - "'bo (hand)' in verify_people_down_failed[0].msg"
+          - "'Take the project off' in verify_people_down_failed[0].msg"
+          - "'Purge' in verify_people_down_failed[0].msg"
+          - verify_people_ada_ssh not in verify_people_down_refused.stdout
+          - verify_people_bo_ssh not in verify_people_down_refused.stdout
+          - verify_people_down_tasks | intersect(verify_people_teardown_tasks) | length == 0
+          - verify_people_down_untouched.results | map(attribute='rc') | list == [0, 0]
+        fail_msg: >-
+          asked down to refuse with rc 2 naming ada (hand), bo (hand), Take the project off and Purge without stopping
+          Matrix or the VPN; got rc {{ verify_people_down_refused.rc }}, lines {{ verify_people_down_lines }},
+          untouched rcs {{ verify_people_down_untouched.results | map(attribute='rc') | list }}
+      vars:
+        verify_people_ada_ssh: "{{ verify_people_public_inputs.results[0].content | b64decode | trim }}"
+        verify_people_bo_ssh: "{{ verify_people_public_inputs.results[2].content | b64decode | trim }}"
+        verify_people_down_lines: "{{ verify_people_down_refused.stdout_lines | select | map('from_json') | list }}"
+        verify_people_down_failed: "{{ verify_people_down_lines | selectattr('state', 'equalto', 'failed') | list }}"
+        verify_people_down_tasks: >-
+          {{ verify_people_down_lines | selectattr('task', 'defined') | map(attribute='task') | list }}
+        verify_people_teardown_tasks:
+          - Stop the host's Matrix homeserver and remove its account
+          - Take the host's VM pool off it, before the forge whose runner rents from it
+          - Stop the host's forge, keeping nothing
+          - Take the VPN down
+
     - name: Purge ada with /usr/local/sbin/porelo-host-person purge ada
       ansible.builtin.shell:
         cmd: |
@@ -989,6 +1086,8 @@
           {{ (verify_people_locked_forge | default({})).stderr | default('') }}
           {{ verify_people_lock_ada_again.stdout }}
           {{ verify_people_lock_ada_again.stderr }}
+          {{ verify_people_down_refused.stdout }}
+          {{ verify_people_down_refused.stderr }}
           {{ verify_people_purge_ada.stdout }}
           {{ verify_people_purge_ada.stderr }}
           {{ verify_people_purged_account.stdout }}
@@ -1052,6 +1151,26 @@
         fail_msg: >-
           asked for no Matrix or Forgejo identity token in registered stdout/stderr, helper output or journalctl -b;
           got rc {{ verify_people_leak_scan.rc }}: {{ verify_people_leak_scan.stderr }}
+
+    - name: Purge bo before side_effect runs down when the forge project tasks are skipped
+      ansible.builtin.command:
+        argv: [/usr/local/sbin/porelo-host-person, purge, bo]
+        stdin: ""
+      register: verify_people_purge_bo
+      changed_when: true
+      when: verify_forge != 'on'
+
+    - name: Assert purging bo answers purged true when the forge is off
+      ansible.builtin.assert:
+        that:
+          - verify_people_purge_bo.rc == 0
+          - verify_people_purge_bo.stdout_lines | length == 1
+          - "(verify_people_purge_bo.stdout | from_json) == {'person': 'bo', 'purged': true}"
+        fail_msg: >-
+          asked 'porelo-host-person purge bo' for {"person":"bo","purged":true};
+          got rc {{ verify_people_purge_bo.rc }}: {{ verify_people_purge_bo.stdout }}
+          ({{ verify_people_purge_bo.stderr }})
+      when: verify_forge != 'on'
   always:
     - name: Remove ada's temporary WireGuard peer namespace and veth interface
       ansible.builtin.shell:

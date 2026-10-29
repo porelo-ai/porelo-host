@@ -27,9 +27,11 @@ call and keeps in memory; direct root calls without `SUDO_USER` refuse with `64`
 `up` prepares the forge without repositories (`forge_repositories` stays empty on the host); the repository migration,
 gate, branch protection, publisher, agent token and gathered push task files remain on disk uncalled by `up`.
 
-`/usr/local/sbin/porelo-host-project`, root's alone, registers an organization with its recorded admin, signing
-key in Porelo's canonical `ssh-ed25519 <base64>` signer format and package-only publisher, or checks its commits
-against the central forge before removal. Its credentials stay in memory and Forgejo;
+`/usr/local/sbin/porelo-host-project`, root's alone, registers an organization with an unlocked member in
+`/etc/porelo-host/people/` (recording `member=<project> project-admin`), a signing key in Porelo's canonical
+`ssh-ed25519 <base64>` signer format and a package-only publisher, or checks its commits against the central forge
+before removing the project, dropping its memberships from `/etc/porelo-host/people/` and locking each person left with
+none through `/usr/local/sbin/porelo-host-person lock`. Its credentials stay in memory and Forgejo;
 [project registration](../../doc/local-forge.md#registering-a-project)
 describes the records, refusal checks and failure behavior. Down removes the helper and project records.
 

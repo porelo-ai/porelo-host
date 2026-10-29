@@ -2,13 +2,16 @@
 """Admit and revoke a person's host access, run as root over the host admin's ssh.
 
 Root's 0600 people/<user>.conf is UTF-8, one setting per line, no comments:
-    role=project-admin
-    projects=
+    member=hand
+    member=<project> project-admin|developer
     locked=false
     laptop=<name> ssh-ed25519 <base64> <WireGuard base64> <IPv4>
-There is one laptop line per laptop, in admission order. Projects is empty until
-project synchronization is implemented; locked is true or false. Keys never go
-to output. The VPN role must load porelo-host-peers/*.conf at wg-porelo startup.
+Zero or more unique member lines appear in fixed order (hand first, then by
+project name with project-admin before developer), followed by locked=true|false
+and one laptop line per laptop in admission order. An older record with
+role=project-admin, projects= and no member line is read as member=hand and
+rewritten on its next write. Keys never go to output. The VPN role must load
+porelo-host-peers/*.conf at wg-porelo startup.
 
 With account= in forge.conf, admission creates the login, porelo-<user> gate
 and each <agent>-<user> from agents= (required, comma separated, possibly empty).
@@ -66,6 +69,7 @@ import uuid
 TRANSPORT = "/usr/libexec/porelo/transports/porelo-message-transport-matrix"
 ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
 USER = r"[a-z][a-z0-9-]{0,30}"
+PROJECT = r"[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?"
 LAPTOP = r"[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?"
 MAX_INPUT = 262144
 
@@ -126,6 +130,16 @@ def ipv4(value, code):
         return ipaddress.IPv4Address(value)
     except ipaddress.AddressValueError:
         refuse("a laptop or configuration holds no valid IPv4 address", code)
+
+
+def member_key(value, code=65):
+    """Return the canonical sort key for one membership value, refusing unknown shapes."""
+    if value == "hand":
+        return (0, "", 0)
+    parts = value.split(" ")
+    if len(parts) == 2 and re.fullmatch(PROJECT, parts[0]) and parts[1] in ("project-admin", "developer"):
+        return (1, parts[0], 0 if parts[1] == "project-admin" else 1)
+    refuse("a record holds an invalid membership", code)
 
 
 def key_block(data, code=64, addresses_required=False):
@@ -294,15 +308,33 @@ class Host:
             self.check(path, required=True, mode=0o600)
             lines = self.read(path).splitlines()
             if (
-                len(lines) < 4
-                or lines[0] != "role=project-admin"
-                or lines[1] != "projects="
-                or lines[2] not in ("locked=false", "locked=true")
-                or any(not line.startswith("laptop=") for line in lines[3:])
+                len(lines) >= 4
+                and lines[0] == "role=project-admin"
+                and lines[1] == "projects="
+                and lines[2] in ("locked=false", "locked=true")
+                and all(line.startswith("laptop=") for line in lines[3:])
             ):
-                refuse(f"the record for {path.stem} is malformed or unsupported", 65)
-            laptops = key_block(("\n".join(line[7:] for line in lines[3:]) + "\n").encode(), 65, True)
-            records[path.stem] = {"locked": lines[2] == "locked=true", "laptops": laptops}
+                members, locked_line, laptop_lines = ["hand"], lines[2], lines[3:]
+            else:
+                members, previous = [], None
+                index = 0
+                while index < len(lines) and lines[index].startswith("member="):
+                    member = lines[index][7:]
+                    order = member_key(member, 65)
+                    if previous is not None and order <= previous:
+                        refuse(f"the record for {path.stem} is malformed or unsupported", 65)
+                    members.append(member)
+                    previous = order
+                    index += 1
+                if (
+                    len(lines) < index + 2
+                    or lines[index] not in ("locked=false", "locked=true")
+                    or any(not line.startswith("laptop=") for line in lines[index + 1 :])
+                ):
+                    refuse(f"the record for {path.stem} is malformed or unsupported", 65)
+                locked_line, laptop_lines = lines[index], lines[index + 1 :]
+            laptops = key_block(("\n".join(line[7:] for line in laptop_lines) + "\n").encode(), 65, True)
+            records[path.stem] = {"members": members, "locked": locked_line == "locked=true", "laptops": laptops}
         return records
 
     def credentials(self, records, network, reserved):
@@ -754,7 +786,9 @@ class Host:
 
     def record(self, user, record):
         """Publish admission or completed revocation only after its preceding operations."""
-        text = "role=project-admin\nprojects=\nlocked=" + str(record["locked"]).lower() + "\n"
+        members = sorted(set(record["members"]), key=lambda item: member_key(item, 65))
+        text = "".join(f"member={item}\n" for item in members)
+        text += "locked=" + str(record["locked"]).lower() + "\n"
         text += "".join(
             f'laptop={item["laptop"]} {item["ssh"]} {item["wg"]} {item["address"]}\n' for item in record["laptops"]
         )
@@ -819,7 +853,7 @@ class Host:
         try:
             self.grant(user, laptops, groups, uid_range, gid_range)
         except (Refusal, OSError) as error:
-            record = {"locked": False, "laptops": laptops}
+            record = {"members": [], "locked": False, "laptops": laptops}
             try:
                 self.lock(user, record, False)
             except (Refusal, OSError):
@@ -848,7 +882,7 @@ class Host:
         )
         self.hooks["forge_admit"](user, laptops)
         self.hooks["matrix_issue"](user)
-        self.record(user, {"locked": False, "laptops": laptops})
+        self.record(user, {"members": ["hand"], "locked": False, "laptops": laptops})
 
     def lock(self, user, record, porelo):
         """Remove access first; task-stop failure cannot prevent account revocation."""
@@ -969,6 +1003,9 @@ class Host:
                             or item["address"] not in (None, old["address"])
                         ):
                             refuse("keys or addresses differ from the recorded laptop", 65)
+                    if "hand" not in record["members"]:
+                        record["members"] = ["hand", *record["members"]]
+                        self.record(user, record)
                     return self.add_answer(user, record["laptops"])
                 laptops = self.allocate(laptops, records, network, reserved)
                 uid_range = self.next_range(self.subids("subuid"))

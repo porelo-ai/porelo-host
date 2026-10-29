@@ -551,8 +551,8 @@ def test_remove_refuses_unpushed_commits_then_removes_only_the_project(api_host,
     git("--git-dir", str(local), "push", str(central), f"{reference}:{reference}")
     code, out, err = project(host, monkeypatch, capsys, "remove", "alpha")
     assert code == 0, err
-    assert json.loads(out) == {"project": "alpha", "removed": True}
-    assert out == '{"project":"alpha","removed":true}\n'
+    assert json.loads(out) == {"project": "alpha", "removed": True, "locked": []}
+    assert out == '{"project":"alpha","removed":true,"locked":[]}\n'
     assert not (host["etc"] / "projects/alpha.conf").exists()
     assert set(forge.organizations) == {"beta"}
     assert set(forge.users) == {"alice", "bob", "porelo-publisher-beta"}
@@ -945,3 +945,136 @@ def test_a_piped_token_is_its_one_line_and_never_prompted(memory_host, monkeypat
     result = project(host, monkeypatch, capsys, "remove", "alpha", token_error=error, piped=piped)
     assert result[0] == code, result
     assert (host["etc"] / "projects/alpha.conf").exists() == bool(code), "only a refusal keeps the project"
+
+
+def test_add_accepts_any_unlocked_member_and_records_project_admin_in_fixed_order(memory_host, monkeypatch, capsys):
+    """Prevent rejecting an unlocked project member without legacy role= lines, or omitting their admin membership."""
+    host = memory_host
+    laptop_line = "laptop=laptop ssh-ed25519 AAAA wg= 10.73.7.3\n"
+    (host["etc"] / "people/bob.conf").write_text("member=zeta developer\nlocked=false\n" + laptop_line)
+    carol = host["etc"] / "people/carol.conf"
+    carol.write_text("locked=false\n" + laptop_line)
+    carol.chmod(0o600)
+    host["forge"].users["carol"] = {}
+
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    assert (host["etc"] / "people/alice.conf").read_text() == (
+        "member=hand\nmember=alpha project-admin\nlocked=false\n" + laptop_line
+    )
+    assert project(host, monkeypatch, capsys, "add", "beta", "bob", "--signed-by", KEY)[0] == 0
+    assert (host["etc"] / "people/bob.conf").read_text() == (
+        "member=beta project-admin\nmember=zeta developer\nlocked=false\n" + laptop_line
+    )
+    host["forge"].calls.clear()
+    host["cli_calls"].clear()
+    refused = project(host, monkeypatch, capsys, "add", "gamma", "carol", "--signed-by", KEY)
+    assert_refused(host, refused, "carol", 65)
+    assert not (host["etc"] / "projects/gamma.conf").exists()
+
+
+def test_remove_drops_the_project_and_locks_only_people_left_with_no_membership_after_releasing_the_lock(
+    memory_host, monkeypatch, capsys
+):
+    """Prevent leaving a zero-membership person unlocked, locking remaining members, or deadlocking on forge.conf."""
+    host = memory_host
+    laptop_line = "laptop=laptop ssh-ed25519 AAAA wg= 10.73.7.3\n"
+    people = host["etc"] / "people"
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    assert project(host, monkeypatch, capsys, "add", "beta", "bob", "--signed-by", KEY)[0] == 0
+    records = {
+        "alice": "member=hand\nmember=alpha project-admin\nlocked=false\n" + laptop_line,
+        "bob": "member=alpha developer\nmember=beta project-admin\nlocked=false\n" + laptop_line,
+        "carol": "member=alpha developer\nlocked=false\n" + laptop_line,
+        "dan": "member=alpha project-admin\nmember=alpha developer\nlocked=false\n" + laptop_line,
+        "eve": "locked=true\n" + laptop_line,
+    }
+    for name, content in records.items():
+        path = people / f"{name}.conf"
+        path.write_text(content)
+        path.chmod(0o600)
+
+    person_helper = host["tmp"] / "porelo-host-person"
+    calls_file = host["tmp"] / "person-lock-calls.txt"
+    person_helper.write_text(
+        "#!/usr/bin/python3 -I\n"
+        "import fcntl, json, pathlib, sys\n"
+        f"conf = pathlib.Path({str(host['etc'] / 'forge.conf')!r})\n"
+        f"people = pathlib.Path({str(people)!r})\n"
+        f"log = pathlib.Path({str(calls_file)!r})\n"
+        "assert sys.argv[1:] and sys.argv[1] == 'lock' and len(sys.argv) == 3\n"
+        "user = sys.argv[2]\n"
+        "with conf.open('rb') as mutex:\n"
+        "    fcntl.flock(mutex, fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
+        "    record = people / f'{user}.conf'\n"
+        "    text = record.read_text(encoding='utf-8')\n"
+        "    assert 'member=' not in text and 'locked=false\\n' in text\n"
+        "    record.write_text(text.replace('locked=false\\n', 'locked=true\\n', 1), encoding='utf-8')\n"
+        "with log.open('a', encoding='utf-8') as out:\n"
+        "    out.write(user + '\\n')\n"
+        "print(json.dumps({'person': user, 'locked': True}, separators=(',', ':')))\n"
+    )
+    person_helper.chmod(0o700)
+
+    code, out, err = project(host, monkeypatch, capsys, "remove", "alpha", overrides={"PERSON": str(person_helper)})
+    assert code == 0, err
+    assert json.loads(out) == {"project": "alpha", "removed": True, "locked": ["carol", "dan"]}
+    assert out == '{"project":"alpha","removed":true,"locked":["carol","dan"]}\n'
+    assert calls_file.read_text().splitlines() == ["carol", "dan"]
+    assert (people / "alice.conf").read_text() == "member=hand\nlocked=false\n" + laptop_line
+    assert (people / "bob.conf").read_text() == "member=beta project-admin\nlocked=false\n" + laptop_line
+    assert (people / "carol.conf").read_text() == "locked=true\n" + laptop_line
+    assert (people / "dan.conf").read_text() == "locked=true\n" + laptop_line
+    assert (people / "eve.conf").read_text() == "locked=true\n" + laptop_line
+
+
+@pytest.mark.parametrize("defect, expected", [("corrupt-person", 65), ("missing-person-helper", 69)])
+def test_remove_refuses_corrupt_people_or_missing_person_helper_before_deleting_the_project(
+    memory_host, monkeypatch, capsys, defect, expected
+):
+    """Prevent deleting a project on the forge when a person's record is corrupt or the lock helper is missing."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    carol = host["etc"] / "people/carol.conf"
+    if defect == "corrupt-person":
+        carol.write_text("member=alpha unknown\nlocked=false\nlaptop=laptop ssh-ed25519 AAAA wg= 10.73.7.5\n")
+    else:
+        carol.write_text("member=alpha developer\nlocked=false\nlaptop=laptop ssh-ed25519 AAAA wg= 10.73.7.5\n")
+    carol.chmod(0o600)
+    host["forge"].calls.clear()
+    host["cli_calls"].clear()
+    missing = host["tmp"] / "missing-porelo-host-person"
+    result = project(host, monkeypatch, capsys, "remove", "alpha", overrides={"PERSON": str(missing)})
+    assert result[0] == expected and not result[1], result
+    assert not [call for call in host["forge"].calls if call[0] == "DELETE"]
+    assert (host["etc"] / "projects/alpha.conf").exists()
+
+
+def test_remove_attempts_every_lock_and_fails_when_locking_a_person_fails(memory_host, monkeypatch, capsys):
+    """Prevent one failed person lock from leaving another zero-membership person unlocked or claiming success."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    laptop_line = "laptop=laptop ssh-ed25519 AAAA wg= 10.73.7.5\n"
+    for name in ("carol", "dan"):
+        path = host["etc"] / "people" / f"{name}.conf"
+        path.write_text("member=alpha developer\nlocked=false\n" + laptop_line)
+        path.chmod(0o600)
+    calls_file = host["tmp"] / "person-lock-attempts.txt"
+    person_helper = host["tmp"] / "porelo-host-person"
+    person_helper.write_text(
+        "#!/usr/bin/python3 -I\n"
+        "import json, pathlib, sys\n"
+        "user = sys.argv[2]\n"
+        f"with pathlib.Path({str(calls_file)!r}).open('a', encoding='utf-8') as out:\n"
+        "    out.write(user + '\\n')\n"
+        "if user == 'carol':\n"
+        "    sys.exit(69)\n"
+        f"record = pathlib.Path({str(host['etc'] / 'people')!r}) / f'{{user}}.conf'\n"
+        "record.write_text(record.read_text(encoding='utf-8').replace('locked=false', 'locked=true', 1))\n"
+        "print(json.dumps({'person': user, 'locked': True}, separators=(',', ':')))\n"
+    )
+    person_helper.chmod(0o700)
+
+    code, out, err = project(host, monkeypatch, capsys, "remove", "alpha", overrides={"PERSON": str(person_helper)})
+    assert code == 69 and not out and "carol" in err, (code, out, err)
+    assert calls_file.read_text().splitlines() == ["carol", "dan"]
+    assert "locked=true\n" in (host["etc"] / "people/dan.conf").read_text()

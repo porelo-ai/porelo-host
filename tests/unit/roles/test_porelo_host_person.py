@@ -375,7 +375,7 @@ def test_add_orders_account_keys_peers_hooks_and_record(host, capsys):
         f"[Peer]\nPublicKey = {wg_key(2)}\nAllowedIPs = 10.73.7.4/32\n\n"
     )
     assert record.read_text() == (
-        "role=project-admin\nprojects=\nlocked=false\n"
+        "member=hand\nlocked=false\n"
         f"laptop=laptop {ssh_key(1)} {wg_key(1)} 10.73.7.3\n"
         f"laptop=second {ssh_key(2)} {wg_key(2)} 10.73.7.4\n"
     )
@@ -964,3 +964,135 @@ def test_teardown_removes_a_locked_persons_runtime_delivery_directory(host, caps
     assert host.invoke(verb, "alice", data=b"") == 0
     assert not directory.exists()
     assert ("alice" not in host.accounts) == (verb == "purge")
+
+
+def test_legacy_record_is_read_as_hand_and_rewritten_on_its_next_write(host, capsys):
+    """Prevent an existing record without member lines from losing admission or keeping the old shape on write."""
+    host.accounts["alice"] = 1000
+    host.write(
+        "/etc/porelo-host/people/alice.conf",
+        f"role=project-admin\nprojects=\nlocked=false\nlaptop=laptop {ssh_key(1)} {wg_key(1)} 10.73.7.3\n",
+    )
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "person": "alice",
+        "role": "project-admin",
+        "laptops": [{"laptop": "laptop", "vpn_address": "10.73.7.3"}],
+    }
+    assert host.calls == []
+    assert host.invoke("lock", "alice", data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {"person": "alice", "locked": True}
+    assert host.path("/etc/porelo-host/people/alice.conf").read_text() == (
+        f"member=hand\nlocked=true\nlaptop=laptop {ssh_key(1)} {wg_key(1)} 10.73.7.3\n"
+    )
+
+
+def test_add_adds_hand_in_fixed_order_to_a_person_who_holds_only_project_memberships(host, capsys):
+    """Prevent admitting an existing project member by hand from dropping their projects or recreating the account."""
+    host.accounts["alice"] = 1000
+    record = host.path("/etc/porelo-host/people/alice.conf")
+    host.write(
+        "/etc/porelo-host/people/alice.conf",
+        "member=alpha developer\n"
+        "member=beta project-admin\n"
+        "locked=false\n"
+        f"laptop=laptop {ssh_key(1)} {wg_key(1)} 10.73.7.3\n",
+    )
+    refused(host, capsys, 65, "add", "alice", "--role", "project-admin", data=laptop(number=2).encode())
+    assert "member=hand\n" not in record.read_text()
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "person": "alice",
+        "role": "project-admin",
+        "laptops": [{"laptop": "laptop", "vpn_address": "10.73.7.3"}],
+    }
+    assert host.calls == [] and host.events == []
+    assert record.read_text() == (
+        "member=hand\n"
+        "member=alpha developer\n"
+        "member=beta project-admin\n"
+        "locked=false\n"
+        f"laptop=laptop {ssh_key(1)} {wg_key(1)} 10.73.7.3\n"
+    )
+
+
+def test_lock_keeps_every_membership_and_accepts_a_record_left_with_none(host, capsys):
+    """Prevent lock from erasing memberships that block teardown, or rejecting a person left with no project."""
+    host.accounts["alice"] = 1000
+    host.accounts["bob"] = 1001
+    host.write(
+        "/etc/porelo-host/people/alice.conf",
+        "member=hand\n"
+        "member=alpha project-admin\n"
+        "member=alpha developer\n"
+        "locked=false\n"
+        f"laptop=laptop {ssh_key(1)} {wg_key(1)} 10.73.7.3\n",
+    )
+    host.write(
+        "/etc/porelo-host/people/bob.conf",
+        f"locked=false\nlaptop=other {ssh_key(2)} {wg_key(2)} 10.73.7.4\n",
+    )
+    assert host.invoke("lock", "alice", data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {"person": "alice", "locked": True}
+    assert host.path("/etc/porelo-host/people/alice.conf").read_text() == (
+        "member=hand\n"
+        "member=alpha project-admin\n"
+        "member=alpha developer\n"
+        "locked=true\n"
+        f"laptop=laptop {ssh_key(1)} {wg_key(1)} 10.73.7.3\n"
+    )
+    assert host.invoke("lock", "bob", data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {"person": "bob", "locked": True}
+    assert host.path("/etc/porelo-host/people/bob.conf").read_text() == (
+        f"locked=true\nlaptop=other {ssh_key(2)} {wg_key(2)} 10.73.7.4\n"
+    )
+
+
+def test_failed_add_rollback_records_no_membership_on_the_locked_account(host, capsys):
+    """Prevent a rolled-back failed admission from recording a membership for an account that was never admitted."""
+
+    def obstruct_after_validation(args):
+        if args[0] == "useradd":
+            host.path("/etc/ssh/authorized_keys/alice").mkdir(parents=True)
+
+    host.inspect = obstruct_after_validation
+    assert host.invoke("add", "alice", "--role", "project-admin") == 73
+    capsys.readouterr()
+    text = host.path("/etc/porelo-host/people/alice.conf").read_text()
+    assert text.startswith("locked=true\nlaptop=") and "member=" not in text and "role=" not in text
+    host.inspect = lambda _args: None
+    host.path("/etc/ssh/authorized_keys/alice").rmdir()
+    assert host.invoke("purge", "alice", data=b"") == 0
+    assert not host.path("/etc/porelo-host/people/alice.conf").exists()
+
+
+@pytest.mark.parametrize(
+    "members",
+    [
+        "role=project-admin\nprojects=\nmember=hand\n",
+        "member=hand\nmember=hand\n",
+        "member=alpha developer\nmember=hand\n",
+        "member=beta project-admin\nmember=alpha project-admin\n",
+        "member=alpha developer\nmember=alpha project-admin\n",
+        "member=alpha owner\n",
+        "member=Alpha developer\n",
+        "member=\n",
+    ],
+    ids=[
+        "mixed-legacy",
+        "duplicate-hand",
+        "hand-after-project",
+        "unordered-projects",
+        "developer-before-admin",
+        "unknown-role",
+        "uppercase-project",
+        "empty-member",
+    ],
+)
+def test_unordered_duplicate_or_unknown_memberships_are_refused(host, capsys, members):
+    """Prevent malformed membership lines from being ignored during allocation or lock."""
+    host.write(
+        "/etc/porelo-host/people/alice.conf",
+        members + f"locked=false\nlaptop=laptop {ssh_key(1)} {wg_key(1)} 10.73.7.3\n",
+    )
+    refused(host, capsys, 65, "add", "bob", "--role", "project-admin", data=laptop(number=2).encode())
