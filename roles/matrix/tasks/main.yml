@@ -54,6 +54,24 @@
     marker: "# {mark} porelo-host matrix name"
     block: "127.0.0.1 {{ matrix_name }}"
 
+# Porelo names a person's machine on a transport <hostname>-<account>; the host issues that person's homeserver token
+# and expels on lock under <porelo_host_name>-<account>, so the hostname must be the host's name, kept across boots.
+- name: Keep cloud-init from setting the hostname again at boot
+  ansible.builtin.copy:
+    dest: /etc/cloud/cloud.cfg.d/90-porelo-host-hostname.cfg
+    content: "# Written by porelo-host's matrix role.\npreserve_hostname: true\n"
+    mode: "0644"
+
+- name: Name the host as its people's machines are named on the homeserver
+  ansible.builtin.hostname:
+    name: "{{ porelo_host_name }}"
+
+- name: Resolve the host's own name through the host's loopback interface
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} porelo-host host name"
+    block: "127.0.1.1 {{ porelo_host_name }}"
+
 - name: Make the homeserver's configuration and certificate directories
   ansible.builtin.file:
     path: "{{ item }}"
