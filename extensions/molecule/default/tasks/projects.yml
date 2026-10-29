@@ -873,8 +873,10 @@
                     check=True,
                 )
                 subprocess.run(["/usr/bin/git", "-C", str(repo), "add", filename], env=git_env, check=True)
+                # Empty where a probe signs the content already in force with another key.
                 subprocess.run(
-                    ["/usr/bin/git", "-C", str(repo), "commit", "-q", "-S", "-m", "Update " + filename],
+                    ["/usr/bin/git", "-C", str(repo), "commit", "-q", "-S", "--allow-empty",
+                     "-m", "Update " + filename],
                     env=git_env,
                     check=True,
                 )
