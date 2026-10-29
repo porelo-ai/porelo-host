@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `porelo-host-person sync <project>`, callable by root or `sudo -n` by the project's unlocked recorded admin through
+  the `porelo-people` sudoers rule, copies the admin's plain private `project.bundle` and `access.bundle` into a
+  root-only `/run/porelo-host/sync/` directory and verifies them through `porelo project verify --json` in a
+  `DynamicUser` transient unit without home or network against the project's pinned signing keys and last applied
+  commits. It checks `access.yml`'s `host:` block against the host's VPN network, live WireGuard public key and CA
+  certificate digest, validates the whole developer diff before changing anything, reconciles `<project> developer`
+  memberships, per-laptop SSH keys and WireGuard peers (preserving `hand` and `project-admin` memberships and locking a
+  dropped developer only when no membership remains), updates the organization's `developers` team on the local forge,
+  and records `commit=`, `access_commit=` and `signer=` lines in `/etc/porelo-host/projects/<project>.conf`.
 - `porelo-host-project` registers a project for a recorded person, with its pinned SSH Ed25519 signing key, forge
   organization and package-only publisher. Removal checks every repository's commits against the central forge
   before deleting its repositories, packages, organization, publisher and root-only record.

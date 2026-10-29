@@ -107,7 +107,8 @@ access or repository creation. Its `write:package` token becomes the organizatio
 `PORELO_PUBLISHER_TOKEN`. The generated password is discarded; no credential reaches stdout or a record.
 
 `/etc/porelo-host/projects/<project>.conf`, root's with mode `0600`, holds `admin`, `signed_by` and `publisher` as
-`key=value` lines, and registration adds `member=<project> project-admin` in fixed order to
+`key=value` lines (and, once `porelo-host-person sync` has run, `commit`, `access_commit` and one `signer` line per
+verified project signing key), and registration adds `member=<project> project-admin` in fixed order to
 `/etc/porelo-host/people/<admin>.conf`. Both record directories are root's with mode `0700`. An existing record,
 organization, user or publisher name is refused before registration changes the forge. Success prints one compact JSON
 line, in this field order:
@@ -137,6 +138,47 @@ Every refusal goes to stderr as `porelo-host-project: <words>`, with no success 
 | `65` | The records or forge refuse, including a taken name, a corrupt project record, an unknown project or unpushed commits |
 | `69` | A needed dependency or setting is missing, unavailable or not root's, including a caller who is not root |
 | `73` | A directory, record, temporary file or command output cannot be written or removed |
+
+## Keeping a project's developers in step
+
+`/usr/local/sbin/porelo-host-person` manages host people under the exclusive flock on `/etc/porelo-host/forge.conf`,
+with the same refusal prefix (`porelo-host-person: <words>` on stderr) and exit codes (`64`, `65`, `69`, `73`). Root
+calls `add <user> --role project-admin` (recording `member=hand`), `lock <user>` and `purge <user>`. Either root or the
+project's unlocked recorded admin (`sudo -n /usr/local/sbin/porelo-host-person sync <project>`, permitted to
+`%porelo-people` in `/etc/sudoers.d/porelo-host-person` and checked by the helper against `SUDO_USER` and `admin=` in
+`/etc/porelo-host/projects/<project>.conf`) calls `sync <project>`.
+
+`porelo-host-person sync <project>` reconciles the project's developers with its signed bundles:
+
+1. Root traverses `<admin home>/.local/share/porelo-host/setup/<project>/` without following symlinks, requires
+   `project.bundle` and `access.bundle` to be plain files owned by the admin and not writable by group or others, and
+   copies both into a fresh `0700` root-only directory under `/run/porelo-host/sync/`, removed before `sync` exits.
+2. Root runs `porelo project verify --json` through `systemd-run --pipe --wait --quiet --collect` in transient unit
+   `porelo-host-sync-<project>` with `DynamicUser=yes`, `PrivateNetwork=yes`, `ProtectHome=yes` and `LoadCredential=`
+   for both copied bundles. Verification pins `signed_by=` from the project record on the first run and the recorded
+   `signer=` keys thereafter, passing `--since` and `--access-since` once commits are recorded. A nonzero exit refuses
+   with `65` and Porelo's stderr words.
+3. `access.yml`'s `host:` block must match this host's VPN `network`, live `wg-porelo` `wireguard_public_key` and
+   `ca_sha256` (the 64-digit lowercase hex SHA-256 of the DER certificate in `/etc/porelo-host/forge/ca.pem`), or
+   `sync` refuses (`65`) naming every differing field.
+4. When both verified commit IDs equal the project record's `commit=` and `access_commit=`, `sync` changes nothing and
+   answers with `"unchanged":true`. Otherwise it checks the entire diff against `/etc/porelo-host/people/`, host
+   accounts and groups before changing anything: an invalid user name, a system or unrecorded account, an existing
+   group name for a new user, a locked person listed again (who must be purged first), or an SSH key, WireGuard key or
+   VPN address outside the network, reserved or held by another person refuses the whole run (`65`) naming every
+   offending entry. `forge_login` in the verified JSON is ignored; the person's host login is their local forge login.
+5. Unchanged laptops keep their recorded names; newly added laptops receive the lowest free `l1`, `l2`, … name on that
+   person's record. A listed developer with no record is admitted with `member=<project> developer` (host account,
+   VPN-restricted SSH keys, WireGuard peers, local forge identities and Matrix machine token). An existing unlocked
+   person receives `member=<project> developer` without a second account, with added laptops admitted and dropped
+   laptops removed individually from `/etc/ssh/authorized_keys/<user>` and WireGuard. A person no longer listed loses
+   `member=<project> developer` and is locked only when no membership remains; `member=hand` and
+   `member=<project> project-admin` are never changed by `sync`.
+6. The organization's `developers` team on the local forge is brought to the listed developers' host logins; if that
+   team is missing, `sync` refuses (`65`) naming `developers` and `"run bring first"` before changing people or records.
+7. `/etc/porelo-host/projects/<project>.conf` is updated atomically with `commit=`, `access_commit=` and the verified
+   `signer=` lines, and stdout prints one compact JSON line:
+   `{"project":"<project>","commit":"<commit>","access_commit":"<access_commit>","added":[...],"dropped":[...],"laptops_added":["<user>/<laptop>",...],"laptops_dropped":["<user>/<laptop>",...],"unchanged":false}`.
 
 ## The person's two decisions
 

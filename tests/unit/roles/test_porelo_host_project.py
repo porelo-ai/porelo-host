@@ -1078,3 +1078,65 @@ def test_remove_attempts_every_lock_and_fails_when_locking_a_person_fails(memory
     assert code == 69 and not out and "carol" in err, (code, out, err)
     assert calls_file.read_text().splitlines() == ["carol", "dan"]
     assert "locked=true\n" in (host["etc"] / "people/dan.conf").read_text()
+
+
+def test_remove_accepts_recorded_sync_commits_and_rotated_signers(memory_host, monkeypatch, capsys):
+    """Prevent sync state written to a project record from blocking project removal, while add keeps its initial lines."""
+    host = memory_host
+    second_wire = KEY_WIRE[:19] + bytes(reversed(range(32)))
+    second_key = "ssh-ed25519 " + base64.b64encode(second_wire).decode("ascii")
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    record = host["etc"] / "projects/alpha.conf"
+    assert record.read_text() == f"admin=alice\nsigned_by={KEY}\npublisher=porelo-publisher-alpha\n"
+    record.write_text(
+        record.read_text()
+        + f"commit={'1' * 40}\n"
+        + f"access_commit={'2' * 40}\n"
+        + f"signer={KEY}\n"
+        + f"signer={second_key}\n"
+    )
+    record.chmod(0o600)
+    code, out, err = project(host, monkeypatch, capsys, "remove", "alpha")
+    assert code == 0, (code, out, err)
+    assert json.loads(out) == {"project": "alpha", "removed": True, "locked": []}
+    assert not record.exists()
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        f"commit={'1' * 40}\n",
+        f"commit={'1' * 40}\naccess_commit={'2' * 40}\n",
+        f"signer={KEY}\n",
+        f"commit=not-a-commit\naccess_commit={'2' * 40}\nsigner={KEY}\n",
+        f"commit={'1' * 40}\naccess_commit=UPPER{'2' * 35}\nsigner={KEY}\n",
+        f"commit={'1' * 40}\naccess_commit={'2' * 40}\nsigner=not-a-key\n",
+        f"commit={'1' * 40}\naccess_commit={'2' * 40}\nsigner={KEY}\nsigner={KEY}\n",
+        f"commit={'1' * 40}\ncommit={'3' * 40}\naccess_commit={'2' * 40}\nsigner={KEY}\n",
+        f"commit={'1' * 40}\naccess_commit={'2' * 40}\nsigner={KEY}\nextra=unexpected\n",
+    ],
+    ids=[
+        "commit-only",
+        "missing-signer",
+        "signer-only",
+        "bad-commit",
+        "bad-access-commit",
+        "bad-signer",
+        "duplicate-signer",
+        "duplicate-commit",
+        "unknown-field",
+    ],
+)
+def test_remove_refuses_incomplete_duplicate_or_malformed_sync_lines(memory_host, monkeypatch, capsys, extra):
+    """Prevent a half-written or tampered sync state in a project record from authorizing project deletion."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    record = host["etc"] / "projects/alpha.conf"
+    record.write_text(record.read_text() + extra)
+    record.chmod(0o600)
+    host["forge"].calls.clear()
+    host["cli_calls"].clear()
+    code, out, err = project(host, monkeypatch, capsys, "remove", "alpha")
+    assert code == 65 and not out and err.startswith("porelo-host-project: "), (code, out, err)
+    assert not host["forge"].calls
+    assert record.exists()

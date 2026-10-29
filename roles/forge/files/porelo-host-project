@@ -34,6 +34,7 @@ ROOT_UID = 0
 TRUST_ANCHOR = "/"
 PROJECT_PATTERN = r"[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?"
 PERSON_PATTERN = r"[a-z][a-z0-9-]{0,30}"
+COMMIT_PATTERN = r"[0-9a-f]{40}([0-9a-f]{24})?"
 ED25519_HEADER = b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20"
 SAFE_ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
 
@@ -465,11 +466,36 @@ def add(forge, project, admin, key, record, person, person_content):
 
 
 def registered_publisher(project, record):
-    """Validate the complete record before obtaining any forge credential."""
-    values = read_values(record, 65)
+    """Validate the complete record, including any recorded sync commits and signers, before obtaining a credential."""
+    values, signers = {}, []
+    allowed = {"admin", "signed_by", "publisher", "commit", "access_commit"}
+    try:
+        with open(record, encoding="utf-8") as lines:
+            for line in lines:
+                key, separator, value = line.rstrip("\n").partition("=")
+                if not separator:
+                    refuse(f"{record} has a malformed or duplicate setting", 65)
+                if key == "signer":
+                    signing_key(value, f"{record} signer signing key", 65)
+                    if value in signers:
+                        refuse(f"{record} repeats a signer signing key", 65)
+                    signers.append(value)
+                elif key in allowed and key not in values:
+                    values[key] = value
+                else:
+                    refuse(f"{record} has a malformed or duplicate setting", 65)
+    except UnicodeError:
+        refuse(f"{record} is not UTF-8", 65)
     setting(values, "admin", PERSON_PATTERN, record, 65)
     signing_key(values.get("signed_by", ""), f"{record} signed_by signing key", 65)
-    return setting(values, "publisher", re.escape("porelo-publisher-" + project), record, 65)
+    publisher = setting(values, "publisher", re.escape("porelo-publisher-" + project), record, 65)
+    synced = ("commit" in values, "access_commit" in values, bool(signers))
+    if any(synced):
+        if not all(synced):
+            refuse(f"{record} has an incomplete sync state", 65)
+        setting(values, "commit", COMMIT_PATTERN, record, 65)
+        setting(values, "access_commit", COMMIT_PATTERN, record, 65)
+    return publisher
 
 
 def central_forge_token():
