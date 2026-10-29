@@ -83,19 +83,7 @@
   environment: "{{ __porelo_user_environment }}"
   # talk room answers a person, not whether it made anything; run again it takes the room its machine made.
   changed_when: false
-  # 78 with "has no conversation": the project's messages are not set up yet, which the bring does not do.
-  failed_when: >-
-    __porelo_room.rc != 0
-    and not (__porelo_room.rc == 78 and 'has no conversation' in __porelo_room.stderr)
-  register: __porelo_room
   when: __porelo_room_help.rc == 0
-
-- name: own_sync | Say the room waits for the project's messages
-  ansible.builtin.debug:
-    msg: >-
-      the project's room is not made: {{ __porelo_room.stderr | regex_replace('^porelo: ', '') }}; it is made when
-      Porelo sets up the project's messages, or when the bring runs again after that
-  when: __porelo_room_help.rc == 0 and __porelo_room.rc != 0
 
 - name: own_sync | Say the room waits for porelo's B314
   ansible.builtin.debug:
