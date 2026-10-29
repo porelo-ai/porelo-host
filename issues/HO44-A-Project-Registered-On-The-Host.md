@@ -32,6 +32,10 @@ QH54 a); a publisher per project keeps one project's builds from publishing into
   records or the forge say no: a name taken, a commit unpushed), 69 (something needed is missing or not root's) or 73
   (cannot write).
 - The interface runs it as `ssh root@10.73.<n>.1 /usr/local/sbin/porelo-host-project …` with the rental's key.
+- **`remove`'s central token,** asked only while the organization holds a repository: the first and only line of standard
+  input when it is no terminal, as the interface pipes it from the host admin's secrets file; a prompt that shows
+  nothing at a terminal. A repository with no central forge to compare against is refused, so its only copy is never
+  deleted.
 
 ## Acceptance
 
