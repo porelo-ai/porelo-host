@@ -1,10 +1,12 @@
 """Exercise the person's stop on a terminal without a host account or real credentials."""
 
+import base64
 import errno
 import os
 import pty
 import select
 import signal
+import subprocess
 import sys
 import termios
 import time
@@ -191,9 +193,11 @@ def test_unlock_retries_a_wrong_passphrase(terminal_home):
         (("--stdin", "drive"), "drive"),
         (("vault-new", "vault"), "exclude"),
         (("vault", "vault"), "twice"),
-        (("--stdin", "vault-new"), "root act"),
-        (("--stdin", "matrix-token"), "root act"),
-        (("--stdin", "wireguard", "wireguard"), "twice"),
+        # Run as the person, --stdin reads a pipe: a terminal would wait for lines nobody types.
+        (("--stdin", "vault-new"), "pipe"),
+        (("--stdin", "matrix-token"), "matrix-token"),
+        (("--stdin", "identities", "identities"), "twice"),
+        (("--stdin", "wireguard", "wireguard"), "root"),
         (("matrix-token",), "matrix-token"),
     ],
 )
@@ -219,3 +223,130 @@ def test_missing_dependencies_fail_before_asking(terminal_home, need, missing):
         assert terminal.finish() == 69, "a missing command must report an unavailable dependency"
     assert missing in terminal.output.decode(), "the refusal must name the missing command"
     assert not (home / "vault-called").exists(), "a missing dependency must not reach the vault"
+
+
+@pytest.fixture
+def own_account(tmp_path):
+    """A person's account: a stand-in Porelo that records each call and what it read, and their runtime directory."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "porelo").write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "call = {'args': sys.argv[1:], 'stdin': sys.stdin.read(), 'runtime': os.environ.get('XDG_RUNTIME_DIR')}\n"
+        "with (Path(os.environ['HOME']) / 'porelo-calls').open('a') as calls:\n"
+        "    calls.write(json.dumps(call) + '\\n')\n"
+        "sys.exit(int(os.environ.get('PORELO_STUB_EXIT', '0')))\n"
+    )
+    (bin_dir / "porelo").chmod(0o755)
+    runtime = tmp_path / "runtime"
+    runtime.mkdir(mode=0o700)
+    return tmp_path
+
+
+def own_stop(home, *needs, lines="", extra=None):
+    environment = {"PATH": f"{home / 'bin'}:/usr/bin:/bin", "HOME": str(home), "XDG_RUNTIME_DIR": str(home / "runtime")}
+    environment.update(extra or {})
+    return subprocess.run(
+        ["bash", str(SCRIPT), "--stdin", *needs],
+        input=lines,
+        capture_output=True,
+        text=True,
+        env=environment,
+        timeout=20,
+        check=False,
+    )
+
+
+def calls(home):
+    import json
+
+    path = home / "porelo-calls"
+    return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+def b64(text):
+    return base64.b64encode(text.encode()).decode()
+
+
+def test_the_person_opens_a_new_vault_and_puts_keys_from_their_own_pipe(own_account):
+    """Prevent the person's secrets from passing through root or any file on their way into their own vault."""
+    home = own_account
+    lines = f"vault-new {b64('chosen passphrase')}\nkey signing.key {b64('KEY MATERIAL')}\n"
+    result = own_stop(home, "vault-new", "keys", lines=lines)
+    assert result.returncode == 0, result.stderr
+    assert [call["args"] for call in calls(home)] == [
+        ["vault", "init", "--passphrase-stdin"],
+        ["vault", "put", "signing.key"],
+    ]
+    assert [call["stdin"] for call in calls(home)] == ["chosen passphrase", "KEY MATERIAL"]
+    assert all(call["runtime"] == str(home / "runtime") for call in calls(home))
+    output = result.stdout + result.stderr
+    assert "chosen passphrase" not in output and "KEY MATERIAL" not in output
+
+
+def test_the_central_forge_token_waits_in_the_persons_runtime_directory_alone(own_account):
+    """Prevent the central forge's token from landing anywhere another account or a later boot could read it."""
+    home = own_account
+    result = own_stop(home, "forge-central-token", lines=f"forge-central-token {b64('central-token')}\n")
+    assert result.returncode == 0, result.stderr
+    target = home / "runtime/porelo-host/forge-central-token"
+    assert target.read_text() == "central-token"
+    assert oct(target.stat().st_mode & 0o777) == "0o600"
+    assert oct(target.parent.stat().st_mode & 0o777) == "0o700"
+    assert calls(home) == []
+
+
+def test_a_link_where_the_central_token_goes_is_refused(own_account):
+    """Prevent a planted link from sending the token into a file the person did not mean."""
+    home = own_account
+    (home / "runtime/porelo-host").mkdir(mode=0o700)
+    (home / "runtime/porelo-host/forge-central-token").symlink_to(home / "elsewhere")
+    result = own_stop(home, "forge-central-token", lines=f"forge-central-token {b64('central-token')}\n")
+    assert result.returncode == 73 and "no plain file" in result.stderr
+    assert not (home / "elsewhere").exists()
+
+
+@pytest.mark.parametrize("need", ["wireguard", "forge-certificate"])
+def test_the_host_admins_needs_are_refused_in_a_persons_account(own_account, need):
+    """Prevent a person from believing they gave the host's key or certificates, which only root writes."""
+    home = own_account
+    result = own_stop(home, need, lines=f"{need} {b64('x')}\n")
+    assert result.returncode == 64 and "root" in result.stderr and need in result.stderr
+    assert calls(home) == []
+
+
+@pytest.mark.parametrize(
+    "lines, diagnostic",
+    [
+        (f"vault {b64('p')}\nvault {b64('p')}\n", "second time"),
+        ("vault not-base64!\n", "base64"),
+        (f"key ../escape {b64('k')}\n", "valid key"),
+        (f"wireguard {b64('k')}\n", "not named"),
+        ("", "no line gives vault"),
+    ],
+)
+def test_every_line_is_checked_before_the_vault_is_touched(own_account, lines, diagnostic):
+    """Prevent a bad line from leaving the vault half given."""
+    home = own_account
+    result = own_stop(home, "vault", "keys", lines=lines)
+    assert result.returncode == 64 and diagnostic in result.stderr, result.stderr
+    assert calls(home) == []
+
+
+def test_a_refused_passphrase_stops_before_any_key(own_account):
+    """Prevent keys from being put into a vault the person could not open."""
+    home = own_account
+    lines = f"vault {b64('wrong')}\nkey a.key {b64('k')}\n"
+    result = own_stop(home, "vault", "keys", lines=lines, extra={"PORELO_STUB_EXIT": "1"})
+    assert result.returncode == 65 and "vault unlock" in result.stderr
+    assert [call["args"] for call in calls(home)] == [["vault", "unlock", "--passphrase-stdin"]]
+
+
+def test_identities_without_their_delivery_file_say_what_is_missing(own_account):
+    """Prevent a person who was never admitted, or whose tokens were already taken, from seeing success."""
+    home = own_account
+    result = own_stop(home, "identities")
+    assert result.returncode == 69 and "identities.tokens" in result.stderr
+    assert calls(home) == []
