@@ -747,16 +747,17 @@
           - verify_projects_one_result.rc == 69
           - verify_projects_one_result.stdout == ''
           - "verify_projects_one_result.stderr is match('^porelo-host-project: ')"
-          - "'/usr/local/sbin/porelo-host-push is missing; no registered record or forge settings'
+          - "'alpha-one has unpushed or unverifiable commits in code; gathered push check exited 69'
             in verify_projects_one_result.stderr"
           - verify_projects_one_result.org_after == 200
           - verify_projects_one_result.repo_after == 200
           - verify_projects_one_record.stat.exists
           - verify_projects_one_result.token_clean
         fail_msg: >-
-          asked 'porelo-host-project remove alpha-one' with one committed repository and no central forge push setup to
-          refuse with 69 ('/usr/local/sbin/porelo-host-push is missing'), keep alpha-one and its repository and leak no
-          piped token; got {{ verify_projects_one_result }}, record exists={{ verify_projects_one_record.stat.exists }}
+          asked 'porelo-host-project remove alpha-one' with an unmigrated repository lacking original_url to refuse with
+          69 ('alpha-one has unpushed or unverifiable commits in code; gathered push check exited 69'), keep alpha-one
+          and its repository and leak no piped token; got {{ verify_projects_one_result }}, record
+          exists={{ verify_projects_one_record.stat.exists }}
       vars:
         verify_projects_one_result: "{{ verify_projects_remove_one.stdout | from_json }}"
 

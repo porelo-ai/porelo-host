@@ -1,79 +1,224 @@
 #!/usr/bin/env -S -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C /bin/bash --noprofile --norc
 # shellcheck shell=bash
-# The gathered push, run by the person as root on the host: each repository's approved local main goes to the central
-# forge with a plain push. A central forge that moved refuses it, and its commits reach the local forge as central/main.
-# The line above empties the environment before bash starts: root takes no PATH, git, proxy or shell setting from its
-# caller.
+# The gathered push, run by any developer of a project in their own account on the host: each repository's approved
+# local main goes to the central forge with a plain push. A central forge that moved refuses it, and its commits reach
+# the local forge as central/main. With --check, root compares every local ref of a project against Forgejo's migrated
+# original_url before project removal, writing neither forge.
+# The line above empties the environment before bash starts: it takes no PATH, HOME, git, proxy or shell setting from
+# its caller.
 set -u
 cd / || exit 1
 
-conf=/etc/porelo-host/forge/push.conf
-forge_account=porelo-forge
-admin_token_file=/home/porelo-forge/.config/porelo-forge/api.token
+forge_conf=/etc/porelo-host/forge.conf
 local_ca=/etc/porelo-host/forge/ca.pem
+central_ca_conf=/etc/porelo-host/forge/central-ca.conf
+default_central_ca=/etc/ssl/certs/ca-certificates.crt
 ca_owner=0
+project_pattern='^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$'
 name_pattern='^[A-Za-z0-9][A-Za-z0-9._-]*$'
+url_pattern='^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?/[^[:space:]?#@]+$'
 
 fail() {
     printf 'porelo-host-push: %s\n' "$1" >&2
     exit "${2:-1}"
 }
 
-[ "$#" -gt 0 ] || fail "name the repositories to push, in their order" 64
-[ "$(id -u)" = 0 ] || fail "run it as root, with sudo" 77
-checking=
-project_owner=
-if [ "$1" = --check ]; then
-    [ "$#" -ge 3 ] || fail "--check needs an organization and its repository names" 64
-    checking=yes
-    project_owner=$2
-    [[ $project_owner =~ ^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$ ]] \
-        || fail "--check needs a valid project organization" 64
-    shift 2
-fi
-[ -r "$conf" ] || fail "$conf is not readable; is the forge on this host?" 66
-
 # An authority root trusts is a regular file of root's that nobody else can write.
 trusted() {
     local owner mode
     [ -f "$1" ] && [ -r "$1" ] || return 1
-    read -r owner mode < <(stat -L -c '%u %a' "$1") || return 1
+    read -r owner mode < <(stat -L -c '%u %a' -- "$1") || return 1
     [ "$owner" = "$ca_owner" ] && [ $((8#$mode & 8#022)) = 0 ]
 }
+
+# A setting file of root's must be a plain file, not a symbolic link, writable by root alone.
+trusted_plain() {
+    local owner mode
+    [ -f "$1" ] && [ ! -L "$1" ] && [ -r "$1" ] || return 1
+    read -r owner mode < <(stat -c '%u %a' -- "$1") || return 1
+    [ "$owner" = "$ca_owner" ] && [ $((8#$mode & 8#022)) = 0 ]
+}
+
+forge_conf_value() {
+    local key=$1 pattern=$2 line value=
+    trusted_plain "$forge_conf" || fail "$forge_conf is not a plain file only root can change" 69
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in "$key="*) value=${line#"$key="} ;; esac
+    done < "$forge_conf"
+    [[ $value =~ $pattern ]] || fail "$forge_conf names no valid $key" 69
+    printf '%s' "$value"
+}
+
+caller_uid=$(id -u) || fail "cannot read the calling account id" 69
+checking=
+project_owner=
+if [ "${1-}" = --check ]; then
+    [ "$caller_uid" = 0 ] || fail "--check runs only as root" 77
+    [ "$#" -ge 3 ] || fail "--check needs an organization and its repository names" 64
+    checking=yes
+    project_owner=$2
+    [[ $project_owner =~ $project_pattern ]] || fail "--check needs a valid project organization" 64
+    shift 2
+else
+    [ "$caller_uid" != 0 ] \
+        || fail "do not run porelo-host-push as root or with sudo; run it in your own account" 77
+    [ "$#" -ge 1 ] || fail "name the project, and optionally the repositories to push" 64
+    project_owner=$1
+    [[ $project_owner =~ $project_pattern ]] || fail "'$project_owner' is not a project name" 64
+    shift
+fi
+
 trusted "$local_ca" || fail "the host's CA $local_ca is not a file only root can change" 66
 
 local_forge=
 owner=
 central_ca=
+local_token=
+targets=()
 declare -A central_url=()
-while read -r key first second; do
-    case "$key" in
-        local) local_forge=$first ;;
-        owner) owner=$first ;;
-        central-ca) central_ca=$first ;;
-        repository) central_url[$first]=$second ;;
-        '' | '#'*) ;;
-        *) fail "$conf names '$key', which this command does not read" 65 ;;
-    esac
-done < "$conf"
-[ -z "$checking" ] || owner=$project_owner
-[ -n "$local_forge" ] && [ -n "$owner" ] && [ -n "$central_ca" ] \
-    || fail "$conf names no local forge, owner or central CA" 65
-trusted "$central_ca" || fail "the central forge's CA $central_ca is not a file only root can change" 66
 
-declare -A named=()
-for name in "$@"; do
-    [[ $name =~ $name_pattern ]] || fail "'$name' is not a repository name" 64
-    [ -n "${central_url[$name]:-}" ] || fail "the forge holds no repository '$name' to push; it holds: ${!central_url[*]}" 64
-    [ -z "${named[$name]:-}" ] || fail "'$name' is named twice" 64
-    named[$name]=1
-done
+if [ -z "$checking" ]; then
+    passwd_line=$(getent passwd "$caller_uid") || fail "account $caller_uid is not in getent passwd" 69
+    IFS=: read -r caller_user _ passwd_uid _ _ caller_home _ <<< "$passwd_line"
+    [ "$passwd_uid" = "$caller_uid" ] && [ -n "$caller_user" ] \
+        && [[ $caller_home == /* ]] && [ "$caller_home" != / ] \
+        || fail "getent passwd gave no home directory for account $caller_uid" 69
 
-# The forge's account reads its own token, so a file it put in that token's place is never read with root's rights.
-# Never with the person's terminal or the central token on its standard input, and never waiting on a pipe put there.
-admin_token=$(timeout 10 runuser -u "$forge_account" -- cat -- "$admin_token_file" < /dev/null) \
-    || fail "$admin_token_file could not be read" 66
-[ -n "$admin_token" ] || fail "$admin_token_file is empty" 66
+    push_dir="$caller_home/.config/porelo-host/push"
+    conf="$push_dir/$project_owner.conf"
+    for dir in "$caller_home" "$caller_home/.config" "$caller_home/.config/porelo-host"; do
+        [ ! -L "$dir" ] || fail "$dir is a symbolic link, not a directory of $caller_user's" 66
+        [ -e "$dir" ] || fail "$conf does not exist ($dir is missing)" 66
+        [ -d "$dir" ] || fail "$dir is not a directory" 66
+        read -r dir_owner dir_mode < <(stat -c '%u %a' -- "$dir") || fail "$dir could not be checked" 66
+        [ "$dir_owner" = "$caller_uid" ] \
+            || fail "$dir is owned by uid $dir_owner, not $caller_user ($caller_uid)" 66
+        [ $((8#$dir_mode & 8#022)) = 0 ] \
+            || fail "$dir has mode 0$dir_mode, writable beyond $caller_user" 66
+    done
+    [ ! -L "$push_dir" ] || fail "$push_dir is a symbolic link, not a 0700 directory of $caller_user's" 66
+    [ -e "$push_dir" ] || fail "$conf does not exist ($push_dir is missing)" 66
+    [ -d "$push_dir" ] || fail "$push_dir is not a directory" 66
+    read -r dir_owner dir_mode < <(stat -c '%u %a' -- "$push_dir") || fail "$push_dir could not be checked" 66
+    [ "$dir_owner" = "$caller_uid" ] \
+        || fail "$push_dir is owned by uid $dir_owner, not $caller_user ($caller_uid)" 66
+    [ "$dir_mode" = 700 ] || fail "$push_dir has mode 0$dir_mode, expected 0700" 66
+
+    [ ! -L "$conf" ] || fail "$conf is a symbolic link, not a plain 0600 file of $caller_user's" 66
+    [ -e "$conf" ] || fail "$conf does not exist" 66
+    [ -f "$conf" ] || fail "$conf is not a plain file" 66
+    read -r conf_owner conf_mode < <(stat -c '%u %a' -- "$conf") || fail "$conf could not be checked" 66
+    [ "$conf_owner" = "$caller_uid" ] \
+        || fail "$conf is owned by uid $conf_owner, not $caller_user ($caller_uid)" 66
+    [ "$conf_mode" = 600 ] || fail "$conf has mode 0$conf_mode, expected 0600" 66
+    [ -r "$conf" ] || fail "$conf is not readable" 66
+
+    config_repos=()
+    while read -r key first second extra; do
+        case "$key" in
+            local)
+                [ -z "${second:-}" ] && [[ ${first:-} =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] \
+                    || fail "$conf names no valid https:// local forge" 65
+                local_forge=$first
+                ;;
+            owner)
+                [ -z "${second:-}" ] || fail "$conf gives extra words on owner" 65
+                owner=${first:-}
+                ;;
+            central-ca)
+                [ -z "${second:-}" ] && [[ ${first:-} =~ ^/[^[:space:]]+$ ]] \
+                    || fail "$conf names no single absolute central-ca path" 65
+                central_ca=$first
+                ;;
+            repository)
+                [[ ${first:-} =~ $name_pattern ]] \
+                    || fail "$conf names '${first:-}', which is not a repository name" 65
+                [ -z "${extra:-}" ] && [[ ${second:-} =~ $url_pattern ]] \
+                    || fail "$conf gives no valid https:// address for '$first'" 65
+                [ -z "${central_url[$first]:-}" ] || fail "$conf names repository '$first' twice" 65
+                config_repos+=("$first")
+                central_url[$first]=$second
+                ;;
+            '' | '#'*) ;;
+            *) fail "$conf names '$key', which this command does not read" 65 ;;
+        esac
+    done < "$conf"
+    [ -n "$local_forge" ] && [ -n "$owner" ] && [ -n "$central_ca" ] \
+        || fail "$conf names no local forge, owner or central CA" 65
+    [ "$owner" = "$project_owner" ] || fail "$conf is for project '$owner', not '$project_owner'" 65
+    [ "${#config_repos[@]}" -gt 0 ] || fail "$conf names no repositories to push" 65
+    trusted "$central_ca" || fail "the central forge's CA $central_ca is not a file only root can change" 66
+
+    if [ "$#" -eq 0 ]; then
+        targets=("${config_repos[@]}")
+    else
+        declare -A named=()
+        for name in "$@"; do
+            [[ $name =~ $name_pattern ]] || fail "'$name' is not a repository name" 64
+            [ -n "${central_url[$name]:-}" ] \
+                || fail "the config for $project_owner holds no repository '$name'; it holds: ${config_repos[*]}" 64
+            [ -z "${named[$name]:-}" ] || fail "'$name' is named twice" 64
+            named[$name]=1
+            targets+=("$name")
+        done
+    fi
+
+    forge_name=$(forge_conf_value name '^forge\.[a-z0-9-]+\.porelo\.internal$') || exit $?
+    _=$(forge_conf_value account '^[a-z_][a-z0-9_-]{0,31}$') || exit $?
+    vault_entry="$forge_name.person"
+    vault_reply=$(printf 'protocol=https\nhost=%s\n\n' "$forge_name" \
+        | HOME="$caller_home" XDG_RUNTIME_DIR="/run/user/$caller_uid" \
+            porelo vault credential --entry="$vault_entry" get 2>/dev/null) \
+        || fail "the vault holds no $vault_entry; give it with porelo-host-stop --stdin identities" 69
+    while IFS= read -r line; do
+        case "$line" in password=*) local_token=${line#password=} ;; esac
+    done <<< "$vault_reply"
+    [ -n "$local_token" ] \
+        || fail "the vault holds no $vault_entry; give it with porelo-host-stop --stdin identities" 69
+else
+    declare -A named=()
+    for name in "$@"; do
+        [[ $name =~ $name_pattern ]] || fail "'$name' is not a repository name" 64
+        [ -z "${named[$name]:-}" ] || fail "'$name' is named twice" 64
+        named[$name]=1
+        targets+=("$name")
+    done
+
+    forge_address=$(forge_conf_value address '^[0-9]{1,3}(\.[0-9]{1,3}){3}$') || exit $?
+    forge_port=$(forge_conf_value port '^[1-9][0-9]{0,4}$') || exit $?
+    [ "$forge_port" -le 65535 ] || fail "$forge_conf names no valid port" 69
+    forge_account=$(forge_conf_value account '^[a-z_][a-z0-9_-]{0,31}$') || exit $?
+    local_forge="https://$forge_address:$forge_port"
+    owner=$project_owner
+
+    if [ -e "$central_ca_conf" ] || [ -L "$central_ca_conf" ]; then
+        trusted_plain "$central_ca_conf" \
+            || fail "$central_ca_conf is not a plain file only root can change" 66
+        extra_ca_line=
+        {
+            IFS= read -r central_ca || true
+            IFS= read -r extra_ca_line || true
+        } < "$central_ca_conf"
+        [ -z "$extra_ca_line" ] && [[ $central_ca =~ ^/[^[:space:]]+$ ]] \
+            || fail "$central_ca_conf names no single absolute CA path" 65
+    else
+        central_ca=$default_central_ca
+    fi
+    trusted "$central_ca" || fail "the central forge's CA $central_ca is not a file only root can change" 66
+
+    forge_passwd=$(getent passwd "$forge_account") \
+        || fail "the forge's account $forge_account is not in getent passwd" 69
+    IFS=: read -r _ _ forge_uid _ _ forge_home _ <<< "$forge_passwd"
+    [[ $forge_uid =~ ^[1-9][0-9]*$ ]] && [[ $forge_home == /* ]] && [ "$forge_home" != / ] \
+        || fail "the forge's account $forge_account has no unprivileged home" 69
+    admin_token_file="$forge_home/.config/porelo-forge/api.token"
+    # The forge's account reads its own token, so a file it put in that token's place is never read with root's rights.
+    # Never with the person's terminal or the central token on its standard input, and never waiting on a pipe put there.
+    local_token=$(timeout 10 runuser -u "$forge_account" -- cat -- "$admin_token_file" < /dev/null) \
+        || fail "$admin_token_file could not be read" 66
+    [ -n "$local_token" ] || fail "$admin_token_file is empty" 66
+fi
+
 printf 'Token for the central forge (not shown): ' >&2
 IFS= read -rs central_token || fail "no token was given" 75
 printf '\n' >&2
@@ -82,14 +227,14 @@ printf '\n' >&2
 basic() {
     printf 'Authorization: Basic %s' "$(printf 'x-access-token:%s' "$1" | base64 -w0)"
 }
-admin_header=$(basic "$admin_token")
+local_header=$(basic "$local_token")
 central_header=$(basic "$central_token")
 
 # Every form a token takes here is cut out of what git says before it is shown.
 redact() {
     local text=$1 secret
-    for secret in "$admin_header" "$central_header" "${admin_header#Authorization: Basic }" \
-        "${central_header#Authorization: Basic }" "$admin_token" "$central_token"; do
+    for secret in "$local_header" "$central_header" "${local_header#Authorization: Basic }" \
+        "${central_header#Authorization: Basic }" "$local_token" "$central_token"; do
         text=${text//"$secret"/<redacted>}
     done
     printf '%s' "$text"
@@ -103,7 +248,7 @@ git_as() {
     GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=http.extraHeader GIT_CONFIG_VALUE_0="$header" \
         GIT_CONFIG_KEY_1=http.followRedirects GIT_CONFIG_VALUE_1=false GIT_SSL_CAINFO="$ca" git "$@"
 }
-as_local() { git_as "$admin_header" "$local_ca" "$@"; }
+as_local() { git_as "$local_header" "$local_ca" "$@"; }
 as_central() { git_as "$central_header" "$central_ca" "$@"; }
 
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
@@ -121,8 +266,65 @@ trap clean_up EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+if [ -n "$checking" ]; then
+    declare -A repo_seen=()
+    declare -A page_seen=()
+    page_file="$work/repos-page.json"
+    finished=
+    for ((page = 1; page <= 100; page++)); do
+        http_code=$(curl -sS --max-time 30 --noproxy '*' --cacert "$local_ca" \
+            -H @<(printf 'Authorization: token %s\n' "$local_token") \
+            -o "$page_file" -w '%{http_code}' \
+            "$local_forge/api/v1/orgs/$owner/repos?limit=50&page=$page") \
+            || fail "the forge did not answer /api/v1/orgs/$owner/repos" 69
+        [ "$http_code" = 200 ] \
+            || fail "the forge answered HTTP $http_code for /api/v1/orgs/$owner/repos" 69
+        parsed=$(python3 -I -c '
+import hashlib, json, sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+if not isinstance(data, list) or any(not isinstance(item, dict) for item in data):
+    sys.exit(2)
+if not data:
+    print("EMPTY")
+    sys.exit(0)
+digest = hashlib.sha256(json.dumps(data, sort_keys=True).encode("utf-8")).hexdigest()
+print("DIGEST\t" + digest)
+for item in data:
+    name = item.get("name")
+    url = item.get("original_url") or ""
+    if not isinstance(name, str) or not isinstance(url, str) or any(c in name + url for c in "\t\r\n"):
+        sys.exit(2)
+    print("REPO\t" + name + "\t" + url)
+' "$page_file" 2>/dev/null) || fail "the forge sent invalid JSON for /api/v1/orgs/$owner/repos" 69
+        if [ "$parsed" = EMPTY ]; then
+            finished=yes
+            break
+        fi
+        while IFS=$'\t' read -r tag first second; do
+            case "$tag" in
+                DIGEST)
+                    [ -z "${page_seen[$first]:-}" ] \
+                        || fail "the forge repeated a page for /api/v1/orgs/$owner/repos" 69
+                    page_seen[$first]=1
+                    ;;
+                REPO)
+                    repo_seen[$first]=1
+                    central_url[$first]=$second
+                    ;;
+            esac
+        done <<< "$parsed"
+    done
+    [ -n "$finished" ] || fail "the forge did not finish listing /api/v1/orgs/$owner/repos in 100 pages" 69
+    rm -f -- "$page_file"
+    for name in "${targets[@]}"; do
+        [ -n "${repo_seen[$name]:-}" ] || fail "$name: the forge holds no such repository in $owner" 69
+        [[ ${central_url[$name]:-} =~ $url_pattern ]] \
+            || fail "$name: the forge holds no central https:// original_url from migration" 69
+    done
+fi
+
 pushed=()
-for name in "$@"; do
+for name in "${targets[@]}"; do
     repo="$work/$name"
     local_url="$local_forge/$owner/$name.git"
     central=${central_url[$name]}
@@ -159,7 +361,7 @@ for name in "$@"; do
         pushed+=("$name")
         continue
     fi
-    left=("${@:$((${#pushed[@]} + 2))}")
+    left=("${targets[@]:$((${#pushed[@]} + 1))}")
     if ! [[ $said =~ \[rejected\] ]] || ! [[ $said =~ (fetch\ first|non-fast-forward) ]]; then
         fail "$name: the push failed; not pushed: ${left[*]:-none}. Git said: $(redact "$said")"
     fi

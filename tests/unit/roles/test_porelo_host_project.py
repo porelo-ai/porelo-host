@@ -229,6 +229,9 @@ def project_host(tmp_path, forge, push_host):
         (etc / "people" / f"{person}.conf").chmod(0o600)
     (etc / "forge.conf").write_text(f"address=127.0.0.1\nport={forge.port}\naccount=porelo-forge\n")
     (etc / "forge.conf").chmod(0o600)
+    (push_host["root"] / "uid").write_text("0\n")
+    push_host["api_token"].write_text(ADMIN_TOKEN + "\n")
+    (push_host["forge_etc"] / "ca.pem").write_bytes(forge.ca.read_bytes())
     cli_calls = []
 
     def cli(arguments, **_kwargs):
@@ -255,6 +258,9 @@ def api_host(request, project_host):
         forge = request.getfixturevalue("https_forge")
         settings = project_host["etc"] / "forge.conf"
         settings.write_text(settings.read_text().replace("port=443\n", f"port={forge.port}\n"))
+        push_settings = project_host["push"]["etc"] / "forge.conf"
+        push_settings.write_text(push_settings.read_text().replace("port=3000\n", f"port={forge.port}\n"))
+        project_host["push"]["repos_json"].unlink(missing_ok=True)
     else:
         project_host["memory"] = True
     return project_host
@@ -315,6 +321,11 @@ def project(
     def commands(arguments, **kwargs):
         if arguments[0] in ("/usr/bin/id", "/usr/sbin/runuser"):
             return host["cli"](arguments, **kwargs)
+        if arguments[0] == str(host["push"]["command"]) and host.get("memory") and len(arguments) >= 3:
+            org = arguments[2]
+            path = f"/api/v1/orgs/{org}/repos"
+            pages = host["forge"].pages.get(path, [host["forge"].repositories.get(org, []), []])
+            host["push"]["repos_json"].write_text(json.dumps({"token": ADMIN_TOKEN, "pages": pages}))
         return real_run(arguments, **kwargs)
 
     def read_token(*_args):
@@ -538,7 +549,7 @@ def test_remove_refuses_unpushed_commits_then_removes_only_the_project(api_host,
     pending = commit(local, host["tmp"] / "project-work", "pending")
     git("--git-dir", str(local), "update-ref", reference, pending)
     git("--git-dir", str(local), "update-ref", "refs/heads/main", pending + "~1")
-    forge.repositories["alpha"] = [{"name": "stand-in"}]
+    forge.repositories["alpha"] = [{"name": "stand-in", "original_url": "https://central.example/stand-in.git"}]
     forge.packages["alpha"] = [{"type": "maven", "name": "org.example:demo", "version": "1.0+test"}]
     forge.packages["beta"] = [{"type": "maven", "name": "org.example:other", "version": "1.0"}]
     forge.calls.clear()
@@ -560,6 +571,26 @@ def test_remove_refuses_unpushed_commits_then_removes_only_the_project(api_host,
     assert not forge.packages["alpha"]
     assert forge.packages["beta"] == [{"type": "maven", "name": "org.example:other", "version": "1.0"}]
     assert list(host["push"]["temporary"].iterdir()) == []
+
+
+def test_remove_refuses_a_repository_without_an_original_url(api_host, monkeypatch, capsys):
+    """Prevent deleting a project repository whose central migration address is missing even when commits match."""
+    host = api_host
+    forge = host["forge"]
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    local = host["tmp"] / "local" / "alpha" / "stand-in.git"
+    central = host["tmp"] / "central" / "stand-in.git"
+    bare(local, source=central)
+    forge.repositories["alpha"] = [{"name": "stand-in", "original_url": ""}]
+    forge.calls.clear()
+    code, out, err = project(host, monkeypatch, capsys, "remove", "alpha")
+    assert code == 69 and "stand-in" in err and "gathered push check exited 69" in err and not out, (code, out, err)
+    push_calls = host["push"]["calls"].read_text().splitlines() if host["push"]["calls"].exists() else []
+    assert any(line.startswith("curl|") and "/api/v1/orgs/alpha/repos" in line for line in push_calls), push_calls
+    assert not [line for line in push_calls if not line.startswith("curl|")], push_calls
+    assert not [call for call in forge.calls if call[0] != "GET"]
+    assert (host["etc"] / "projects/alpha.conf").exists()
+    assert not (host["push"]["forge_etc"] / "push.conf").exists()
 
 
 @pytest.mark.parametrize("failure", ["server", "redirect", "ca"])
@@ -666,7 +697,11 @@ def test_a_later_repository_page_cannot_hide_unpushed_work(memory_host, monkeypa
     host = memory_host
     forge = host["forge"]
     assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
-    forge.pages["/api/v1/orgs/alpha/repos"] = [[{"name": "stand-in"}], [{"name": "unknown-source"}], []]
+    forge.pages["/api/v1/orgs/alpha/repos"] = [
+        [{"name": "stand-in", "original_url": "https://central.example/stand-in.git"}],
+        [{"name": "unknown-source"}],
+        [],
+    ]
     forge.calls.clear()
     code, out, err = project(host, monkeypatch, capsys, "remove", "alpha")
     assert code == 69 and "unknown-source" in err, (code, out, err)

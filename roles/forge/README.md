@@ -24,8 +24,12 @@ call and keeps in memory; direct root calls without `SUDO_USER` refuse with `64`
 [local forge guide](../../doc/local-forge.md#credentials-belong-to-their-destination). Down removes the script and
 `forge.conf`.
 
-`up` prepares the forge without repositories (`forge_repositories` stays empty on the host); the repository migration,
-gate, branch protection, publisher, agent token and gathered push task files remain on disk uncalled by `up`.
+`up` prepares the forge without repositories (`forge_repositories` stays empty on the host) and installs
+`/usr/local/sbin/porelo-host-push` (`0755`, run by any project developer in their own account from
+`~/.config/porelo-host/push/<project>.conf` with `<forge_name>.person` from their vault, and as root with `--check` by
+`porelo-host-project remove` against Forgejo's `original_url`) together with `/etc/porelo-host/forge/central-ca.conf`
+(`0644`, holding `forge_central_ca`). `porelo.host.bring` and `porelo.host.join` write each person's
+`~/.config/porelo-host/push/<project>.conf` from the repositories they reach on the forge.
 
 `/usr/local/sbin/porelo-host-project`, root's alone, registers an organization with an unlocked member in
 `/etc/porelo-host/people/` (recording `member=<project> project-admin`), a signing key in Porelo's canonical
