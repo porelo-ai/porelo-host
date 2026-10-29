@@ -292,6 +292,12 @@
                 "  base_image: ubuntu:24.04\n"
                 "access:\n"
                 "  repository: https://forge.invalid/alpha-one/access.git\n"
+                # The project's conversation on the host's homeserver, where the bring's talk room makes its room.
+                "mail:\n"
+                "  peers:\n"
+                "    people:\n"
+                '      address: "matrix:"\n'
+                "      trust: external\n"
             )
             access_yml = (
                 "host:\n"
