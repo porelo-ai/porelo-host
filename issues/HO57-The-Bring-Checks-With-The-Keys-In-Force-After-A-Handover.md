@@ -1,7 +1,6 @@
 # HO57 — The Bring Checks With The Keys In Force After A Handover
 
-**Status:** Accepted.
-**Blocked by:** porelo#B332.
+**Status:** Accepted. It waits for porelo's B332, which names the pinned keys themselves.
 **Size:** S - one variable, two arguments and a scenario step, with a VM run; measured S median 54 min, one
 measurement.
 
