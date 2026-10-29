@@ -7,13 +7,13 @@ walk.
 
 **Versions:**
 
-- porelo-host built from commit `d2f56e0`: `~/.porelo/handover/porelo-host/d2f56e0/porelo-host-0.5.9-snapshot.tar.gz`
-  on the laptop, sha256 `b256b505d0c9f3b2fefaf42973a560e6d9e905dea59add2601be3852bc6b0aba`, which the walk's
+- porelo-host built from commit `b5209b1`: `~/.porelo/handover/porelo-host/b5209b1/porelo-host-0.5.9-snapshot.tar.gz`
+  on the laptop, sha256 `2a5fa90c76be72e87c5436fe965cc35379fad61db4f8fd9acd49734882265db1`, which the walk's
   first step names;
 - on the host, the homeserver packages `porelo-matrix-homeserver` and `porelo-message-transport-matrix`
   `0.5.1~snapshot.0+local.20261029T131907` (Agent Matrix's `49a567a`).
 
-**Seen to work:** every check below ran on a test VM in the collection's Molecule scenario on 2026-10-29 (run 11,
+**Seen to work:** every check below ran on a test VM in the collection's Molecule scenario on 2026-10-29 (run 12,
 green, with exactly these packages), with the names `alpha`, `ada` and `alpha-one` in place of the walk's. The scripts that run the checks here
 were rehearsed against a stand-in host: a container laid out as each act leaves the host, its `wg`, `curl`, `sshd`
 and `runuser` answering as the VM did, reached through a stand-in `ssh`. Each script passed on its state and failed,
