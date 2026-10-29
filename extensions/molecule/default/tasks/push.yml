@@ -90,6 +90,16 @@
           - -c
           - |
             import base64, json, os, pathlib, pwd, secrets, ssl, subprocess, urllib.request
+            import sys, traceback
+
+            # A failure leaves only its lines, its class and an HTTP code; never its words.
+            def failed(kind, error, tb):
+                lines = [f.lineno for f in traceback.extract_tb(tb) if f.filename == "<string>"]
+                print(json.dumps({"failed_at_line": lines[-1] if lines else None, "lines": lines,
+                                  "error": kind.__name__, "code": getattr(error, "code", None)}), flush=True)
+                os._exit(0)
+
+            sys.excepthook = failed
 
             work = pathlib.Path("/root/verify-push")
             admin_token = pathlib.Path("/home/porelo-forge/.config/porelo-forge/api.token").read_text(
@@ -404,6 +414,7 @@
     - name: Assert admin and developer each pushed with their own tokens, configs stayed private, and no secret leaked
       ansible.builtin.assert:
         that:
+          - "'failed_at_line' not in verify_push_result"
           - verify_push_result.root_rc == 77
           - verify_push_result.root_has_word
           - verify_push_result.missing_vault_rc == 69
@@ -429,7 +440,7 @@
           both pa and pd pushing their commits to push-central/code, and zero secret leaks in output or journal;
           got {{ verify_push_result }}
       vars:
-        verify_push_result: "{{ verify_push_act.stdout | from_json }}"
+        verify_push_result: "{{ verify_push_act.stdout_lines | last | from_json }}"
   always:
     - name: Remove push-alpha, push-central, central write accounts, admitted push test people and scratch files
       ansible.builtin.command:
@@ -437,8 +448,17 @@
           - python3
           - -c
           - |
-            import json, os, pathlib, pwd, shutil, ssl, subprocess, urllib.error, urllib.request
+            import json, os, pathlib, pwd, shutil, ssl, subprocess, sys, traceback, urllib.error, urllib.request
 
+            # A failure leaves only its lines, its class and an HTTP code; never its words.
+            def failed(kind, error, tb):
+                lines = [f.lineno for f in traceback.extract_tb(tb) if f.filename == "<string>"]
+                print(json.dumps({"failed_at_line": lines[-1] if lines else None, "lines": lines,
+                                  "error": kind.__name__, "code": getattr(error, "code", None),
+                                  "returncode": getattr(error, "returncode", None)}), flush=True)
+                os._exit(0)
+
+            sys.excepthook = failed
             token_path = pathlib.Path("/home/porelo-forge/.config/porelo-forge/api.token")
             if token_path.exists():
                 token = token_path.read_text(encoding="utf-8").strip()
@@ -452,8 +472,6 @@
                     "/repos/push-alpha/code",
                     "/repos/push-central/code",
                     "/orgs/push-central",
-                    "/admin/users/central-pa",
-                    "/admin/users/central-pd",
                 ):
                     req = urllib.request.Request(
                         base + path, method="DELETE", headers={"Authorization": "token " + token}
@@ -464,6 +482,19 @@
                     except urllib.error.HTTPError as err:
                         if err.code != 404:
                             raise
+            # The role's token administers no users; Forgejo's own command deletes the central write accounts.
+            forge_uid = pwd.getpwnam("porelo-forge").pw_uid
+            for cname in ("central-pa", "central-pd"):
+                subprocess.run(
+                    [
+                        "/usr/sbin/runuser", "-u", "porelo-forge", "--",
+                        "/usr/bin/env", f"XDG_RUNTIME_DIR=/run/user/{forge_uid}",
+                        "/usr/bin/podman", "exec", "forgejo", "forgejo", "admin", "user", "delete",
+                        "--username", cname,
+                    ],
+                    capture_output=True,
+                    cwd="/",
+                )
             if pathlib.Path("/etc/porelo-host/projects/push-alpha.conf").exists():
                 subprocess.run(
                     ["/usr/local/sbin/porelo-host-project", "remove", "push-alpha"],
@@ -482,5 +513,17 @@
                         text=True,
                     )
             shutil.rmtree("/root/verify-push", ignore_errors=True)
+            print(json.dumps({"cleaned": True}))
+      register: verify_push_cleanup
       changed_when: true
+      failed_when: false
       no_log: true
+
+    - name: Assert the push test's cleanup ran to its end
+      ansible.builtin.assert:
+        that:
+          - verify_push_cleanup.rc == 0
+          - (verify_push_cleanup.stdout_lines | last | from_json).cleaned | default(false)
+        fail_msg: >-
+          asked the push test's cleanup to run to its end; got rc {{ verify_push_cleanup.rc }} and
+          {{ verify_push_cleanup.stdout_lines | last | default('no answer') }}
