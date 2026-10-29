@@ -23,6 +23,8 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho42"></a>[HO42](HO42-The-Host-Prepared-With-No-Project-Or-Person.md) | L | - | The host admin prepares a host with no project or person: the VPN per host, the shared forge, runner, pool and Matrix homeserver, under the host's names and the host admin's constrained CA. The homeserver's certificate waits on the homeserver serving one made elsewhere. |
+| <a id="ho44"></a>[HO44](HO44-A-Project-Registered-On-The-Host.md) | M | [HO42](#ho42) | `porelo-host-project`: a project's forge organization and publisher with its pinned signing key, deleted once nothing is unpushed. |
+| <a id="ho43"></a>[HO43](HO43-A-Project-Admin-Admitted-By-The-Host-Admin.md) | L | [HO42](#ho42) | `porelo-host-person`: a person admitted from their public keys (account, laptops' ssh keys and VPN peers, forge login and identities, Matrix token), locked and purged. |
 
 ## Backlog
 
@@ -30,6 +32,12 @@ it is left out.
 |---|---|---|---|
 | <a id="ho14"></a>[HO14](HO14-The-Collections-Python-Under-Ansible-Test-Sanity.md) | S | - | `ansible-test sanity` on the collection's Python in the Build, from a pinned image of its own. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | [HO37](#ho37) | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
+
+## Analyzed
+
+| # | Size | Blocked by | Open questions | What it covers |
+|---|---|---|---|---|
+| <a id="ho52"></a>[HO52](HO52-Snapshots-Resolved-With-A-Read-Only-Token.md) | M | [HO44](#ho44) | 0 | Each project organization holds a `read:package` token as `PORELO_PACKAGES_READ_TOKEN` and its own `MAVEN_SNAPSHOTS_URL`, so builds resolve snapshots without the publisher's token. |
 
 ## Accepted
 
@@ -54,8 +62,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho43"></a>[HO43](HO43-A-Project-Admin-Admitted-By-The-Host-Admin.md) | L | [HO42](#ho42) | `porelo-host-person`: admission from public keys, private token delivery the person can remove, forge lock, Matrix expulsion with revocation, and account purge. |
-| <a id="ho44"></a>[HO44](HO44-A-Project-Registered-On-The-Host.md) | M | [HO42](#ho42) | `porelo-host-project`: a project's forge organization and publisher with its pinned signing key, deleted once nothing is unpushed. |
 | <a id="ho45"></a>[HO45](HO45-The-Project-Brought-And-Joined-In-The-Persons-Own-Account.md) | L | [HO43](#ho43), [HO44](#ho44) | `bring.yml` and `join.yml` in the person's own account, with the stop's own-account mode and two bundles. |
 | <a id="ho46"></a>[HO46](HO46-The-Developers-Kept-In-Step-With-The-Signed-Access-File.md) | L | [HO45](#ho45) | `sync`: the developers on the host kept to the signed `access.yml`, verified by Porelo's own check as a throwaway user, added or locked. |
 | <a id="ho47"></a>[HO47](HO47-The-Gathered-Push-Run-By-Any-Developer.md) | S | [HO45](#ho45) | `porelo-host-push` as a user tool with the person's own config and token. |
