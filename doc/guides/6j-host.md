@@ -42,7 +42,7 @@ registers only when it first sets up a project's messages, after `project follow
 
 ## host-prepare: the host prepared alone
 
-After the walk's step 1-9.
+After the walk's step 2-1, which brings the VPN up.
 
 **host-prepare 1.** Run:
 
@@ -62,7 +62,7 @@ then `host-prepare passed`.
 
 ## host-person-admit: the project admin admitted
 
-After the walk's step 3-2.
+After the walk's step 3-3.
 
 **host-person-admit 1.** Run:
 
@@ -84,7 +84,7 @@ then `host-person-admit passed`. No token is printed.
 
 ## host-project-register: the project registered
 
-After the walk's step 4-2.
+After the walk's step 4-3.
 
 **host-project-register 1.** Run:
 
