@@ -318,6 +318,8 @@
                 "  matrix:\n"
                 '    homeserver: "https://matrix.alpha.porelo.internal:8448"\n'
                 '    room: "#porelo-alpha-one:matrix.alpha.porelo.internal"\n'
+                # Where admission left each person's token for the host's homeserver.
+                "    registration_token_file: ~/.config/porelo/matrix/host-registration-token\n"
             )
             git_env = {
                 "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
