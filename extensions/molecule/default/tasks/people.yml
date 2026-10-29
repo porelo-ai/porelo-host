@@ -668,8 +668,10 @@
     - name: Assert sudo -n as ada refuses every command other than no-argument porelo-host-forge-password
       ansible.builtin.assert:
         that:
+          # sudo itself refuses, so the command never runs: its words differ between sudo and Ubuntu's sudo-rs.
           - item.rc != 0
-          - "'password is required' in item.stderr or 'not allowed' in item.stderr"
+          - item.stdout == ''
+          - "item.stderr is match('sudo(-rs)?: ')"
         fail_msg: >-
           asked sudo -n as ada for '{{ item.item.label }}' to fail without privilege;
           got rc {{ item.rc }}: {{ item.stdout }} ({{ item.stderr }})
