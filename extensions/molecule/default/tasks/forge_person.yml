@@ -143,7 +143,7 @@
           set -euo pipefail
           getent passwd operator > /dev/null && echo account || true
           [ -e /etc/porelo-host/people/operator.conf ] && echo record || true
-          runuser -u porelo-forge -- env XDG_RUNTIME_DIR="/run/user/$(id -u porelo-forge)" \
+          cd / && runuser -u porelo-forge -- env XDG_RUNTIME_DIR="/run/user/$(id -u porelo-forge)" \
               podman exec forgejo forgejo admin user list | awk 'NR > 1 && $2 ~ /operator$/ {print "forge " $2}'
         executable: /bin/bash
       register: verify_operator_left
