@@ -1,6 +1,6 @@
 # HO42 — The Host Prepared With No Project Or Person
 
-**Status:** Estimated.
+**Status:** Implementing.
 **Size:** L - `up` reduced to the host's own parts, the Matrix homeserver moved to an account of the host's, the
 host admin's constrained CA for two names, a VPN network per host, and the Molecule scenario's first act.
 
@@ -32,6 +32,30 @@ Read in the code (`9f883ec`), nothing measured.
 - **The root stop** asks only `wireguard` and `forge-certificate`.
 - **`up` ends by printing** what a project's `host:` block in `access.yml` needs: address, endpoint, WireGuard public
   key, network, ssh host key fingerprint, the CA's SHA-256, and the homeserver's name.
+
+## The contract with the interface
+
+- **The inventory, `porelo_host_inventory_version: 2`:** `porelo_host_name` (`<host>`, one DNS label
+  `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`), `porelo_host_network` (`<n>`, an integer from 0 to 255; the host is
+  `10.73.<n>.1/24`), `porelo_host_distribution`, `porelo_host_vpn_peer_public_key`, `porelo_host_vpn_peer_address` (the
+  host admin's laptop, in `10.73.<n>.0/24`, not `.1`) and `porelo_host_forge`. No account, project or authorized key:
+  the host admin works as root with the rental's key. Any other version is refused, naming it.
+- **`porelo-host-stop --request`** prints two PEM requests, the forge's then the homeserver's, `CN=forge.<host>.porelo.internal`
+  and `CN=matrix.<host>.porelo.internal`. The interface takes only the key from each and signs it with
+  `subjectAltName=DNS:<its CN>,IP:10.73.<n>.1`, `basicConstraints=critical,CA:FALSE`, `extendedKeyUsage=serverAuth`.
+- **`forge-certificate <base64>`** is `base64 -w0` of three PEM certificates joined by newlines: the forge's, the
+  homeserver's, the CA's. The CA carries critically `permitted;DNS:<host>.porelo.internal` and
+  `permitted;IP:10.73.<n>.0/255.255.255.0` and nothing else, and on a later run is the CA already there. Each refusal
+  names the certificate it is about.
+- **At its end `up` prints** one line `porelo-host: host {json}` and writes the same JSON, `0644`, to
+  `/etc/porelo-host/host.json`: `address` (public IPv4), `endpoint` (`<address>:51820`), `wireguard_public_key`, `network`
+  (`10.73.<n>.0/24`), `ssh_host_key` (`ssh-ed25519 …`), `ca_sha256` (64 lower-case hex digits of the CA's DER) and
+  `homeserver` (`matrix.<host>.porelo.internal`).
+- **The homeserver** (`porelo-matrix`): porelo-host writes `PORELO_MATRIX_PORT` and `PORELO_MATRIX_SERVER_NAME` into
+  `~/.config/porelo/matrix/homeserver.conf` before the first start, and places `ca.crt` (`0644`), `tls/server.crt`
+  and `tls/server.key` (`0600`, `tls/` `0700`) beside it, owned by the account and with no `ca.key`; `publish` keeps them
+  while they verify, fit and name its address and name. That last part waits on the homeserver serving a certificate
+  made elsewhere.
 
 ## Acceptance
 
