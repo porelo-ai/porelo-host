@@ -82,6 +82,16 @@
   register: __forge_down
   changed_when: __forge_down.stdout == 'yes'
 
+# A host given back keeps no account of the forge, so a later up on the same machine starts from none.
+- name: down | Remove the forge's accounts and their homes
+  ansible.builtin.user:
+    name: "{{ item.item }}"
+    state: absent
+    remove: true
+  loop: "{{ __forge_down_accounts.results | selectattr('rc', 'equalto', 0) | list }}"
+  loop_control:
+    label: "{{ item.item }}"
+
 - name: down | Remove the host's CA and the agents' token directory for the forge
   ansible.builtin.file:
     path: "{{ __forge_ca_dir }}"

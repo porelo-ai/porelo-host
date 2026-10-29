@@ -1,0 +1,13 @@
+---
+# Where the host's CA certificate and the homeserver's waiting key and signed certificate lie before main moves them.
+__matrix_ca_dir: /etc/porelo-host/forge
+
+__matrix_packages:
+  - porelo-matrix-homeserver
+  - porelo-message-transport-matrix
+
+__matrix_environment:
+  XDG_RUNTIME_DIR: "/run/user/{{ __matrix_uid }}"
+
+__matrix_dir: "{{ __matrix_home }}/.config/porelo/matrix"
+__matrix_conf: "{{ __matrix_dir }}/homeserver.conf"

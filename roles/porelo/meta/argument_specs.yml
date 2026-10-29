@@ -6,14 +6,10 @@ argument_specs:
       porelo_account:
         type: str
         required: true
-        description: The account Porelo's tasks run as, from the collection-wide variable porelo_host_account.
+        description: The account Porelo's tasks run as.
   install:
-    short_description: Porelo's repository by its pinned key, Porelo from it, and its setup script for the account.
+    short_description: Porelo's repository by its pinned key, Porelo's packages from it, and the stop command.
     options:
-      porelo_account:
-        type: str
-        required: true
-        description: The account Porelo's setup script makes.
       porelo_distribution:
         type: str
         default: releases
@@ -31,14 +27,6 @@ argument_specs:
         type: str
         default: https://fuinorg.jfrog.io/artifactory/porelo-dist-deb
         description: Porelo's apt repository.
-      porelo_setup_script:
-        type: path
-        default: /usr/share/porelo/setup/porelo-setup.sh
-        description: Porelo's setup script, as the package porelo ships it.
-      porelo_machine_file:
-        type: path
-        default: /etc/porelo-host/setup/machine.yml
-        description: The machine file, whose directory install gives the account's group to read.
   project:
     short_description: The second inventory from the machine file, its keys checked in the vault, the project followed.
     options:

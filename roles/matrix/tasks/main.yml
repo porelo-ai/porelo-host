@@ -1,0 +1,197 @@
+---
+# The host's shared Matrix homeserver under an account of its own, with linger and subordinate ids for rootless podman.
+- name: Make the homeserver's account
+  ansible.builtin.user:
+    name: "{{ matrix_account }}"
+    shell: /usr/sbin/nologin
+    create_home: true
+  register: __matrix_user
+
+- name: Give the homeserver's account its linger
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger {{ matrix_account }}"
+    creates: "/var/lib/systemd/linger/{{ matrix_account }}"
+
+# Each file on its own: grep answers 1 for an account it does not name there, and 2 for a file it cannot read.
+- name: Read the homeserver account's subordinate ids, in each file
+  ansible.builtin.command:
+    argv: [grep, -c, "^{{ matrix_account }}:", "{{ item }}"]
+  loop: [/etc/subuid, /etc/subgid]
+  register: __matrix_subids
+  changed_when: false
+  failed_when: __matrix_subids.rc not in [0, 1]
+  check_mode: false
+
+- name: Stop if the homeserver's account lacks the subordinate ids rootless podman needs
+  ansible.builtin.assert:
+    that: __matrix_subids.results | map(attribute='stdout') | map('int') | min > 0
+    fail_msg: >-
+      no subordinate ids for {{ matrix_account }} in {{ __matrix_subids.results | selectattr('stdout', 'equalto', '0')
+      | map(attribute='item') | list }}
+    quiet: true
+
+- name: Keep the homeserver account's id and home
+  ansible.builtin.set_fact:
+    __matrix_uid: "{{ __matrix_user.uid }}"
+    __matrix_home: "{{ __matrix_user.home }}"
+
+# Base runs before this account exists, so its user manager is checked here before the container starts.
+- name: Check the controllers of the homeserver's account
+  ansible.builtin.include_role:
+    name: porelo.host.base
+    tasks_from: controllers
+  vars:
+    base_account: "{{ matrix_account }}"
+
+- name: Install the Matrix homeserver and transport packages from Porelo's repository
+  ansible.builtin.apt:
+    name: "{{ __matrix_packages }}"
+    state: present
+
+- name: Resolve the homeserver's name through the host's loopback interface
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} porelo-host matrix name"
+    block: "127.0.0.1 {{ matrix_name }}"
+
+- name: Make the homeserver's configuration and certificate directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ matrix_account }}"
+    group: "{{ matrix_account }}"
+    mode: "0700"
+  loop:
+    - "{{ __matrix_home }}/.config"
+    - "{{ __matrix_home }}/.config/porelo"
+    - "{{ __matrix_dir }}"
+    - "{{ __matrix_dir }}/tls"
+
+- name: Read whether the homeserver's configuration file exists
+  ansible.builtin.stat:
+    path: "{{ __matrix_conf }}"
+  register: __matrix_conf_stat
+
+- name: Read the homeserver's existing configuration lines
+  ansible.builtin.slurp:
+    src: "{{ __matrix_conf }}"
+  register: __matrix_conf_before
+  when: __matrix_conf_stat.stat.exists
+  check_mode: false
+
+# The transport adds its own lines to homeserver.conf; only a missing port or server name line is added here.
+- name: Add the homeserver's port and server name where absent
+  ansible.builtin.lineinfile:
+    path: "{{ __matrix_conf }}"
+    line: "{{ item.key }}={{ item.value }}"
+    create: true
+    owner: "{{ matrix_account }}"
+    group: "{{ matrix_account }}"
+    mode: "0600"
+  loop:
+    - {key: PORELO_MATRIX_PORT, value: "{{ matrix_port }}"}
+    - {key: PORELO_MATRIX_SERVER_NAME, value: "{{ matrix_name }}"}
+  loop_control:
+    label: "{{ item.key }}"
+  when: (__matrix_conf_before.content | default('') | b64decode) is not search('(?m)^' ~ item.key ~ '=')
+  notify: Restart the Matrix homeserver
+
+- name: Keep the homeserver's configuration file owned by its account alone
+  ansible.builtin.file:
+    path: "{{ __matrix_conf }}"
+    state: file
+    owner: "{{ matrix_account }}"
+    group: "{{ matrix_account }}"
+    mode: "0600"
+  when: __matrix_conf_stat.stat.exists
+
+# The stop wrote ca.pem and matrix.pem beside the waiting key request made. The key and leaf move into the account's
+# tls/ so one copy of the key remains on the host, while ca.pem stays in /etc/porelo-host/forge for later checks.
+- name: Move a signed certificate and its key from where the stop left them, or keep the homeserver's own
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      holds() {
+          [ -f "$1" ] && [ -f "$2" ] && [ -f "$wait/ca.pem" ] && [ ! -L "$1" ] && [ ! -L "$2" ] || return 1
+          [ "$(stat -c '%a' -- "$2")" = 600 ] || return 1
+          openssl x509 -checkend 2592000 -noout -in "$1" > /dev/null || return 1
+          openssl verify -CAfile "$wait/ca.pem" "$1" > /dev/null 2>&1 || return 1
+          names=$(openssl x509 -noout -ext subjectAltName -in "$1" | tail -n +2 | tr ',' '\n' | sed 's/^ *//; s/ *$//')
+          grep -qxF 'IP Address:{{ matrix_address }}' <<< "$names" && grep -qxF 'DNS:{{ matrix_name }}' <<< "$names" \
+              || return 1
+          cert_pub=$(openssl x509 -noout -pubkey -in "$1") && key_pub=$(openssl pkey -pubout -in "$2") || return 1
+          [ -n "$cert_pub" ] && [ "$cert_pub" = "$key_pub" ]
+      }
+      cd /
+      wait={{ __matrix_ca_dir }}
+      dir={{ __matrix_dir | quote }}
+      tls="$dir/tls"
+      # Written by the homeserver's account itself into its own directory, each beside its name and moved into place.
+      put() {
+          runuser -u {{ matrix_account }} -- sh -c 'set -e; umask 077; t=$(mktemp "$1/.matrix.XXXXXX"); cat > "$t";
+              chmod "$2" "$t"; mv -fT "$t" "$1/$3"' put "$2" "$3" "$4" < "$1"
+      }
+      if holds "$wait/matrix.pem" "$wait/matrix.key"; then
+          put "$wait/matrix.key" "$tls" 0600 server.key
+          put "$wait/matrix.pem" "$tls" 0600 server.crt
+          put "$wait/ca.pem" "$dir" 0644 ca.crt
+          rm -f "$wait/matrix.key" "$wait/matrix.pem" "$wait/matrix.csr"
+          echo moved; exit 0
+      fi
+      if holds "$tls/server.crt" "$tls/server.key"; then
+          if [ ! -f "$dir/ca.crt" ] || ! cmp -s "$wait/ca.pem" "$dir/ca.crt"; then
+              put "$wait/ca.pem" "$dir" 0644 ca.crt
+              echo moved; exit 0
+          fi
+          echo unchanged; exit 0
+      fi
+      echo missing
+    executable: /bin/bash
+  register: __matrix_certificate
+  changed_when: __matrix_certificate.stdout == 'moved'
+  notify: Restart the Matrix homeserver
+
+- name: Stop where no certificate signed by the host's CA holds for the homeserver
+  ansible.builtin.assert:
+    that: __matrix_certificate.stdout != 'missing'
+    fail_msg: >-
+      forge-certificate: no certificate for {{ matrix_name }} signed by the CA in {{ __matrix_ca_dir }}/ca.pem holds;
+      give it with porelo-host-stop --stdin forge-certificate and run up again
+    quiet: true
+
+- name: Enable and start the Matrix homeserver
+  ansible.builtin.systemd_service:
+    name: porelo-matrix-homeserver.service
+    scope: user
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+  become_user: "{{ matrix_account }}"
+  environment: "{{ __matrix_environment }}"
+
+- name: Restart the Matrix homeserver now if its settings or certificate changed
+  ansible.builtin.meta: flush_handlers
+
+- name: Read the homeserver's published address from its configuration
+  ansible.builtin.slurp:
+    src: "{{ __matrix_conf }}"
+  register: __matrix_conf_after
+  check_mode: false
+
+- name: Publish the Matrix homeserver on the host's VPN address and name
+  ansible.builtin.command:
+    argv:
+      - "{{ matrix_transport_command }}"
+      - publish
+      - --address
+      - "{{ matrix_address }}:{{ matrix_port }}"
+      - --name
+      - "{{ matrix_name }}"
+  become: true
+  become_user: "{{ matrix_account }}"
+  environment: "{{ __matrix_environment }}"
+  when: >-
+    ('PORELO_MATRIX_PUBLISH=' ~ matrix_address ~ ':' ~ (matrix_port | string))
+    not in (__matrix_conf_after.content | b64decode).splitlines()
+  changed_when: true

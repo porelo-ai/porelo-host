@@ -1,13 +1,55 @@
 ---
 # What `host down` runs on the host itself, with `-c local`, before the host is given back. Its steps come with the
-# roles that bring something up, the other way round: the store's last copy first, which must succeed before anything
-# stops; then the tasks and services; then the vault; then the VPN; the person's key off the account last. Each takes
-# down only what is there, so it also follows a failed `up`.
+# roles that bring something up, the other way round: the homeserver, the VM pool, the forge and its CA, then the VPN
+# last. Each takes down only what is there, so it also follows a failed `up`.
 - name: Take the host down
   hosts: localhost
   connection: local
   gather_facts: false
   tasks:
+    - name: Stop on an inventory of a version this playbook does not know
+      ansible.builtin.assert:
+        that:
+          - porelo_host_inventory_version is defined
+          - porelo_host_inventory_version is not boolean
+          - porelo_host_inventory_version == 2
+        fail_msg: >-
+          porelo_host_inventory_version must be 2;
+          got {{ porelo_host_inventory_version | to_json if porelo_host_inventory_version is defined else 'undefined' }}
+        quiet: true
+
+    - name: Stop on a host name that is not one lower-case DNS label
+      ansible.builtin.assert:
+        that:
+          - porelo_host_name is defined
+          - porelo_host_name is string
+          - porelo_host_name is match('^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\Z')
+        fail_msg: >-
+          porelo_host_name must match ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$;
+          got {{ porelo_host_name | to_json if porelo_host_name is defined else 'undefined' }}
+        quiet: true
+
+    - name: Stop on a host network outside 0 to 255
+      ansible.builtin.assert:
+        that:
+          - porelo_host_network is defined
+          - porelo_host_network is integer
+          - porelo_host_network is not boolean
+          - 0 <= porelo_host_network <= 255
+        fail_msg: >-
+          porelo_host_network must be an integer from 0 to 255;
+          got {{ porelo_host_network | to_json if porelo_host_network is defined else 'undefined' }}
+        quiet: true
+
+    - name: Stop the host's Matrix homeserver and remove its account
+      ansible.builtin.include_role:
+        name: porelo.host.matrix
+        tasks_from: down
+      vars:
+        porelo_host_step:
+          text: Stopping the Matrix homeserver
+          seconds: 10
+
     - name: Take the host's VM pool off it, before the forge whose runner rents from it
       ansible.builtin.include_role:
         name: porelo.host.vm_pool
@@ -26,15 +68,6 @@
           text: Stopping the forge
           seconds: 10
 
-    - name: Take the vault off the host
-      ansible.builtin.include_role:
-        name: porelo.host.porelo
-        tasks_from: down
-      vars:
-        porelo_host_step:
-          text: Taking the vault off the host
-          seconds: 10
-
     - name: Take the VPN down
       ansible.builtin.include_role:
         name: porelo.host.vpn
@@ -42,13 +75,4 @@
       vars:
         porelo_host_step:
           text: Closing the VPN
-          seconds: 10
-
-    - name: Take the person's key off the account
-      ansible.builtin.include_role:
-        name: porelo.host.base
-        tasks_from: down
-      vars:
-        porelo_host_step:
-          text: Removing the access key
           seconds: 10

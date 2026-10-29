@@ -6,41 +6,25 @@ where the host setting `porelo_host_forge` is true, in `up`'s second play after 
 nothing. Its runner gets an account of its own (`porelo-runner`), never Porelo's: what holds the forge's admin and the
 person's token for the central forge shares no user namespace with a task.
 
-The CA is the person's lasting one, made on their desktop; its certificate is `/etc/porelo-host/forge/ca.pem`, written
-by the stop, and its key never reaches the host. `tasks_from: request`, in `up`'s first play, makes the forge's key and
-a certificate request in `/etc/porelo-host/forge/` where no certificate signed by that CA holds for 30 days more and
-names the forge's address and name, and adds `forge-certificate` to `porelo_host_needs`; `tls` moves the signed
-certificate and its key into the forge account's `tls/`, never copying them, and refuses naming `forge-certificate`
-where none holds. `/etc/porelo-host/forge.conf` names the forge's address, name, port, person and account to the stop
-and the password script; it holds no secret.
+The CA is the host's lasting one, made on the admin's desktop; its certificate is `/etc/porelo-host/forge/ca.pem`,
+written by the stop, and its key never reaches the host. `tasks_from: request`, in `up`'s first play whether or not
+`porelo_host_forge` is true, makes keys and certificate requests in `/etc/porelo-host/forge/` for both the forge
+(`forge.key`, `forge.csr`) and the homeserver (`matrix.key`, `matrix.csr`) where either certificate signed by that CA
+does not hold for 30 days more with the host's VPN address and its DNS name, and adds `forge-certificate` to
+`porelo_host_needs`. `tls` moves the forge's signed certificate and its key into the forge account's `tls/`, never
+copying them, and refuses naming `forge-certificate` where none holds. `/etc/porelo-host/forge.conf` names the host's
+VPN address, host label, forge name, homeserver name, port, person and account to the stop and the password script; it
+holds no secret.
 
-With every forge, repositories or none, `forge_person` (default `operator`, matching `^[a-z][a-z0-9-]{0,30}$`) is the
-person's web login, made only when absent, its generated password discarded; with repositories configured, it is also
-in the organization's `Owners` team.
+With every forge, `forge_person` (default `operator`, matching `^[a-z][a-z0-9-]{0,30}$`) is the person's web login,
+made only when absent, its generated password discarded.
 `/usr/local/sbin/porelo-host-forge-password`, root's alone, takes the person's lasting password on standard input and
 sets it through the admin API with a token it makes for the call and keeps in memory; see the
 [local forge guide](../../doc/local-forge.md#credentials-belong-to-their-destination). Down removes the script and
 `forge.conf`.
 
-`forge_porelo_account` defaults to `porelo_host_account` and matches `^[a-z][a-z0-9-]{0,30}$`. With repositories
-configured, `porelo-<account>` belongs to `gates`, with code and pull request write access and Actions read access on
-all of the organization's repositories. Its token (`write:repository,read:organization`) goes from Forgejo through a
-pipe straight into that account's vault as `git.token.forge.porelo.internal`, only while the entry is missing.
-No token file is made. Each configured repository's `main` refuses direct pushes and requires one approval; only
-`forge_person` may approve and merge, with administrator merge overrides disabled and no required status checks.
-Each such repository merges a pull request by fast-forward only, every other style off, so a pull request's own
-commits reach `main` unchanged, with their author, signature and message, and the forge adds no commit of its own.
-Up reads the settings back and keeps a matching rule unchanged.
-
-Each repository is migrated once from the central forge, with its content, as an ordinary repository with no push
-mirror. Only while a repository is still to migrate, the person's central token is needed: `up` refuses naming
-`forge-central-token` until `porelo-host-stop --stdin forge-central-token`, run as root, has written it into
-`/run/porelo-host/forge-central.token`, root's alone on the tmpfs, from where the shell reads it into the migration
-request on a pipe. The migration removes it in an `always`, also when nothing was left to migrate; an `up` that fails
-before the migration leaves it, root's alone, until the next `up` takes it, `down` or a reboot. The gathered push runs
-elsewhere as a plain `git push` without force and refuses when central main moved; Forgejo's push mirrors force-push
-and can erase central commits.
-Previously configured push mirrors remain until `down` removes the forge's volumes; the next `up` migrates anew.
+`up` prepares the forge without repositories (`forge_repositories` stays empty on the host); the repository migration,
+owner, gate, branch protection, publisher, agent token and gathered push task files remain on disk uncalled by `up`.
 
 The [resource bounds](../../doc/index.md) are set by `forge_cpus`, `forge_memory`, `forge_pids_limit`,
 `forge_runner_cpus`, `forge_runner_memory` and `forge_runner_pids_limit`; job bounds use `forge_job_cpus`,
@@ -55,9 +39,9 @@ the other half. A refusal names both sides; the `capacity` entry point runs this
 reaches the runner's cache on the forge's address, its server on `forge_runner_cache_port` (4000) and its proxy on
 `forge_runner_cache_proxy_port` (4001), both published there alone.
 
-The forge's URLs use `https://forge.porelo.internal/` (`forge_name`) with no port. A root-owned system socket
-forwards port 443 on loopback and the VPN's address to Forgejo's original HTTPS port (`forge_http_port`, 3000 by
-default), which stays reachable on the VPN for the runner and existing clients. The role replaces
+The forge's URLs use `https://forge.<porelo_host_name>.porelo.internal/` (`forge_name`) with no port. A root-owned
+system socket forwards port 443 on loopback and the VPN's address to Forgejo's original HTTPS port (`forge_http_port`,
+3000 by default), which stays reachable on the VPN for the runner and existing clients. The role replaces
 `/etc/systemd/system/porelo-forge-https.socket` and `porelo-forge-https.service` from templates; `down` stops and
 disables both and removes them before stopping Forgejo. The socket may bind before the VPN address exists at boot.
 The host resolves `forge_name` to `127.0.0.1` through a marked `/etc/hosts` block; `down` removes only that block.

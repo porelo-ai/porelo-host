@@ -16,10 +16,23 @@ argument_specs:
       forge_address:
         type: str
         description: The host's address inside the VPN, the only one the forge listens on; the vpn role's by default.
+      forge_host:
+        type: str
+        description: The host's single DNS label, from porelo_host_name.
       forge_name:
         type: str
-        default: forge.porelo.internal
-        description: The name the forge's certificate carries beside that address.
+        description: >-
+          The name the forge's certificate carries beside that address, forge.<porelo_host_name>.porelo.internal by
+          default.
+      forge_matrix_name:
+        type: str
+        description: >-
+          The homeserver's DNS name that request checks beside the forge's, matrix.<porelo_host_name>.porelo.internal
+          by default.
+      forge_matrix_account:
+        type: str
+        default: porelo-matrix
+        description: The homeserver's account, whose tls/ holds its certificate once moved there.
       forge_http_port:
         type: int
         default: 3000
@@ -132,9 +145,9 @@ argument_specs:
           Nonsecret organization Actions variables; uppercase names and nonempty string values, only with repositories.
       forge_porelo_account:
         type: str
+        default: ""
         description: >-
-          Porelo's account matching ^[a-z][a-z0-9-]{0,30}$, from porelo_host_account. Its forge user is porelo-<account>
-          in the gates team; its vault holds git.token.forge.porelo.internal for the gate and build reader.
+          Porelo's account matching ^[a-z][a-z0-9-]{0,30}$ when gate.yml is called directly; unused by up.
       forge_agents:
         type: list
         elements: str
@@ -154,16 +167,25 @@ argument_specs:
         description: Lets Forgejo migrate from a private address, for a stand-in central forge on the host.
   request:
     short_description: >-
-      Before the stop, a key and a request for the forge's certificate where none signed by the person's CA holds, and
-      forge-certificate named as a need.
+      Before the stop, keys and requests for the forge's and the homeserver's certificates where either does not hold,
+      and forge-certificate named as a need.
     options:
       forge_address:
         type: str
-        description: The forge's address on the VPN, which the certificate must name.
+        description: The host's address on the VPN, which both certificates must name.
+      forge_host:
+        type: str
+        description: The host's single DNS label, from porelo_host_name, named to the stop.
       forge_name:
         type: str
-        default: forge.porelo.internal
-        description: The forge's name, which the certificate must name.
+        description: The forge's DNS name, forge.<porelo_host_name>.porelo.internal by default.
+      forge_matrix_name:
+        type: str
+        description: The homeserver's DNS name, matrix.<porelo_host_name>.porelo.internal by default.
+      forge_matrix_account:
+        type: str
+        default: porelo-matrix
+        description: The homeserver's account, whose tls/ holds its certificate once moved there.
       forge_http_port:
         type: int
         default: 3000

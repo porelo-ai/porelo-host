@@ -13,8 +13,7 @@ argument_specs:
         description: The UDP port the VPN listens on.
       vpn_address:
         type: str
-        default: 10.73.0.1/24
-        description: The host's address inside the VPN with its prefix.
+        description: The host's address inside the VPN with its prefix, 10.73.<porelo_host_network>.1/24 by default.
       vpn_peers:
         type: list
         elements: dict
@@ -40,14 +39,6 @@ argument_specs:
         type: int
         default: 22
         description: The TCP port ssh listens on, kept open on the public address.
-      vpn_room_name:
-        type: str
-        default: matrix.porelo.internal
-        description: >-
-          The name of the project's room on the person's own computer during the move, a marked line of /etc/hosts.
-      vpn_room_address:
-        type: str
-        description: The address that name resolves to; by default the first peer's own address inside the VPN.
   needs:
     short_description: >-
       Before the stop, the key's path named to the person's stop, and the key named as a need while neither its file
@@ -63,8 +54,7 @@ argument_specs:
         description: The file the person's stop writes the host's private key into.
   down:
     short_description: >-
-      The VPN stopped, and its file, the host's key, the key's path for the stop and the room's marked name in
-      /etc/hosts removed.
+      The VPN stopped, and its file, the host's key, the key's path for the stop and the host's summary removed.
     options:
       vpn_interface:
         type: str

@@ -1,0 +1,112 @@
+---
+- name: down | Remove the homeserver's marked name from the host
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} porelo-host matrix name"
+    state: absent
+
+- name: down | Read whether up made the homeserver's account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ matrix_account }}"
+    fail_key: false
+
+- name: down | Read whether the homeserver account's runtime directory is up
+  ansible.builtin.stat:
+    path: "/run/user/{{ ansible_facts['getent_passwd'][matrix_account][1] }}"
+  register: __matrix_down_runtime
+  when: ansible_facts['getent_passwd'][matrix_account] is not none
+
+- name: down | Read whether the homeserver's user unit is installed
+  ansible.builtin.stat:
+    path: /usr/lib/systemd/user/porelo-matrix-homeserver.service
+  register: __matrix_down_unit
+  when: ansible_facts['getent_passwd'][matrix_account] is not none
+
+- name: down | Stop and disable the Matrix homeserver
+  ansible.builtin.systemd_service:
+    name: porelo-matrix-homeserver.service
+    scope: user
+    state: stopped
+    enabled: false
+  become: true
+  become_user: "{{ matrix_account }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][matrix_account][1] }}"
+  when:
+    - ansible_facts['getent_passwd'][matrix_account] is not none
+    - __matrix_down_runtime.stat.isdir | default(false)
+    - __matrix_down_unit.stat.exists | default(false)
+
+- name: down | Read whether the Matrix transport command is installed
+  ansible.builtin.stat:
+    path: "{{ matrix_transport_command }}"
+  register: __matrix_down_transport
+  when: ansible_facts['getent_passwd'][matrix_account] is not none
+
+- name: down | Unpublish the Matrix homeserver
+  ansible.builtin.command:
+    argv:
+      - "{{ matrix_transport_command }}"
+      - publish
+      - --off
+  become: true
+  become_user: "{{ matrix_account }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][matrix_account][1] }}"
+  when:
+    - ansible_facts['getent_passwd'][matrix_account] is not none
+    - __matrix_down_runtime.stat.isdir | default(false)
+    - __matrix_down_transport.stat.exists | default(false)
+  changed_when: true
+
+# Rootless podman's containers, database volume and user manager must exit before userdel removes the account and home.
+- name: down | Stop the homeserver account's containers, volume, linger and user manager
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      cd /
+      account={{ matrix_account | quote }}
+      uid=$(id -u "$account")
+      [ "$uid" != 0 ]
+      as() { runuser -u "$account" -- env XDG_RUNTIME_DIR=/run/user/$uid "$@"; }
+      changed=
+      if [ -d "/run/user/$uid" ]; then
+          as systemctl --user stop porelo-matrix-homeserver-vpn.socket porelo-matrix-homeserver.service \
+              podman.socket 2>/dev/null || true
+          if [ -n "$(as podman ps -aq 2>/dev/null || true)" ]; then
+              as podman rm --all --force > /dev/null
+              changed=yes
+          fi
+          if as podman volume exists porelo-matrix-homeserver 2>/dev/null; then
+              as podman volume rm porelo-matrix-homeserver > /dev/null
+              changed=yes
+          fi
+      fi
+      if [ -e "/var/lib/systemd/linger/$account" ]; then
+          loginctl disable-linger "$account"
+          changed=yes
+      fi
+      systemctl stop "user@$uid.service" 2>/dev/null || true
+      loginctl terminate-user "$account" 2>/dev/null || true
+      for _ in 1 2 3 4 5 6 7 8 9 10; do
+          ps -u "$uid" > /dev/null 2>&1 || break
+          sleep 0.2
+      done
+      echo "${changed:-unchanged}"
+    executable: /bin/bash
+  when: ansible_facts['getent_passwd'][matrix_account] is not none
+  register: __matrix_down_cleanup
+  changed_when: __matrix_down_cleanup.stdout == 'yes'
+
+- name: down | Remove the homeserver's account and its home
+  ansible.builtin.user:
+    name: "{{ matrix_account }}"
+    state: absent
+    remove: true
+  when: ansible_facts['getent_passwd'][matrix_account] is not none
+
+- name: down | Remove any leftover linger file of the homeserver's account
+  ansible.builtin.file:
+    path: "/var/lib/systemd/linger/{{ matrix_account }}"
+    state: absent

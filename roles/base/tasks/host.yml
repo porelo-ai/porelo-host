@@ -1,0 +1,119 @@
+---
+# End of up: what a project's host block in access.yml needs of this host, written to /etc/porelo-host/host.json and
+# printed on one line. Every value here is public; the VPN's private key stays inside wg pubkey.
+- name: host | Read the host's IPv4 default route
+  ansible.builtin.command:
+    argv: [ip, -json, "-4", route, show, default]
+  register: __base_default_routes
+  changed_when: false
+  check_mode: false
+
+- name: host | Stop if the host has no IPv4 default route
+  ansible.builtin.assert:
+    that:
+      - (__base_default_routes.stdout | from_json) | length > 0
+      - (__base_default_routes.stdout | from_json)[0].dev is defined
+    fail_msg: "no IPv4 default route to tell the host's public interface by: {{ __base_default_routes.stdout }}"
+    quiet: true
+
+- name: host | Read the global IPv4 addresses of the default route's interface
+  ansible.builtin.command:
+    argv: [ip, -json, "-4", addr, show, dev, "{{ (__base_default_routes.stdout | from_json)[0].dev }}", scope, global]
+  register: __base_public_interface
+  changed_when: false
+  check_mode: false
+
+- name: host | Stop if the default route's interface has no IPv4 address
+  ansible.builtin.assert:
+    that: __base_address is match('^[0-9]{1,3}(\.[0-9]{1,3}){3}\Z')
+    fail_msg: >-
+      no IPv4 address on {{ (__base_default_routes.stdout | from_json)[0].dev }}:
+      route {{ __base_default_routes.stdout }}, addr {{ __base_public_interface.stdout }}
+    quiet: true
+  vars:
+    __base_address: >-
+      {{ ((__base_default_routes.stdout | from_json)[0].prefsrc
+      | default(((__base_public_interface.stdout | from_json | first | default({})).addr_info | default([])
+      | selectattr('family', 'equalto', 'inet') | map(attribute='local') | first) | default(''))) | trim }}
+
+- name: host | Read the host's WireGuard public key without reading the private key into Ansible
+  ansible.builtin.shell:
+    cmd: set -euo pipefail && wg pubkey < {{ base_vpn_private_key_path | quote }}
+    executable: /bin/bash
+  register: __base_wireguard_public_key
+  changed_when: false
+  check_mode: false
+
+- name: host | Stop on an invalid WireGuard public key
+  ansible.builtin.assert:
+    that: __base_wireguard_public_key.stdout | trim is match('^[A-Za-z0-9+/]{43}=\Z')
+    fail_msg: "wg pubkey produced no valid public key from {{ base_vpn_private_key_path }}"
+    quiet: true
+
+- name: host | Read the host's ed25519 ssh public key
+  ansible.builtin.slurp:
+    src: "{{ base_ssh_host_key_path }}"
+  register: __base_ssh_host_key_raw
+  check_mode: false
+
+- name: host | Stop on an invalid ed25519 ssh host public key
+  ansible.builtin.assert:
+    that:
+      - (__base_ssh_host_key_raw.content | b64decode | trim).split() | length >= 2
+      - ((__base_ssh_host_key_raw.content | b64decode | trim).split() | first) == 'ssh-ed25519'
+    fail_msg: "no valid ssh-ed25519 public key in {{ base_ssh_host_key_path }}"
+    quiet: true
+
+- name: host | Read the SHA-256 digest of the host CA's DER certificate
+  ansible.builtin.shell:
+    cmd: >-
+      set -euo pipefail
+      && openssl x509 -in {{ base_ca_path | quote }} -outform DER | sha256sum | cut -d' ' -f1
+    executable: /bin/bash
+  register: __base_ca_sha256
+  changed_when: false
+  check_mode: false
+
+- name: host | Stop on an invalid CA SHA-256 digest
+  ansible.builtin.assert:
+    that: __base_ca_sha256.stdout | trim is match('^[0-9a-f]{64}\Z')
+    fail_msg: "no 64-digit SHA-256 digest from {{ base_ca_path }}: {{ __base_ca_sha256.stdout | trim }}"
+    quiet: true
+
+- name: host | Assemble what a project's access file needs of the host
+  ansible.builtin.set_fact:
+    __base_host:
+      address: "{{ __base_address }}"
+      endpoint: "{{ __base_address }}:{{ base_vpn_port }}"
+      wireguard_public_key: "{{ __base_wireguard_public_key.stdout | trim }}"
+      network: "{{ base_network }}"
+      ssh_host_key: "{{ (__base_ssh_host_key_raw.content | b64decode | trim).split()[:2] | join(' ') }}"
+      ca_sha256: "{{ __base_ca_sha256.stdout | trim }}"
+      homeserver: "{{ base_matrix_name }}"
+  vars:
+    __base_address: >-
+      {{ ((__base_default_routes.stdout | from_json)[0].prefsrc
+      | default(((__base_public_interface.stdout | from_json | first | default({})).addr_info | default([])
+      | selectattr('family', 'equalto', 'inet') | map(attribute='local') | first) | default(''))) | trim }}
+
+- name: host | Make the directory of the host's settings
+  ansible.builtin.file:
+    path: "{{ base_host_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: host | Write the host's summary file
+  ansible.builtin.copy:
+    dest: "{{ base_host_path }}"
+    content: "{{ (__base_host | to_json) ~ '\n' }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+# The lines callback gives this message a line of its own, state host, which the interface reads.
+- name: host | Print the host's summary
+  ansible.builtin.debug:
+    msg: "{{ __base_host }}"
+  tags: [porelo_host_summary]

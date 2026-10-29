@@ -13,7 +13,7 @@
     enabled: false
   when: __vpn_conf.stat.exists
 
-- name: down | Remove the interface's file, the host's key and its path the person's stop reads
+- name: down | Remove the interface's file, the host's key, its path the person's stop reads and the host summary
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
@@ -21,9 +21,4 @@
     - "/etc/wireguard/{{ vpn_interface }}.conf"
     - "{{ vpn_private_key_path }}"
     - /etc/porelo-host/vpn.conf
-
-- name: down | Remove the room's name from the host's names
-  ansible.builtin.blockinfile:
-    path: /etc/hosts
-    marker: "# {mark} porelo-host room name"
-    state: absent
+    - /etc/porelo-host/host.json

@@ -26,7 +26,8 @@ __vm_pool_vm: "{{ __vm_pool_tools }}/porelo-vm"
 
 # The forge whose organization's Actions secret PORELO_POOL_SSH gives jobs the run key, never mounted as a file.
 __vm_pool_forge_url: >-
-  https://{{ forge_address | default((vpn_address | default('10.73.0.1/24')).split('/') | first) }}:{{
+  https://{{ forge_address | default((vpn_address
+  | default('10.73.' ~ (porelo_host_network | default(0) | string) ~ '.1/24')).split('/') | first) }}:{{
   forge_http_port | default(3000) }}/api/v1
 __vm_pool_forge_org: "{{ forge_owner | default(porelo_host_forge_owner | default('porelo')) }}"
 __vm_pool_forge_ca: /etc/porelo-host/forge/ca.pem

@@ -1,7 +1,4 @@
 ---
-# The account Porelo's tasks run as; made by Porelo's own setup script, never by this role.
-porelo_account: "{{ porelo_host_account }}"
-
 # Which of Porelo's published distributions the host installs from, releases or snapshots; from the collection-wide
 # porelo_host_distribution that porelo-frontend's inventory names.
 porelo_distribution: "{{ porelo_host_distribution | default('releases') }}"

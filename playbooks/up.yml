@@ -1,12 +1,46 @@
 ---
-# What `host up` runs on the host itself, with `-c local`: two plays around the one step only the person can take.
-# Each role the person's step serves adds what is missing to the fact porelo_host_needs in the first play; the
-# second play's first task stops on it, and the lines callback reports that stop as a waiting line.
+# What `host up` runs on the host itself, with `-c local`: two plays around the one step only the host admin can take.
+# Each role that step serves adds what is missing to the fact porelo_host_needs in the first play; the second play's
+# first task stops on it, and the lines callback reports that stop as a waiting line.
 - name: Bring the host up to the person's step
   hosts: localhost
   connection: local
   gather_facts: false
   tasks:
+    - name: Stop on an inventory of a version this playbook does not know
+      ansible.builtin.assert:
+        that:
+          - porelo_host_inventory_version is defined
+          - porelo_host_inventory_version is not boolean
+          - porelo_host_inventory_version == 2
+        fail_msg: >-
+          porelo_host_inventory_version must be 2;
+          got {{ porelo_host_inventory_version | to_json if porelo_host_inventory_version is defined else 'undefined' }}
+        quiet: true
+
+    - name: Stop on a host name that is not one lower-case DNS label
+      ansible.builtin.assert:
+        that:
+          - porelo_host_name is defined
+          - porelo_host_name is string
+          - porelo_host_name is match('^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\Z')
+        fail_msg: >-
+          porelo_host_name must match ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$;
+          got {{ porelo_host_name | to_json if porelo_host_name is defined else 'undefined' }}
+        quiet: true
+
+    - name: Stop on a host network outside 0 to 255
+      ansible.builtin.assert:
+        that:
+          - porelo_host_network is defined
+          - porelo_host_network is integer
+          - porelo_host_network is not boolean
+          - 0 <= porelo_host_network <= 255
+        fail_msg: >-
+          porelo_host_network must be an integer from 0 to 255;
+          got {{ porelo_host_network | to_json if porelo_host_network is defined else 'undefined' }}
+        quiet: true
+
     - name: Install the host's packages, KVM and podman
       ansible.builtin.include_role:
         name: porelo.host.base
@@ -15,8 +49,7 @@
           text: Installing the host's packages
           seconds: 90
 
-    # Porelo's package and its setup script, which makes the account base's next part reads.
-    - name: Install Porelo and run its setup script for the account
+    - name: Install Porelo's repository, packages and stop command
       ansible.builtin.include_role:
         name: porelo.host.porelo
         tasks_from: install
@@ -25,24 +58,7 @@
           text: Installing Porelo
           seconds: 50
 
-    - name: Let Porelo's account open KVM and libvirt
-      ansible.builtin.include_role:
-        name: porelo.host.base
-        tasks_from: account
-      vars:
-        porelo_host_step:
-          text: Setting up Porelo's account
-          seconds: 10
-
-    - name: Run Porelo's setup, and ask whether the vault is open
-      ansible.builtin.include_role:
-        name: porelo.host.porelo
-      vars:
-        porelo_host_step:
-          text: Setting up Porelo
-          seconds: 10
-
-    # Through the role, so its defaults name the key's path the person's stop writes.
+    # Through the role, so its defaults name the key's path the stop writes.
     - name: Ask whether the host's VPN key is there
       ansible.builtin.include_role:
         name: porelo.host.vpn
@@ -52,16 +68,15 @@
           text: Checking the VPN's key
           seconds: 5
 
-    # The forge's certificate is signed on the person's desktop, so its request is made before the stop.
-    - name: Ask whether the forge's certificate holds, and request one where it does not
+    # Both certificates are signed on the desktop, and the homeserver runs on every host, so requests always run here.
+    - name: Ask whether the forge's and the homeserver's certificates hold, and request them where they do not
       ansible.builtin.include_role:
         name: porelo.host.forge
         tasks_from: request
       vars:
         porelo_host_step:
-          text: Checking the forge's certificate
+          text: Checking the host's certificates
           seconds: 5
-      when: porelo_host_forge | default(false) | bool
 
 - name: Bring the host up from the person's step
   hosts: localhost
@@ -74,21 +89,12 @@
       when: porelo_host_needs | default([]) | length > 0
       tags: [porelo_host_waiting]
 
-    - name: Let the person reach the host through their VPN alone
+    - name: Let the host admin reach the host through the VPN
       ansible.builtin.include_role:
         name: porelo.host.vpn
       vars:
         porelo_host_step:
           text: Opening the VPN
-          seconds: 10
-
-    - name: Check the keys in the vault and follow the project, through Porelo's own commands
-      ansible.builtin.include_role:
-        name: porelo.host.porelo
-        tasks_from: project
-      vars:
-        porelo_host_step:
-          text: Checking the keys and following the project
           seconds: 10
 
     - name: Run the host's forge on the VPN's address, where the host asks for one
@@ -109,11 +115,19 @@
           seconds: 10
       when: porelo_host_vm_pool is defined
 
-    - name: Install every offered agent and the project's transports, through Porelo's setup script
+    - name: Run the host's Matrix homeserver on the VPN's address
       ansible.builtin.include_role:
-        name: porelo.host.porelo
-        tasks_from: tasks
+        name: porelo.host.matrix
       vars:
         porelo_host_step:
-          text: Installing the agents
-          seconds: 10
+          text: Starting the Matrix homeserver
+          seconds: 20
+
+    - name: Write and print what a project's access file needs of the host
+      ansible.builtin.include_role:
+        name: porelo.host.base
+        tasks_from: host
+      vars:
+        porelo_host_step:
+          text: Writing the host's summary
+          seconds: 5

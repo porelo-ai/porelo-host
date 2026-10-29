@@ -346,3 +346,17 @@ def test_a_huge_loop_label_and_message_retain_the_reason_within_the_entry_cap():
     assert ": …" in entry, "discarded item words must have a leading ellipsis"
     assert len(entry) <= 1000, "each label and its words must fit the item cap"
     assert len(msg) <= 4000, "the complete message must remain bounded"
+
+
+# The interface reads the host's values from this line alone; without it a project admin gets nothing to write down.
+def test_the_hosts_summary_is_its_own_line_and_no_other_message_becomes_one():
+    code, lines, output = run("host.yml")
+    assert code == 0, output
+    hosts = [line for line in lines if line["state"] == "host"]
+    assert hosts == [
+        {
+            "v": 1,
+            "state": "host",
+            "host": {"address": "192.0.2.10", "endpoint": "192.0.2.10:51820", "network": "10.73.7.0/24"},
+        }
+    ], output

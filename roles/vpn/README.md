@@ -13,7 +13,7 @@ on the host's disk, an accepted risk ([decisions](../../doc/decisions.md#the-hos
 
 `tasks_from: needs`, in `up`'s first play, writes the key's path into `/etc/porelo-host/vpn.conf` for the stop and
 adds `wireguard` to `porelo_host_needs` while neither the key's file nor the interface is there. `tasks_from: down`
-stops the interface and removes its file, the key, `vpn.conf` and the room's marked name in `/etc/hosts`.
+stops the interface and removes its file, the key, `vpn.conf` and `host.json`.
 
 ## Requirements
 
@@ -25,12 +25,10 @@ Ubuntu 26.04, run as root on the host itself (`-c local`), after the person's st
 |---|---|---|
 | `vpn_interface` | `wg-porelo` | The VPN's interface. |
 | `vpn_port` | `51820` | The UDP port the VPN listens on. |
-| `vpn_address` | `10.73.0.1/24` | The host's address inside the VPN with its prefix. |
+| `vpn_address` | `10.73.{{ porelo_host_network }}.1/24` | The host's address inside the VPN with its prefix. |
 | `vpn_peers` | the one peer of `porelo_host_vpn_peer_public_key` and `porelo_host_vpn_peer_address` | The person's peers, each `public_key` and `allowed_ips`. |
 | `vpn_private_key_path` | `/etc/wireguard/porelo-host.key` | The file holding the host's private key, written by the person's stop. |
 | `vpn_ssh_port` | `22` | The TCP port ssh listens on, kept open on the public address. |
-| `vpn_room_name` | `matrix.porelo.internal` | The project's room on the person's own computer during the move, a marked line of `/etc/hosts` that `down` removes. |
-| `vpn_room_address` | the first peer's own address | The address that name resolves to, a peer's in the VPN's `/24`. |
 
 ## Example
 
@@ -40,6 +38,7 @@ Ubuntu 26.04, run as root on the host itself (`-c local`), after the person's st
       roles:
         - role: porelo.host.vpn
           vars:
+            porelo_host_network: 0
             porelo_host_vpn_peer_public_key: "<the person's public key>"
             porelo_host_vpn_peer_address: 10.73.0.2/32
 

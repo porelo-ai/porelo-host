@@ -15,6 +15,7 @@
     dest: /etc/porelo-host/vpn.conf
     content: |
       key={{ vpn_private_key_path }}
+      admin_address={{ ((vpn_peers | first).allowed_ips.split(',') | first).split('/') | first | trim }}
     owner: root
     group: root
     mode: "0644"

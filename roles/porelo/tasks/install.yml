@@ -1,6 +1,5 @@
 ---
-# Run as root, before base's account step: Porelo's repository by its pinned key, Porelo from it, then Porelo's own
-# setup script, which makes the account. Nothing of what the script keeps is redone here.
+# Run as root: Porelo's repository by its pinned key, Porelo's packages from it, and the stop command.
 - name: install | Make the directory the key is kept in
   ansible.builtin.file:
     path: /var/cache/porelo-host
@@ -59,7 +58,7 @@
     state: present
   when: porelo_host_forge | default(false) | bool
 
-# The stop's --stdin, run as root, reads the account from here; the file holds no secret.
+# The host's settings and stop files live here; the directory itself holds no secret.
 - name: install | Make the directory of the host's settings
   ansible.builtin.file:
     path: /etc/porelo-host
@@ -68,15 +67,6 @@
     group: root
     mode: "0755"
 
-- name: install | Name the account to the person's stop
-  ansible.builtin.copy:
-    dest: /etc/porelo-host/stop.conf
-    content: |
-      account={{ porelo_account }}
-    owner: root
-    group: root
-    mode: "0644"
-
 - name: install | Install the person's stop command
   ansible.builtin.copy:
     src: "{{ role_path }}/files/porelo-host-stop"
@@ -84,56 +74,3 @@
     owner: root
     group: root
     mode: "0755"
-
-# The script says "already" for each part it finds as it should be, and prints no summary of its own yet (porelo's
-# own Idea, beside "vault put" saying unchanged): nothing changed when the repository's two parts and the account's
-# three say so.
-- name: install | Run Porelo's setup script for the account
-  ansible.builtin.command:
-    cmd: sh {{ porelo_setup_script }} --user {{ porelo_account }} --distribution {{ porelo_distribution }}
-  register: __porelo_setup_script
-  changed_when: >-
-    not (__porelo_setup_script.stdout is search('porelo.gpg is already there')
-    and __porelo_setup_script.stdout is search('porelo.list already says this')
-    and __porelo_setup_script.stdout is search(porelo_account ~ ' exists')
-    and __porelo_setup_script.stdout is search('linger is already enabled')
-    and __porelo_setup_script.stdout is search('ranges are already allocated'))
-
-# The interface uploads the setup's files root's alone before the account exists; once the setup script has made it,
-# the account may read them, never write them, since machine.yml pins the project's signing key. Only what root alone
-# can write is opened to the account's group: anything else is left as found, for project to refuse, so a file someone
-# else changed is never made to look as uploaded.
-- name: install | Read whether the interface uploaded the setup's files
-  ansible.builtin.stat:
-    path: "{{ __porelo_setup_dir }}"
-  register: __porelo_setup_uploaded
-
-- name: install | Let the account read the setup's directory
-  ansible.builtin.file:
-    path: "{{ __porelo_setup_dir }}"
-    state: directory
-    owner: root
-    group: "{{ porelo_account }}"
-    mode: "0750"
-  when:
-    - __porelo_setup_uploaded.stat.isdir | default(false)
-    - __porelo_setup_uploaded.stat.uid == 0
-    - not __porelo_setup_uploaded.stat.wgrp and not __porelo_setup_uploaded.stat.woth
-
-- name: install | Find the setup's files
-  ansible.builtin.find:
-    paths: "{{ __porelo_setup_dir }}"
-    file_type: file
-  register: __porelo_setup_files
-  when: __porelo_setup_uploaded.stat.isdir | default(false)
-
-- name: install | Let the account read the setup's files
-  ansible.builtin.file:
-    path: "{{ item.path }}"
-    owner: root
-    group: "{{ porelo_account }}"
-    mode: "0640"
-  loop: "{{ __porelo_setup_files.files | default([]) | selectattr('uid', 'equalto', 0)
-    | rejectattr('wgrp') | rejectattr('woth') | list }}"
-  loop_control:
-    label: "{{ item.path }}"

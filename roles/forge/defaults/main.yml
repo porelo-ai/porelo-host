@@ -5,10 +5,14 @@ forge_account: porelo-forge
 forge_runner_account: porelo-runner
 
 # The host's address inside the VPN, which the forge alone listens on; the vpn role's own, without its prefix.
-forge_address: "{{ (vpn_address | default('10.73.0.1/24')).split('/') | first }}"
+forge_address: "{{ (vpn_address | default('10.73.' ~ (porelo_host_network | string) ~ '.1/24')).split('/') | first }}"
 
-# The name the forge's certificate carries beside that address, and the ports it serves HTTPS and git over ssh on.
-forge_name: forge.porelo.internal
+# The host's name, the name the forge's certificate carries beside that address, the homeserver's name and account that
+# request checks beside the forge's, and the ports Forgejo serves HTTPS and git over ssh on.
+forge_host: "{{ porelo_host_name }}"
+forge_name: "forge.{{ porelo_host_name }}.porelo.internal"
+forge_matrix_name: "{{ matrix_name | default('matrix.' ~ porelo_host_name ~ '.porelo.internal') }}"
+forge_matrix_account: "{{ matrix_account | default('porelo-matrix') }}"
 forge_http_port: 3000
 forge_ssh_port: 2222
 
@@ -46,8 +50,8 @@ forge_central_ca: "{{ porelo_host_forge_central_ca | default('/etc/ssl/certs/ca-
 # The person's web login, whose lasting password porelo-host-forge-password sets from the person's secrets file.
 forge_person: operator
 
-# The gate and build reader share a token held only in this Porelo account's vault.
-forge_porelo_account: "{{ porelo_host_account }}"
+# The gate and build reader share a token held only in this Porelo account's vault when gate.yml is called directly.
+forge_porelo_account: ""
 
 # Each agent gets a forge account and a token kept on the host, only where the owner's repositories are configured.
 forge_agents: "{{ porelo_host_forge_agents | default([]) }}"

@@ -36,6 +36,8 @@ from ansible.template import Templar
 
 VERSION = 1
 WAITING_TAG = "porelo_host_waiting"
+# The task whose message is the host's values for a project's access file, which the interface reads from its own line.
+HOST_TAG = "porelo_host_summary"
 HIDDEN = "hidden, the task has no_log"
 META_ACTIONS = ("meta", "ansible.builtin.meta", "ansible.legacy.meta")
 
@@ -185,6 +187,8 @@ class CallbackModule(CallbackBase):
 
     def v2_runner_on_ok(self, result):
         self._step(result, "changed" if result._result.get("changed") else "ok")
+        if HOST_TAG in result._task.tags and isinstance(result._result.get("msg"), dict):
+            self._line(state="host", host=result._result["msg"])
 
     def v2_runner_on_skipped(self, result):
         self._step(result, "skipped")

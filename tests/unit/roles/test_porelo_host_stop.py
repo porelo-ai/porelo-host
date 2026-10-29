@@ -191,8 +191,9 @@ def test_unlock_retries_a_wrong_passphrase(terminal_home):
         (("--stdin", "drive"), "drive"),
         (("vault-new", "vault"), "exclude"),
         (("vault", "vault"), "twice"),
-        (("--stdin", "vault-new", "vault"), "exclude"),
-        (("--stdin", "matrix-token", "matrix-token"), "twice"),
+        (("--stdin", "vault-new"), "root act"),
+        (("--stdin", "matrix-token"), "root act"),
+        (("--stdin", "wireguard", "wireguard"), "twice"),
         (("matrix-token",), "matrix-token"),
     ],
 )

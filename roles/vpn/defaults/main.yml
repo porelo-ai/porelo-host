@@ -4,7 +4,7 @@ vpn_interface: wg-porelo
 vpn_port: 51820
 
 # The host's address inside the VPN with its prefix; the person's peer has an address in the same network.
-vpn_address: 10.73.0.1/24
+vpn_address: "10.73.{{ porelo_host_network }}.1/24"
 
 # The person's peers, each with its public key and the addresses it is allowed inside the VPN; by default the one
 # peer porelo-frontend's inventory names in porelo_host_vpn_peer_public_key and porelo_host_vpn_peer_address. A
@@ -19,9 +19,3 @@ vpn_private_key_path: /etc/wireguard/porelo-host.key
 
 # The TCP port ssh listens on, which the public address keeps beside the VPN's port.
 vpn_ssh_port: 22
-
-# The name the project's room is reached under on the person's own computer during the move, and the address it
-# answers on: the first peer's own address inside the VPN. Written as a marked line of /etc/hosts, which the account's
-# containers do not take, so only the host's own processes resolve it.
-vpn_room_name: matrix.porelo.internal
-vpn_room_address: "{{ ((vpn_peers | first).allowed_ips.split(',') | first).split('/') | first | trim }}"

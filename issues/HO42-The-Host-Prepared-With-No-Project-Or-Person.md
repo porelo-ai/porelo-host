@@ -47,8 +47,8 @@ Read in the code (`9f883ec`), nothing measured.
   homeserver's, the CA's. The CA carries critically `permitted;DNS:<host>.porelo.internal` and
   `permitted;IP:10.73.<n>.0/255.255.255.0` and nothing else, and on a later run is the CA already there. Each refusal
   names the certificate it is about.
-- **At its end `up` prints** one line `porelo-host: host {json}` and writes the same JSON, `0644`, to
-  `/etc/porelo-host/host.json`: `address` (public IPv4), `endpoint` (`<address>:51820`), `wireguard_public_key`, `network`
+- **At its end `up` gives** one line of the lines callback, `{"v": 1, "state": "host", "host": {…}}`, and writes the
+  same object, `0644`, to `/etc/porelo-host/host.json`: `address` (public IPv4), `endpoint` (`<address>:51820`), `wireguard_public_key`, `network`
   (`10.73.<n>.0/24`), `ssh_host_key` (`ssh-ed25519 …`), `ca_sha256` (64 lower-case hex digits of the CA's DER) and
   `homeserver` (`matrix.<host>.porelo.internal`).
 - **The homeserver** (`porelo-matrix`): porelo-host writes `PORELO_MATRIX_PORT` and `PORELO_MATRIX_SERVER_NAME` into

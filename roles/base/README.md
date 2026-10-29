@@ -1,7 +1,9 @@
 # base
 
-The host's base: the packages every host gets, KVM with libvirt running, and podman, installed machine-wide; and, as a
-second entry point run after Porelo's setup script made the account, that account in KVM's and libvirt's groups.
+The host's base: the packages every host gets, KVM with libvirt running, and podman, installed machine-wide; the
+`controllers` check for an account's delegated cgroup controllers; and `tasks_from: host` at the end of `up`, writing
+`/etc/porelo-host/host.json` (`0644`) and printing `porelo-host: host {json}` with what a project's `access.yml` needs
+of the host.
 
 ## Requirements
 
@@ -13,7 +15,8 @@ Ubuntu 26.04, run as root on the host itself (`-c local`). A CPU with virtualiza
 | Variable | Default | What it is |
 |---|---|---|
 | `base_packages` | `[acl, ca-certificates, curl, git]` | Packages beside KVM's and podman's. |
-| `base_account` | `{{ porelo_host_account }}` | An existing account; for `tasks_from: account` or `controllers`. |
+| `base_account` | required when called | An existing account; for `tasks_from: account`, `controllers` or `down`. |
+| `base_host_path` | `/etc/porelo-host/host.json` | Where `tasks_from: host` writes the host's public summary JSON. |
 
 ## Example
 
@@ -22,21 +25,14 @@ Ubuntu 26.04, run as root on the host itself (`-c local`). A CPU with virtualiza
       connection: local
       roles:
         - porelo.host.base
-      tasks:
-        - name: Let Porelo's account open KVM and libvirt
-          ansible.builtin.include_role:
-            name: porelo.host.base
-            tasks_from: account
 
 ## Behaviour
 
 **Idempotent**: a second run changes nothing, measured by Molecule's idempotence step. **Check mode**: the reading
 tasks run in it too, so the checks hold; a check run is not tested yet. **Rollback** is not offered: the packages
-and the group memberships stay; the host is given back whole. The account's linger and its subuid and subgid ranges
-are made by Porelo's setup script, and this role only checks them, stopping when one is missing.
-The account part also checks its user manager's delegated `cpu`, `memory` and `pids` controllers. The `controllers`
-entry point makes the same read-only check for any existing `base_account`; the forge calls it after making its
-two accounts, before starting their containers.
+stay; the host is given back whole. The `controllers` entry point checks that an existing `base_account`'s user manager
+delegates `cpu`, `memory` and `pids`; the forge and Matrix roles call it after making their accounts, before starting
+their containers.
 
 ## License
 

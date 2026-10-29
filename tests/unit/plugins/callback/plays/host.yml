@@ -1,0 +1,17 @@
+---
+- name: Tell the host's values
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Print the host's summary
+        ansible.builtin.debug:
+            msg:
+                address: 192.0.2.10
+                endpoint: 192.0.2.10:51820
+                network: 10.73.7.0/24
+        tags: [porelo_host_summary]
+      - name: Print something else
+        ansible.builtin.debug:
+            msg:
+                address: 192.0.2.99

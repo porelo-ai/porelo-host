@@ -1,11 +1,6 @@
 ---
-# The account Porelo's tasks run as; made by Porelo's own setup script, never by this role.
-base_account: "{{ porelo_host_account }}"
-
-# The person's public ssh key, from the collection-wide porelo_host_authorized_key porelo-frontend's inventory names:
-# the person reaches the account itself over ssh, as porelo's doc/hosts.md has them open the vault. A public key is
-# no secret.
-base_authorized_key: "{{ porelo_host_authorized_key | default('') }}"
+# The person's public ssh key for tasks_from: account or down; empty by default. A public key is no secret.
+base_authorized_key: ""
 
 # Packages every host gets beside KVM and podman.
 base_packages:
@@ -13,3 +8,12 @@ base_packages:
   - ca-certificates
   - curl
   - git
+
+# Where tasks_from: host reads the host's summary fields and writes the JSON file at the end of up.
+base_vpn_port: "{{ vpn_port | default(51820) }}"
+base_vpn_private_key_path: "{{ vpn_private_key_path | default('/etc/wireguard/porelo-host.key') }}"
+base_network: "10.73.{{ porelo_host_network }}.0/24"
+base_ssh_host_key_path: /etc/ssh/ssh_host_ed25519_key.pub
+base_ca_path: /etc/porelo-host/forge/ca.pem
+base_matrix_name: "{{ matrix_name | default('matrix.' ~ porelo_host_name ~ '.porelo.internal') }}"
+base_host_path: /etc/porelo-host/host.json
