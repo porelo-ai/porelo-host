@@ -42,4 +42,4 @@
     owner: root
     group: root
     mode: "0644"
-  notify: porelo | Reload SSH
+  notify: Reload SSH to read the people's keys

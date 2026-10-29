@@ -1,5 +1,5 @@
 ---
-- name: porelo | Reload SSH
+- name: Reload SSH to read the people's keys
   ansible.builtin.service:
     name: "{{ 'ssh' if ansible_facts['os_family'] == 'Debian' else 'sshd' }}"
     state: reloaded

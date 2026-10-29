@@ -156,8 +156,16 @@ def test_non_root_is_refused_before_reading_configuration_or_input(host, capsys)
 
 @pytest.mark.parametrize(
     "user,code",
-    [("root", 65), ("daemon", 65), ("existing", 65), ("Alice", 64),
-     ("-alice", 64), ("../alice", 64), ("a" * 32, 64), ("a\n", 64)],
+    [
+        ("root", 65),
+        ("daemon", 65),
+        ("existing", 65),
+        ("Alice", 64),
+        ("-alice", 64),
+        ("../alice", 64),
+        ("a" * 32, 64),
+        ("a\n", 64),
+    ],
 )
 def test_account_names_cannot_take_over_an_existing_account(host, capsys, user, code):
     """Prevent overwriting root, system accounts, unrelated accounts or paths outside the people directory."""
@@ -189,10 +197,25 @@ def test_account_names_cannot_take_over_an_existing_account(host, capsys, user, 
         b"x" * 262145,
     ],
     ids=[
-        "empty", "invalid-utf8", "empty-line", "extra-line", "bad-name", "leading-dash",
-        "long-name", "double-space", "tab", "carriage-return", "comment", "wrong-ssh-kind",
-        "bad-ssh-blob", "bad-vpn-key", "repeated-name", "repeated-keys", "repeated-vpn-key",
-        "repeated-ssh-key", "oversized-block",
+        "empty",
+        "invalid-utf8",
+        "empty-line",
+        "extra-line",
+        "bad-name",
+        "leading-dash",
+        "long-name",
+        "double-space",
+        "tab",
+        "carriage-return",
+        "comment",
+        "wrong-ssh-kind",
+        "bad-ssh-blob",
+        "bad-vpn-key",
+        "repeated-name",
+        "repeated-keys",
+        "repeated-vpn-key",
+        "repeated-ssh-key",
+        "oversized-block",
     ],
 )
 def test_bad_key_blocks_cannot_partially_admit_a_person(host, capsys, data):
@@ -310,8 +333,18 @@ def test_add_orders_account_keys_peers_hooks_and_record(host, capsys):
         ],
     }
     assert host.calls == [
-        ["useradd", "--create-home", "--user-group", "--shell", "/bin/bash",
-         "--key", "SUB_UID_COUNT=0", "--key", "SUB_GID_COUNT=0", "alice"],
+        [
+            "useradd",
+            "--create-home",
+            "--user-group",
+            "--shell",
+            "/bin/bash",
+            "--key",
+            "SUB_UID_COUNT=0",
+            "--key",
+            "SUB_GID_COUNT=0",
+            "alice",
+        ],
         ["loginctl", "enable-linger", "alice"],
         ["usermod", "--add-subuids", "165536-231071", "alice"],
         ["usermod", "--add-subgids", "265536-331071", "alice"],
@@ -331,8 +364,12 @@ def test_add_orders_account_keys_peers_hooks_and_record(host, capsys):
         f"laptop=second {ssh_key(2)} {wg_key(2)} 10.73.7.4\n"
     )
     for path, mode in [
-        (record, 0o600), (peers, 0o600), (keys, 0o644),
-        (record.parent, 0o700), (peers.parent, 0o700), (keys.parent, 0o755),
+        (record, 0o600),
+        (peers, 0o600),
+        (keys, 0o644),
+        (record.parent, 0o700),
+        (peers.parent, 0o700),
+        (keys.parent, 0o755),
     ]:
         assert stat.S_IMODE(path.stat().st_mode) == mode
         assert path.stat().st_uid == os.getuid()
@@ -394,7 +431,13 @@ def test_allocation_reserves_requested_addresses_before_automatic_ones(host, cap
 def test_duplicate_requested_addresses_are_refused(host, capsys):
     """Prevent assigning the same VPN address to two peers within one admission."""
     refused(
-        host, capsys, 65, "add", "alice", "--role", "project-admin",
+        host,
+        capsys,
+        65,
+        "add",
+        "alice",
+        "--role",
+        "project-admin",
         data=(laptop(address="10.73.7.3") + laptop("second", 2, "10.73.7.3")).encode(),
     )
 
@@ -469,9 +512,12 @@ def test_purge_locks_first_clears_vault_then_removes_account_and_ranges(host, ca
     assert host.path("/etc/subuid").read_text() == "existing:100000:65536\n"
     assert host.path("/etc/subgid").read_text() == "existing:200000:65536\n"
     assert "alice" not in host.accounts
-    assert {
-        str(path.relative_to(host.root)) for path in host.root.rglob("*") if path.is_file()
-    } == {"etc/porelo-host/forge.conf", "etc/porelo-host/vpn.conf", "etc/subuid", "etc/subgid"}
+    assert {str(path.relative_to(host.root)) for path in host.root.rglob("*") if path.is_file()} == {
+        "etc/porelo-host/forge.conf",
+        "etc/porelo-host/vpn.conf",
+        "etc/subuid",
+        "etc/subgid",
+    }
     refused(host, capsys, 65, "purge", "alice", data=b"")
 
 
@@ -758,8 +804,14 @@ def test_service_configuration_is_validated_before_creating_an_account(host, cap
     """Prevent a missing Matrix machine name from leaving a newly admitted but unrecorded account."""
     host.write("/etc/porelo-host/forge.conf", "address=10.73.7.1\nhost=invalid/host\n")
     call = host.factory(
-        host.root, host.run, euid=0, owner=os.getuid(), accounts=host.accounts,
-        groups=host.groups, commands=host.commands, hooks=None,
+        host.root,
+        host.run,
+        euid=0,
+        owner=os.getuid(),
+        accounts=host.accounts,
+        groups=host.groups,
+        commands=host.commands,
+        hooks=None,
     )
     assert call(["add", "alice", "--role", "project-admin"], laptop().encode()) == 69
     assert host.calls == []
