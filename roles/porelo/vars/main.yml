@@ -28,3 +28,39 @@ __porelo_matrix_token_path: >-
   {{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo/matrix/host-registration-token
 # What porelo's vault clear names as a transport's own, whether or not it fills the item's transport.
 __porelo_transport_kinds: [transport, conversation]
+# bring's and join's own play, in the person's account: their home, the setup directory the interface uploads into,
+# the directories below the home that lead to it, and its three files.
+__porelo_own_home: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}"
+__porelo_own_uid: "{{ ansible_facts['getent_passwd'][porelo_account][1] | int }}"
+__porelo_own_setup: "{{ __porelo_own_home }}/.local/share/porelo-host/setup/{{ porelo_project }}"
+__porelo_own_ancestors: "{{ ['.local', '.local/share', '.local/share/porelo-host', '.local/share/porelo-host/setup']
+  | map('regex_replace', '^', __porelo_own_home ~ '/') | list }}"
+__porelo_own_files: "{{ ['machine.yml', 'project.bundle', 'access.bundle']
+  | map('regex_replace', '^', __porelo_own_setup ~ '/') | list }}"
+# Each path that is not as it must be, by what was found: a link is never followed, a directory below the home is the
+# person's and written by nobody else, the setup's own is 0700 and its files the person's plain files of 0600.
+__porelo_own_place_wrong: >-
+  {%- set wrong = [] -%}
+  {%- for r in __porelo_own_place.results -%}
+  {%- set s = r.stat -%}
+  {%- if not s.exists -%}
+  {%- set _ = wrong.append(r.item ~ ': missing') -%}
+  {%- else -%}
+  {%- set found = 'link' if s.islnk else ('directory' if s.isdir else ('plain file' if s.isreg else 'other')) -%}
+  {%- if r.item in __porelo_own_files -%}
+  {%- set ok = s.isreg and not s.islnk and s.mode == '0600' -%}
+  {%- elif r.item == __porelo_own_setup -%}
+  {%- set ok = s.isdir and not s.islnk and s.mode == '0700' -%}
+  {%- else -%}
+  {%- set ok = s.isdir and not s.islnk and not s.wgrp and not s.woth -%}
+  {%- endif -%}
+  {%- if not ok or s.uid != __porelo_own_uid | int -%}
+  {%- set _ = wrong.append(r.item ~ ': ' ~ found ~ ' uid ' ~ s.uid ~ ' mode ' ~ s.mode) -%}
+  {%- endif -%}
+  {%- endif -%}
+  {%- endfor -%}
+  {{ wrong }}
+__porelo_own_forge: "{{ (__porelo_own_machine.content | b64decode | from_yaml).forge | default(none) }}"
+# The keys pinned at the last follow, which a handover walked; the machine file's key for a project not followed yet.
+__porelo_own_signers: "{{ __porelo_followed[0].signed_by if __porelo_followed | length > 0
+  else [__porelo_host.porelo_project.signed_by] }}"

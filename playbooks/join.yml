@@ -1,0 +1,22 @@
+---
+# What a developer of the project runs on the host in their own account, with no sudo, once the interface uploaded the
+# setup's files into their home and their stop filled their vault:
+#   ansible-playbook -c local porelo.host.join -e porelo_project=<project>
+# Porelo follows the project and the push config is written from the organization the bring made; nothing on the forge
+# changes.
+- name: Join the project on the host in the developer's own account
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    porelo_own_act: join
+  tasks:
+    - name: Check the setup's files, follow the project and check its access file
+      ansible.builtin.include_role:
+        name: porelo.host.porelo
+        tasks_from: own
+
+    - name: Write the push config from the project's organization on the host's forge
+      ansible.builtin.include_role:
+        name: porelo.host.forge
+        tasks_from: own

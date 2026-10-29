@@ -1,0 +1,68 @@
+---
+# The push config HO47's porelo-host-push reads in the person's own account: the host's forge, the organization, the
+# central forge's CA and each repository's central address, as Forgejo kept it from the migration (original_url).
+# Taken from the forge for bring and join alike, so it names what the person can reach there and nothing else.
+- name: own_push | Ask Forgejo which of the organization's repositories the person reaches, and where each came from
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
+      repos=https://{{ forge_address }}:{{ forge_http_port }}/api/v1/orgs/{{ forge_owner }}/repos
+      page=1
+      found='[]'
+      while :; do
+          code=$(curl -sS --max-time 10 --cacert {{ __forge_ca_dir }}/ca.pem \
+              -H @<(sed 's/^/Authorization: token /' {{ __forge_token | quote }}) -o "$answer" -w '%{http_code}' \
+              "$repos?limit=50&page=$page") || { echo '"failed"'; exit 0; }
+          [ "$code" = 200 ] || { echo "\"http-$code\""; exit 0; }
+          found=$(python3 -I -c 'import json,sys
+      found=json.loads(sys.argv[2]); page=json.load(open(sys.argv[1]))
+      found += [{"name": r["name"], "url": r.get("original_url") or ""} for r in page]
+      print(json.dumps(found))' "$answer" "$found")
+          python3 -I -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])) else 1)' "$answer" || break
+          page=$((page + 1))
+      done
+      printf '%s\n' "$found"
+    executable: /bin/bash
+  register: __forge_own_repositories
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: own_push | Stop where Forgejo would not list them, or a repository has no central address to push to
+  ansible.builtin.assert:
+    that:
+      - __forge_own_reached is sequence and __forge_own_reached is not string
+      - __forge_own_reached | length > 0
+      - __forge_own_reached | map(attribute='name') | select('match', '^[A-Za-z0-9._-]{1,100}\Z') | list | length
+        == __forge_own_reached | length
+      - __forge_own_reached | map(attribute='url')
+        | select('match', '^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?/[^\s?#@]+\Z') | list | length
+        == __forge_own_reached | length
+    fail_msg: >-
+      asked Forgejo for {{ forge_owner }}'s repositories, each migrated from an https:// address; got
+      {{ __forge_own_reached if __forge_own_reached is string
+      else (__forge_own_reached | map(attribute='name') | zip(__forge_own_reached | map(attribute='url'))
+      | map('join', ' from ') | join(', ') | default('none', true)) }}
+    quiet: true
+  vars:
+    __forge_own_reached: "{{ __forge_own_repositories.stdout | from_json }}"
+
+- name: own_push | Make the person's push directory, theirs alone
+  ansible.builtin.file:
+    path: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo-host/push"
+    state: directory
+    mode: "0700"
+
+- name: own_push | Write the person's push config for the project
+  ansible.builtin.copy:
+    dest: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo-host/push/{{ forge_owner }}.conf"
+    mode: "0600"
+    content: |
+      # Written by porelo.host.{{ porelo_own_act }}; read by porelo-host-push.
+      local https://{{ forge_address }}:{{ forge_http_port }}
+      owner {{ forge_owner }}
+      central-ca {{ forge_central_ca }}
+      {% for repository in __forge_own_repositories.stdout | from_json | sort(attribute='name') %}
+      repository {{ repository.name }} {{ repository.url }}
+      {% endfor %}
