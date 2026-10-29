@@ -42,7 +42,7 @@ Read in the code (`9f883ec`), nothing measured.
   the host admin works as root with the rental's key. Any other version is refused, naming it.
 - **`porelo-host-stop --request`** prints two PEM requests, the forge's then the homeserver's, `CN=forge.<host>.porelo.internal`
   and `CN=matrix.<host>.porelo.internal`. The interface takes only the key from each and signs it with
-  `subjectAltName=DNS:<its CN>,IP:10.73.<n>.1`, `basicConstraints=critical,CA:FALSE`, `extendedKeyUsage=serverAuth`.
+  `subjectAltName=DNS:<its CN>,IP:10.73.<n>.1`, `basicConstraints=critical,CA:FALSE`, `keyUsage=critical,digitalSignature`, `extendedKeyUsage=serverAuth`.
 - **`forge-certificate <base64>`** is `base64 -w0` of three PEM certificates joined by newlines: the forge's, the
   homeserver's, the CA's. The CA carries critically `permitted;DNS:<host>.porelo.internal` and
   `permitted;IP:10.73.<n>.0/255.255.255.0` and nothing else, and on a later run is the CA already there. Each refusal

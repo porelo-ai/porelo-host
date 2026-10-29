@@ -131,7 +131,13 @@
           runuser -u {{ matrix_account }} -- sh -c 'set -e; umask 077; t=$(mktemp "$1/.matrix.XXXXXX"); cat > "$t";
               chmod "$2" "$t"; mv -fT "$t" "$1/$3"' put "$2" "$3" "$4" < "$1"
       }
+      # The transport takes a placed certificate only while the homeserver is stopped; the handler starts it again.
+      halt() {
+          runuser -u {{ matrix_account }} -- env XDG_RUNTIME_DIR={{ __matrix_environment.XDG_RUNTIME_DIR | quote }} \
+              systemctl --user stop porelo-matrix-homeserver.service 2> /dev/null || true
+      }
       if holds "$wait/matrix.pem" "$wait/matrix.key"; then
+          halt
           put "$wait/matrix.key" "$tls" 0600 server.key
           put "$wait/matrix.pem" "$tls" 0600 server.crt
           put "$wait/ca.pem" "$dir" 0644 ca.crt
@@ -140,6 +146,7 @@
       fi
       if holds "$tls/server.crt" "$tls/server.key"; then
           if [ ! -f "$dir/ca.crt" ] || ! cmp -s "$wait/ca.pem" "$dir/ca.crt"; then
+              halt
               put "$wait/ca.pem" "$dir" 0644 ca.crt
               echo moved; exit 0
           fi

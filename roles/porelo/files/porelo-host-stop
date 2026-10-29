@@ -113,6 +113,12 @@ stdin_check_leaf() {
     [ "$cert_pub" = "$key_pub" ] || stdin_refuse "forge-certificate: the $label's certificate is for another key"
     openssl x509 -noout -ext basicConstraints -in "$cert" 2> /dev/null | grep -qx ' *CA:FALSE' \
         || stdin_refuse "forge-certificate: the $label's certificate is no leaf certificate"
+    # The homeserver serves a placed certificate only for TLS servers; the forge's is held to the same.
+    if ! openssl x509 -noout -ext keyUsage -in "$cert" 2> /dev/null | grep -q 'Digital Signature' \
+        || ! openssl x509 -noout -ext extendedKeyUsage -in "$cert" 2> /dev/null | grep -q 'TLS Web Server Authentication'
+    then
+        stdin_refuse "forge-certificate: the $label's certificate is not for digitalSignature and serverAuth"
+    fi
     openssl verify -CAfile "$stdin_work/ca.pem" "$cert" > /dev/null 2>&1 \
         || stdin_refuse "forge-certificate: the $label's certificate does not verify under the CA given"
     names=$(stdin_cert_names "$cert")
