@@ -546,24 +546,31 @@
       loop_control:
         label: "{{ item['item'] }}"
 
-    - name: Verify the person's forge login and password script after idempotence
+    - name: Verify up made no operator forge login and refuses direct root password changes
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_person.yml"
+      vars:
+        verify_admit_operator: false
       when: verify_forge == 'on'
 
-    # Recreating the person makes the verbose run make the person again, whose password script is checked anew.
-    - name: Remove the person's forge login before up with -vvv
+    # Simulate a host prepared by an earlier version: an unrecorded operator user in Forgejo and person= in forge.conf.
+    - name: Plant an unrecorded operator forge login and a legacy person= line before up with -vvv
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
           cd /
+          [ ! -e /etc/porelo-host/people/operator.conf ] && [ ! -L /etc/porelo-host/people/operator.conf ] \
+              || { echo "unexpected /etc/porelo-host/people/operator.conf before up -vvv" >&2; exit 1; }
           as_forge() { runuser -u porelo-forge -- env XDG_RUNTIME_DIR="/run/user/$(id -u porelo-forge)" "$@"; }
-          as_forge podman exec forgejo forgejo admin user delete --username operator --purge
+          as_forge podman exec forgejo forgejo admin user create --username operator \
+              --email operator@forge.alpha.porelo.internal --random-password --must-change-password=false > /dev/null
           users=$(as_forge podman exec forgejo forgejo admin user list)
-          rc=0
-          printf '%s\n' "$users" | awk 'NR > 1 {print $2}' | grep -Fx operator > /dev/null || rc=$?
-          [ "$rc" = 1 ] || { echo "asked for operator absent before up -vvv, got search rc $rc" >&2; exit 1; }
+          printf '%s\n' "$users" | awk 'NR > 1 {print $2}' | grep -Fx operator > /dev/null \
+              || { echo "asked for operator present before up -vvv, got none" >&2; exit 1; }
+          printf 'person=operator\n' >> /etc/porelo-host/forge.conf
+          grep -Fx 'person=operator' /etc/porelo-host/forge.conf > /dev/null
         executable: /bin/bash
       changed_when: true
+      no_log: true
       when: verify_forge == 'on'
 
     # Ansible's own most talkative output of a whole up, searched for the host's, CA's and pool's private keys and the
@@ -658,7 +665,7 @@
             path: /root/porelo-host-vvv.out
             state: absent
 
-    - name: Verify up with -vvv recreated the person's forge login and password sign-in still holds
+    - name: Verify up with -vvv removed the unrecorded operator login and admitting operator works
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_person.yml"
       when: verify_forge == 'on'
 

@@ -13,18 +13,19 @@ written by the stop, and its key never reaches the host. `tasks_from: request`, 
 does not hold for 30 days more with the host's VPN address and its DNS name, and adds `forge-certificate` to
 `porelo_host_needs`. `tls` moves the forge's signed certificate and its key into the forge account's `tls/`, never
 copying them, and refuses naming `forge-certificate` where none holds. `/etc/porelo-host/forge.conf` names the host's
-VPN address, host label, forge name, homeserver name, port, person and account to the stop and the password script; it
-holds no secret.
+VPN address, host label, forge name, homeserver name, port, account and configured agents to the stop and the host's
+helpers; it holds no secret.
 
-With every forge, `forge_person` (default `operator`, matching `^[a-z][a-z0-9-]{0,30}$`) is the person's web login,
-made only when absent, its generated password discarded.
-`/usr/local/sbin/porelo-host-forge-password`, root's alone, takes the person's lasting password on standard input and
-sets it through the admin API with a token it makes for the call and keeps in memory; see the
+`up` creates no default forge user, and deletes an unrecorded `operator` forge user left outside
+`/etc/porelo-host/people/`. Each person gets their forge login when admitted by `porelo-host-person`.
+`/usr/local/sbin/porelo-host-forge-password`, root's alone and run through `sudo` as an admitted person, takes their
+lasting password on standard input and sets it on their own login through the admin API with a token it makes for the
+call and keeps in memory; direct root calls without `SUDO_USER` refuse with `64`; see the
 [local forge guide](../../doc/local-forge.md#credentials-belong-to-their-destination). Down removes the script and
 `forge.conf`.
 
 `up` prepares the forge without repositories (`forge_repositories` stays empty on the host); the repository migration,
-owner, gate, branch protection, publisher, agent token and gathered push task files remain on disk uncalled by `up`.
+gate, branch protection, publisher, agent token and gathered push task files remain on disk uncalled by `up`.
 
 `/usr/local/sbin/porelo-host-project`, root's alone, registers an organization with its recorded admin, signing
 key in Porelo's canonical `ssh-ed25519 <base64>` signer format and package-only publisher, or checks its commits

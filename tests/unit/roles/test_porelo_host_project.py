@@ -227,7 +227,7 @@ def project_host(tmp_path, forge, push_host):
     for person in ("alice", "bob"):
         (etc / "people" / f"{person}.conf").write_text(PERSON_RECORD)
         (etc / "people" / f"{person}.conf").chmod(0o600)
-    (etc / "forge.conf").write_text(f"address=127.0.0.1\nport={forge.port}\nperson=alice\naccount=porelo-forge\n")
+    (etc / "forge.conf").write_text(f"address=127.0.0.1\nport={forge.port}\naccount=porelo-forge\n")
     (etc / "forge.conf").chmod(0o600)
     cli_calls = []
 

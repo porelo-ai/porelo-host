@@ -974,6 +974,10 @@ class Host:
                 uid_range = self.next_range(self.subids("subuid"))
                 gid_range = self.next_range(self.subids("subgid"))
                 groups = self.groups if self.groups is not None else {entry.gr_name for entry in grp.getgrall()}
+                # useradd --user-group makes the person's own group; a group of that name already there is a
+                # system's or someone else's, such as Ubuntu's operator, and no new person's.
+                if user in groups:
+                    refuse("the name belongs to an existing group", 65)
                 self.targets(user)
                 self.require(
                     ["useradd", "loginctl", "usermod", "wg"] + ([] if "porelo-people" in groups else ["groupadd"])

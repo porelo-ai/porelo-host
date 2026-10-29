@@ -1,0 +1,53 @@
+---
+- name: helpers | Install the script that sets a person's lasting password, root's alone
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/porelo-host-forge-password"
+    dest: /usr/local/sbin/porelo-host-forge-password
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: helpers | Install the project registration helper, root's alone
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/porelo-host-project"
+    dest: /usr/local/sbin/porelo-host-project
+    owner: root
+    group: root
+    mode: "0700"
+
+# An admitted person named operator has /etc/porelo-host/people/operator.conf and keeps their forge login; only an
+# unrecorded operator account left from an earlier setup is removed.
+- name: helpers | Read whether operator is recorded as a person on this host
+  ansible.builtin.stat:
+    path: /etc/porelo-host/people/operator.conf
+    follow: false
+    get_checksum: false
+    get_mime: false
+  register: __forge_operator_record
+
+- name: helpers | Ask Forgejo which users it has when operator is no recorded person
+  ansible.builtin.command:
+    argv: [podman, exec, forgejo, forgejo, admin, user, list]
+  become: true
+  become_user: "{{ forge_account }}"
+  environment: "{{ __forge_environment }}"
+  register: __forge_users_listed
+  when:
+    - not __forge_operator_record.stat.exists
+    - not (__forge_operator_record.stat.islnk | default(false))
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: helpers | Delete an unrecorded operator forge user left by an earlier setup
+  ansible.builtin.command:
+    argv: [podman, exec, forgejo, forgejo, admin, user, delete, --username, operator, --purge]
+  become: true
+  become_user: "{{ forge_account }}"
+  environment: "{{ __forge_environment }}"
+  when:
+    - not __forge_operator_record.stat.exists
+    - not (__forge_operator_record.stat.islnk | default(false))
+    - "'operator' in (__forge_users_listed.stdout_lines[1:] | map('split') | map(attribute=1) | list)"
+  changed_when: true
+  no_log: true

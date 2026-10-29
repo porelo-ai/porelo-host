@@ -25,6 +25,6 @@
 - name: Make the forge's admin and its API token
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/admin.yml"
 
-# The person's login and the script that sets their lasting password come with every forge, repositories or none.
-- name: Make the person's web login and install the script for their lasting password
-  ansible.builtin.include_tasks: "{{ role_path }}/tasks/person.yml"
+# The forge helpers come with every forge, and an unrecorded operator user from an earlier setup goes.
+- name: Install the forge's root helpers and remove any unrecorded operator user
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/helpers.yml"
