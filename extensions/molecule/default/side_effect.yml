@@ -20,9 +20,8 @@
     - name: Keep the numeric UIDs of the host's service accounts before down deletes them
       ansible.builtin.set_fact:
         side_effect_service_uids: >-
-          {{ side_effect_expected_accounts
-          | map('extract', ansible_facts['getent_passwd']) | select('not none')
-          | map(attribute=1) | list }}
+          {{ side_effect_expected_accounts | select('in', ansible_facts['getent_passwd'])
+          | map('extract', ansible_facts['getent_passwd']) | map(attribute=1) | list }}
 
     - name: Read host.json, the linger files and any forge HTTPS units before down
       ansible.builtin.stat:
