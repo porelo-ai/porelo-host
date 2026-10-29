@@ -57,7 +57,19 @@
       head -c 24 /dev/urandom | base64 > "$work/password"
       [ -s "$work/password" ] && [ "$(wc -l < "$work/password")" = 1 ] \
           || { echo "asked for one nonempty password line, got another form" >&2; exit 1; }
-      /usr/local/sbin/porelo-host-forge-password < "$work/password" > "$work/script" 2>&1
+      script_rc=0
+      # As the interface calls it, as root over ssh: become leaves sudo's names, which mean an admitted person.
+      env -u SUDO_USER -u SUDO_UID -u SUDO_GID -u SUDO_COMMAND /usr/local/sbin/porelo-host-forge-password \
+          < "$work/password" > "$work/script" 2>&1 || script_rc=$?
+      # Its own words say why it refused, once they are known not to hold the password.
+      if [ "$script_rc" != 0 ]; then
+          if grep -F -q -f "$work/password" -- "$work/script"; then
+              echo "the script exited $script_rc and its output holds the password" >&2
+          else
+              echo "the script exited $script_rc: $(cat "$work/script")" >&2
+          fi
+          exit "$script_rc"
+      fi
       request() { curl -sS --max-time 10 --noproxy '*' --cacert /etc/porelo-host/forge/ca.pem \
           --resolve forge.alpha.porelo.internal:443:127.0.0.1 --cookie "$work/cookies" --cookie-jar "$work/cookies" \
           -o "$work/page" -w '%{http_code}' "$@"; }
