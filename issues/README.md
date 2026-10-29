@@ -26,6 +26,8 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho45"></a>[HO45](HO45-The-Project-Brought-And-Joined-In-The-Persons-Own-Account.md) | L | [HO43](#ho43), [HO44](#ho44) | `bring.yml` and `join.yml` in the person's own account, with the stop's own-account mode and two bundles. |
+| <a id="ho53"></a>[HO53](HO53-No-Forge-User-Operator.md) | S | [HO42](#ho42) | `up` makes no forge user `operator` and removes it from a host set up before, once a search shows nothing reads it; each person's login is their own. |
+| <a id="ho55"></a>[HO55](HO55-A-Person-Leaves-When-No-Membership-Is-Left.md) | M | [HO43](#ho43), [HO44](#ho44) | Each person holds memberships, per project and by hand; removing a project locks whoever has none left, and `down` refuses while anyone holds one, naming each. |
 
 ## Backlog
 
@@ -38,8 +40,6 @@ it is left out.
 
 | # | Size | Blocked by | Open questions | What it covers |
 |---|---|---|---|---|
-| <a id="ho55"></a>[HO55](HO55-A-Person-Leaves-When-No-Membership-Is-Left.md) | M | [HO43](#ho43), [HO44](#ho44) | 0 | Each person holds memberships, per project and by hand; removing a project locks whoever has none left, and `down` refuses while anyone holds one, naming each. |
-| <a id="ho53"></a>[HO53](HO53-No-Forge-User-Operator.md) | S | [HO42](#ho42) | 0 | `up` makes no forge user `operator` and removes it from a host set up before, once a search shows nothing reads it; each person's login is their own. |
 | <a id="ho52"></a>[HO52](HO52-Snapshots-Resolved-With-A-Read-Only-Token.md) | M | [HO44](#ho44) | 0 | Each project organization holds a `read:package` token as `PORELO_PACKAGES_READ_TOKEN` and its own `MAVEN_SNAPSHOTS_URL`, so builds resolve snapshots without the publisher's token. |
 
 ## Accepted

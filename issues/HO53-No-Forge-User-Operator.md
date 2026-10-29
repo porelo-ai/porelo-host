@@ -1,6 +1,6 @@
 # HO53 — No Forge User Operator
 
-**Status:** Analyzed; blocked by [HO42](README.md#ho42).
+**Status:** Implementing; blocked by [HO42](README.md#ho42).
 **Size:** S - the forge role's person step, the password helper's direct-root path, their tests and a Molecule act.
 
 **What must be true.** `up` makes no forge user `operator`, and a host set up before has none left. Each person's forge

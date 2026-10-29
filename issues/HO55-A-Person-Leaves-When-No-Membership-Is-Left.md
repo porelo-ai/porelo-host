@@ -1,6 +1,6 @@
 # HO55 — A Person Leaves When No Membership Is Left
 
-**Status:** Analyzed; blocked by [HO43](README.md#ho43), [HO44](README.md#ho44).
+**Status:** Implementing; blocked by [HO43](README.md#ho43), [HO44](README.md#ho44).
 **Size:** M - the person record's memberships, `porelo-host-project remove` locking whom it leaves with none, `down`'s
 refusal, their tests and a Molecule act.
 
