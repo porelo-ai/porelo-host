@@ -1270,7 +1270,7 @@
             verify_sync.eli_rec_1 is match('^member=alpha-four developer\nlocked=false\nlaptop=l1 .*\nlaptop=l2 ')
           - >-
             verify_sync.cy_rec_1 is match(
-            '^member=hand\nmember=alpha-one developer\nmember=alpha-three project-admin\nmember=alpha-four developer\n'
+            '^member=hand\nmember=alpha-four developer\nmember=alpha-one developer\nmember=alpha-three project-admin\n'
             'locked=false\n'
             )
           - verify_sync.eli_keys_1_count == 2
