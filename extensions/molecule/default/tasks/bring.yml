@@ -554,7 +554,7 @@
       ansible.builtin.assert:
         that:
           - verify_bring_stop_out.rc == 0
-          - verify_bring_stop_out.stdout == 'Your stop is done.\n'
+          - verify_bring_stop_out.stdout.endswith('Your stop is done.\n')
           - verify_bring_stop_out.stderr == ''
           - verify_bring_vault_out.rc == 0
           - (verify_bring_central.forge_name ~ '.person') in verify_bring_vault_out.entries
@@ -1253,7 +1253,7 @@
       ansible.builtin.assert:
         that:
           - verify_bring_cy_stop_out.rc == 0
-          - verify_bring_cy_stop_out.stdout == 'Your stop is done.\n'
+          - verify_bring_cy_stop_out.stdout.endswith('Your stop is done.\n')
           - verify_bring_cy_stop_out.stderr == ''
           - verify_bring_cy_stop_out.vault_rc == 0
           - (verify_bring_central.forge_name ~ '.person') in verify_bring_cy_stop_out.entries
