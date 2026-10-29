@@ -388,6 +388,17 @@ class Host:
         """Porelo as the person, with their own user manager's runtime, which rootless podman needs."""
         return ["runuser", "-u", user, "--", "env", f"XDG_RUNTIME_DIR=/run/user/{self.uid(user)}", "porelo", *arguments]
 
+    def uid_min(self):
+        """The first UID of a person's account, as useradd takes it from /etc/login.defs."""
+        path = self.path("/etc/login.defs")
+        if not path.exists():
+            return 1000
+        for line in self.read(path).splitlines():
+            fields = line.split()
+            if len(fields) == 2 and fields[0] == "UID_MIN" and re.fullmatch(r"[0-9]{1,10}", fields[1]):
+                return int(fields[1])
+        return 1000
+
     def uid(self, user):
         """The person's uid, from the accounts this call read."""
         return self.accounts[user] if self.accounts is not None else pwd.getpwnam(user).pw_uid
@@ -799,8 +810,27 @@ class Host:
         self.command(["usermod", "--append", "--groups", ",".join(names), user])
 
     def add(self, user, laptops, groups, uid_range, gid_range):
-        """Apply validated admission in account, SSH, VPN, hook and record order."""
+        """Apply validated admission in account, SSH, VPN, hook and record order.
+
+        Once the account exists, a failure takes back what was given and records the person locked, so that purge
+        can remove the account; unrecorded, every verb would refuse it as an account outside the people records.
+        """
         self.create_account(user)
+        try:
+            self.grant(user, laptops, groups, uid_range, gid_range)
+        except (Refusal, OSError) as error:
+            record = {"locked": False, "laptops": laptops}
+            try:
+                self.lock(user, record, False)
+            except (Refusal, OSError):
+                record["locked"] = True
+                self.record(user, record)
+            words = str(error) if isinstance(error, Refusal) else "cannot read or change the host's files"
+            code = error.code if isinstance(error, Refusal) else 73
+            refuse(f"{words}; the account is locked, and purge {user} removes it", code)
+
+    def grant(self, user, laptops, groups, uid_range, gid_range):
+        """Everything of an admission after the account, ending with the record that admits."""
         self.enable_linger(user)
         self.subordinate_ids(user, uid_range, gid_range)
         self.join_groups(user, groups)
@@ -869,14 +899,21 @@ class Host:
             self.lock(user, record, porelo)
         self.remove_forge_tokens(user)
         if account_exists:
-            if porelo:
-                self.clear_vault(user)
-            self.command(["loginctl", "disable-linger", user])
-            if porelo:
-                self.command(["loginctl", "terminate-user", user])
+            lifted = False
+            try:
+                if porelo:
+                    self.clear_vault(user)
+                    lifted = True
+                self.command(["loginctl", "disable-linger", user])
+                # Without linger or a session logind may already have let the person go, and knows nobody to end.
+                self.command(["loginctl", "terminate-user", user], accepted=(0, 1))
                 # terminate-user returns before the manager ends; userdel refuses an account still running anything.
                 self.command(["systemctl", "stop", f"user@{self.uid(user)}.service"])
-            self.command(["userdel", "--remove", user])
+                self.command(["userdel", "--remove", user])
+            except Refusal:
+                if lifted:
+                    self.command(["usermod", "--expiredate", "1", user])
+                raise
         for kind in ("subuid", "subgid"):
             path = self.path("/etc/" + kind)
             text = self.read(path)
@@ -910,7 +947,7 @@ class Host:
                 else {entry.pw_name: entry.pw_uid for entry in pwd.getpwall()}
             )
             uid = accounts.get(user)
-            if user == "root" or (uid is not None and (uid < 1000 or user not in records)):
+            if user == "root" or (uid is not None and (uid < self.uid_min() or user not in records)):
                 refuse("the name belongs to root, a system account or an account outside the people records", 65)
             record = records.get(user)
             if verb != "add" and record is None:
@@ -918,6 +955,8 @@ class Host:
             if verb == "add":
                 laptops = key_block(sys.stdin.buffer.read(MAX_INPUT + 1) if data is None else data)
                 if record is not None:
+                    if record["locked"]:
+                        refuse("the person is locked; purge them, then add them again", 65)
                     known = {item["laptop"]: item for item in record["laptops"]}
                     if uid is None or len(known) != len(laptops):
                         refuse("the recorded person has no account or has different laptops", 65)
@@ -960,7 +999,7 @@ class Host:
                 for kind in ("subuid", "subgid"):
                     self.check(self.path("/etc/" + kind), 73, required=True)
                 if uid is not None:
-                    programs.extend(["loginctl", "userdel"])
+                    programs.extend(["loginctl", "systemctl", "userdel"])
             self.require(programs)
             if not record["locked"]:
                 self.prepare_services(user, verb)

@@ -481,13 +481,8 @@ def test_lock_removes_access_before_stopping_tasks_and_is_idempotent(host, capsy
     assert host.invoke("lock", "alice", data=b"") == 0
     assert snapshot(host.root) == before and host.events == []
     capsys.readouterr()
-    assert host.invoke("add", "alice", "--role", "project-admin") == 0
-    assert snapshot(host.root) == before and host.events == []
-    assert json.loads(capsys.readouterr().out) == {
-        "person": "alice",
-        "role": "project-admin",
-        "laptops": [{"laptop": "laptop", "vpn_address": "10.73.7.3"}],
-    }
+    # Locked is not admitted: only purge and a new add give the person access again.
+    refused(host, capsys, 65, "add", "alice", "--role", "project-admin", diagnostic="locked")
 
 
 def test_failed_task_stop_is_reported_but_lock_continues_without_leaking_output(host, capsys):
@@ -567,7 +562,10 @@ def test_missing_porelo_skips_only_its_optional_commands(host, capsys):
     assert not host.path("/etc/porelo-host/people/alice.conf").exists()
 
 
-@pytest.mark.parametrize("command", [["useradd"], ["wg"], ["loginctl", "enable-linger"]])
+@pytest.mark.parametrize(
+    "command",
+    [["useradd"], ["wg", "set", "wg-porelo", "peer", wg_key(1), "allowed-ips"], ["loginctl", "enable-linger"]],
+)
 def test_failed_admission_never_publishes_a_record_or_command_output(host, capsys, command):
     """Prevent a failed privileged command from claiming admission or printing keys or service output."""
     host.fail = command
@@ -576,8 +574,74 @@ def test_failed_admission_never_publishes_a_record_or_command_output(host, capsy
     output = capsys.readouterr()
     assert not output.out
     assert "exit 1" in output.err
-    assert not host.path("/etc/porelo-host/people/alice.conf").exists()
+    record = host.path("/etc/porelo-host/people/alice.conf")
+    assert not record.exists() or "locked=true" in record.read_text(), "a failed add never records an admission"
     assert ssh_key(1) not in output.err and wg_key(1) not in output.err and "untrusted-token" not in output.err
+
+
+@pytest.mark.parametrize("hook", ["forge_admit", "matrix_issue"])
+def test_a_failed_admission_after_the_account_is_locked_and_recorded_for_purge(host, capsys, hook):
+    """Prevent a half-admitted account from keeping ssh and VPN access while every verb refuses it as unrecorded."""
+
+    def unavailable(name, values):
+        if name == hook:
+            raise host.factory.__globals__["Refusal"]("service unavailable", 69)
+
+    host.hook_inspect = unavailable
+    assert host.invoke("add", "alice", "--role", "project-admin") == 69
+    output = capsys.readouterr()
+    assert not output.out and "service unavailable" in output.err and "purge" in output.err
+    assert not host.path("/etc/ssh/authorized_keys/alice").exists()
+    assert not host.path("/etc/wireguard/porelo-host-peers/alice.conf").exists()
+    assert ["wg", "set", "wg-porelo", "peer", wg_key(1), "remove"] in host.calls
+    assert ["usermod", "--lock", "--expiredate", "1", "alice"] in host.calls
+    assert "locked=true" in host.path("/etc/porelo-host/people/alice.conf").read_text()
+    host.hook_inspect = lambda name, values: None
+    assert host.invoke("purge", "alice", data=b"") == 0
+    assert "alice" not in host.accounts
+    assert not host.path("/etc/porelo-host/people/alice.conf").exists()
+
+
+def test_a_purge_failing_after_the_vault_expires_the_account_again(host, capsys):
+    """Prevent a failed purge from leaving a locked person's account unexpired, which a later lock would not redo."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    assert host.invoke("lock", "alice", data=b"") == 0
+    capsys.readouterr()
+    host.calls.clear()
+    host.fail = ["userdel"]
+    assert host.invoke("purge", "alice", data=b"") == 69
+    assert host.calls[-1] == ["usermod", "--expiredate", "1", "alice"], "the account left must be expired again"
+    assert "locked=true" in host.path("/etc/porelo-host/people/alice.conf").read_text()
+
+
+def test_purge_goes_on_when_logind_has_already_let_the_person_go(host, capsys):
+    """Prevent a person without sessions or linger from making purge unfinishable."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    assert host.invoke("lock", "alice", data=b"") == 0
+    capsys.readouterr()
+    # Disabling linger lets logind drop a person without a session, and terminate-user then knows nobody.
+    host.fail = ["loginctl", "terminate-user"]
+    host.calls.clear()
+    assert host.invoke("purge", "alice", data=b"") == 0
+    assert host.calls[-2:] == [["systemctl", "stop", "user@1000.service"], ["userdel", "--remove", "alice"]]
+
+
+def test_purge_without_porelo_still_stops_the_lingering_user_manager(host, capsys):
+    """Prevent userdel from refusing an account whose manager linger started, when Porelo is not installed."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    host.commands.remove("porelo")
+    host.calls.clear()
+    assert host.invoke("purge", "alice", data=b"") == 0
+    assert host.calls[-2:] == [["systemctl", "stop", "user@1000.service"], ["userdel", "--remove", "alice"]]
+
+
+def test_people_are_told_from_system_accounts_by_the_hosts_own_uid_range(host, capsys):
+    """Prevent a host with its own UID_MIN from having a service account treated as a person's."""
+    host.write("/etc/login.defs", "# comment\nUID_MIN\t\t\t 2000\nUID_MAX 60000\n", 0o644)
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    capsys.readouterr()
+    host.accounts["alice"] = 1500
+    refused(host, capsys, 65, "purge", "alice", data=b"")
 
 
 def test_keys_are_kept_only_in_the_access_files_and_record(host, capsys):
@@ -778,8 +842,8 @@ def test_failed_write_does_not_leave_a_record_or_staged_key_file(host, capsys):
     output = capsys.readouterr()
     assert not output.out and "cannot write" in output.err
     assert not list(host.root.rglob(".porelo-host-person.*"))
-    assert not host.path("/etc/porelo-host/people/alice.conf").exists()
-    assert not any(args[0] == "wg" for args in host.calls)
+    assert "locked=true" in host.path("/etc/porelo-host/people/alice.conf").read_text()
+    assert not any(args[0] == "wg" and "allowed-ips" in args for args in host.calls)
 
 
 def test_recorded_person_without_an_account_cannot_be_readmitted(host, capsys):
