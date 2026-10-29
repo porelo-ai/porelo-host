@@ -24,7 +24,12 @@ Developers are listed with their public keys in the signed file, kept private in
   3. `host:` must name this host's network, WireGuard key and CA SHA-256, or nobody is admitted;
   4. the whole diff against `people/` is checked before anything is done (the refusals of
      [HO43](README.md#ho43)); one refusal refuses all and names each entry;
-  5. developers and laptops added (QF76 a) as in [HO43](README.md#ho43); dropped ones locked at once (QH65 a);
+  5. developers and laptops added (QF76 a) as in [HO43](README.md#ho43); dropped ones locked at once (QH65 a), under
+     the memberships of [HO55](README.md#ho55) (operator's decision, room 2026-10-29): `sync` adds or removes only
+     this project's membership, and a person is locked only when no membership is left. It never undoes an admission
+     by hand. A developer in two projects keeps access through the other when dropped from one; a developer listed
+     who already has an account, admitted by hand or from another project, gets this project's membership added, not
+     a second account;
   6. both commits recorded, so an unchanged run does nothing and says so.
 - `forge_login` in the JSON is passed by.
 - After `sync` the timer runs Matrix's `members` through the admin's own Porelo.
@@ -32,7 +37,8 @@ Developers are listed with their public keys in the signed file, kept private in
 ## Acceptance
 
 - Molecule: a signed list changed twice: one developer with two laptops added; one laptop dropped (that laptop locked
-  alone); one developer dropped (locked); a list signed by another key, a `host:` of another host, and an address
+  alone); one developer dropped (locked); a developer in two projects dropped from one keeps access; a listed person
+  admitted by hand gets the membership, no second account, and keeps access when dropped; a list signed by another key, a `host:` of another host, and an address
   taken by another person each refused with nothing changed.
 
 ## To be checked
