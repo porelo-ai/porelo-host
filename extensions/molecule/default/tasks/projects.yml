@@ -232,7 +232,7 @@
           - python3
           - -c
           - |
-            import base64, json, secrets, ssl, subprocess, urllib.error, urllib.request
+            import base64, json, secrets, ssl, subprocess, time, urllib.error, urllib.request
             uid = subprocess.check_output(["/usr/bin/id", "-u", "porelo-forge"], text=True).strip()
             def mint(username, prefix, scopes):
                 name = f"{prefix}-{secrets.token_hex(12)}"
@@ -254,20 +254,28 @@
                 urllib.request.HTTPSHandler(context=ctx),
             )
             host_base = "https://10.73.7.1:3000"
+            retries = []
             def request(method, path, auth, data=None, content_type="application/octet-stream"):
-                req = urllib.request.Request(
-                    host_base + path,
-                    data=data,
-                    method=method,
-                    headers={"Authorization": auth, "Content-Type": content_type},
-                )
-                try:
-                    with opener.open(req, timeout=30) as resp:
-                        raw = resp.read()
-                        return resp.status, raw
-                except urllib.error.HTTPError as err:
-                    err.close()
-                    return err.code, b""
+                # A connection the forge drops is tried again a few times and counted, never hidden.
+                for attempt in range(5):
+                    req = urllib.request.Request(
+                        host_base + path,
+                        data=data,
+                        method=method,
+                        headers={"Authorization": auth, "Content-Type": content_type},
+                    )
+                    try:
+                        with opener.open(req, timeout=30) as resp:
+                            raw = resp.read()
+                            return resp.status, raw
+                    except urllib.error.HTTPError as err:
+                        err.close()
+                        return err.code, b""
+                    except (ConnectionError, urllib.error.URLError):
+                        if attempt == 4:
+                            raise
+                        retries.append(method + " " + path.split("?")[0])
+                        time.sleep(3)
             # Only the step and the error's class leave a failure; its words may carry what the command was given.
             try:
                 stage = "mint the package token"
@@ -341,12 +349,13 @@
                             "alpha_two_packages": alpha_two_count,
                             "pkg_deleted": pkg_deleted,
                             "admin_deleted": admin_deleted,
+                            "retries": retries,
                         }
                     )
                 )
             except Exception as error:
                 print(json.dumps({"failed_at": stage, "error": type(error).__name__,
-                                  "returncode": getattr(error, "returncode", None)}))
+                                  "returncode": getattr(error, "returncode", None), "retries": retries}))
       register: verify_projects_isolation
       changed_when: true
       no_log: true
