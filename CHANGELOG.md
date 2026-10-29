@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deletes their tokens, expels Matrix accounts and revokes registration in one operation, and removes delivered
   credentials and their runtime directory. A separate install task provides the helper, SSH key lookup and a
   no-argument forge-password sudo rule.
+- `porelo.host.bring` and `porelo.host.join` run in the person's own account with no `sudo` but sync's: the setup's
+  files in `~/.local/share/porelo-host/setup/<project>/` checked, Porelo's verify on the project and access bundles
+  and the project followed; the bring migrates the project's repositories with the admin's own forge token, protects
+  `main`, makes the teams `developers`, `gates` and `agents`, sets the Actions variables, runs `sync` with a user
+  timer and makes the room once Porelo can; both write the person's push config. `porelo-host-stop --stdin`, run
+  without `sudo`, gives the caller's own `vault-new`, `vault`, `keys`, `forge-central-token` and `identities`.
 - `up` installs every agent package the repository publishes, read from the packages providing `porelo-agent`, and
   Porelo's message filter with rootless networking; a repository publishing no agent stops `up`.
 
@@ -35,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Admission makes no `<agent>-<user>` forge identity, and `up` no longer writes `agents=` into
+  `/etc/porelo-host/forge.conf`: Porelo lends agents no forge identity of their own. Lock still revokes those a 6j
+  host made.
 - The default `operator` forge login, `forge_person`, `person=` in `/etc/porelo-host/forge.conf`, and direct-root calls
   to `porelo-host-forge-password` (now refused with `64` unless run through `sudo` as an admitted person). On an
   existing host, `up` deletes a forge user `operator` that has no record in `/etc/porelo-host/people/` and rewrites

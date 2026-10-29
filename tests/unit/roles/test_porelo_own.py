@@ -65,6 +65,7 @@ def home(tmp_path):
     machine = {
         "project": {"name": PROJECT, "url": str(setup / "project.bundle"), "signed_by": KEY},
         "keys": [{"name": "deploy-key", "path": "keys/deploy"}],
+        "access": {"bundle": "access.bundle"},
         "forge": {"repositories": [{"name": "app", "url": "https://central.example/acme/app.git"}]},
     }
     (setup / "machine.yml").write_text(yaml.safe_dump(machine))
@@ -203,4 +204,20 @@ def test_a_bring_refuses_a_forge_section_it_cannot_use_naming_it(home, repositor
     assert done.returncode != 0
     assert "forge: must hold repositories alone" in done.stdout
     assert json.dumps(repositories[0]["url"]) in done.stdout if repositories else True
+    assert not any(c.startswith("project follow ") for c in calls)
+
+
+@pytest.mark.parametrize(
+    "access",
+    [None, {"bundle": "../other/access.bundle"}, {"bundle": "project.bundle"}, {"repository": "https://x/y"}],
+    ids=["none", "elsewhere", "the-project-bundle", "a-repository"],
+)
+def test_a_machine_file_naming_another_access_bundle_is_refused_by_name(home, access):
+    machine_file = home / ".local/share/porelo-host/setup" / PROJECT / "machine.yml"
+    machine = yaml.safe_load(machine_file.read_text())
+    machine["access"] = access
+    machine_file.write_text(yaml.safe_dump(machine))
+    done, calls = run(home)
+    assert done.returncode != 0
+    assert "access: the machine file must name the bundle access.bundle" in done.stdout
     assert not any(c.startswith("project follow ") for c in calls)

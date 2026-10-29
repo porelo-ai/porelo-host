@@ -15,3 +15,7 @@ porelo_setup_script: /usr/share/porelo/setup/porelo-setup.sh
 # The person's machine file, uploaded with the project's bundle by the interface into the host's setup directory,
 # which names the project, its signing key and the keys; Porelo reads it, never this role (porelo's doc/hosts.md).
 porelo_machine_file: /etc/porelo-host/setup/machine.yml
+
+# How long the project admin's timer waits after a sync before the next, which reads the bundles the interface uploaded
+# meanwhile and changes nothing when their commits are the ones applied.
+porelo_sync_interval: 5min

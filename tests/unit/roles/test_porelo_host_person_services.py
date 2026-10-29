@@ -26,6 +26,8 @@ PERSON_TOKEN = "b" * 40
 MATRIX_TOKEN = "fixture-machine-token"
 MATRIX_ADMIN = "fixture-matrix-admin"
 IDENTITIES = ["alice", "porelo-alice", "codex-alice", "claude-alice"]
+# Admission makes the person's login and gate alone; the agents' identities only a 6j host has, and lock revokes them.
+OWN = IDENTITIES[:2]
 REAL_CONTEXT = ssl.create_default_context
 REAL_OPENER = urllib.request.build_opener
 REAL_HTTPS = urllib.request.HTTPSHandler
@@ -199,9 +201,9 @@ def machine_file(services):
 def test_forge_admits_each_identity_once_and_delivers_only_private_tokens(services, capsys):
     """Prevent token rotation on retry and credentials reaching public output or other people."""
     hook(services, "forge_admit", "alice", [])
-    assert list(services.recorder.users) == IDENTITIES
+    assert list(services.recorder.users) == OWN
     path = token_file(services)
-    assert path.read_text().splitlines() == [f"{user} {PERSON_TOKEN}" for user in IDENTITIES]
+    assert path.read_text().splitlines() == [f"{user} {PERSON_TOKEN}" for user in OWN]
     assert (path.stat().st_uid, stat.S_IMODE(path.stat().st_mode)) == (os.getuid(), 0o600)
     assert (path.parent.stat().st_uid, stat.S_IMODE(path.parent.stat().st_mode)) == (os.getuid(), 0o700)
     assert stat.S_IMODE(path.parent.parent.stat().st_mode) == 0o755
@@ -221,10 +223,7 @@ def test_existing_forge_identities_receive_no_new_tokens(services):
     """Prevent overwriting a person's existing vault credentials when only some accounts are new."""
     services.recorder.users = {"alice": False, "codex-alice": False}
     hook(services, "forge_admit", "alice", [])
-    assert token_file(services).read_text().splitlines() == [
-        f"porelo-alice {PERSON_TOKEN}",
-        f"claude-alice {PERSON_TOKEN}",
-    ]
+    assert token_file(services).read_text().splitlines() == [f"porelo-alice {PERSON_TOKEN}"]
 
 
 @pytest.mark.parametrize("config", [None, "host=host\nagents=\n", "account=\nhost=host\nagents=\n"])
@@ -417,13 +416,20 @@ def test_untrusted_matrix_admin_credentials_never_reach_a_command(services, chan
 
 
 @pytest.mark.parametrize("value", ["../bad", "codex,", "codex,codex", "porelo", "codex\naccount=evil"])
-def test_invalid_agent_lists_cannot_create_privileged_commands_or_duplicate_identities(services, value):
-    """Prevent malformed forge configuration from creating unrelated identities or ambiguous tokens."""
+def test_invalid_agent_lists_cannot_revoke_unrelated_identities(services, value):
+    """Prevent a malformed legacy agent list from naming other accounts for a lock to revoke."""
     path = services.host.path("/etc/porelo-host/forge.conf")
     path.write_text(path.read_text().replace("agents=codex,claude", "agents=" + value))
     with pytest.raises(services.scope["Refusal"]):
-        hook(services, "forge_admit", "alice", [])
+        hook(services, "forge_lock", "alice")
     assert services.recorder.calls == []
+
+
+def test_admission_makes_no_agent_identity_whatever_forge_conf_names(services):
+    """Porelo lends agents no forge identity of their own, so admission makes the person's login and gate alone."""
+    hook(services, "forge_admit", "alice", [])
+    assert list(services.recorder.users) == OWN
+    assert not any("codex-alice" in str(call) or "claude-alice" in str(call) for call in services.recorder.calls)
 
 
 def test_an_empty_agent_list_creates_only_the_person_and_gate(services):
@@ -649,7 +655,7 @@ def test_forge_delivery_is_owned_by_the_person_before_publication(services, monk
     monkeypatch.setattr(services.scope["os"], "chown", directory_ownership)
     monkeypatch.setattr(services.scope["os"], "replace", publish)
     hook(services, "forge_admit", "alice", [])
-    assert token_file(services).read_text().splitlines() == [f"{user} {PERSON_TOKEN}" for user in IDENTITIES]
+    assert token_file(services).read_text().splitlines() == [f"{user} {PERSON_TOKEN}" for user in OWN]
 
 
 def test_forge_revocation_attempts_the_other_identities_when_one_fails(services):

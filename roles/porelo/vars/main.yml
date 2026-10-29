@@ -63,6 +63,7 @@ __porelo_own_place_wrong: >-
   {%- endfor -%}
   {{ wrong }}
 __porelo_own_forge: "{{ (__porelo_own_machine.content | b64decode | from_yaml).forge | default(none) }}"
+__porelo_own_access: "{{ (__porelo_own_machine.content | b64decode | from_yaml).access | default(none) }}"
 # The keys pinned at the last follow, which a handover walked; the machine file's key for a project not followed yet.
 __porelo_own_signers: "{{ __porelo_followed[0].signed_by if __porelo_followed | length > 0
   else [__porelo_host.porelo_project.signed_by] }}"

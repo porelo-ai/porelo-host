@@ -472,11 +472,6 @@
     - name: Verify ada's forge identities, private token delivery file and self-removal when the forge is on
       when: verify_forge == 'on'
       block:
-        - name: Read /etc/porelo-host/forge.conf to inspect configured agents
-          ansible.builtin.slurp:
-            src: /etc/porelo-host/forge.conf
-          register: verify_people_forge_conf
-
         - name: List every Forgejo user after ada and bo are admitted
           ansible.builtin.shell:
             cmd: >-
@@ -508,12 +503,11 @@
                     for line in pathlib.Path("/etc/porelo-host/forge.conf").read_text(encoding="utf-8").splitlines()
                     if "=" in line
                 )
-                agents = [a for a in conf.get("agents", "").split(",") if a]
-                if not agents:
-                    raise SystemExit("forge.conf has an empty agents= reference set")
+                if "agents" in conf:
+                    raise SystemExit("forge.conf still names agents=")
                 found = []
                 for person in ("ada", "bo"):
-                    expected = [person, f"porelo-{person}", *(f"{a}-{person}" for a in agents)]
+                    expected = [person, f"porelo-{person}"]
                     lines = pathlib.Path(f"/run/porelo-host/people/{person}/identities.tokens").read_text(
                         encoding="utf-8"
                     ).splitlines()
@@ -551,12 +545,13 @@
             path: /run/porelo-host/people/ada/identities.tokens
           register: verify_people_identity_removed
 
-        - name: Assert Forgejo holds ada, porelo-ada and each <agent>-ada, and ada owned and removed identities.tokens
+        - name: Assert Forgejo holds ada and porelo-ada alone, and ada owned and removed identities.tokens
           ansible.builtin.assert:
             that:
-              - verify_people_agents | length > 0
               - verify_people_expected_ada | difference(verify_people_listed_users) == []
               - verify_people_expected_bo | difference(verify_people_listed_users) == []
+              - verify_people_listed_users | select('match', '^[a-z][a-z0-9-]*-(ada|bo)$')
+                | reject('match', '^porelo-') | list == []
               - verify_people_identity_stats.results[0].stat.isdir | default(false)
               - verify_people_identity_stats.results[0].stat.pw_name | default('') == 'ada'
               - verify_people_identity_stats.results[0].stat.gr_name | default('') == 'ada'
@@ -568,21 +563,14 @@
               - verify_people_identity_recorded.stdout | trim == 'recorded'
               - not verify_people_identity_removed.stat.exists
             fail_msg: >-
-              asked for configured agents {{ verify_people_agents }}, Forgejo users {{ verify_people_expected_ada }} and
-              {{ verify_people_expected_bo }}, /run/porelo-host/people/ada (ada:ada 0700) with identities.tokens
+              asked for Forgejo users {{ verify_people_expected_ada }} and {{ verify_people_expected_bo }} and no
+              <agent>-ada or <agent>-bo, /run/porelo-host/people/ada (ada:ada 0700) with identities.tokens
               (ada:ada 0600) removable by ada; got listed users {{ verify_people_listed_users }},
               stats {{ verify_people_identity_stats.results | map(attribute='stat') | list }},
               removed exists={{ verify_people_identity_removed.stat.exists }}
           vars:
-            verify_people_agents_line: >-
-              {{ (verify_people_forge_conf.content | b64decode).splitlines()
-              | select('match', '^agents=') | first | default('agents=') }}
-            verify_people_agents: >-
-              {{ verify_people_agents_line.split('=', 1)[1].split(',') | reject('equalto', '') | list }}
-            verify_people_expected_ada: >-
-              {{ ['ada', 'porelo-ada'] + (verify_people_agents | map('regex_replace', '$', '-ada') | list) }}
-            verify_people_expected_bo: >-
-              {{ ['bo', 'porelo-bo'] + (verify_people_agents | map('regex_replace', '$', '-bo') | list) }}
+            verify_people_expected_ada: [ada, porelo-ada]
+            verify_people_expected_bo: [bo, porelo-bo]
             verify_people_listed_users: >-
               {{ verify_people_forge_users.stdout_lines[1:] | map('split') | map(attribute=1) | list }}
 
@@ -807,8 +795,7 @@
                 if "=" in line
             )
             account = conf["account"]
-            agents = [a for a in conf.get("agents", "").split(",") if a]
-            identities = ["ada", "porelo-ada", *(f"{a}-ada" for a in agents)]
+            identities = ["ada", "porelo-ada"]
             uid = subprocess.check_output(["/usr/bin/id", "-u", account], text=True).strip()
             tname = "verify-lock-check-" + secrets.token_hex(12)
             token = subprocess.check_output(

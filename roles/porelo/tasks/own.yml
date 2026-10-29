@@ -144,6 +144,16 @@
       ~ (__porelo_own_forge | to_json) }}
     quiet: true
 
+# Porelo's inventory verified the access bundle the machine file names (porelo's B320); it must be the setup's own.
+- name: own | Stop where the machine file names another access bundle than the setup's own
+  ansible.builtin.assert:
+    that: >-
+      __porelo_own_access in [{'bundle': 'access.bundle'}, {'bundle': __porelo_own_setup ~ '/access.bundle'}]
+    fail_msg: >-
+      access: the machine file must name the bundle access.bundle beside it; it names
+      {{ __porelo_own_access | to_json }}
+    quiet: true
+
 - name: own | Ask Porelo which entries the vault holds, by name
   ansible.builtin.command:
     cmd: porelo vault list

@@ -40,7 +40,7 @@ def test_no_task_or_role_setting_names_forge_person():
         for line in forge_conf.splitlines()
         if "=" in line and not line.strip().startswith("{%")
     ]
-    assert keys == ["address", "host", "name", "matrix_name", "port", "account", "agents"]
+    assert keys == ["address", "host", "name", "matrix_name", "port", "account"]
 
 
 def test_up_deletes_only_an_unrecorded_operator_forge_user_and_installs_helpers():

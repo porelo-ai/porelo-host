@@ -13,8 +13,8 @@ role=project-admin, projects= and no member line is read as member=hand and
 rewritten on its next write. Keys never go to output. The VPN role must load
 porelo-host-peers/*.conf at wg-porelo startup.
 
-With account= in forge.conf, admission creates the login, porelo-<user> gate
-and each <agent>-<user> from agents= (required, comma separated, possibly empty).
+With account= in forge.conf, admission creates the login and the porelo-<user>
+gate; lock also revokes each <agent>-<user> a 6j host's agents= names.
 Only new identities get tokens, atomically delivered as identity/token lines in
 the person's 0600 /run/porelo-host/people/<user>/identities.tokens, for import and
 removal. Its directory is the person's, 0700, in root's 0755 people directory;
@@ -447,7 +447,7 @@ class Host:
         )
 
     def forge_configuration(self, user):
-        """An absent/empty account switches the forge off; an enabled forge requires agents=."""
+        """An absent/empty account switches the forge off; agents= names a 6j host's agent identities, for lock."""
         path = self.path("/etc/porelo-host/forge.conf")
         self.check(path)
         if not path.exists():
@@ -457,8 +457,10 @@ class Host:
             return None
         if len(accounts) != 1 or not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", accounts[0]):
             refuse("forge.conf names no single valid account", 69)
-        agents = self.setting("/etc/porelo-host/forge.conf", "agents")
-        agents = agents.split(",") if agents else []
+        agents = [line[7:] for line in self.read(path).splitlines() if line.startswith("agents=")]
+        if len(agents) > 1:
+            refuse("forge.conf names no valid agent list", 69)
+        agents = agents[0].split(",") if agents and agents[0] else []
         if any(not re.fullmatch(USER, agent) for agent in agents):
             refuse("forge.conf names no valid agent list", 69)
         identities = [user, "porelo-" + user] + [agent + "-" + user for agent in agents]
@@ -560,7 +562,8 @@ class Host:
         config = self.forge_configuration(user)
         if config is None:
             return
-        account, identities = config
+        # Porelo lends agents no forge identity of their own: the person's login and gate alone, whatever agents= names.
+        account, identities = config[0], config[1][:2]
         path = self.forge_tokens_path(user)
         domain = self.forge_domain()
         lines = self.forge_command(account, ["list"]).stdout.splitlines()
