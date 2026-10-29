@@ -1,0 +1,590 @@
+#!/usr/bin/python3 -I
+"""Admit and revoke a person's host access, run as root over the host admin's ssh.
+
+Root's 0600 people/<user>.conf is UTF-8, one setting per line, no comments:
+    role=project-admin
+    projects=
+    locked=false
+    laptop=<name> ssh-ed25519 <base64> <WireGuard base64> <IPv4>
+There is one laptop line per laptop, in admission order. Projects is empty until
+project synchronization is implemented; locked is true or false. Keys never go
+to output. The VPN role must load porelo-host-peers/*.conf at wg-porelo startup.
+
+Validation precedes changes; publication of the record is last. Command failures
+can leave partial system changes and are reported without their captured output.
+Do not manually admit a partial account: inspect and remove its partial access
+before retrying. Calls serialize on root's existing forge.conf, without creating
+a lock file during validation. Purge removes the record; another purge then
+refuses the unknown person with 65, leaving the same state.
+
+The only test hook, _test_entry, exists only when imported under another name.
+An installed call runs as __main__ with -I and accepts no path, identity, runner,
+or hook overrides from arguments, stdin or the environment.
+"""
+
+import base64
+import binascii
+import fcntl
+import grp
+import ipaddress
+import json
+import os
+from pathlib import Path
+import pwd
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+
+ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
+USER = r"[a-z][a-z0-9-]{0,30}"
+LAPTOP = r"[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?"
+MAX_INPUT = 262144
+
+
+class Refusal(Exception):
+    """A safe diagnostic and the interface's exit code."""
+
+    def __init__(self, message, code=64):
+        """Keep the interface exit code with the diagnostic."""
+        super().__init__(message)
+        self.code = code
+
+
+def refuse(message, code=64):
+    """Stop without echoing the input or a command's potentially sensitive output."""
+    raise Refusal(message, code)
+
+
+def run_command(arguments):
+    """The only system command runner; no shell or inherited input/output."""
+    return subprocess.run(
+        arguments,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        cwd="/",
+        env=ENV,
+        timeout=60,
+    )
+
+
+def public_keys(ssh, wireguard, code):
+    """Check both canonical encodings and the SSH ed25519 wire format."""
+    try:
+        kind, encoded = ssh.split(" ")
+        blob = base64.b64decode(encoded, validate=True)
+        wg = base64.b64decode(wireguard, validate=True)
+    except (ValueError, binascii.Error):
+        refuse("a laptop holds no valid public key", code)
+    if (
+        kind != "ssh-ed25519"
+        or len(blob) != 51
+        or blob[:19] != b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20"
+        or base64.b64encode(blob).decode() != encoded
+        or len(wg) != 32
+        or base64.b64encode(wg).decode() != wireguard
+    ):
+        refuse("a laptop holds no valid public key", code)
+
+
+def ipv4(value, code):
+    """A canonical IPv4 address, without a prefix or leading zeroes."""
+    try:
+        return ipaddress.IPv4Address(value)
+    except ipaddress.AddressValueError:
+        refuse("a laptop or configuration holds no valid IPv4 address", code)
+
+
+def key_block(data, code=64, addresses_required=False):
+    """Read the interface's exact single-space fields, validating the entire block."""
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        refuse("standard input is not UTF-8", code)
+    if len(data) > MAX_INPUT or not text:
+        refuse("the laptop block is empty or too large", code)
+    if text.endswith("\n"):
+        text = text[:-1]
+    result, names, ssh_keys, wg_keys = [], set(), set(), set()
+    for line in text.split("\n"):
+        fields = line.split(" ")
+        if (
+            len(fields) not in (4, 5)
+            or any(not field for field in fields)
+            or not re.fullmatch(LAPTOP, fields[0])
+            or fields[1] != "ssh-ed25519"
+        ):
+            refuse("a laptop line must hold its name, ssh-ed25519 key, VPN key and optional address", code)
+        name, ssh, wg = fields[0], " ".join(fields[1:3]), fields[3]
+        public_keys(ssh, wg, code)
+        address = str(ipv4(fields[4], code)) if len(fields) == 5 else None
+        if addresses_required and address is None:
+            refuse("a recorded laptop has no address", code)
+        if name in names or ssh in ssh_keys or wg in wg_keys:
+            refuse("a laptop name or public key is repeated in the block", code)
+        names.add(name)
+        ssh_keys.add(ssh)
+        wg_keys.add(wg)
+        result.append({"laptop": name, "ssh": ssh, "wg": wg, "address": address})
+    return result
+
+
+def forge_admit(user, laptops):
+    """Reserved for admission to the host's forge."""
+
+
+def matrix_issue(user):
+    """Reserved for issuing the person's Matrix registration token."""
+
+
+def forge_lock(user):
+    """Reserved for disabling the person's forge login."""
+
+
+def matrix_expel_revoke(user):
+    """Reserved for expelling Matrix accounts before revoking their token."""
+
+
+class Host:
+    """Root's paths and system operations, with no production configuration overrides."""
+
+    def __init__(self):
+        """Use root's fixed paths, the real identity and the single system command runner."""
+        self.root = Path("/")
+        self.euid = os.geteuid()
+        self.owner, self.group = 0, 0
+        self.runner = run_command
+        self.accounts = None
+        self.groups = None
+        self.commands = None
+        self.hooks = {
+            name: globals()[name] for name in ("forge_admit", "matrix_issue", "forge_lock", "matrix_expel_revoke")
+        }
+
+    def path(self, name):
+        """An absolute host path, rooted elsewhere only through the import-only test hook."""
+        return self.root / name.lstrip("/")
+
+    def check(self, path, code=69, required=False, directory=False, mode=None):
+        """Reject links, wrong owners and writable ancestors before reading or changing a path."""
+        if path != self.root:
+            self.check(path.parent, code, directory=True)
+        try:
+            status = path.lstat()
+        except FileNotFoundError:
+            if required:
+                refuse(f"{path} is missing; prepare the host first", code)
+            return
+        except OSError:
+            refuse(f"cannot inspect {path}", code)
+        correct_type = stat.S_ISDIR(status.st_mode) if directory else stat.S_ISREG(status.st_mode)
+        if (
+            not correct_type
+            or status.st_uid != self.owner
+            or status.st_mode & 0o022
+            or (mode is not None and stat.S_IMODE(status.st_mode) != mode)
+        ):
+            refuse(f"{path} is not a {'directory' if directory else 'plain file'} of root's alone", code)
+
+    def read(self, path):
+        """Read trusted UTF-8 without exposing bad content in the error."""
+        self.check(path, required=True)
+        try:
+            return path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            refuse(f"cannot read {path}", 69)
+
+    def setting(self, name, key):
+        """Read one unambiguous setting from root's own configuration."""
+        values = [
+            line.partition("=")[2] for line in self.read(self.path(name)).splitlines() if line.startswith(key + "=")
+        ]
+        if len(values) != 1:
+            refuse(f"{name} names no single valid {key}", 69)
+        return values[0]
+
+    def network(self):
+        """The host's /24 and its host admin reservation come from the prepared host."""
+        host = ipv4(self.setting("/etc/porelo-host/forge.conf", "address"), 69)
+        if not re.fullmatch(r"10\.73\.[0-9]{1,3}\.1", str(host)):
+            refuse("forge.conf names no host VPN address at 10.73.<n>.1", 69)
+        network = ipaddress.IPv4Network(f"{host}/24", strict=False)
+        admin = ipv4(self.setting("/etc/porelo-host/vpn.conf", "admin_address"), 69)
+        if admin not in network or admin in (host, network.network_address, network.broadcast_address):
+            refuse("vpn.conf names no usable admin_address in the host network", 69)
+        return network, {str(host), str(admin), str(network.network_address), str(network.broadcast_address)}
+
+    def records(self):
+        """Read all people before allocation; corrupt or unsafe records stop every change."""
+        directory = self.path("/etc/porelo-host/people")
+        self.check(directory, directory=True, mode=0o700)
+        records = {}
+        if not directory.exists():
+            return records
+        for path in sorted(directory.iterdir()):
+            if not path.name.endswith(".conf") or not re.fullmatch(USER, path.stem):
+                refuse("the people directory holds an unknown record", 65)
+            self.check(path, required=True, mode=0o600)
+            lines = self.read(path).splitlines()
+            if (
+                len(lines) < 4
+                or lines[0] != "role=project-admin"
+                or lines[1] != "projects="
+                or lines[2] not in ("locked=false", "locked=true")
+                or any(not line.startswith("laptop=") for line in lines[3:])
+            ):
+                refuse(f"the record for {path.stem} is malformed or unsupported", 65)
+            laptops = key_block(("\n".join(line[7:] for line in lines[3:]) + "\n").encode(), 65, True)
+            records[path.stem] = {"locked": lines[2] == "locked=true", "laptops": laptops}
+        return records
+
+    def credentials(self, records, network, reserved):
+        """A complete reference set of occupied addresses and keys, including locked people."""
+        addresses, ssh_keys, wg_keys = set(reserved), set(), set()
+        for record in records.values():
+            for item in record["laptops"]:
+                address = item["address"]
+                if (
+                    ipv4(address, 65) not in network
+                    or address in addresses
+                    or item["ssh"] in ssh_keys
+                    or item["wg"] in wg_keys
+                ):
+                    refuse("the people records hold conflicting keys or VPN addresses", 65)
+                addresses.add(address)
+                ssh_keys.add(item["ssh"])
+                wg_keys.add(item["wg"])
+        return addresses, ssh_keys, wg_keys
+
+    def allocate(self, laptops, records, network, reserved):
+        """Reserve explicit requests first, then take the lowest remaining usable address."""
+        addresses, ssh_keys, wg_keys = self.credentials(records, network, reserved)
+        for item in laptops:
+            if item["ssh"] in ssh_keys or item["wg"] in wg_keys:
+                refuse("a public key belongs to a recorded laptop", 65)
+            if item["address"] is not None:
+                if ipv4(item["address"], 64) not in network or item["address"] in addresses:
+                    refuse("a requested VPN address is outside the network or already reserved", 65)
+                addresses.add(item["address"])
+        for item in laptops:
+            if item["address"] is None:
+                item["address"] = next(
+                    (str(address) for address in network.hosts() if str(address) not in addresses), None
+                )
+                if item["address"] is None:
+                    refuse("the host VPN network has no free laptop address", 65)
+                addresses.add(item["address"])
+        return laptops
+
+    def available(self, program):
+        """Find a command only on the fixed path, refusing executable paths writable by another account."""
+        if self.commands is not None:
+            return program in self.commands
+        found = shutil.which(program, path=ENV["PATH"])
+        if found is None:
+            return False
+        self.check(Path(os.path.realpath(found)), required=True)
+        return True
+
+    def require(self, programs):
+        """Resolve every required dependency before any write or command."""
+        for program in programs:
+            if not self.available(program):
+                refuse(f"{program} is missing from the fixed PATH", 69)
+
+    def command(self, arguments, required=True):
+        """Report only the program and exit status; never relay stdout, stderr or key arguments."""
+        try:
+            result = self.runner(arguments)
+            if result.returncode == 0:
+                return True
+            message = f"{arguments[0]} failed (exit {result.returncode})"
+        except (OSError, subprocess.TimeoutExpired, UnicodeError) as error:
+            message = f"{arguments[0]} failed to complete ({type(error).__name__})"
+        if required:
+            refuse(message, 69)
+        print(f"porelo-host-person: task stop for the person failed: {message}; lock continues", file=sys.stderr)
+        return False
+
+    def targets(self, user):
+        """Check all publication/removal paths without creating directories."""
+        paths = [
+            self.path(f"/etc/ssh/authorized_keys/{user}"),
+            self.path(f"/etc/wireguard/porelo-host-peers/{user}.conf"),
+            self.path(f"/etc/porelo-host/people/{user}.conf"),
+        ]
+        for path in paths:
+            self.check(path, 73)
+        return paths
+
+    def directories(self, directory):
+        """Create missing root directories privately; preserve safe existing directories."""
+        if directory.exists():
+            return
+        self.directories(directory.parent)
+        directory.mkdir(mode=0o755 if directory == self.path("/etc/ssh/authorized_keys") else 0o700)
+        os.chown(directory, self.owner, self.group)
+
+    def write(self, path, text, mode):
+        """Write beside the target, fsync and rename so no reader can see partial access or a record."""
+        temporary = None
+        try:
+            self.directories(path.parent)
+            fd, temporary = tempfile.mkstemp(prefix=".porelo-host-person.", dir=path.parent)
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                os.fchown(stream.fileno(), self.owner, self.group)
+                os.fchmod(stream.fileno(), mode)
+                stream.write(text)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        except OSError:
+            refuse(f"cannot write {path}", 73)
+        finally:
+            if temporary is not None:
+                Path(temporary).unlink(missing_ok=True)
+
+    def record(self, user, record):
+        """Publish admission or completed revocation only after its preceding operations."""
+        text = "role=project-admin\nprojects=\nlocked=" + str(record["locked"]).lower() + "\n"
+        text += "".join(
+            f'laptop={item["laptop"]} {item["ssh"]} {item["wg"]} {item["address"]}\n' for item in record["laptops"]
+        )
+        self.write(self.path(f"/etc/porelo-host/people/{user}.conf"), text, 0o600)
+
+    def subids(self, kind):
+        """Read all subordinate ranges, rejecting malformed ranges rather than overlapping them."""
+        path = self.path("/etc/" + kind)
+        rows = []
+        for line in self.read(path).splitlines():
+            fields = line.split(":")
+            if (
+                len(fields) != 3
+                or not re.fullmatch(r"[a-zA-Z0-9_-]+", fields[0])
+                or not re.fullmatch(r"[0-9]{1,10}", fields[1])
+                or not re.fullmatch(r"[0-9]{1,10}", fields[2])
+                or int(fields[2]) < 1
+                or int(fields[1]) + int(fields[2]) > 4294967295
+            ):
+                refuse(f"{kind} holds a malformed subordinate ID range", 69)
+            rows.append((fields[0], int(fields[1]), int(fields[2])))
+        return rows
+
+    def next_range(self, rows):
+        """A free 65536-ID interval after the highest occupied ID, at least 100000."""
+        start = max([100000] + [start + count for _, start, count in rows])
+        if start + 65536 > 4294967295:
+            refuse("there is no free subordinate ID range", 69)
+        return f"{start}-{start + 65535}"
+
+    def create_account(self, user):
+        """Create the home and private primary group before enabling user services."""
+        # useradd must not allocate its own defaults before the explicit, prevalidated ranges.
+        self.command(
+            ["useradd", "--create-home", "--user-group", "--shell", "/bin/bash",
+             "--key", "SUB_UID_COUNT=0", "--key", "SUB_GID_COUNT=0", user]
+        )
+
+    def enable_linger(self, user):
+        """Allow the person's own user services to survive sign-out."""
+        self.command(["loginctl", "enable-linger", user])
+
+    def subordinate_ids(self, user, uid_range, gid_range):
+        """Give the person's rootless containers their own nonoverlapping ID ranges."""
+        self.command(["usermod", "--add-subuids", uid_range, user])
+        self.command(["usermod", "--add-subgids", gid_range, user])
+
+    def join_groups(self, user, groups):
+        """Limit password sudo to people, adding virtualization groups only where installed."""
+        if "porelo-people" not in groups:
+            self.command(["groupadd", "--system", "porelo-people"])
+        names = [name for name in ("kvm", "libvirt") if name in groups] + ["porelo-people"]
+        self.command(["usermod", "--append", "--groups", ",".join(names), user])
+
+    def add(self, user, laptops, groups, uid_range, gid_range):
+        """Apply validated admission in account, SSH, VPN, hook and record order."""
+        self.create_account(user)
+        self.enable_linger(user)
+        self.subordinate_ids(user, uid_range, gid_range)
+        self.join_groups(user, groups)
+        self.write(
+            self.path(f"/etc/ssh/authorized_keys/{user}"),
+            "".join(f'from="{item["address"]}" {item["ssh"]}\n' for item in laptops),
+            0o644,
+        )
+        for item in laptops:
+            self.command(["wg", "set", "wg-porelo", "peer", item["wg"], "allowed-ips", item["address"] + "/32"])
+        self.write(
+            self.path(f"/etc/wireguard/porelo-host-peers/{user}.conf"),
+            "".join(f'[Peer]\nPublicKey = {item["wg"]}\nAllowedIPs = {item["address"]}/32\n\n' for item in laptops),
+            0o600,
+        )
+        self.hooks["forge_admit"](user, laptops)
+        self.hooks["matrix_issue"](user)
+        self.record(user, {"locked": False, "laptops": laptops})
+
+    def lock(self, user, record, porelo):
+        """Remove access first; task-stop failure cannot prevent account revocation."""
+        self.path(f"/etc/ssh/authorized_keys/{user}").unlink(missing_ok=True)
+        self.path(f"/etc/wireguard/porelo-host-peers/{user}.conf").unlink(missing_ok=True)
+        errors = []
+        for item in record["laptops"]:
+            try:
+                self.command(["wg", "set", "wg-porelo", "peer", item["wg"], "remove"])
+            except Refusal as error:
+                errors.append(error)
+        self.hooks["forge_lock"](user)
+        self.hooks["matrix_expel_revoke"](user)
+        if porelo:
+            self.command(["runuser", "-u", user, "--", "porelo", "task", "stop", "--all"], required=False)
+        for args in (["loginctl", "terminate-user", user], ["usermod", "--lock", "--expiredate", "1", user]):
+            try:
+                self.command(args)
+            except Refusal as error:
+                errors.append(error)
+        if errors:
+            refuse("; ".join(str(error) for error in errors), 69)
+        record["locked"] = True
+        self.record(user, record)
+
+    def purge(self, user, record, porelo, account_exists):
+        """Lock before clearing the vault, deleting the account and releasing recorded IDs."""
+        if not record["locked"]:
+            self.lock(user, record, porelo)
+        if account_exists:
+            if porelo:
+                self.command(["runuser", "-u", user, "--", "porelo", "vault", "clear"])
+            self.command(["loginctl", "disable-linger", user])
+            self.command(["userdel", "--remove", user])
+        for kind in ("subuid", "subgid"):
+            path = self.path("/etc/" + kind)
+            text = self.read(path)
+            remaining = "".join(line for line in text.splitlines(keepends=True) if line.partition(":")[0] != user)
+            if remaining != text:
+                self.write(path, remaining, stat.S_IMODE(path.stat().st_mode))
+        self.path(f"/etc/porelo-host/people/{user}.conf").unlink()
+
+    def execute(self, arguments, data):
+        """Validate the complete request under the configuration lock before applying it."""
+        if self.euid != 0:
+            refuse("runs only as root", 69)
+        if len(arguments) == 4 and arguments[0] == "add" and arguments[2:] == ["--role", "project-admin"]:
+            verb, user = arguments[:2]
+        elif len(arguments) == 2 and arguments[0] in ("lock", "purge"):
+            verb, user = arguments
+        else:
+            refuse("use add <user> --role project-admin, lock <user> or purge <user>")
+        if not re.fullmatch(USER, user):
+            refuse("the person name must match [a-z][a-z0-9-]{0,30}")
+        conf = self.path("/etc/porelo-host/forge.conf")
+        self.check(conf, required=True)
+        with conf.open("rb") as mutex:
+            fcntl.flock(mutex, fcntl.LOCK_EX)
+            network, reserved = self.network()
+            records = self.records()
+            self.credentials(records, network, reserved)
+            accounts = (
+                self.accounts
+                if self.accounts is not None
+                else {entry.pw_name: entry.pw_uid for entry in pwd.getpwall()}
+            )
+            uid = accounts.get(user)
+            if user == "root" or (uid is not None and (uid < 1000 or user not in records)):
+                refuse("the name belongs to root, a system account or an account outside the people records", 65)
+            record = records.get(user)
+            if verb != "add" and record is None:
+                refuse("the person is unknown to the people records", 65)
+            if verb == "add":
+                laptops = key_block(sys.stdin.buffer.read(MAX_INPUT + 1) if data is None else data)
+                if record is not None:
+                    known = {item["laptop"]: item for item in record["laptops"]}
+                    if uid is None or len(known) != len(laptops):
+                        refuse("the recorded person has no account or has different laptops", 65)
+                    for item in laptops:
+                        old = known.get(item["laptop"])
+                        if (
+                            old is None
+                            or old["ssh"] != item["ssh"]
+                            or old["wg"] != item["wg"]
+                            or item["address"] not in (None, old["address"])
+                        ):
+                            refuse("keys or addresses differ from the recorded laptop", 65)
+                    return self.add_answer(user, record["laptops"])
+                laptops = self.allocate(laptops, records, network, reserved)
+                uid_range = self.next_range(self.subids("subuid"))
+                gid_range = self.next_range(self.subids("subgid"))
+                groups = self.groups if self.groups is not None else {entry.gr_name for entry in grp.getgrall()}
+                self.targets(user)
+                self.require(
+                    ["useradd", "loginctl", "usermod", "wg"] + ([] if "porelo-people" in groups else ["groupadd"])
+                )
+                self.add(user, laptops, groups, uid_range, gid_range)
+                return self.add_answer(user, laptops)
+            if verb == "lock" and record["locked"]:
+                return {"person": user, "locked": True}
+            if uid is None and not record["locked"]:
+                refuse("the unlocked person has no account", 65)
+            self.targets(user)
+            programs = [] if record["locked"] else ["wg", "loginctl", "usermod"]
+            porelo = self.available("porelo")
+            if porelo and uid is not None:
+                programs.append("runuser")
+            if verb == "purge":
+                self.subids("subuid")
+                self.subids("subgid")
+                for kind in ("subuid", "subgid"):
+                    self.check(self.path("/etc/" + kind), 73, required=True)
+                if uid is not None:
+                    programs.extend(["loginctl", "userdel"])
+            self.require(programs)
+            if verb == "lock":
+                self.lock(user, record, porelo)
+                return {"person": user, "locked": True}
+            self.purge(user, record, porelo, uid is not None)
+            return {"person": user, "purged": True}
+
+    def add_answer(self, user, laptops):
+        """The interface sees names and addresses, never the credential lines."""
+        return {
+            "person": user,
+            "role": "project-admin",
+            "laptops": [{"laptop": item["laptop"], "vpn_address": item["address"]} for item in laptops],
+        }
+
+
+def entry(host, arguments, data=None):
+    """Turn every expected refusal into one safe diagnostic and the contract's exit code."""
+    try:
+        answer = host.execute(arguments, data)
+    except Refusal as error:
+        print(f"porelo-host-person: {error}", file=sys.stderr)
+        return error.code
+    except OSError:
+        print("porelo-host-person: cannot read or change the host's files", file=sys.stderr)
+        return 73
+    print(json.dumps(answer, separators=(",", ":")))
+    return 0
+
+
+if __name__ == "__main__":
+    if os.geteuid() != 0:
+        print("porelo-host-person: runs only as root", file=sys.stderr)
+        sys.exit(69)
+    os.environ.clear()
+    os.environ.update(ENV)
+    sys.exit(entry(Host(), sys.argv[1:]))
+else:
+
+    def _test_entry(root, runner, *, euid, owner, accounts, groups, commands, hooks):
+        """Import-only injection; there is no production argument or environment switch to reach it."""
+        host = Host()
+        host.root, host.runner, host.euid = root, runner, euid
+        host.owner, host.group = owner, os.getgid()
+        host.accounts, host.groups, host.commands, host.hooks = accounts, groups, commands, hooks
+        return lambda arguments, data: entry(host, arguments, data)

@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `porelo-host-project` registers a project for a recorded person, with its pinned SSH Ed25519 signing key, forge
   organization and package-only publisher. Removal checks every repository's commits against the central forge
   before deleting its repositories, packages, organization, publisher and root-only record.
+- A root person helper admits project admins with per-laptop SSH keys restricted to their VPN addresses, persistent
+  WireGuard peers and private records, and locks or purges their host accounts. A separate install task provides the
+  helper, SSH key lookup and a no-argument forge-password sudo rule; forge and Matrix admission hooks are placeholders.
 
 ### Fixed
 

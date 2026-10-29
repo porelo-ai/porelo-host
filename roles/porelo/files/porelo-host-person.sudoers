@@ -1,0 +1,2 @@
+# The helper selects the person's own login from SUDO_USER; an empty argument string forbids arguments.
+%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-forge-password ""

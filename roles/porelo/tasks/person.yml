@@ -1,0 +1,42 @@
+---
+- name: person | Install the host's person helper
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/porelo-host-person"
+    dest: /usr/local/sbin/porelo-host-person
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: person | Allow people to set their own forge password
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/porelo-host-person.sudoers"
+    dest: /etc/sudoers.d/porelo-host-person
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+
+- name: person | Create root's authorized key directory
+  ansible.builtin.file:
+    path: /etc/ssh/authorized_keys
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: person | Create the SSH daemon's drop-in directory
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: person | Let SSH read the person's VPN-restricted keys
+  ansible.builtin.copy:
+    content: "AuthorizedKeysFile .ssh/authorized_keys /etc/ssh/authorized_keys/%u\n"
+    dest: /etc/ssh/sshd_config.d/porelo-host-person.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: porelo | Reload SSH
