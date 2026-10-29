@@ -555,7 +555,10 @@
         that:
           - verify_bring_stop_out.rc == 0
           - verify_bring_stop_out.stdout.endswith('Your stop is done.\n')
-          - verify_bring_stop_out.stderr == ''
+          # Porelo names a stored credential no provider declares; nothing else may reach stderr.
+          - >-
+            verify_bring_stop_out.stderr
+            | regex_replace("(?m)^porelo: no provider '[^'\\n]+' is declared [^\\n]*\\n", '') == ''
           - verify_bring_vault_out.rc == 0
           - (verify_bring_central.forge_name ~ '.person') in verify_bring_vault_out.entries
           - ('git.token.' ~ verify_bring_central.forge_name) in verify_bring_vault_out.entries
@@ -1254,7 +1257,10 @@
         that:
           - verify_bring_cy_stop_out.rc == 0
           - verify_bring_cy_stop_out.stdout.endswith('Your stop is done.\n')
-          - verify_bring_cy_stop_out.stderr == ''
+          # Porelo names a stored credential no provider declares; nothing else may reach stderr.
+          - >-
+            verify_bring_cy_stop_out.stderr
+            | regex_replace("(?m)^porelo: no provider '[^'\\n]+' is declared [^\\n]*\\n", '') == ''
           - verify_bring_cy_stop_out.vault_rc == 0
           - (verify_bring_central.forge_name ~ '.person') in verify_bring_cy_stop_out.entries
           - ('git.token.' ~ verify_bring_central.forge_name) in verify_bring_cy_stop_out.entries
