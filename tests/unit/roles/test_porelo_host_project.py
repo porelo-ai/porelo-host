@@ -283,7 +283,16 @@ class MemoryOpener:
 
 
 def project(
-    host, monkeypatch, capsys, *arguments, uid=0, overrides=None, central_token=CENTRAL_TOKEN, token_error=None
+    host,
+    monkeypatch,
+    capsys,
+    *arguments,
+    uid=0,
+    overrides=None,
+    central_token=CENTRAL_TOKEN,
+    token_error=None,
+    tty=False,
+    piped=None,
 ):
     # Only this loaded test namespace is changed; the installed root entry point has no environment overrides.
     namespace = runpy.run_path(str(SCRIPT), run_name="project_test")
@@ -313,7 +322,9 @@ def project(
         patch.setattr(os, "geteuid", lambda: uid)
         patch.setattr(sys, "argv", [str(SCRIPT), *arguments])
         patch.setattr(subprocess, "run", commands)
-        patch.setattr(sys, "stdin", io.StringIO(central_token + "\n"))
+        typed = type("Typed", (io.StringIO,), {"isatty": lambda self: True})
+        given = piped if piped is not None else "" if token_error else central_token + "\n"
+        patch.setattr(sys, "stdin", (typed if tty else io.StringIO)(given))
         patch.setattr(__import__("getpass"), "getpass", read_token)
         patch.setattr(os, "environ", os.environ.copy())
         if host.get("memory"):
@@ -812,7 +823,8 @@ def test_missing_or_canceled_token_input_is_an_input_refusal(memory_host, monkey
     host["forge"].calls.clear()
     value = "" if failure == "empty" else "invalid\ninput" if failure == "newline" else CENTRAL_TOKEN
     error = EOFError() if failure == "eof" else KeyboardInterrupt() if failure == "interrupt" else None
-    result = project(host, monkeypatch, capsys, "remove", "alpha", central_token=value, token_error=error)
+    typed = failure in ("eof", "interrupt")
+    result = project(host, monkeypatch, capsys, "remove", "alpha", central_token=value, token_error=error, tty=typed)
     assert result[0] == 64, result
     assert not [call for call in host["forge"].calls if call[0] != "GET"]
     assert (host["etc"] / "projects/alpha.conf").exists()
@@ -885,3 +897,17 @@ def test_an_unreadable_http_reply_is_a_dependency_refusal(memory_host, monkeypat
     assert result[0] == 69 and type(error).__name__ in result[2], result
     assert not [call for call in host["forge"].calls if call[0] != "GET"]
     assert not (host["etc"] / "projects").exists()
+
+
+@pytest.mark.parametrize("piped, code", [(CENTRAL_TOKEN + "\n", 0), (CENTRAL_TOKEN + "\nmore\n", 64), ("", 64)])
+def test_a_piped_token_is_its_one_line_and_never_prompted(memory_host, monkeypatch, capsys, piped, code):
+    """Prevent the interface's piped token from hanging on a prompt, or more than its one line being taken as it."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    host["forge"].repositories["alpha"] = [{"name": "stand-in"}]
+    # The comparison is stood in for: it passes only when it was handed exactly the piped token.
+    host["push"]["command"].write_text(f'#!/bin/sh\nread -r given; [ "$given" = "{CENTRAL_TOKEN}" ] || exit 9\n')
+    error = AssertionError("a pipe must not be prompted")
+    result = project(host, monkeypatch, capsys, "remove", "alpha", token_error=error, piped=piped)
+    assert result[0] == code, result
+    assert (host["etc"] / "projects/alpha.conf").exists() == bool(code), "only a refusal keeps the project"

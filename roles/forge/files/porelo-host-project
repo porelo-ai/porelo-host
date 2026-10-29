@@ -378,6 +378,19 @@ def registered_publisher(project, record):
     return setting(values, "publisher", re.escape("porelo-publisher-" + project), record, 65)
 
 
+def central_forge_token():
+    """The central forge's token: asked at a terminal, or the one line of a pipe, as the interface gives it."""
+    if sys.stdin.isatty():
+        given = getpass.getpass("Token for the central forge (not shown): ")
+    else:
+        given = sys.stdin.read(4097)
+        if given.endswith("\n"):
+            given = given[:-1]
+    if not given or len(given) > 4096 or "\n" in given or "\r" in given:
+        refuse("no valid central forge token was given", 64)
+    return given
+
+
 def remove(forge, project, record, publisher):
     """Check every repository without pushing anything, then delete the forge identities and record."""
     for kind, path in (("organization", f"/orgs/{project}"), ("publisher", f"/users/{publisher}")):
@@ -408,9 +421,7 @@ def remove(forge, project, record, publisher):
         names.append(name)
     if names:
         trusted(PUSH)
-        central_token = getpass.getpass("Token for the central forge (not shown): ")
-        if not central_token or "\n" in central_token or "\r" in central_token:
-            refuse("no valid central forge token was given", 64)
+        central_token = central_forge_token()
         checked = subprocess.run(
             [PUSH, "--check", project, *names],
             env=SAFE_ENV,
