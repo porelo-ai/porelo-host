@@ -313,6 +313,11 @@
                 f"      - ssh_public_key: {json.dumps(cy_ssh)}\n"
                 f"        wireguard_public_key: {json.dumps(cy_wg)}\n"
                 f"        vpn_address: {json.dumps(cy_ip)}\n"
+                # The host's homeserver and the room the bring's talk room makes there.
+                "transports:\n"
+                "  matrix:\n"
+                '    homeserver: "https://matrix.alpha.porelo.internal:8448"\n'
+                '    room: "#porelo-alpha-one:matrix.alpha.porelo.internal"\n'
             )
             git_env = {
                 "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
