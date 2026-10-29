@@ -38,8 +38,8 @@ half of `MemTotal`, naming both sides.
 it also refuses a pool whose memory (systems × accounts per system × memory per VM) exceeds half of `MemTotal`,
 naming the pool's memory and the host's total memory.
 
-**`porelo.host.down`, the other way round.** Takes the VM pool and the forge off the host, stops every running task of
-the account with `porelo task stop --all` and clears the vault (`porelo vault clear --yes`, also where only a
-transport could not clear what it keeps), stops the VPN, and takes
-the person's ssh key off the account last. Every step takes down only what is there, so `down` after a failed `up` works
+**`porelo.host.down`, the other way round.** Refuses first, before stopping anything, while any person record in
+`/etc/porelo-host/people/` still holds a membership, naming each person and their memberships with `"Take the project
+off"` and `"Purge"`. Once no membership remains, it takes the homeserver, the VM pool and the forge off the host and
+closes the VPN last. Every step takes down only what is there, so `down` after a failed `up` works
 too.
