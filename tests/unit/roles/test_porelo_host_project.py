@@ -410,7 +410,10 @@ def test_an_untrusted_person_record_changes_nothing(project_host, monkeypatch, c
 
         monkeypatch.setattr(os, "lstat", wrong_owner)
     result = project(project_host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)
-    assert_refused(project_host, result, "missing" if defect == "missing" else "root", 69)
+    if defect == "missing":
+        assert_refused(project_host, result, "alice is no person on this host", 65)
+    else:
+        assert_refused(project_host, result, "root", 69)
     assert not (project_host["etc"] / "projects").exists()
 
 

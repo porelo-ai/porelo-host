@@ -482,7 +482,11 @@ def run():
     for name in ("projects", "people"):
         trusted_directory(os.path.join(ETC, name), private=True, missing=True)
     if action == "add":
-        trusted(os.path.join(ETC, "people", admin + ".conf"), private=True)
+        person = os.path.join(ETC, "people", admin + ".conf")
+        # The records say no: an admin must have been admitted as a person first.
+        if not os.path.lexists(person):
+            refuse(f"{admin} is no person on this host", 65)
+        trusted(person, private=True)
     else:
         trusted(record, private=True)
     trusted(CONF)
