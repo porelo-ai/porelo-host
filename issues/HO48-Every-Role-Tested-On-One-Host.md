@@ -4,7 +4,7 @@
 **Size:** L - the Molecule scenario rebuilt around the three roles, grown with each issue it tests.
 
 **What must be true.** One throwaway VM runs a host admin, two project admins and a developer with two laptops in both
-projects through every act and refusal of [PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78)'s host side.
+projects through every act and refusal of [HO42](README.md#ho42) to [HO47](README.md#ho47).
 
 ## Why
 

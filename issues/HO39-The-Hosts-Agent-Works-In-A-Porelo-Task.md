@@ -3,8 +3,7 @@
 **Status:** Idea; blocked by [HO40](README.md#ho40).
 
 **What must be true.** porelo-host's own agent, `Agent Host` in the project's room, works in a Porelo task on the
-move's host as porelo-project [PJ59](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj59) lays
-out for sprint 8a, with a way back to this machine at any time, since a fault in the host's setup can stop its own work.
+move's host as the project's procedure for an agent's move lays out, with a way back to this machine at any time, since a fault in the host's setup can stop its own work.
 
 ## Acceptance
 
@@ -13,11 +12,11 @@ out for sprint 8a, with a way back to this machine at any time, since a fault in
 - This issue is taken from start to Review inside the task, and the agent is reached in the room as `Agent Host`,
   from the nickname `Host` in porelo-project's `project.yml`.
 - The way back is shown once: the task's open work fetched from the host's forge into this machine's checkout, the
-  upstream switched back, the local session resumed, as the move's step 5 says.
+  upstream switched back, the local session resumed, as that procedure's way back says.
 
 ## To be checked
 
-- **The repository alone moves.** `porelo-buildtools`, kept by the same agent today, moves on its own in sprint 7, by an
+- **The repository alone moves.** `porelo-buildtools`, kept by the same agent today, moves on its own, earlier, by an
   issue of that repository's own.
 - **The task's image** is `porelo.yml`'s: the Ansible tools image by digest with the pinned GraalVM, in which
   `build/tools.sh` runs each tool directly. The checkout brings the unit tests and the tarball's sources, and

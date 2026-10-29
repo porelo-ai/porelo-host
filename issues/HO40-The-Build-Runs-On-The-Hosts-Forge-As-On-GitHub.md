@@ -3,8 +3,8 @@
 **Status:** Idea.
 
 **What must be true.** This repository's workflows run unchanged and green on the host's Forgejo and on GitHub, the
-differences only in variables both forges carry, as porelo-project
-[PJ60](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj60) asks of every repository, so that
+differences only in variables both forges carry, with the values of
+[the local registry and publication settings](../doc/local-forge.md#the-local-registry-and-publication-settings), so that
 `Agent Host` in its task ([HO39](README.md#ho39)) has a build to read for its push.
 
 ## Acceptance

@@ -1,10 +1,8 @@
 # HO07 — The Project's Store Restored And Kept
 
-**Status:** Backlog; blocked by [HO37](README.md#ho37), by porelo-project [PJ45](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj45), and by
-porelo-message-matrix [MX24](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx24), and by
-porelo [B231](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b231), and by porelo-message-matrix
-[MX39](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx39)
-(a late completion or a second backup into the same directory loses messages).
+**Status:** Backlog; blocked by [HO37](README.md#ho37). It waits for the room's `backup <dir>` and `restore <dir>`,
+for a backup that holds only its own copy and never empties a directory another one filled (a late completion or a
+second backup into the same directory loses messages), and for `porelo keep [--restore] <dir>`.
 **Size:** L - one role, a script and a timer here, but every entry's copy and restore is another repository's command,
 and the round trip is measured on a rented host.
 
@@ -35,8 +33,7 @@ secrets file on the stop's standard input, never through Ansible.
 - **At `up`**, before the homeserver and the first `porelo task start`: `restic restore latest --tag <entry>` into a
   fresh directory and the entry's restore command, for each entry; a store with no snapshot yet is a first start and
   restores nothing, said so.
-- **The room's commands, as porelo-message-matrix
-  [MX24](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx24) plans them**: `backup
+- **The room's commands**, porelo-message-matrix's: `backup
   <dir>` into an existing empty directory, 0 with `{"backup": <id>}`, 75 when the homeserver is not active or no backup
   appeared within 60 s, which fails that run, 78 when the unit is not installed; `restore <dir>` before the
   homeserver's `setup`, 0 with `{"restore": <id>}`, or with `{"restore": "present"}` on a second `up` where the

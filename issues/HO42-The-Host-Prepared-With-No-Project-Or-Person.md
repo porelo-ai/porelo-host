@@ -10,7 +10,7 @@ host's own names with certificates of the host admin's lasting CA.
 
 ## Why
 
-[PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78), which splits a host's life into three roles. Today `up` brings one person's project up with the host
+A host's life splits into three roles: the host admin, a project admin and a developer. Today `up` brings one person's project up with the host
 in one run; the forge, runner, pool and homeserver are the host's and shared (QH56), so they come first and alone.
 
 ## Plan
@@ -23,7 +23,7 @@ Read in the code (`9f883ec`), nothing measured.
   to [HO43](README.md#ho43) and [HO45](README.md#ho45).
 - **The homeserver:** an account of its own, `porelo-matrix` (linger), with `PORELO_MATRIX_PORT` in its
   `homeserver.conf`, its user unit enabled by `up`, and `publish --address <VPN address>:<port> --name
-  matrix.<host>.porelo.internal`, as porelo-message-matrix's [MX42](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx42) run did. No task starts it and no person's
+  matrix.<host>.porelo.internal`. No task starts it and no person's
   `vault clear` reaches it; `down` stops it and removes its account.
 - **Certificates:** the forge's and the homeserver's, `forge.<host>.porelo.internal` and
   `matrix.<host>.porelo.internal`, signed by the host admin's lasting CA (QH58 a), constrained to

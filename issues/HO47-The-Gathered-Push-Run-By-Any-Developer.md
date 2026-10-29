@@ -9,7 +9,7 @@ host's forge to the central forge with their own write token (QH62 b).
 
 ## Why
 
-[PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78). Today the gathered push is root's, configured once per host for the one person.
+Any developer of a project runs the gathered push. Today it is root's, configured once per host for the one person.
 
 ## Plan
 

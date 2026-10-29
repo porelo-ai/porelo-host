@@ -20,13 +20,10 @@ hint (repository, pull request number, branch, kind of event) - never content.
   merge, and the role keeps the map from forge account to the host's account.
 - **For review and comment events the sender is the reviewer,** so the account is found from the pull request's head
   branch or its author, never from the sender.
-- **The daemon decides,** as `porelo` [B288](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b288),
-  [B289](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b289) and
-  [B290](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b290) say: it reads the event's state on
+- **The daemon decides:** it reads the event's state on
   the forge itself before it acts, so a report too many changes nothing.
 - **Nothing from the payload - comment text, identities, a source level, an approval, a deletion - is taken as true:**
-  the daemon reads the pull request and its reviews through its forge adapter, as `porelo`
-  [B171](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b171) says, and treats comment text as
+  the daemon reads the pull request and its reviews through its forge adapter, and treats comment text as
   untrusted input.
 - **A lost report is caught up:** the daemon asks the forge anyway, so a report only makes it quicker.
 
@@ -47,5 +44,4 @@ A report carries text anybody with a forge account can write, so it may wake a d
   `write:organization` and `write:repository`, so a system webhook needs a wider token or the forge's own command line.
 - Whether Forgejo sends a webhook when an Actions run ends; if not, the build's end is reported by a workflow step to
   the same endpoint, and the daemon's own check matters all the more.
-- Whether the branch should carry its account as well (`porelo/<account>/<task>`, as `porelo`
-  [B190](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b190) allows), so the router needs no map.
+- Whether the branch should carry its account as well (`porelo/<account>/<task>`, which Porelo's branch naming allows), so the router needs no map.

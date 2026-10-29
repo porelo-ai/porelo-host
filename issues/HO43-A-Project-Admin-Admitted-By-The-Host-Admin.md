@@ -10,7 +10,7 @@ person can change another's.
 
 ## Why
 
-[PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78): the host admin puts the project admins' public keys on the host by hand; developers then follow from the
+The host admin puts the project admins' public keys on the host by hand; developers then follow from the
 project's signed `access.yml` ([HO46](README.md#ho46)), through the same helper.
 
 ## Plan
@@ -43,5 +43,8 @@ project's signed `access.yml` ([HO46](README.md#ho46)), through the same helper.
 
 ## To be checked
 
-- That porelo-message-matrix's `machine-token issue/revoke/expel` ([MX44](https://github.com/porelo-ai/porelo-message-matrix/blob/main/issues/README.md#mx44)) answer as agreed.
-- Porelo's machine name `<host>-<account>` ([B312](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b312)).
+- That porelo-message-matrix's verbs, run as `porelo-matrix`, answer on stdout only: `machine-token issue M` with
+  `{"machine":"M","token":"…"}`, the same token again for a person already admitted; `revoke M` with
+  `{"machine":"M","revoked":true|false}`, after which the homeserver refuses the token at its next registration;
+  `expel M` with `{"machine":"M","expelled":[…]}`, every `@….<M>` account taken out server-wide, run before `revoke`.
+- That Porelo names a transport's machine `<host>-<account>` (`porelo talk machine` prints it).

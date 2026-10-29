@@ -1,6 +1,6 @@
 # HO27 — The Forge's Jobs Told Where The Pool Is
 
-**Status:** Idea; blocked by porelo-buildtools [BT25](https://github.com/porelo-ai/porelo-buildtools/blob/main/issues/README.md#bt25).
+**Status:** Idea. It waits for `porelo-machines acceptance --kind <kind>` in porelo-buildtools.
 
 **What must be true.** One workflow, unchanged on GitHub and on the host's forge, rents a test machine of a kind:
 on the forge it takes a run account of the host's VM pool, on GitHub a rented server. The forge's runner tells

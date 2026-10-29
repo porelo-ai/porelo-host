@@ -71,8 +71,7 @@ deletes them with nothing left.
   again. After the two `down`s of the test (the first stopping at the unsynced drive), the forge's Actions secret
   `PORELO_POOL_SSH` was deleted exactly once, and no pool VM, volume, seed, key, directory or unit is left.
 - **Molecule**, green, 5 of 5 stages, on this machine, 2026-10-25 09:31Z-09:50Z, 18.4 min, with `porelo-machines` built
-  from porelo-buildtools `3bf62cf` (the
-  [BT24](https://github.com/porelo-ai/porelo-buildtools/blob/main/issues/README.md#bt24) commit that provisions a pool
+  from porelo-buildtools `3bf62cf` (the commit that provisions a pool
   lease as root through `sudo -n`) and handed over by a SHA-256 manifest checked on the host and again on the test VM:
   - a renter that returned its lease normally, and one killed with SIGKILL while holding it, each left a file in the
     run account's home and one written as root in `/etc`; the next rental of the same VM and account found neither;

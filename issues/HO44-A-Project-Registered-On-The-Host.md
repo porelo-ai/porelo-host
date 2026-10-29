@@ -9,7 +9,7 @@ off again once nothing of it is unpushed; one forge organization and one publish
 
 ## Why
 
-[PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78). Making a forge account needs the forge's admin, so the organization and its publisher are root's (QH55 a,
+A project is put on a host apart from the host itself. Making a forge account needs the forge's admin, so the organization and its publisher are root's (QH55 a,
 QH54 a); a publisher per project keeps one project's builds from publishing into another's.
 
 ## Plan

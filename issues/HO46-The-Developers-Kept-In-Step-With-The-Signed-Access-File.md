@@ -10,7 +10,7 @@ even from a taken-over project admin account.
 
 ## Why
 
-[PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78): developers are listed with their public keys in the signed file, kept private in
+Developers are listed with their public keys in the signed file, kept private in
 `access.yml` (b).
 
 ## Plan
@@ -37,5 +37,5 @@ even from a taken-over project admin account.
 
 ## To be checked
 
-- porelo's `project verify --json` with `--access-repository` ([B311](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b311)), and that it runs under
+- porelo's `project verify --json` with `--access-repository`, and that it runs under
   `DynamicUser` with no home and no network.

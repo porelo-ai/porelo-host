@@ -67,6 +67,8 @@ sets the local forge's values only.
 | `vars.PORELO_DEPLOY_PROFILE` | `forge-release` | `central-sonatype-release` |
 | `vars.MAVEN_SNAPSHOTS_URL` | `https://<forge_address>:<forge_http_port>/api/packages/<forge_owner>/maven` | `https://central.sonatype.com/repository/maven-snapshots/` |
 | `secrets.PORELO_PUBLISHER_TOKEN` | The local publisher's package token; private registry reads need authentication too | A placeholder for anonymous Sonatype snapshot reads; central deployment uses its own credentials |
+| `vars.JF_URL` | `https://jfrog.invalid`, a placeholder: the variables API takes no empty value, and no real service answers it | The Artifactory instance that `PORELO_PUBLISH` uploads go to |
+| `secrets.JF_ACCESS_TOKEN` | `porelo-host-placeholder`, created only when the secret is absent; an existing value is kept | The Artifactory access token for those uploads |
 
 The local address uses the VPN address and port reached by a runner job; the default port is `3000` and the default
 organization is `porelo`. The forge's browser address is `https://forge.porelo.internal/`. Jobs trust the host's CA

@@ -10,7 +10,7 @@ the forge's parts of the project are made with the admin's own forge token.
 
 ## Why
 
-[PJ78](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md#pj78): Porelo runs only in a person's own account; the project admin brings, the developer works.
+Porelo runs only in a person's own account; the project admin brings, the developer works.
 
 ## Plan
 
@@ -35,4 +35,4 @@ the forge's parts of the project are made with the admin's own forge token.
 
 ## To be checked
 
-- porelo's access file and inventory with two bundles ([B310](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b310), [B313](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b313)).
+- porelo's signed private `access.yml`, and its inventory verifying the access bundle beside the project's.
