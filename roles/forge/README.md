@@ -30,7 +30,8 @@ gate, branch protection, publisher, agent token and gathered push task files rem
 `/usr/local/sbin/porelo-host-project`, root's alone, registers an organization with an unlocked member in
 `/etc/porelo-host/people/` (recording `member=<project> project-admin`), a signing key in Porelo's canonical
 `ssh-ed25519 <base64>` signer format and a package-only publisher, or checks its commits against the central forge
-before removing the project, dropping its memberships from `/etc/porelo-host/people/` and locking each person left with
+before removing the project (including any `commit=`, `access_commit=` and `signer=` lines recorded by
+`porelo-host-person sync`), dropping its memberships from `/etc/porelo-host/people/` and locking each person left with
 none through `/usr/local/sbin/porelo-host-person lock`. Its credentials stay in memory and Forgejo;
 [project registration](../../doc/local-forge.md#registering-a-project)
 describes the records, refusal checks and failure behavior. Down removes the helper and project records.

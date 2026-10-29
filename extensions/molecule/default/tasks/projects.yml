@@ -3,8 +3,9 @@
 # projects owned by bo and cy alone, package publishing isolated to each project's own organization, refusals leaving
 # records untouched, down refusing while people hold memberships, empty-project removal deleting the organization and
 # publisher while locking only people left with no membership (keeping hand-admitted cy unlocked and locking
-# project-only di), removal of a project holding a committed repository refused, and every project and person removed
-# at the end so side_effect's down goes through.
+# project-only di), removal of a project holding a committed repository refused, porelo-host-person sync reconciling
+# developers, laptops, project memberships and Forgejo developers teams against real signed project and access bundles
+# verified under DynamicUser, and every project and person removed at the end so side_effect's down goes through.
 - name: Verify project registration, ownership, package isolation, refusals and removal guards
   block:
     - name: Create the root-only workspace, cy's and di's laptop keys and two canonical project signing keys
@@ -767,6 +768,502 @@
           record exists={{ verify_projects_one_record.stat.exists }}
       vars:
         verify_projects_one_result: "{{ verify_projects_remove_one.stdout | from_json }}"
+
+    - name: Verify porelo-host-person sync reconciles developers, laptops, memberships and Forgejo teams
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, os, pathlib, pwd, shutil, ssl, subprocess, urllib.request
+
+            work = pathlib.Path("/root/verify-projects/sync")
+            shutil.rmtree(work, ignore_errors=True)
+            (work / "git-home").mkdir(parents=True, mode=0o700)
+            host_info = json.loads(pathlib.Path("/etc/porelo-host/host.json").read_text(encoding="utf-8"))
+            host_block = {
+                key: host_info[key]
+                for key in ("address", "endpoint", "wireguard_public_key", "network", "ssh_host_key", "ca_sha256")
+            }
+            signer2 = pathlib.Path("/root/verify-projects/signer2.line").read_text(encoding="utf-8").strip()
+            cy_ssh = pathlib.Path("/root/verify-projects/cy.ssh.line").read_text(encoding="utf-8").strip()
+            cy_wg = pathlib.Path("/root/verify-projects/cy.wg.line").read_text(encoding="utf-8").strip()
+
+            def make_laptop_keys(tag):
+                ssh_file = work / f"{tag}.ssh"
+                subprocess.run(
+                    ["/usr/bin/ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "", "-f", str(ssh_file)],
+                    check=True,
+                )
+                ssh_pub = " ".join((work / f"{tag}.ssh.pub").read_text(encoding="utf-8").split()[:2])
+                wg_priv = subprocess.check_output(["/usr/bin/wg", "genkey"], text=True)
+                wg_pub = subprocess.check_output(["/usr/bin/wg", "pubkey"], input=wg_priv, text=True).strip()
+                return ssh_pub, wg_pub
+
+            dev1_ssh, dev1_wg = make_laptop_keys("eli-one")
+            dev2_ssh, dev2_wg = make_laptop_keys("eli-two")
+            probe_ssh, probe_wg = make_laptop_keys("probe")
+            rogue_key = work / "rogue"
+            subprocess.run(
+                ["/usr/bin/ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "", "-f", str(rogue_key)],
+                check=True,
+            )
+
+            git_env = {
+                "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "LC_ALL": "C.UTF-8",
+                "GIT_CONFIG_GLOBAL": "/dev/null",
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "HOME": str(work / "git-home"),
+            }
+
+            def init_repo(name):
+                repo = work / name
+                subprocess.run(["/usr/bin/git", "init", "-q", "-b", "main", str(repo)], env=git_env, check=True)
+                subprocess.run(
+                    ["/usr/bin/git", "-C", str(repo), "config", "user.name", "Signer"], env=git_env, check=True
+                )
+                subprocess.run(
+                    ["/usr/bin/git", "-C", str(repo), "config", "user.email", "signer@example.org"],
+                    env=git_env,
+                    check=True,
+                )
+                subprocess.run(
+                    ["/usr/bin/git", "-C", str(repo), "config", "gpg.format", "ssh"], env=git_env, check=True
+                )
+                return repo
+
+            def commit_bundle(repo, filename, content, key_path, out_bundle):
+                (repo / filename).write_text(content, encoding="utf-8")
+                subprocess.run(
+                    ["/usr/bin/git", "-C", str(repo), "config", "user.signingkey", str(key_path)],
+                    env=git_env,
+                    check=True,
+                )
+                subprocess.run(["/usr/bin/git", "-C", str(repo), "add", filename], env=git_env, check=True)
+                subprocess.run(
+                    ["/usr/bin/git", "-C", str(repo), "commit", "-q", "-S", "-m", "Update " + filename],
+                    env=git_env,
+                    check=True,
+                )
+                sha = subprocess.check_output(
+                    ["/usr/bin/git", "-C", str(repo), "rev-parse", "HEAD"], env=git_env, text=True
+                ).strip()
+                subprocess.run(
+                    ["/usr/bin/git", "-C", str(repo), "bundle", "create", str(out_bundle), "HEAD", "main"],
+                    env=git_env,
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                return sha
+
+            def project_yaml(project):
+                return (
+                    f'project:\n  name: "{project}"\n  security_class: "guarded"\n'
+                    f'image:\n  base_image: "ubuntu:24.04"\n'
+                    f'access:\n  repository: "git@forge.example.org:{project}/{project}-access.git"\n'
+                )
+
+            def access_yaml(hblock, devs):
+                return json.dumps({"host": hblock, "developers": devs, "transports": {}}, indent=2) + "\n"
+
+            def stage_bundles(admin, project, proj_bundle, acc_bundle):
+                entry = pwd.getpwnam(admin)
+                cur = pathlib.Path(entry.pw_dir)
+                for part in (".local", "share", "porelo-host", "setup", project):
+                    cur = cur / part
+                    cur.mkdir(exist_ok=True, mode=0o700)
+                    os.chown(cur, entry.pw_uid, entry.pw_gid)
+                    cur.chmod(0o700)
+                for name, src in (("project.bundle", proj_bundle), ("access.bundle", acc_bundle)):
+                    dst = cur / name
+                    shutil.copyfile(src, dst)
+                    os.chown(dst, entry.pw_uid, entry.pw_gid)
+                    dst.chmod(0o600)
+
+            def run_sync(caller, *extra):
+                cmd = [
+                    "/usr/bin/sudo", "-u", caller,
+                    "/usr/bin/sudo", "-n", "/usr/local/sbin/porelo-host-person", "sync", *extra,
+                ]
+                res = subprocess.run(cmd, input="", capture_output=True, text=True)
+                return {
+                    "rc": res.returncode,
+                    "out": json.loads(res.stdout) if res.returncode == 0 and res.stdout.strip() else res.stdout,
+                    "err": res.stderr,
+                }
+
+            tok_file = pathlib.Path("/home/porelo-forge/.config/porelo-forge/api.token")
+            token = tok_file.read_text(encoding="utf-8").strip()
+            ctx = ssl.create_default_context(cafile="/etc/porelo-host/forge/ca.pem")
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=ctx)
+            )
+            base = "https://10.73.7.1:3000/api/v1"
+
+            def api(method, path, body=None):
+                req = urllib.request.Request(
+                    base + path,
+                    data=json.dumps(body).encode("utf-8") if body is not None else None,
+                    method=method,
+                    headers={"Authorization": "token " + token, "Content-Type": "application/json"},
+                )
+                with opener.open(req, timeout=30) as resp:
+                    raw = resp.read()
+                    return resp.status, (json.loads(raw) if raw else None)
+
+            def team_members(org):
+                _, teams = api("GET", f"/orgs/{org}/teams?limit=50&page=1")
+                dev_team = next(t for t in teams if t["name"] == "developers")
+                _, members = api("GET", f"/teams/{dev_team['id']}/members?limit=50&page=1")
+                return sorted(m["login"] for m in members)
+
+            def wg_peers():
+                out = subprocess.check_output(["/usr/bin/wg", "show", "wg-porelo", "peers"], text=True)
+                return set(out.splitlines())
+
+            signer1 = pathlib.Path("/root/verify-projects/signer1.line").read_text(encoding="utf-8").strip()
+            add_four = subprocess.run(
+                ["/usr/local/sbin/porelo-host-project", "add", "alpha-four", "bo", "--signed-by", signer1],
+                input="",
+                capture_output=True,
+                text=True,
+            )
+            assert add_four.returncode == 0, add_four.returncode
+            add_three = subprocess.run(
+                ["/usr/local/sbin/porelo-host-project", "add", "alpha-three", "cy", "--signed-by", signer2],
+                input="",
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            signer1_path = pathlib.Path("/root/verify-projects/signer1")
+            signer2_path = pathlib.Path("/root/verify-projects/signer2")
+            p1_repo = init_repo("p1")
+            a1_repo = init_repo("a1")
+            p1_bundle = work / "p1.bundle"
+            a1_bundle = work / "a1.bundle"
+            c_p1 = commit_bundle(p1_repo, "project.yml", project_yaml("alpha-four"), signer1_path, p1_bundle)
+            devs_step1 = {
+                "eli": {
+                    "laptops": [
+                        {"ssh_public_key": dev1_ssh, "wireguard_public_key": dev1_wg, "vpn_address": "10.73.7.10"},
+                        {"ssh_public_key": dev2_ssh, "wireguard_public_key": dev2_wg, "vpn_address": "10.73.7.11"},
+                    ],
+                    "forge_login": "ignored-central-eli",
+                },
+                "cy": {
+                    "laptops": [
+                        {"ssh_public_key": cy_ssh, "wireguard_public_key": cy_wg, "vpn_address": "10.73.7.3"},
+                    ],
+                },
+            }
+            c_a1_1 = commit_bundle(a1_repo, "access.yml", access_yaml(host_block, devs_step1), signer1_path, a1_bundle)
+            stage_bundles("bo", "alpha-four", p1_bundle, a1_bundle)
+
+            wrong_caller = run_sync("cy", "alpha-four")
+            bad_usage = run_sync("bo", "alpha-four", "extra")
+            missing_team = run_sync("bo", "alpha-four")
+            eli_before_team = pathlib.Path("/etc/porelo-host/people/eli.conf").exists()
+
+            for org in ("alpha-four", "alpha-three"):
+                code, _ = api(
+                    "POST",
+                    f"/orgs/{org}/teams",
+                    {
+                        "name": "developers",
+                        "permission": "write",
+                        "units": ["repo.code", "repo.issues", "repo.pulls", "repo.actions", "repo.packages"],
+                    },
+                )
+                assert code == 201, (org, code)
+
+            sync_add = run_sync("bo", "alpha-four")
+            eli_rec_1 = pathlib.Path("/etc/porelo-host/people/eli.conf").read_text(encoding="utf-8")
+            cy_rec_1 = pathlib.Path("/etc/porelo-host/people/cy.conf").read_text(encoding="utf-8")
+            eli_keys_1 = pathlib.Path("/etc/ssh/authorized_keys/eli").read_text(encoding="utf-8").splitlines()
+            peers_1 = wg_peers()
+            team1_after_add = team_members("alpha-four")
+            eli_matrix_1 = pathlib.Path("/home/eli/.config/porelo/matrix/host-registration-token").is_file()
+            sync_tmp_empty_1 = not list(pathlib.Path("/run/porelo-host/sync").iterdir())
+            sync_unchanged = run_sync("bo", "alpha-four")
+
+            devs_step2 = {
+                "eli": {
+                    "laptops": [
+                        {"ssh_public_key": dev2_ssh, "wireguard_public_key": dev2_wg, "vpn_address": "10.73.7.11"},
+                    ],
+                },
+            }
+            c_a1_2 = commit_bundle(a1_repo, "access.yml", access_yaml(host_block, devs_step2), signer1_path, a1_bundle)
+            stage_bundles("bo", "alpha-four", p1_bundle, a1_bundle)
+            sync_drop_laptop_and_cy = run_sync("bo", "alpha-four")
+            eli_rec_2 = pathlib.Path("/etc/porelo-host/people/eli.conf").read_text(encoding="utf-8")
+            cy_rec_2 = pathlib.Path("/etc/porelo-host/people/cy.conf").read_text(encoding="utf-8")
+            eli_keys_2 = pathlib.Path("/etc/ssh/authorized_keys/eli").read_text(encoding="utf-8").splitlines()
+            cy_keys_2 = pathlib.Path("/etc/ssh/authorized_keys/cy").is_file()
+            peers_2 = wg_peers()
+            team1_after_step2 = team_members("alpha-four")
+
+            a1_conf = pathlib.Path("/etc/porelo-host/projects/alpha-four.conf")
+            record_before_refusals = a1_conf.read_text(encoding="utf-8")
+            refusal_results = {}
+            for tag, key_for_probe, hblock_probe, devs_probe in (
+                ("unknown_signer", rogue_key, host_block, devs_step2),
+                (
+                    "other_host",
+                    signer1_path,
+                    {**host_block, "network": "10.73.99.0/24", "ca_sha256": "0" * 64},
+                    {
+                        "eli": {
+                            "laptops": [
+                                {
+                                    "ssh_public_key": dev2_ssh,
+                                    "wireguard_public_key": dev2_wg,
+                                    "vpn_address": "10.73.99.11",
+                                }
+                            ]
+                        }
+                    },
+                ),
+                (
+                    "taken_address",
+                    signer1_path,
+                    host_block,
+                    {
+                        **devs_step2,
+                        "gus": {
+                            "laptops": [
+                                {
+                                    "ssh_public_key": dev1_ssh,
+                                    "wireguard_public_key": dev1_wg,
+                                    "vpn_address": "10.73.7.12",
+                                }
+                            ]
+                        },
+                        "fae": {
+                            "laptops": [
+                                {
+                                    "ssh_public_key": probe_ssh,
+                                    "wireguard_public_key": probe_wg,
+                                    "vpn_address": "10.73.7.9",
+                                }
+                            ]
+                        },
+                    },
+                ),
+            ):
+                probe_bundle = work / f"{tag}.bundle"
+                commit_bundle(a1_repo, "access.yml", access_yaml(hblock_probe, devs_probe), key_for_probe, probe_bundle)
+                subprocess.run(
+                    ["/usr/bin/git", "-C", str(a1_repo), "reset", "-q", "--hard", c_a1_2],
+                    env=git_env,
+                    check=True,
+                )
+                stage_bundles("bo", "alpha-four", p1_bundle, probe_bundle)
+                refusal_results[tag] = run_sync("bo", "alpha-four")
+
+            record_after_refusals = a1_conf.read_text(encoding="utf-8")
+            gus_or_fae_created = any(
+                pathlib.Path(f"/etc/porelo-host/people/{who}.conf").exists() for who in ("gus", "fae")
+            )
+            stage_bundles("bo", "alpha-four", p1_bundle, a1_bundle)
+
+            p3_repo = init_repo("p3")
+            a3_repo = init_repo("a3")
+            p3_bundle = work / "p3.bundle"
+            a3_bundle = work / "a3.bundle"
+            c_p3 = commit_bundle(p3_repo, "project.yml", project_yaml("alpha-three"), signer2_path, p3_bundle)
+            c_a3_1 = commit_bundle(a3_repo, "access.yml", access_yaml(host_block, devs_step2), signer2_path, a3_bundle)
+            stage_bundles("cy", "alpha-three", p3_bundle, a3_bundle)
+            sync_three_add = run_sync("cy", "alpha-three")
+            eli_rec_both = pathlib.Path("/etc/porelo-host/people/eli.conf").read_text(encoding="utf-8")
+
+            c_a1_3 = commit_bundle(a1_repo, "access.yml", access_yaml(host_block, {}), signer1_path, a1_bundle)
+            stage_bundles("bo", "alpha-four", p1_bundle, a1_bundle)
+            sync_drop_from_one = run_sync("bo", "alpha-four")
+            eli_rec_still_in_three = pathlib.Path("/etc/porelo-host/people/eli.conf").read_text(encoding="utf-8")
+            eli_keys_still_in_three = pathlib.Path("/etc/ssh/authorized_keys/eli").is_file()
+            peers_still_in_three = wg_peers()
+            team1_after_drop = team_members("alpha-four")
+            team3_still = team_members("alpha-three")
+
+            c_a3_2 = commit_bundle(a3_repo, "access.yml", access_yaml(host_block, {}), signer2_path, a3_bundle)
+            stage_bundles("cy", "alpha-three", p3_bundle, a3_bundle)
+            sync_drop_from_three = run_sync("cy", "alpha-three")
+            eli_rec_locked = pathlib.Path("/etc/porelo-host/people/eli.conf").read_text(encoding="utf-8")
+            eli_keys_locked = pathlib.Path("/etc/ssh/authorized_keys/eli").exists()
+            eli_peers_file_locked = pathlib.Path("/etc/wireguard/porelo-host-peers/eli.conf").exists()
+            eli_matrix_locked = pathlib.Path("/home/eli/.config/porelo/matrix/host-registration-token").exists()
+            peers_locked = wg_peers()
+            team3_after_drop = team_members("alpha-three")
+            _, eli_user = api("GET", "/users/eli")
+
+            rm_three = subprocess.run(
+                ["/usr/local/sbin/porelo-host-project", "remove", "alpha-three"],
+                input="",
+                capture_output=True,
+                text=True,
+            )
+            rm_four = subprocess.run(
+                ["/usr/local/sbin/porelo-host-project", "remove", "alpha-four"],
+                input="",
+                capture_output=True,
+                text=True,
+            )
+            purge_eli = subprocess.run(
+                ["/usr/local/sbin/porelo-host-person", "purge", "eli"],
+                input="",
+                capture_output=True,
+                text=True,
+            )
+            for home_setup in ("/home/bo/.local", "/home/cy/.local"):
+                shutil.rmtree(home_setup, ignore_errors=True)
+
+            print(
+                json.dumps(
+                    {
+                        "add_three": json.loads(add_three.stdout),
+                        "commits": {
+                            "p1": c_p1,
+                            "a1_1": c_a1_1,
+                            "a1_2": c_a1_2,
+                            "a1_3": c_a1_3,
+                            "p3": c_p3,
+                            "a3_1": c_a3_1,
+                            "a3_2": c_a3_2,
+                        },
+                        "wrong_caller": wrong_caller,
+                        "bad_usage": bad_usage,
+                        "missing_team": missing_team,
+                        "eli_before_team": eli_before_team,
+                        "sync_add": sync_add,
+                        "eli_rec_1": eli_rec_1,
+                        "cy_rec_1": cy_rec_1,
+                        "eli_keys_1_count": len(eli_keys_1),
+                        "dev1_in_peers_1": dev1_wg in peers_1,
+                        "dev2_in_peers_1": dev2_wg in peers_1,
+                        "team1_after_add": team1_after_add,
+                        "eli_matrix_1": eli_matrix_1,
+                        "sync_tmp_empty_1": sync_tmp_empty_1,
+                        "sync_unchanged": sync_unchanged,
+                        "sync_drop_laptop_and_cy": sync_drop_laptop_and_cy,
+                        "eli_rec_2": eli_rec_2,
+                        "cy_rec_2": cy_rec_2,
+                        "eli_keys_2_count": len(eli_keys_2),
+                        "cy_keys_2": cy_keys_2,
+                        "dev1_in_peers_2": dev1_wg in peers_2,
+                        "dev2_in_peers_2": dev2_wg in peers_2,
+                        "cy_in_peers_2": cy_wg in peers_2,
+                        "team1_after_step2": team1_after_step2,
+                        "refusals": refusal_results,
+                        "records_unchanged_on_refusals": record_before_refusals == record_after_refusals,
+                        "gus_or_fae_created": gus_or_fae_created,
+                        "sync_three_add": sync_three_add,
+                        "eli_rec_both": eli_rec_both,
+                        "sync_drop_from_one": sync_drop_from_one,
+                        "eli_rec_still_in_three": eli_rec_still_in_three,
+                        "eli_keys_still_in_three": eli_keys_still_in_three,
+                        "dev2_in_peers_still": dev2_wg in peers_still_in_three,
+                        "team1_after_drop": team1_after_drop,
+                        "team3_still": team3_still,
+                        "sync_drop_from_three": sync_drop_from_three,
+                        "eli_rec_locked": eli_rec_locked,
+                        "eli_keys_locked": eli_keys_locked,
+                        "eli_peers_file_locked": eli_peers_file_locked,
+                        "eli_matrix_locked": eli_matrix_locked,
+                        "dev2_in_peers_locked": dev2_wg in peers_locked,
+                        "team3_after_drop": team3_after_drop,
+                        "eli_prohibited": bool(eli_user.get("prohibit_login")),
+                        "rm_three": {"rc": rm_three.returncode, "out": json.loads(rm_three.stdout)},
+                        "rm_four": {"rc": rm_four.returncode, "out": json.loads(rm_four.stdout)},
+                        "purge_eli": {"rc": purge_eli.returncode, "out": json.loads(purge_eli.stdout)},
+                    }
+                )
+            )
+      register: verify_projects_sync
+      changed_when: true
+      no_log: true
+
+    - name: Assert porelo-host-person sync enforces every verification, diff, laptop, membership and lock rule
+      ansible.builtin.assert:
+        that:
+          - verify_sync.wrong_caller.rc == 65
+          - verify_sync.bad_usage.rc == 64
+          - verify_sync.missing_team.rc == 65
+          - "'developers' in verify_sync.missing_team.err and 'run bring first' in verify_sync.missing_team.err"
+          - not verify_sync.eli_before_team
+          - verify_sync.sync_add.rc == 0
+          - >-
+            verify_sync.sync_add.out == {
+            'project': 'alpha-four',
+            'commit': verify_sync.commits.p1,
+            'access_commit': verify_sync.commits.a1_1,
+            'added': ['eli', 'cy'],
+            'dropped': [],
+            'laptops_added': ['eli/l1', 'eli/l2'],
+            'laptops_dropped': [],
+            'unchanged': false
+            }
+          - >-
+            verify_sync.eli_rec_1 is match('^member=alpha-four developer\nlocked=false\nlaptop=l1 .*\nlaptop=l2 ')
+          - >-
+            verify_sync.cy_rec_1 is match(
+            '^member=hand\nmember=alpha-one developer\nmember=alpha-three project-admin\nmember=alpha-four developer\n'
+            'locked=false\n'
+            )
+          - verify_sync.eli_keys_1_count == 2
+          - verify_sync.dev1_in_peers_1 and verify_sync.dev2_in_peers_1
+          - verify_sync.team1_after_add == ['cy', 'eli']
+          - verify_sync.eli_matrix_1 and verify_sync.sync_tmp_empty_1
+          - verify_sync.sync_unchanged.rc == 0 and verify_sync.sync_unchanged.out.unchanged
+          - verify_sync.sync_drop_laptop_and_cy.rc == 0
+          - verify_sync.sync_drop_laptop_and_cy.out.dropped == ['cy']
+          - verify_sync.sync_drop_laptop_and_cy.out.laptops_dropped == ['eli/l1']
+          - >-
+            verify_sync.eli_rec_2 is match('^member=alpha-four developer\nlocked=false\nlaptop=l2 ')
+          - >-
+            verify_sync.cy_rec_2 is match(
+            '^member=hand\nmember=alpha-one developer\nmember=alpha-three project-admin\nlocked=false\n'
+            )
+          - verify_sync.eli_keys_2_count == 1 and verify_sync.cy_keys_2
+          - not verify_sync.dev1_in_peers_2 and verify_sync.dev2_in_peers_2 and verify_sync.cy_in_peers_2
+          - verify_sync.team1_after_step2 == ['eli']
+          - verify_sync.refusals.unknown_signer.rc == 65
+          - verify_sync.refusals.other_host.rc == 65
+          - "'network' in verify_sync.refusals.other_host.err and 'ca_sha256' in verify_sync.refusals.other_host.err"
+          - verify_sync.refusals.taken_address.rc == 65
+          - "'fae' in verify_sync.refusals.taken_address.err and '10.73.7.9' in verify_sync.refusals.taken_address.err"
+          - verify_sync.records_unchanged_on_refusals and not verify_sync.gus_or_fae_created
+          - verify_sync.sync_three_add.rc == 0
+          - >-
+            verify_sync.eli_rec_both is match(
+            '^member=alpha-four developer\nmember=alpha-three developer\nlocked=false\n'
+            )
+          - verify_sync.sync_drop_from_one.rc == 0 and verify_sync.sync_drop_from_one.out.dropped == ['eli']
+          - >-
+            verify_sync.eli_rec_still_in_three is match('^member=alpha-three developer\nlocked=false\n')
+          - verify_sync.eli_keys_still_in_three and verify_sync.dev2_in_peers_still
+          - verify_sync.team1_after_drop == [] and verify_sync.team3_still == ['eli']
+          - verify_sync.sync_drop_from_three.rc == 0 and verify_sync.sync_drop_from_three.out.dropped == ['eli']
+          - >-
+            verify_sync.eli_rec_locked is match('^locked=true\nlaptop=l2 ')
+          - >-
+            not verify_sync.eli_keys_locked
+            and not verify_sync.eli_peers_file_locked
+            and not verify_sync.eli_matrix_locked
+          - not verify_sync.dev2_in_peers_locked and verify_sync.team3_after_drop == [] and verify_sync.eli_prohibited
+          - "verify_sync.rm_three == {'rc': 0, 'out': {'project': 'alpha-three', 'removed': true, 'locked': []}}"
+          - "verify_sync.rm_four == {'rc': 0, 'out': {'project': 'alpha-four', 'removed': true, 'locked': []}}"
+          - "verify_sync.purge_eli == {'rc': 0, 'out': {'person': 'eli', 'purged': true}}"
+        fail_msg: >-
+          asked porelo-host-person sync to verify real signed bundles under DynamicUser, enforce
+          sudo/team/signer/host/diff refusals, add and drop laptops and memberships per project, keep hand and
+          second-project access, and lock only when zero memberships remain; got {{ verify_sync }}
+      vars:
+        verify_sync: "{{ verify_projects_sync.stdout | from_json }}"
 
     - name: Delete alpha-one's repositories and remove alpha-one before purging the remaining people
       ansible.builtin.command:

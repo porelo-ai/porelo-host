@@ -1,14 +1,20 @@
 """Exercise root admission and revocation against an isolated filesystem and command recorder."""
 
 import base64
+import hashlib
+import io
 import json
 import os
 import runpy
+import ssl
 import stat
 import struct
 import subprocess
+import urllib.error
+import urllib.request
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -92,7 +98,7 @@ class Host:
             self.accounts.pop(args[-1], None)
         return subprocess.CompletedProcess(args, 0, "", "")
 
-    def invoke(self, *args, data=None):
+    def invoke(self, *args, data=None, sudo_user=None):
         def hook(name, values):
             self.hook_inspect(name, values)
             self.events.append([name, *values])
@@ -101,6 +107,7 @@ class Host:
             name: lambda *values, name=name: hook(name, values)
             for name in ("forge_admit", "matrix_issue", "forge_lock", "matrix_expel_revoke")
         }
+        extra = {} if sudo_user is None else {"sudo_user": sudo_user}
         return self.factory(
             self.root,
             self.run,
@@ -110,6 +117,7 @@ class Host:
             groups=self.groups,
             commands=self.commands,
             hooks=hooks,
+            **extra,
         )(list(args), laptop().encode() if data is None else data)
 
 
@@ -124,11 +132,11 @@ def host(tmp_path):
     return h
 
 
-def refused(host, capsys, code, *args, data=None, diagnostic=None):
+def refused(host, capsys, code, *args, data=None, diagnostic=None, sudo_user=None):
     before = snapshot(host.root)
     host.calls.clear()
     host.events.clear()
-    assert host.invoke(*args, data=data) == code
+    assert host.invoke(*args, data=data, sudo_user=sudo_user) == code
     output = capsys.readouterr()
     assert not output.out, "a refusal must never answer success"
     assert output.err.startswith("porelo-host-person: ")
@@ -144,7 +152,10 @@ def refused(host, capsys, code, *args, data=None, diagnostic=None):
     "args",
     [
         (),
-        ("sync", "alice"),
+        ("sync",),
+        ("sync", "Alice"),
+        ("sync", "-alpha"),
+        ("sync", "alpha", "extra"),
         ("lock",),
         ("purge", "alice", "--force"),
         ("add", "alice"),
@@ -1096,3 +1107,655 @@ def test_unordered_duplicate_or_unknown_memberships_are_refused(host, capsys, me
         members + f"locked=false\nlaptop=laptop {ssh_key(1)} {wg_key(1)} 10.73.7.3\n",
     )
     refused(host, capsys, 65, "add", "bob", "--role", "project-admin", data=laptop(number=2).encode())
+
+
+CA_DER = b"fixture-host-ca-certificate-der-bytes"
+CA_PEM = ssl.DER_cert_to_PEM_cert(CA_DER)
+CA_SHA256 = hashlib.sha256(CA_DER).hexdigest()
+HOST_WG_KEY = wg_key(200)
+SIGNER_ONE = ssh_key(100)
+SIGNER_TWO = ssh_key(101)
+SIGNER_ROTATED = ssh_key(102)
+FORGE_ADMIN_TOKEN = "f" * 40
+
+
+def developer_laptop(number, address):
+    return {
+        "ssh_public_key": ssh_key(number),
+        "wireguard_public_key": wg_key(number),
+        "vpn_address": address,
+    }
+
+
+def host_block(network="10.73.7.0/24", wireguard_public_key=HOST_WG_KEY, ca_sha256=CA_SHA256):
+    return {
+        "address": "192.0.2.10",
+        "endpoint": "192.0.2.10:51820",
+        "wireguard_public_key": wireguard_public_key,
+        "network": network,
+        "ssh_host_key": ssh_key(201),
+        "ca_sha256": ca_sha256,
+    }
+
+
+@pytest.fixture
+def sync_host(host, monkeypatch):
+    scope = host.factory.__globals__
+    host.commands.update({"systemd-run", "podman"})
+    host.write(
+        "/etc/porelo-host/forge.conf",
+        "address=10.73.7.1\nport=3000\naccount=porelo-forge\nagents=codex\nname=forge.example.org\nhost=host\n",
+    )
+    ca = host.write("/etc/porelo-host/forge/ca.pem", CA_PEM, 0o644)
+    uid = os.getuid() or 1000
+    gid = os.getgid()
+    uid_overrides = {}
+
+    def getpwnam(user):
+        if user == "porelo-forge":
+            return SimpleNamespace(pw_uid=1200, pw_gid=1200, pw_dir=str(host.root / "home/porelo-forge"))
+        if user == "porelo-matrix":
+            return SimpleNamespace(pw_uid=1201, pw_gid=1201, pw_dir=str(host.root / "home/porelo-matrix"))
+        if user not in host.accounts:
+            raise KeyError(user)
+        return SimpleNamespace(
+            pw_uid=uid_overrides.get(user, uid),
+            pw_gid=gid,
+            pw_dir=str(host.root / "home" / user),
+        )
+
+    monkeypatch.setattr(scope["pwd"], "getpwnam", getpwnam)
+
+    for admin, project, signer, number, address in (
+        ("ada", "alpha", SIGNER_ONE, 90, "10.73.7.3"),
+        ("bo", "beta", SIGNER_TWO, 91, "10.73.7.4"),
+    ):
+        assert (
+            host.invoke("add", admin, "--role", "project-admin", data=laptop(f"{admin}-laptop", number).encode()) == 0
+        )
+        record_path = host.path(f"/etc/porelo-host/people/{admin}.conf")
+        record_path.write_text(
+            f"member=hand\nmember={project} project-admin\nlocked=false\n"
+            f"laptop={admin}-laptop {ssh_key(number)} {wg_key(number)} {address}\n"
+        )
+        host.write(
+            f"/etc/porelo-host/projects/{project}.conf",
+            f"admin={admin}\nsigned_by={signer}\npublisher=porelo-publisher-{project}\n",
+        )
+        setup_dir = host.root / "home" / admin / ".local/share/porelo-host/setup" / project
+        for parent in reversed([setup_dir, *setup_dir.parents]):
+            if host.root in parent.parents:
+                parent.mkdir(exist_ok=True, mode=0o700)
+                parent.chmod(0o700)
+        for bundle in ("project.bundle", "access.bundle"):
+            bundle_path = setup_dir / bundle
+            bundle_path.write_bytes(f"{project}:{bundle}".encode())
+            bundle_path.chmod(0o600)
+
+    state = SimpleNamespace(
+        verify_reply={
+            "alpha": {
+                "project": "alpha",
+                "commit": "1" * 40,
+                "access_commit": "2" * 40,
+                "signer": SIGNER_ONE,
+                "signers": [SIGNER_ONE],
+                "host": host_block(),
+                "developers": {},
+                "transports": {},
+            },
+            "beta": {
+                "project": "beta",
+                "commit": "3" * 40,
+                "access_commit": "4" * 40,
+                "signer": SIGNER_TWO,
+                "signers": [SIGNER_TWO],
+                "host": host_block(),
+                "developers": {},
+                "transports": {},
+            },
+        },
+        verify_exit=0,
+        verify_stderr="",
+        verify_calls=[],
+        forge_requests=[],
+        teams={
+            "alpha": [
+                {"id": 11, "name": "Owners", "members": ["ada"]},
+                {"id": 12, "name": "developers", "members": []},
+            ],
+            "beta": [{"id": 21, "name": "Owners", "members": ["bo"]}, {"id": 22, "name": "developers", "members": []}],
+        },
+        uid_overrides=uid_overrides,
+    )
+
+    base_run = host.run
+
+    def run(args, input=None):
+        if args[:4] == ["wg", "show", "wg-porelo", "public-key"]:
+            host.calls.append(args)
+            host.events.append(args)
+            return subprocess.CompletedProcess(args, 0, HOST_WG_KEY + "\n", "")
+        if args[0] == "systemd-run":
+            host.calls.append(args)
+            host.events.append(args)
+            state.verify_calls.append(args)
+            assert "--pipe" in args and "--wait" in args and "--quiet" in args and "--collect" in args
+            assert "DynamicUser=yes" in args
+            assert "PrivateNetwork=yes" in args
+            assert "ProtectHome=yes" in args
+            project = args[args.index("--project") + 1]
+            unit = f"porelo-host-sync-{project}"
+            assert f"--unit={unit}" in args
+            assert args[args.index("--repository") + 1] == f"/run/credentials/{unit}.service/project.bundle"
+            assert args[args.index("--access-repository") + 1] == f"/run/credentials/{unit}.service/access.bundle"
+            loaded = [arg.split(":", 1) for arg in args if arg.startswith("LoadCredential=")]
+            assert len(loaded) == 2
+            for name, copied in loaded:
+                copied_path = Path(copied)
+                assert copied_path.is_file() and not copied_path.is_symlink()
+                assert host.path("/run/porelo-host/sync") in copied_path.parents
+                assert stat.S_IMODE(copied_path.parent.stat().st_mode) == 0o700
+                bundle = name.split("=", 1)[1]
+                assert copied_path.read_bytes() == f"{project}:{bundle}".encode()
+            if state.verify_exit:
+                return subprocess.CompletedProcess(args, state.verify_exit, "", state.verify_stderr)
+            return subprocess.CompletedProcess(args, 0, json.dumps(state.verify_reply[project]), "")
+        if "podman" in args and "generate-access-token" in args:
+            host.calls.append(args)
+            host.events.append(args)
+            return subprocess.CompletedProcess(args, 0, FORGE_ADMIN_TOKEN + "\n", "")
+        return base_run(args)
+
+    host.run = run
+
+    class ForgeOpener:
+        def open(self, request, timeout):
+            assert timeout == 30
+            assert request.get_header("Authorization") == "token " + FORGE_ADMIN_TOKEN
+            url = urlsplit(request.full_url)
+            assert (url.scheme, url.hostname, url.port) == ("https", "10.73.7.1", 3000)
+            method, path = request.get_method(), url.path
+            state.forge_requests.append((method, path))
+            page = int(parse_qs(url.query).get("page", ["1"])[0])
+            parts = path.removeprefix("/api/v1/").split("/")
+            if method == "GET" and len(parts) == 3 and parts[0] == "orgs" and parts[2] == "teams":
+                org = parts[1]
+                if org not in state.teams:
+                    raise urllib.error.HTTPError(request.full_url, 404, "not found", {}, io.BytesIO(b""))
+                rows = [{"id": t["id"], "name": t["name"]} for t in state.teams[org]] if page == 1 else []
+                reply = io.BytesIO(json.dumps(rows).encode())
+                reply.status = 200
+                return reply
+            if len(parts) >= 3 and parts[0] == "teams" and parts[2] == "members":
+                team_id = int(parts[1])
+                team = next(t for org_teams in state.teams.values() for t in org_teams if t["id"] == team_id)
+                if method == "GET" and len(parts) == 3:
+                    rows = [{"login": login} for login in team["members"]] if page == 1 else []
+                    reply = io.BytesIO(json.dumps(rows).encode())
+                    reply.status = 200
+                    return reply
+                if method == "PUT" and len(parts) == 4:
+                    if parts[3] not in team["members"]:
+                        team["members"].append(parts[3])
+                    reply = io.BytesIO(b"")
+                    reply.status = 204
+                    return reply
+                if method == "DELETE" and len(parts) == 4:
+                    if parts[3] in team["members"]:
+                        team["members"].remove(parts[3])
+                    reply = io.BytesIO(b"")
+                    reply.status = 204
+                    return reply
+            raise AssertionError((method, path))
+
+    def check_ca(*, cafile):
+        assert cafile == str(ca)
+        return ("CA", cafile)
+
+    monkeypatch.setattr(scope["ssl"], "create_default_context", check_ca)
+    monkeypatch.setattr(scope["urllib"].request, "HTTPSHandler", lambda *, context: context)
+    monkeypatch.setattr(scope["urllib"].request, "build_opener", lambda *handlers: ForgeOpener())
+    host.calls.clear()
+    host.events.clear()
+    return host, state
+
+
+def forge_developers(state, project="alpha"):
+    return next(team["members"] for team in state.teams[project] if team["name"] == "developers")
+
+
+def test_sync_admits_a_developer_with_two_laptops_records_commits_and_updates_forge_team(sync_host, capsys):
+    """Prevent sync from granting hand membership, ignoring a second laptop, using forge_login or leaving bundle copies."""
+    host, state = sync_host
+    capsys.readouterr()
+    state.verify_reply["alpha"]["developers"] = {
+        "dan": {
+            "laptops": [developer_laptop(1, "10.73.7.10"), developer_laptop(2, "10.73.7.11")],
+            "forge_login": "central-dan-ignored",
+        }
+    }
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    out = capsys.readouterr()
+    assert json.loads(out.out) == {
+        "project": "alpha",
+        "commit": "1" * 40,
+        "access_commit": "2" * 40,
+        "added": ["dan"],
+        "dropped": [],
+        "laptops_added": ["dan/l1", "dan/l2"],
+        "laptops_dropped": [],
+        "unchanged": False,
+    }
+    assert FORGE_ADMIN_TOKEN not in out.out + out.err
+    assert "dan" in host.accounts
+    assert host.path("/etc/porelo-host/people/dan.conf").read_text() == (
+        "member=alpha developer\nlocked=false\n"
+        f"laptop=l1 {ssh_key(1)} {wg_key(1)} 10.73.7.10\n"
+        f"laptop=l2 {ssh_key(2)} {wg_key(2)} 10.73.7.11\n"
+    )
+    assert host.path("/etc/ssh/authorized_keys/dan").read_text() == (
+        f'from="10.73.7.10" {ssh_key(1)}\nfrom="10.73.7.11" {ssh_key(2)}\n'
+    )
+    assert host.path("/etc/wireguard/porelo-host-peers/dan.conf").read_text() == (
+        f"[Peer]\nPublicKey = {wg_key(1)}\nAllowedIPs = 10.73.7.10/32\n\n"
+        f"[Peer]\nPublicKey = {wg_key(2)}\nAllowedIPs = 10.73.7.11/32\n\n"
+    )
+    assert ["wg", "set", "wg-porelo", "peer", wg_key(1), "allowed-ips", "10.73.7.10/32"] in host.calls
+    assert ["wg", "set", "wg-porelo", "peer", wg_key(2), "allowed-ips", "10.73.7.11/32"] in host.calls
+    assert any(event[:2] == ["forge_admit", "dan"] for event in host.events)
+    assert ["matrix_issue", "dan"] in host.events
+    assert forge_developers(state, "alpha") == ["dan"]
+    assert host.path("/etc/porelo-host/projects/alpha.conf").read_text() == (
+        f"admin=ada\nsigned_by={SIGNER_ONE}\npublisher=porelo-publisher-alpha\n"
+        f"commit={'1' * 40}\naccess_commit={'2' * 40}\nsigner={SIGNER_ONE}\n"
+    )
+    assert list(host.path("/run/porelo-host/sync").iterdir()) == []
+
+
+def test_sync_dropping_one_laptop_removes_only_that_laptops_access(sync_host, capsys):
+    """Prevent dropping one laptop from locking the person or resetting their remaining laptop's SSH or VPN peer."""
+    host, state = sync_host
+    capsys.readouterr()
+    state.verify_reply["alpha"]["developers"] = {
+        "dan": {"laptops": [developer_laptop(1, "10.73.7.10"), developer_laptop(2, "10.73.7.11")], "forge_login": None}
+    }
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    capsys.readouterr()
+    host.calls.clear()
+    host.events.clear()
+
+    state.verify_reply["alpha"]["access_commit"] = "5" * 40
+    state.verify_reply["alpha"]["developers"] = {
+        "dan": {"laptops": [developer_laptop(2, "10.73.7.11")], "forge_login": None}
+    }
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "project": "alpha",
+        "commit": "1" * 40,
+        "access_commit": "5" * 40,
+        "added": [],
+        "dropped": [],
+        "laptops_added": [],
+        "laptops_dropped": ["dan/l1"],
+        "unchanged": False,
+    }
+    verify_args = state.verify_calls[-1]
+    assert verify_args[verify_args.index("--since") + 1] == "1" * 40
+    assert verify_args[verify_args.index("--access-since") + 1] == "2" * 40
+    wg_mutations = [args for args in host.calls if args[:3] == ["wg", "set", "wg-porelo"]]
+    assert wg_mutations == [["wg", "set", "wg-porelo", "peer", wg_key(1), "remove"]]
+    assert not any(event[0] in ("forge_lock", "matrix_expel_revoke", "useradd", "usermod") for event in host.events)
+    assert host.path("/etc/ssh/authorized_keys/dan").read_text() == f'from="10.73.7.11" {ssh_key(2)}\n'
+    assert host.path("/etc/wireguard/porelo-host-peers/dan.conf").read_text() == (
+        f"[Peer]\nPublicKey = {wg_key(2)}\nAllowedIPs = 10.73.7.11/32\n\n"
+    )
+    assert host.path("/etc/porelo-host/people/dan.conf").read_text() == (
+        f"member=alpha developer\nlocked=false\nlaptop=l2 {ssh_key(2)} {wg_key(2)} 10.73.7.11\n"
+    )
+    assert forge_developers(state, "alpha") == ["dan"]
+
+
+def test_sync_dropping_a_developer_with_no_other_membership_locks_them(sync_host, capsys):
+    """Prevent a dropped developer with no remaining membership from keeping SSH, VPN, forge or Matrix access."""
+    host, state = sync_host
+    capsys.readouterr()
+    state.verify_reply["alpha"]["developers"] = {
+        "dan": {"laptops": [developer_laptop(1, "10.73.7.10")], "forge_login": None}
+    }
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    capsys.readouterr()
+    host.calls.clear()
+    host.events.clear()
+
+    state.verify_reply["alpha"]["access_commit"] = "6" * 40
+    state.verify_reply["alpha"]["developers"] = {}
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "project": "alpha",
+        "commit": "1" * 40,
+        "access_commit": "6" * 40,
+        "added": [],
+        "dropped": ["dan"],
+        "laptops_added": [],
+        "laptops_dropped": [],
+        "unchanged": False,
+    }
+    assert forge_developers(state, "alpha") == []
+    assert not host.path("/etc/ssh/authorized_keys/dan").exists()
+    assert not host.path("/etc/wireguard/porelo-host-peers/dan.conf").exists()
+    assert ["wg", "set", "wg-porelo", "peer", wg_key(1), "remove"] in host.calls
+    assert ["forge_lock", "dan"] in host.events
+    assert ["matrix_expel_revoke", "dan"] in host.events
+    assert ["usermod", "--lock", "--expiredate", "1", "dan"] in host.calls
+    assert host.path("/etc/porelo-host/people/dan.conf").read_text() == (
+        f"locked=true\nlaptop=l1 {ssh_key(1)} {wg_key(1)} 10.73.7.10\n"
+    )
+    assert "member=hand\nmember=alpha project-admin\nlocked=false\n" in (
+        host.path("/etc/porelo-host/people/ada.conf").read_text()
+    )
+
+
+def test_sync_dropping_a_developer_still_in_another_project_keeps_their_host_access(sync_host, capsys):
+    """Prevent dropping a developer from one project from revoking access they still hold through a second project."""
+    host, state = sync_host
+    capsys.readouterr()
+    dan_spec = {"dan": {"laptops": [developer_laptop(1, "10.73.7.10")], "forge_login": None}}
+    state.verify_reply["alpha"]["developers"] = dan_spec
+    state.verify_reply["beta"]["developers"] = dan_spec
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    assert host.invoke("sync", "beta", data=b"") == 0
+    capsys.readouterr()
+    assert host.path("/etc/porelo-host/people/dan.conf").read_text() == (
+        "member=alpha developer\nmember=beta developer\nlocked=false\n"
+        f"laptop=l1 {ssh_key(1)} {wg_key(1)} 10.73.7.10\n"
+    )
+    assert forge_developers(state, "alpha") == ["dan"]
+    assert forge_developers(state, "beta") == ["dan"]
+
+    host.calls.clear()
+    host.events.clear()
+    state.verify_reply["alpha"]["access_commit"] = "7" * 40
+    state.verify_reply["alpha"]["developers"] = {}
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "project": "alpha",
+        "commit": "1" * 40,
+        "access_commit": "7" * 40,
+        "added": [],
+        "dropped": ["dan"],
+        "laptops_added": [],
+        "laptops_dropped": [],
+        "unchanged": False,
+    }
+    assert forge_developers(state, "alpha") == []
+    assert forge_developers(state, "beta") == ["dan"]
+    assert not any(event[0] in ("forge_lock", "matrix_expel_revoke") for event in host.events)
+    assert not any(args[:3] == ["wg", "set", "wg-porelo"] for args in host.calls)
+    assert host.path("/etc/ssh/authorized_keys/dan").is_file()
+    assert host.path("/etc/wireguard/porelo-host-peers/dan.conf").is_file()
+    assert host.path("/etc/porelo-host/people/dan.conf").read_text() == (
+        f"member=beta developer\nlocked=false\nlaptop=l1 {ssh_key(1)} {wg_key(1)} 10.73.7.10\n"
+    )
+
+
+def test_sync_adds_project_membership_to_a_hand_admitted_person_without_a_second_account_and_keeps_access_when_dropped(
+    sync_host, capsys
+):
+    """Prevent sync from creating a duplicate account for a hand-admitted person or revoking their hand admission."""
+    host, state = sync_host
+    assert host.invoke("add", "cy", "--role", "project-admin", data=laptop("cy-laptop", 12, "10.73.7.12").encode()) == 0
+    capsys.readouterr()
+    host.calls.clear()
+    host.events.clear()
+
+    state.verify_reply["alpha"]["developers"] = {
+        "cy": {"laptops": [developer_laptop(12, "10.73.7.12")], "forge_login": None}
+    }
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "project": "alpha",
+        "commit": "1" * 40,
+        "access_commit": "2" * 40,
+        "added": ["cy"],
+        "dropped": [],
+        "laptops_added": [],
+        "laptops_dropped": [],
+        "unchanged": False,
+    }
+    assert not any(args[0] == "useradd" for args in host.calls)
+    assert forge_developers(state, "alpha") == ["cy"]
+    assert host.path("/etc/porelo-host/people/cy.conf").read_text() == (
+        "member=hand\nmember=alpha developer\nlocked=false\n"
+        f"laptop=cy-laptop {ssh_key(12)} {wg_key(12)} 10.73.7.12\n"
+    )
+
+    host.calls.clear()
+    host.events.clear()
+    state.verify_reply["alpha"]["access_commit"] = "8" * 40
+    state.verify_reply["alpha"]["developers"] = {}
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "project": "alpha",
+        "commit": "1" * 40,
+        "access_commit": "8" * 40,
+        "added": [],
+        "dropped": ["cy"],
+        "laptops_added": [],
+        "laptops_dropped": [],
+        "unchanged": False,
+    }
+    assert forge_developers(state, "alpha") == []
+    assert not any(event[0] in ("forge_lock", "matrix_expel_revoke") for event in host.events)
+    assert host.path("/etc/ssh/authorized_keys/cy").is_file()
+    assert host.path("/etc/wireguard/porelo-host-peers/cy.conf").is_file()
+    assert host.path("/etc/porelo-host/people/cy.conf").read_text() == (
+        f"member=hand\nlocked=false\nlaptop=cy-laptop {ssh_key(12)} {wg_key(12)} 10.73.7.12\n"
+    )
+
+
+def test_sync_refuses_when_porelo_verify_rejects_an_unknown_signer_and_cleans_temporary_bundles(sync_host, capsys):
+    """Prevent bundles signed by an unpinned key from admitting anyone or leaving copied bundles in /run."""
+    host, state = sync_host
+    capsys.readouterr()
+    before_etc = snapshot(host.path("/etc"))
+    state.verify_exit = 65
+    state.verify_stderr = "porelo: unknown_key: project commit signed by SHA256:other\n"
+    assert host.invoke("sync", "alpha", data=b"") == 65
+    output = capsys.readouterr()
+    assert not output.out
+    assert output.err.startswith("porelo-host-person: ") and "unknown_key" in output.err
+    assert snapshot(host.path("/etc")) == before_etc
+    assert state.forge_requests == []
+    assert list(host.path("/run/porelo-host/sync").iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "override,expected_fields",
+    [
+        ({"network": "10.73.99.0/24"}, ["network"]),
+        ({"wireguard_public_key": wg_key(250)}, ["wireguard_public_key"]),
+        ({"ca_sha256": "0" * 64}, ["ca_sha256"]),
+        (
+            {"network": "10.73.99.0/24", "wireguard_public_key": wg_key(250), "ca_sha256": "0" * 64},
+            ["network", "wireguard_public_key", "ca_sha256"],
+        ),
+        (None, ["host"]),
+    ],
+    ids=["wrong-network", "wrong-wg-key", "wrong-ca", "all-three-wrong", "missing-host"],
+)
+def test_sync_refuses_a_host_block_for_another_host_naming_every_differing_field(
+    sync_host, capsys, override, expected_fields
+):
+    """Prevent replaying another host's signed access file on this host."""
+    host, state = sync_host
+    capsys.readouterr()
+    state.verify_reply["alpha"]["host"] = None if override is None else host_block(**override)
+    state.verify_reply["alpha"]["developers"] = {
+        "dan": {"laptops": [developer_laptop(1, "10.73.7.10")], "forge_login": None}
+    }
+    before_etc = snapshot(host.path("/etc"))
+    assert host.invoke("sync", "alpha", data=b"") == 65
+    output = capsys.readouterr()
+    assert not output.out
+    assert output.err.startswith("porelo-host-person: ")
+    for field in expected_fields:
+        assert field in output.err
+    assert "dan" not in host.accounts
+    assert snapshot(host.path("/etc")) == before_etc
+    assert state.forge_requests == []
+
+
+def test_sync_checks_the_whole_diff_and_refuses_all_when_any_entry_conflicts(sync_host, capsys):
+    """Prevent partial admission when any developer in the signed list collides with host records, accounts or network."""
+    host, state = sync_host
+    assert (
+        host.invoke("add", "eve", "--role", "project-admin", data=laptop("eve-laptop", 30, "10.73.7.30").encode()) == 0
+    )
+    assert host.invoke("lock", "eve", data=b"") == 0
+    capsys.readouterr()
+    before_etc = snapshot(host.path("/etc"))
+    before_accounts = dict(host.accounts)
+
+    state.verify_reply["alpha"]["developers"] = {
+        "eli": {"laptops": [developer_laptop(1, "10.73.7.10")], "forge_login": None},
+        "taken": {"laptops": [developer_laptop(2, "10.73.7.3")], "forge_login": None},
+    }
+    assert host.invoke("sync", "alpha", data=b"") == 65
+    output = capsys.readouterr()
+    assert not output.out and "taken" in output.err and "10.73.7.3" in output.err
+    assert "eli" not in host.accounts and host.accounts == before_accounts
+    assert snapshot(host.path("/etc")) == before_etc
+    assert forge_developers(state, "alpha") == []
+
+    state.verify_reply["alpha"]["developers"] = {
+        "eve": {"laptops": [developer_laptop(3, "10.73.7.11")], "forge_login": None},
+        "daemon": {"laptops": [developer_laptop(4, "10.73.7.12")], "forge_login": None},
+        "kvm": {"laptops": [developer_laptop(5, "10.73.7.13")], "forge_login": None},
+        "outside": {"laptops": [developer_laptop(6, "10.73.8.14")], "forge_login": None},
+        "reserved": {"laptops": [developer_laptop(7, "10.73.7.1")], "forge_login": None},
+        "keysteal": {
+            "laptops": [
+                {"ssh_public_key": ssh_key(90), "wireguard_public_key": wg_key(8), "vpn_address": "10.73.7.15"}
+            ],
+            "forge_login": None,
+        },
+    }
+    assert host.invoke("sync", "alpha", data=b"") == 65
+    output = capsys.readouterr()
+    assert not output.out
+    for offending in ("eve", "purge", "daemon", "kvm", "outside", "reserved", "keysteal"):
+        assert offending in output.err, (offending, output.err)
+    assert host.accounts == before_accounts
+    assert snapshot(host.path("/etc")) == before_etc
+
+
+def test_sync_refuses_when_the_forges_developers_team_is_missing(sync_host, capsys):
+    """Prevent admitting developers on the host before bring has created the project's developers team on the forge."""
+    host, state = sync_host
+    capsys.readouterr()
+    state.teams["alpha"] = [{"id": 11, "name": "Owners", "members": ["ada"]}]
+    state.verify_reply["alpha"]["developers"] = {
+        "dan": {"laptops": [developer_laptop(1, "10.73.7.10")], "forge_login": None}
+    }
+    before_etc = snapshot(host.path("/etc"))
+    assert host.invoke("sync", "alpha", data=b"") == 65
+    output = capsys.readouterr()
+    assert not output.out and "developers" in output.err and "run bring first" in output.err
+    assert "dan" not in host.accounts
+    assert snapshot(host.path("/etc")) == before_etc
+
+
+def test_sync_with_unchanged_commits_changes_nothing_and_uses_rotated_signers(sync_host, capsys):
+    """Prevent an unchanged timer run from rewriting records or minting forge tokens, and pass rotated signers next."""
+    host, state = sync_host
+    capsys.readouterr()
+    state.verify_reply["alpha"]["signers"] = [SIGNER_ONE, SIGNER_ROTATED]
+    state.verify_reply["alpha"]["developers"] = {
+        "dan": {"laptops": [developer_laptop(1, "10.73.7.10")], "forge_login": None}
+    }
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    capsys.readouterr()
+
+    before_etc = snapshot(host.path("/etc"))
+    host.calls.clear()
+    host.events.clear()
+    state.forge_requests.clear()
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "project": "alpha",
+        "commit": "1" * 40,
+        "access_commit": "2" * 40,
+        "added": [],
+        "dropped": [],
+        "laptops_added": [],
+        "laptops_dropped": [],
+        "unchanged": True,
+    }
+    verify_args = state.verify_calls[-1]
+    signed_by = [verify_args[index + 1] for index, arg in enumerate(verify_args) if arg == "--signed-by"]
+    assert signed_by == [SIGNER_ONE, SIGNER_ROTATED]
+    assert verify_args[verify_args.index("--since") + 1] == "1" * 40
+    assert verify_args[verify_args.index("--access-since") + 1] == "2" * 40
+    assert snapshot(host.path("/etc")) == before_etc
+    assert state.forge_requests == []
+    assert not any("podman" in args or args[0] == "useradd" for args in host.calls)
+
+
+def test_sync_via_sudo_allows_only_the_projects_unlocked_admin_and_checks_bundle_ownership(sync_host, capsys):
+    """Prevent another person from syncing a project through sudo, or root from reading symlinked or writable bundles."""
+    host, state = sync_host
+    capsys.readouterr()
+    state.verify_reply["alpha"]["developers"] = {
+        "dan": {"laptops": [developer_laptop(1, "10.73.7.10")], "forge_login": None}
+    }
+    before_etc = snapshot(host.path("/etc"))
+
+    assert host.invoke("sync", "unknown", data=b"") == 65
+    assert "unknown" in capsys.readouterr().err
+    assert snapshot(host.path("/etc")) == before_etc
+
+    for caller in ("bo", "ghost", ""):
+        assert host.invoke("sync", "alpha", data=b"", sudo_user=caller) == 65
+        out = capsys.readouterr()
+        assert not out.out and out.err.startswith("porelo-host-person: ")
+        assert snapshot(host.path("/etc")) == before_etc
+
+    setup_dir = host.root / "home/ada/.local/share/porelo-host/setup/alpha"
+    bundle = setup_dir / "access.bundle"
+    bundle.chmod(0o620)
+    assert host.invoke("sync", "alpha", data=b"", sudo_user="ada") == 65
+    assert not capsys.readouterr().out
+    bundle.chmod(0o600)
+
+    outside = host.root / "home/bo/.local/share/porelo-host/setup/beta/access.bundle"
+    bundle.unlink()
+    bundle.symlink_to(outside)
+    assert host.invoke("sync", "alpha", data=b"", sudo_user="ada") == 65
+    assert not capsys.readouterr().out
+    bundle.unlink()
+    bundle.write_bytes(b"alpha:access.bundle")
+    bundle.chmod(0o600)
+
+    moved_setup = host.root / "home/ada/.local/share/porelo-host/setup-real"
+    setup_dir.parent.rename(moved_setup)
+    (host.root / "home/ada/.local/share/porelo-host/setup").symlink_to(moved_setup)
+    assert host.invoke("sync", "alpha", data=b"", sudo_user="ada") == 65
+    assert not capsys.readouterr().out
+    (host.root / "home/ada/.local/share/porelo-host/setup").unlink()
+    moved_setup.rename(setup_dir.parent)
+
+    state.uid_overrides["ada"] = (os.getuid() or 1000) + 1
+    assert host.invoke("sync", "alpha", data=b"", sudo_user="ada") == 65
+    assert not capsys.readouterr().out
+    state.uid_overrides.pop("ada")
+    assert snapshot(host.path("/etc")) == before_etc
+
+    assert host.invoke("sync", "alpha", data=b"", sudo_user="ada") == 0
+    assert json.loads(capsys.readouterr().out)["added"] == ["dan"]
+
+    ada_record = host.path("/etc/porelo-host/people/ada.conf")
+    ada_record.write_text(ada_record.read_text().replace("locked=false", "locked=true"))
+    state.verify_reply["alpha"]["access_commit"] = "9" * 40
+    assert host.invoke("sync", "alpha", data=b"", sudo_user="ada") == 65
+    assert not capsys.readouterr().out

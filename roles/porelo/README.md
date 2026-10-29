@@ -3,12 +3,13 @@
 Porelo's packages and person records on the host: `tasks_from: install` adds Porelo's apt repository by its pinned key,
 installs `porelo` (and `porelo-adapter-forgejo`, providing `/usr/libexec/porelo/builds/forgejo`, when
 `porelo_host_forge` is true), makes `/etc/porelo-host`, and installs `/usr/local/bin/porelo-host-stop`, running no
-setup script for an account. `tasks_from: person` installs `/usr/local/sbin/porelo-host-person`, root's VPN-restricted
-SSH key lookup and the no-argument `porelo-host-forge-password` sudoers rule; `/etc/porelo-host/people/<user>.conf`
-records each person's `member=hand` and `member=<project> project-admin|developer` memberships, `locked=` state and
-`laptop=` entries. `tasks_from: people` runs at the start of `down` and refuses before anything is stopped while any
-record in `/etc/porelo-host/people/` holds a membership, naming each person and their memberships with `"Take the
-project off"` and `"Purge"`.
+setup script for an account. `tasks_from: person` installs `/usr/local/sbin/porelo-host-person` (`add`, `lock`,
+`purge` and `sync <project>`), root's VPN-restricted SSH key lookup and the `porelo-people` sudoers rules for
+no-argument `porelo-host-forge-password` and `porelo-host-person sync *` (checked by the helper to the project's
+unlocked recorded admin); `/etc/porelo-host/people/<user>.conf` records each person's `member=hand` and
+`member=<project> project-admin|developer` memberships, `locked=` state and `laptop=` entries. `tasks_from: people`
+runs at the start of `down` and refuses before anything is stopped while any record in `/etc/porelo-host/people/`
+holds a membership, naming each person and their memberships with `"Take the project off"` and `"Purge"`.
 
 The account-bound entry points (`main`, `project`, `tasks`, `down`) remain on disk for an explicit `porelo_account`
 when called directly; `up` and `down` do not call them.

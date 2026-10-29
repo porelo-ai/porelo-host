@@ -1,2 +1,3 @@
-# The helper selects the person's own login from SUDO_USER; an empty argument string forbids arguments.
+# Each helper checks SUDO_USER against root's records; sync accepts only sync <project> by that project's admin.
 %porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-forge-password ""
+%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person sync *
