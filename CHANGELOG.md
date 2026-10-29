@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `porelo-host-project` registers a project for a recorded person, with its pinned SSH Ed25519 signing key, forge
+  organization and package-only publisher. Removal checks every repository's commits against the central forge
+  before deleting its repositories, packages, organization, publisher and root-only record.
+
 ### Fixed
 
 - `down` gives the host back when only a room's transport could not clear what it keeps with the vault, such as a

@@ -452,8 +452,9 @@ and the UTC time that text last changed; change it in the channel first, never i
   `roles/vm_pool/files/porelo-pool-revert`, shell, since they drive virsh on the host and run inside a pool VM, where
   there is no Java; `roles/porelo/files/porelo-host-stop` and `roles/forge/files/porelo-host-push`, shell, since they
   run on the host, where there is no Java, in the person's terminal or, for the stop's `--stdin`, as root on the
-  desktop's pipeline; `roles/forge/files/porelo-host-forge-password`, Python like the collection's plugins, since it
-  runs as root on the host, where there is no Java, and holds the person's password in one process;
+  desktop's pipeline; `roles/forge/files/porelo-host-forge-password` and `roles/forge/files/porelo-host-project`,
+  Python like the collection's plugins, since they run as root on the host, where there is no Java, and hold
+  passwords and forge credentials in one process;
   `doc/images/local-forge-svg.py`, Python like the collection's plugins, since it draws the document's picture; and the
   collection itself is YAML.
 

@@ -21,6 +21,16 @@ fail() {
 
 [ "$#" -gt 0 ] || fail "name the repositories to push, in their order" 64
 [ "$(id -u)" = 0 ] || fail "run it as root, with sudo" 77
+checking=
+project_owner=
+if [ "$1" = --check ]; then
+    [ "$#" -ge 3 ] || fail "--check needs an organization and its repository names" 64
+    checking=yes
+    project_owner=$2
+    [[ $project_owner =~ ^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$ ]] \
+        || fail "--check needs a valid project organization" 64
+    shift 2
+fi
 [ -r "$conf" ] || fail "$conf is not readable; is the forge on this host?" 66
 
 # An authority root trusts is a regular file of root's that nobody else can write.
@@ -46,6 +56,7 @@ while read -r key first second; do
         *) fail "$conf names '$key', which this command does not read" 65 ;;
     esac
 done < "$conf"
+[ -z "$checking" ] || owner=$project_owner
 [ -n "$local_forge" ] && [ -n "$owner" ] && [ -n "$central_ca" ] \
     || fail "$conf names no local forge, owner or central CA" 65
 trusted "$central_ca" || fail "the central forge's CA $central_ca is not a file only root can change" 66
@@ -102,6 +113,7 @@ clean_up() {
     rm -rf "$work"
     if [ -e "$work" ]; then
         printf 'porelo-host-push: left %s behind\n' "$work" >&2
+        [ -z "$checking" ] || exit 73
         exit 1
     fi
 }
@@ -114,6 +126,30 @@ for name in "$@"; do
     repo="$work/$name"
     local_url="$local_forge/$owner/$name.git"
     central=${central_url[$name]}
+    if [ -n "$checking" ]; then
+        # A deletion must keep every commit, including task branches and tags; neither forge is written here.
+        if ! said=$(as_local clone --quiet --mirror "$local_url" "$repo" 2>&1); then
+            fail "$name: local refs could not be read: $(redact "$said")" 69
+        fi
+        refs=$(git -C "$repo" for-each-ref --format='%(objectname)') \
+            || fail "$name: local refs could not be enumerated" 69
+        local_refs=()
+        [ -z "$refs" ] || mapfile -t local_refs <<< "$refs"
+        if ! said=$(as_central -C "$repo" fetch --quiet --no-tags "$central" \
+            '+refs/*:refs/porelo-central/*' 2>&1); then
+            fail "$name: central refs could not be read: $(redact "$said")" 69
+        fi
+        refs=$(git -C "$repo" for-each-ref --format='%(objectname)' refs/porelo-central/) \
+            || fail "$name: central refs could not be enumerated" 69
+        central_refs=()
+        [ -z "$refs" ] || mapfile -t central_refs <<< "$refs"
+        if [ "${#local_refs[@]}" -gt 0 ]; then
+            missing=$(git -C "$repo" rev-list "${local_refs[@]}" --not "${central_refs[@]}") \
+                || fail "$name: local and central commits could not be compared" 69
+            [ -z "$missing" ] || fail "$name: unpushed commits remain on the local forge" 65
+        fi
+        continue
+    fi
     if ! said=$(as_local clone --quiet --branch main --single-branch "$local_url" "$repo" 2>&1); then
         fail "$name: local main could not be read from $local_url: $(redact "$said")"
     fi
@@ -139,4 +175,5 @@ for name in "$@"; do
         "$name" >&2
     fail "$name: not pushed; not pushed either: ${left[*]:-none}"
 done
+[ -z "$checking" ] || exit 0
 printf 'pushed: %s\n' "${pushed[*]}"

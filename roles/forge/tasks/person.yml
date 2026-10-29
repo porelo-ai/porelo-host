@@ -38,3 +38,11 @@
     owner: root
     group: root
     mode: "0700"
+
+- name: person | Install the project registration helper, root's alone
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/porelo-host-project"
+    dest: /usr/local/sbin/porelo-host-project
+    owner: root
+    group: root
+    mode: "0700"

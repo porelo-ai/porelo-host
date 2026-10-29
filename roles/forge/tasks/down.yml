@@ -98,11 +98,13 @@
     state: absent
   no_log: true
 
-- name: down | Remove the gathered push, the password script and their settings, which have no forge left to read
+- name: down | Remove the forge helpers and their settings, which have no forge left to read
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
   loop:
     - /usr/local/sbin/porelo-host-push
     - /usr/local/sbin/porelo-host-forge-password
+    - /usr/local/sbin/porelo-host-project
     - /etc/porelo-host/forge.conf
+    - /etc/porelo-host/projects

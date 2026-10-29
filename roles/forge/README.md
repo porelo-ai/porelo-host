@@ -26,6 +26,12 @@ sets it through the admin API with a token it makes for the call and keeps in me
 `up` prepares the forge without repositories (`forge_repositories` stays empty on the host); the repository migration,
 owner, gate, branch protection, publisher, agent token and gathered push task files remain on disk uncalled by `up`.
 
+`/usr/local/sbin/porelo-host-project`, root's alone, registers an organization with its recorded admin, signing
+key in Porelo's canonical `ssh-ed25519 <base64>` signer format and package-only publisher, or checks its commits
+against the central forge before removal. Its credentials stay in memory and Forgejo;
+[project registration](../../doc/local-forge.md#registering-a-project)
+describes the records, refusal checks and failure behavior. Down removes the helper and project records.
+
 The [resource bounds](../../doc/index.md) are set by `forge_cpus`, `forge_memory`, `forge_pids_limit`,
 `forge_runner_cpus`, `forge_runner_memory` and `forge_runner_pids_limit`; job bounds use `forge_job_cpus`,
 `forge_job_memory`, `forge_job_pids_limit` and `forge_job_omp_num_threads`. Their defaults and types are in

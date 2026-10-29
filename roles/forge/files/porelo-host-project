@@ -1,0 +1,514 @@
+#!/usr/bin/python3 -I
+"""Register a forge organization and its package publisher, or remove it after checking the central forge.
+
+Tokens stay in this process and the forge. The publisher's generated password is discarded by Forgejo's CLI,
+and its package token goes directly to the organization's Actions secret over TLS.
+"""
+
+import base64
+import binascii
+import fcntl
+import getpass
+import http.client
+import ipaddress
+import json
+import os
+import re
+import secrets
+import ssl
+import stat
+import subprocess
+import sys
+import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
+from contextlib import contextmanager
+
+ETC = "/etc/porelo-host"
+CONF = "/etc/porelo-host/forge.conf"
+CA = "/etc/porelo-host/forge/ca.pem"
+PUSH = "/usr/local/sbin/porelo-host-push"
+ROOT_UID = 0
+TRUST_ANCHOR = "/"
+PROJECT_PATTERN = r"[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?"
+PERSON_PATTERN = r"[a-z][a-z0-9-]{0,30}"
+ED25519_HEADER = b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20"
+SAFE_ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
+
+
+class Refusal(Exception):
+    """A diagnostic safe to show without a request body or command output."""
+
+    def __init__(self, message, code=65):
+        super().__init__(message)
+        self.code = code
+
+
+def refuse(message, code=65):
+    """Stop with a diagnostic that contains no credential."""
+    raise Refusal(message, code)
+
+
+def signing_key(value, source="signing key", code=64):
+    """Require one comment-free canonical SSH Ed25519 key, retaining exactly the supplied spelling."""
+    try:
+        algorithm, encoded = value.split(" ", 1)
+        wire = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error):
+        refuse(f"{source} must be one canonical ssh-ed25519 signing key without a comment", code)
+    if (
+        algorithm != "ssh-ed25519"
+        or len(wire) != 51
+        or not wire.startswith(ED25519_HEADER)
+        or base64.b64encode(wire).decode("ascii") != encoded
+    ):
+        refuse(f"{source} must be one canonical ssh-ed25519 signing key without a comment", code)
+    return value
+
+
+@contextmanager
+def writing(destination):
+    """Keep write failures distinct from unavailable dependencies, without showing data being written."""
+    try:
+        yield
+    except OSError as error:
+        refuse(f"cannot write {destination}: {type(error).__name__}", 73)
+
+
+def trusted_directory(path, private=False, missing=False):
+    """Check the entire path without following links; missing record directories are checked before creation."""
+    if path == TRUST_ANCHOR:
+        return
+    trusted_directory(os.path.dirname(path))
+    try:
+        status = os.lstat(path)
+    except FileNotFoundError:
+        if missing:
+            return
+        refuse(f"{path} is missing; run up first", 69)
+    mask = 0o077 if private else 0o022
+    if not stat.S_ISDIR(status.st_mode) or status.st_uid != ROOT_UID or status.st_mode & mask:
+        refuse(f"{path} is not a directory root's alone {'to read' if private else 'to write'}", 69)
+    if private and stat.S_IMODE(status.st_mode) != 0o700:
+        refuse(f"{path} must have mode 0700", 69)
+
+
+def trusted(path, private=False):
+    """Require a plain file owned by root, with no untrusted writable parent."""
+    trusted_directory(os.path.dirname(path))
+    try:
+        status = os.lstat(path)
+    except FileNotFoundError:
+        refuse(f"{path} is missing; no registered record or forge settings", 69)
+    mask = 0o077 if private else 0o022
+    if not stat.S_ISREG(status.st_mode) or status.st_uid != ROOT_UID or status.st_mode & mask:
+        refuse(f"{path} is not a plain file root's alone {'to read' if private else 'to write'}", 69)
+    return status
+
+
+def read_values(path, code=69):
+    """Read exactly one value for each key, refusing ambiguous configuration."""
+    values = {}
+    try:
+        with open(path, encoding="utf-8") as lines:
+            for line in lines:
+                key, separator, value = line.rstrip("\n").partition("=")
+                if not separator or key in values:
+                    refuse(f"{path} has a malformed or duplicate setting", code)
+                values[key] = value
+    except UnicodeError:
+        refuse(f"{path} is not UTF-8", code)
+    return values
+
+
+def setting(values, key, pattern, path=CONF, code=69):
+    """Require a configured value of the expected shape before using it in a command or URL."""
+    value = values.get(key, "")
+    if not re.fullmatch(pattern, value):
+        refuse(f"{path} names no valid {key}", code)
+    return value
+
+
+def forge_command(account, *arguments):
+    """Run the forge CLI with a fixed environment and no input, capturing all output in memory."""
+    uid = subprocess.run(
+        ["/usr/bin/id", "-u", account],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=SAFE_ENV,
+        timeout=10,
+    )
+    number = uid.stdout.strip()
+    if uid.returncode or not re.fullmatch(r"[1-9][0-9]*", number):
+        refuse(f"the forge's account {account} is not known, or is root", 69)
+    return subprocess.run(
+        [
+            "/usr/sbin/runuser",
+            "-u",
+            account,
+            "--",
+            "/usr/bin/env",
+            f"XDG_RUNTIME_DIR=/run/user/{number}",
+            "/usr/bin/podman",
+            "exec",
+            "forgejo",
+            "forgejo",
+            "admin",
+            "user",
+            *arguments,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd="/",
+        env=SAFE_ENV,
+        stdin=subprocess.DEVNULL,
+        timeout=60,
+    )
+
+
+def token(account, username, scopes):
+    """Make a scoped token with a unique nonsecret name, never exposing CLI output on failure."""
+    made = forge_command(
+        account,
+        "generate-access-token",
+        "--username",
+        username,
+        "--token-name",
+        "porelo-host-project-" + secrets.token_hex(16),
+        "--scopes",
+        scopes,
+        "--raw",
+    )
+    value = made.stdout.strip()
+    if made.returncode or not re.fullmatch(r"[0-9a-f]{40}", value):
+        refuse(f"Forgejo made no token for {username} (exit {made.returncode})")
+    return value
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Keep a credential from following a forge redirect."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+class Forge:
+    """The host forge's API, trusted by its own CA and never a proxy from the caller's environment."""
+
+    def __init__(self, values):
+        address = setting(values, "address", r"[0-9]{1,3}(\.[0-9]{1,3}){3}")
+        try:
+            ipaddress.IPv4Address(address)
+        except ipaddress.AddressValueError:
+            refuse(f"{CONF} names no valid address", 69)
+        port = setting(values, "port", r"[1-9][0-9]{0,4}")
+        if int(port) > 65535:
+            refuse(f"{CONF} names no valid port", 69)
+        self.account = setting(values, "account", r"[a-z_][a-z0-9_-]{0,31}")
+        trusted(CA)
+        try:
+            context = ssl.create_default_context(cafile=CA)
+        except (OSError, ssl.SSLError):
+            refuse(f"{CA} is not a readable TLS authority", 69)
+        self.opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({}),
+            urllib.request.HTTPSHandler(context=context),
+            NoRedirect(),
+        )
+        self.base = f"https://{address}:{port}/api/v1"
+        self.token = token(
+            self.account,
+            "porelo-admin",
+            "write:admin,write:organization,read:user,write:repository,write:package",
+        )
+
+    def request(self, method, path, body=None, expected=(200,)):
+        """Return validated JSON, or only the HTTP code in an error; never repeat a remote body."""
+        request = urllib.request.Request(
+            self.base + path,
+            data=json.dumps(body).encode() if body is not None else None,
+            method=method,
+            headers={"Authorization": "token " + self.token, "Content-Type": "application/json"},
+        )
+        try:
+            with self.opener.open(request, timeout=30) as answer:
+                status, data = answer.status, answer.read()
+        except urllib.error.HTTPError as error:
+            status, data = error.code, b""
+            error.close()
+        except (urllib.error.URLError, OSError, http.client.HTTPException) as error:
+            refuse(f"the forge did not answer {method} {path}: {type(error).__name__}", 69)
+        if status not in expected:
+            refuse(f"the forge answered HTTP {status} for {method} {path}")
+        if status == 404 or (not data and method != "GET"):
+            return None
+        try:
+            result = json.loads(data)
+        except (ValueError, UnicodeError):
+            refuse(f"the forge sent invalid JSON for {method} {path}")
+        if result is None:
+            refuse(f"the forge sent no identity or list for {method} {path}")
+        return result
+
+    def listing(self, path):
+        """Read every page, stopping on a repeated page instead of trusting an incomplete reference set."""
+        result, seen = [], set()
+        for page in range(1, 101):
+            items = self.request("GET", f"{path}?limit=50&page={page}")
+            if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+                refuse(f"the forge sent no list for {path}")
+            if not items:
+                return result
+            digest = json.dumps(items, sort_keys=True)
+            if digest in seen:
+                refuse(f"the forge repeated a page for {path}")
+            seen.add(digest)
+            result.extend(items)
+        refuse(f"the forge did not finish listing {path} in 100 pages")
+
+
+def add(forge, project, admin, key, record):
+    """Validate all existing identities before making one organization and an isolated package publisher."""
+    publisher = "porelo-publisher-" + project
+    for kind, path in (
+        ("organization", f"/orgs/{project}"),
+        ("user", f"/users/{project}"),
+        ("publisher", f"/users/{publisher}"),
+    ):
+        if forge.request("GET", path, expected=(200, 404)) is not None:
+            refuse(f"the forge already has {kind} {path.rsplit('/', 1)[1]}")
+    if forge.request("GET", f"/users/{admin}", expected=(200, 404)) is None:
+        refuse(f"the forge has no admin login {admin}")
+    for name in ("projects", "people"):
+        with writing(os.path.join(ETC, name)):
+            os.makedirs(os.path.join(ETC, name), mode=0o700, exist_ok=True)
+    with writing(record):
+        descriptor, temporary = tempfile.mkstemp(prefix=f".{project}-", dir=os.path.dirname(record))
+    organization_made = publisher_made = False
+    try:
+        forge.request("POST", f"/admin/users/{admin}/orgs", {"username": project, "visibility": "private"}, (201,))
+        organization_made = True
+        owners = [team for team in forge.listing(f"/orgs/{project}/teams") if team.get("name") == "Owners"]
+        if len(owners) != 1 or type(owners[0].get("id")) is not int or owners[0]["id"] <= 0:
+            refuse(f"the forge has no unique Owners team for {project}")
+        forge.request("PUT", f"/teams/{owners[0]['id']}/members/{admin}", expected=(204,))
+        made = forge_command(
+            forge.account,
+            "create",
+            "--username",
+            publisher,
+            "--email",
+            f"{publisher}@porelo.invalid",
+            "--random-password",
+            "--must-change-password=false",
+        )
+        if made.returncode:
+            refuse(f"Forgejo made no publisher {publisher} (exit {made.returncode})")
+        publisher_made = True
+        team = forge.request(
+            "POST",
+            f"/orgs/{project}/teams",
+            {
+                "name": "publishers",
+                "permission": "write",
+                "units": ["repo.packages"],
+                "units_map": {"repo.packages": "write"},
+                "includes_all_repositories": False,
+                "can_create_org_repo": False,
+            },
+            (201,),
+        )
+        if not isinstance(team, dict) or type(team.get("id")) is not int or team["id"] <= 0:
+            refuse(f"the forge returned no valid publishers team for {project}")
+        forge.request("PUT", f"/teams/{team['id']}/members/{publisher}", expected=(204,))
+        secret = token(forge.account, publisher, "write:package")
+        forge.request("PUT", f"/orgs/{project}/actions/secrets/PORELO_PUBLISHER_TOKEN", {"data": secret}, (201, 204))
+        with writing(record):
+            output = os.fdopen(descriptor, "w", encoding="utf-8")
+            descriptor = None
+            with output:
+                os.fchmod(output.fileno(), 0o600)
+                output.write(f"admin={admin}\nsigned_by={key}\npublisher={publisher}\n")
+                output.flush()
+                os.fsync(output.fileno())
+            # A link publishes the complete file atomically without replacing another writer's pinned key.
+            try:
+                os.link(temporary, record)
+            except FileExistsError:
+                refuse(f"{record} exists")
+    except (Refusal, OSError, subprocess.SubprocessError, KeyboardInterrupt) as error:
+        left = []
+        for made, kind, name, path in (
+            (organization_made, "organization", project, f"/orgs/{project}"),
+            (publisher_made, "publisher", publisher, f"/admin/users/{publisher}"),
+        ):
+            if made:
+                try:
+                    forge.request("DELETE", path, expected=(204,))
+                except (Refusal, OSError, subprocess.SubprocessError):
+                    left.append(f"{kind} {name}")
+        if left:
+            cause = str(error) if isinstance(error, Refusal) else type(error).__name__
+            code = error.code if isinstance(error, Refusal) else 64 if isinstance(error, KeyboardInterrupt) else 69
+            refuse(f"{cause}; cleanup left {', '.join(left)}", code)
+        raise
+    finally:
+        with writing(temporary):
+            if descriptor is not None:
+                os.close(descriptor)
+            if os.path.lexists(temporary):
+                os.unlink(temporary)
+    with writing("standard output"):
+        print(
+            json.dumps(
+                dict(project=project, admin=admin, organization=project, publisher=publisher), separators=(",", ":")
+            ),
+            flush=True,
+        )
+
+
+def registered_publisher(project, record):
+    """Validate the complete record before obtaining any forge credential."""
+    values = read_values(record, 65)
+    setting(values, "admin", PERSON_PATTERN, record, 65)
+    signing_key(values.get("signed_by", ""), f"{record} signed_by signing key", 65)
+    return setting(values, "publisher", re.escape("porelo-publisher-" + project), record, 65)
+
+
+def remove(forge, project, record, publisher):
+    """Check every repository without pushing anything, then delete the forge identities and record."""
+    for kind, path in (("organization", f"/orgs/{project}"), ("publisher", f"/users/{publisher}")):
+        if forge.request("GET", path, expected=(200, 404)) is None:
+            refuse(f"the forge has no {kind} for registered project {project}")
+    repositories = forge.listing(f"/orgs/{project}/repos")
+    packages = forge.listing(f"/packages/{project}")
+    package_paths = []
+    for package in packages:
+        parts = [package.get(key) for key in ("type", "name", "version")]
+        if any(
+            not isinstance(part, str)
+            or not part
+            or part in (".", "..")
+            or any(ord(char) < 32 or ord(char) == 127 for char in part)
+            for part in parts
+        ):
+            refuse(f"the forge returned an invalid package identity for {project}")
+        path = f"/packages/{project}/" + "/".join(urllib.parse.quote(part, safe="") for part in parts)
+        if path in package_paths:
+            refuse(f"the forge returned a duplicate package identity for {project}")
+        package_paths.append(path)
+    names = []
+    for repository in repositories:
+        name = repository.get("name")
+        if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name) or name in names:
+            refuse(f"the forge returned an invalid or duplicate repository name for {project}")
+        names.append(name)
+    if names:
+        trusted(PUSH)
+        central_token = getpass.getpass("Token for the central forge (not shown): ")
+        if not central_token or "\n" in central_token or "\r" in central_token:
+            refuse("no valid central forge token was given", 64)
+        checked = subprocess.run(
+            [PUSH, "--check", project, *names],
+            env=SAFE_ENV,
+            check=False,
+            timeout=600,
+            input=central_token + "\n",
+            capture_output=True,
+            text=True,
+        )
+        if checked.returncode:
+            code = {65: 65, 73: 73, 75: 64, 130: 64, 143: 64}.get(checked.returncode, 69)
+            refuse(
+                f"{project} has unpushed or unverifiable commits in {', '.join(names)}; "
+                f"gathered push check exited {checked.returncode}",
+                code,
+            )
+    for name in names:
+        forge.request("DELETE", f"/repos/{project}/{name}", expected=(204,))
+    for path in package_paths:
+        forge.request("DELETE", path, expected=(204,))
+    forge.request("DELETE", f"/orgs/{project}", expected=(204,))
+    forge.request("DELETE", f"/admin/users/{publisher}", expected=(204,))
+    for path in (f"/orgs/{project}", f"/users/{publisher}"):
+        if forge.request("GET", path, expected=(200, 404)) is not None:
+            refuse(f"the forge still holds an identity for {project}; keeping its record")
+    with writing(record):
+        os.unlink(record)
+    with writing("standard output"):
+        print(json.dumps(dict(project=project, removed=True), separators=(",", ":")), flush=True)
+
+
+def run():
+    """Check root before the call or filesystem, then hold one lock through all preflight and mutation."""
+    if os.geteuid() != 0:
+        refuse("runs only as root", 69)
+    os.umask(0o077)
+    os.environ.clear()
+    os.environ.update(SAFE_ENV)
+    arguments = sys.argv[1:]
+    if len(arguments) == 5 and arguments[0] == "add" and arguments[3] == "--signed-by":
+        action, project, admin, _, key = arguments
+    elif len(arguments) == 2 and arguments[0] == "remove":
+        action, project = arguments
+        admin = key = None
+    else:
+        refuse('usage: add <project> <admin> --signed-by "ssh-ed25519 <base64>" | remove <project>', 64)
+    if not re.fullmatch(PROJECT_PATTERN, project):
+        refuse("project must be 1 to 40 lowercase letters, digits or internal hyphens", 64)
+    if action == "add":
+        if not re.fullmatch(PERSON_PATTERN, admin):
+            refuse("admin must be a registered person's user name", 64)
+        signing_key(key)
+    record = os.path.join(ETC, "projects", project + ".conf")
+    if action == "add" and os.path.lexists(record):
+        refuse(f"{record} exists")
+    if action == "remove" and not os.path.lexists(record):
+        refuse(f"unknown project {project}")
+    for name in ("projects", "people"):
+        trusted_directory(os.path.join(ETC, name), private=True, missing=True)
+    if action == "add":
+        trusted(os.path.join(ETC, "people", admin + ".conf"), private=True)
+    else:
+        trusted(record, private=True)
+    trusted(CONF)
+    with open(CONF, encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if action == "add" and os.path.lexists(record):
+            refuse(f"{record} exists")
+        if action == "remove" and not os.path.lexists(record):
+            refuse(f"unknown project {project}")
+        publisher = registered_publisher(project, record) if action == "remove" else None
+        forge = Forge(read_values(CONF))
+        if action == "add":
+            add(forge, project, admin, key, record)
+        else:
+            remove(forge, project, record, publisher)
+
+
+def main():
+    """Keep unexpected dependency errors and interrupts free of credentials and tracebacks."""
+    try:
+        run()
+    except Refusal as error:
+        failure = error
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        failure = Refusal(f"dependency or file read failed: {type(error).__name__}", 69)
+    except KeyboardInterrupt:
+        failure = Refusal("input interrupted", 64)
+    except EOFError:
+        failure = Refusal("no central forge token was given", 64)
+    else:
+        return
+    try:
+        print(f"porelo-host-project: {failure}", file=sys.stderr, flush=True)
+    except OSError:
+        sys.exit(73)
+    sys.exit(failure.code)
+
+
+if __name__ == "__main__":
+    main()

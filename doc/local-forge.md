@@ -89,6 +89,50 @@ as Artifactory uploads and deleting central workflow runs. In buildtools it also
 used by the machine provider. It does not disable the local build or every artifact upload. The same variable names on
 both forges let workflows select their destinations without editing the workflow between them.
 
+## Registering a project
+
+With the forge running, root registers a project through
+`porelo-host-project add <project> <admin> --signed-by 'ssh-ed25519 <base64>'`.
+The project name is 1 to 40 lowercase letters or digits, with hyphens allowed inside. The admin's user name must have
+a plain root-only record `/etc/porelo-host/people/<admin>.conf` and an existing forge login. The signing key is the
+project's SSH Ed25519 public key, in the form Porelo's `project.yml` uses in `signers`: one argument containing
+`ssh-ed25519 <base64>`, with one space and no comment. Its canonical base64 decodes to the 51-byte SSH wire format:
+the `ssh-ed25519` string header and a 32-byte public key. The bytes re-encode to exactly the supplied base64.
+Registration pins the supplied key unchanged in `signed_by`; it does not follow a project or import its key.
+
+The command creates the private organization named by the project, with the admin in its `Owners` team, and the
+account `porelo-publisher-<project>`. Its `publishers` team writes that organization's packages only, with no code
+access or repository creation. Its `write:package` token becomes the organization's Actions secret
+`PORELO_PUBLISHER_TOKEN`. The generated password is discarded; no credential reaches stdout or a record.
+
+`/etc/porelo-host/projects/<project>.conf`, root's with mode `0600`, holds `admin`, `signed_by` and `publisher` as
+`key=value` lines. Both record directories are root's with mode `0700`. An existing record, organization, user or
+publisher name is refused before registration changes the forge. Success prints one compact JSON line, in this
+field order: `{"project":"<project>","admin":"<admin>","organization":"<project>","publisher":"porelo-publisher-<project>"}`.
+The helper accepts no environment overrides for its paths or authority.
+
+`porelo-host-project remove <project>` first lists every repository and package version. For repositories, it calls
+the gathered push's read-only `--check <project> <repositories...>` mode, asking for the central token with hidden
+input. Every repository must have a central address in `/etc/porelo-host/forge/push.conf`. Every commit reachable
+from a local ref, including task branches and tags, must be reachable from a central ref. Missing settings, an
+unreachable forge or unpushed commits refuse removal before any deletion; the comparison pushes nothing.
+
+Once the check passes, removal deletes the repositories and package versions, then the organization and publisher,
+and finally its record. Success prints `{"project":"<project>","removed":true}`. Registration attempts cleanup of
+its own new identities if an API operation fails. Deletion spans separate API operations; a failure after deletion
+starts can leave part of the project removed, with its record retained and a nonzero exit. Keep the project idle
+while removing it so a concurrent push cannot add work after the check. `down` removes the helper and project records
+with the forge.
+
+Every refusal goes to stderr as `porelo-host-project: <words>`, with no success line on stdout. Its exit code is:
+
+| Code | Meaning |
+|---|---|
+| `64` | Invalid input, including a malformed signing key or a missing or canceled central-token input |
+| `65` | The records or forge refuse, including a taken name, a corrupt project record, an unknown project or unpushed commits |
+| `69` | A needed dependency or setting is missing, unavailable or not root's, including a caller who is not root |
+| `73` | A directory, record, temporary file or command output cannot be written or removed |
+
 ## The person's two decisions
 
 **First, accept the work by merging `porelo/<task>` into local `main`.** The person reads the pull request and its local
