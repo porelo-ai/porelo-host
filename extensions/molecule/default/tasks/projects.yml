@@ -1297,7 +1297,7 @@
           sudo/team/signer/host/diff refusals, add and drop laptops and memberships per project, keep hand and
           second-project access, and lock only when zero memberships remain; got {{ verify_sync }}
       vars:
-        verify_sync: "{{ verify_projects_sync.stdout | from_json }}"
+        verify_sync: "{{ verify_projects_sync.stdout_lines | last | from_json }}"
 
     - name: Delete alpha-one's repositories and remove alpha-one before purging the remaining people
       ansible.builtin.command:
