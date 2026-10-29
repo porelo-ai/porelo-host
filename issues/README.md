@@ -21,6 +21,12 @@ it is left out.
 | <a id="ho12"></a>[HO12](HO12-The-VM-Pool.md) | L | - | Role `vm_pool`: VMs with run accounts `porelo-machines` rents from, made by the same code as the test VM, deleted by name at `down`. |
 | <a id="ho49"></a>[HO49](HO49-The-Persons-Forge-Login-Without-Repositories.md) | S | - | Wherever the host runs its own forge, the person's login and the password script are there, repositories or none. |
 
+## Implementing
+
+| # | Size | Blocked by | What it covers |
+|---|---|---|---|
+| <a id="ho45"></a>[HO45](HO45-The-Project-Brought-And-Joined-In-The-Persons-Own-Account.md) | L | [HO43](#ho43), [HO44](#ho44) | `bring.yml` and `join.yml` in the person's own account, with the stop's own-account mode and two bundles. |
+
 ## Backlog
 
 | # | Size | Blocked by | What it covers |
@@ -59,7 +65,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho45"></a>[HO45](HO45-The-Project-Brought-And-Joined-In-The-Persons-Own-Account.md) | L | [HO43](#ho43), [HO44](#ho44) | `bring.yml` and `join.yml` in the person's own account, with the stop's own-account mode and two bundles. |
 | <a id="ho46"></a>[HO46](HO46-The-Developers-Kept-In-Step-With-The-Signed-Access-File.md) | L | [HO45](#ho45) | `sync`: the developers on the host kept to the signed `access.yml`, verified by Porelo's own check as a throwaway user, added or locked. |
 | <a id="ho47"></a>[HO47](HO47-The-Gathered-Push-Run-By-Any-Developer.md) | S | [HO45](#ho45) | `porelo-host-push` as a user tool with the person's own config and token. |
 | <a id="ho48"></a>[HO48](HO48-Every-Role-Tested-On-One-Host.md) | L | [HO46](#ho46), [HO47](#ho47) | The Molecule scenario with a host admin, two project admins and a developer with two laptops, every act and refusal. |

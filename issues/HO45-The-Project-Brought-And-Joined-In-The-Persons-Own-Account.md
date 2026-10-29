@@ -1,6 +1,6 @@
 # HO45 — The Project Brought And Joined In The Person's Own Account
 
-**Status:** Estimated.
+**Status:** Implementing.
 **Size:** L - two playbooks run as the person, the stop's own-account mode, the setup's files in the person's home
 with two bundles, and the forge's per-project parts with the person's own token.
 
