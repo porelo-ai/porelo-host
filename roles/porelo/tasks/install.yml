@@ -59,6 +59,32 @@
     state: present
     update_cache: true
 
+# Every published agent is installed (operator's decision, 2026-10-29): a person's project chooses among them without
+# root. The repository is the catalogue, read as Porelo's setup script and daemon read it: each agent package
+# declares Provides: porelo-agent, the acceptance suite's stub deliberately not. No agent package has a service or
+# an install script, so nothing runs until a task starts its agent.
+- name: install | Read which agents the repository publishes
+  ansible.builtin.command: apt-cache showpkg porelo-agent
+  register: __porelo_agent_catalogue
+  changed_when: false
+
+- name: install | Name the published agents
+  ansible.builtin.set_fact:
+    __porelo_agents: >-
+      {{ (__porelo_agent_catalogue.stdout.split('Reverse Provides:') + [''])[1].splitlines()
+         | map('trim') | reject('equalto', '') | map('split') | map('first') | unique | sort }}
+
+- name: install | Refuse a repository that publishes no agent
+  ansible.builtin.assert:
+    that: __porelo_agents | length > 0
+    fail_msg: "the repository {{ porelo_repository_url }} {{ porelo_distribution }} publishes no porelo-agent"
+    quiet: true
+
+- name: install | Install every published agent
+  ansible.builtin.apt:
+    name: "{{ __porelo_agents }}"
+    state: present
+
 - name: install | Install the build reader for the host's forge
   ansible.builtin.apt:
     name: porelo-adapter-forgejo

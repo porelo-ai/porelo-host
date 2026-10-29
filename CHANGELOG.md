@@ -19,9 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deletes their tokens, expels Matrix accounts and revokes registration in one operation, and removes delivered
   credentials and their runtime directory. A separate install task provides the helper, SSH key lookup and a
   no-argument forge-password sudo rule.
+- `up` installs every agent package the repository publishes, read from the packages providing `porelo-agent`, and
+  Porelo's message filter with rootless networking; a repository publishing no agent stops `up`.
 
 ### Fixed
 
+- A failed admission after the account exists leaves the person locked and recorded, so purge can remove them; a
+  failed purge leaves the account expired. A locked person can neither be admitted again without purge nor own a new
+  project. A forge failing in itself is reported as something missing (69). SSH reads the people's keys as soon as
+  `up` has written its drop-in.
 - A sudo call to the forge-password helper changes only the caller's own login and requires their unlocked,
   root-owned person record. Direct root calls retain the configured login.
 - SSH for the `porelo-people` group reads only root's VPN-restricted authorized keys, so a person cannot add an

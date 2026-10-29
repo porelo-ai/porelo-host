@@ -1,6 +1,6 @@
 # HO42 — The Host Prepared With No Project Or Person
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** L - `up` reduced to the host's own parts, the Matrix homeserver moved to an account of the host's, the
 host admin's constrained CA for two names, a VPN network per host, and the Molecule scenario's first act.
 
@@ -19,8 +19,14 @@ Read in the code (`9f883ec`), nothing measured.
 
 - **`up` keeps:** base and Porelo's packages; the VPN interface `10.73.<n>.1/24`, `<n>` given by the host admin's
   interface (QH66 a); the forge's accounts, service and admin; the runner; the VM pool.
-- **`up` loses:** Porelo's account and vault, the project step, the agents' install, the person's login. They move
-  to [HO43](README.md#ho43) and [HO45](README.md#ho45).
+- **`up` installs every published agent package** (operator's decision, room 2026-10-29): each package the
+  repository lists as providing `porelo-agent`, read as Porelo's setup script and daemon read it, so a new agent needs
+  no list and the acceptance suite's stub, which provides nothing, is never installed. There is no list in the
+  inventory and no field in the interface. A repository that lists none stops `up`. No agent package has a service
+  or an install script, so nothing runs until a task starts its agent; a person's project chooses among them without
+  root.
+- **`up` loses:** Porelo's account and vault, the project step, the person's login. They move to
+  [HO43](README.md#ho43) and [HO45](README.md#ho45).
 - **The homeserver:** an account of its own, `porelo-matrix` (linger), with `PORELO_MATRIX_PORT` in its
   `homeserver.conf`, its user unit enabled by `up`, and `publish --address <VPN address>:<port> --name
   matrix.<host>.porelo.internal`. No task starts it and no person's
