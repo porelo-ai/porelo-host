@@ -20,12 +20,17 @@ build that misses it fails instead of resolving elsewhere.
     at the address a job reaches, with the other variables a build reads on this forge (`PORELO_PUBLISH`,
     `PORELO_DEPLOY_PROFILE`, `JF_URL`) and the placeholder secret `JF_ACCESS_TOKEN`, as the role set them for one owner
     before [HO42](README.md#ho42).
+  - Actions secret **`PORELO_POOL_SSH`** of each project's organization where the host has a VM pool: the pool's run
+    key `/var/lib/porelo-host/pool/run-key`, as `vm_pool` sent it to the one organization before HO42. Since HO42
+    `up` makes no organization, so no organization has it; `porelo-host-project` runs as root and can read the key,
+    the project admin's bring cannot.
 - **`roles/forge/files/porelo-host-project`, `add`:** after the publisher's token, a second `token(…, publisher,
-  "read:package")` put as `PORELO_PACKAGES_READ_TOKEN`, then the variables and the placeholder secret, all inside the
-  existing rollback, so a refused `add` leaves none of them. The answer on stdout stays as the contract says; no
+  "read:package")` put as `PORELO_PACKAGES_READ_TOKEN`, then the variables, the placeholder secret and, where the run key exists,
+  `PORELO_POOL_SSH`, all inside the existing rollback, so a refused `add` leaves none of them. The answer on stdout stays as the contract says; no
   token is printed.
 - **Tests first** in `tests/unit/roles/test_porelo_host_project*.py`: the read token is asked with exactly
-  `read:package` and put under its name; each variable is set for the project's organization; a failure while setting
+  `read:package` and put under its name; each variable is set for the project's organization; the run key is put as
+  `PORELO_POOL_SSH` only where it exists; a failure while setting
   them removes the organization and the publisher. Red before the change.
 - **Molecule**, the projects act: with `PORELO_PACKAGES_READ_TOKEN` a generic package of the organization is read
   (200) and a `PUT` into it is refused (not 2xx); with `PORELO_PUBLISHER_TOKEN` the `PUT` succeeds; the organization's
