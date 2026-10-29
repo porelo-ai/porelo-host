@@ -1,14 +1,14 @@
 ---
-# The gathered push is the person's own command on the host; it reads its settings here and asks for the central token
-# each time, so no credential is installed with it. An up without the forge's repositories leaves both, as it leaves the
-# agents' accounts: the host's first inventory names none, and only down takes the forge away.
+# The gathered push runs in each developer's own account from ~/.config/porelo-host/push/<project>.conf and asks for
+# the central token each time, so no credential is installed with it. Root runs --check at project removal, trusting
+# the central forge authority recorded here.
 - name: push | Check the central forge's CA is one absolute path before it reaches the settings
   ansible.builtin.assert:
     that: forge_central_ca is string and forge_central_ca is match('^/[^\s]+\Z')
     fail_msg: "asked for one absolute path without blanks as the central forge's CA, got {{ forge_central_ca }}"
     quiet: true
 
-- name: push | Install the gathered push for the person
+- name: push | Install the gathered push for every developer and root's removal check
   ansible.builtin.copy:
     src: "{{ role_path }}/files/porelo-host-push"
     dest: /usr/local/sbin/porelo-host-push
@@ -16,17 +16,10 @@
     group: root
     mode: "0755"
 
-- name: push | Write which repositories it pushes, from where, and which authority it trusts for the central forge
+- name: push | Write which authority root's removal check trusts for the central forge
   ansible.builtin.copy:
-    dest: "{{ __forge_ca_dir }}/push.conf"
+    dest: "{{ __forge_ca_dir }}/central-ca.conf"
     owner: root
     group: root
-    mode: "0600"
-    content: |
-      # Written by the role forge at up; read by porelo-host-push.
-      local https://{{ forge_address }}:{{ forge_http_port }}
-      owner {{ forge_owner }}
-      central-ca {{ forge_central_ca }}
-      {% for repository in forge_repositories %}
-      repository {{ repository.name }} {{ repository.url }}
-      {% endfor %}
+    mode: "0644"
+    content: "{{ forge_central_ca }}\n"

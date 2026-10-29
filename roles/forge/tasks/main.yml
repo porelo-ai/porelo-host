@@ -28,3 +28,6 @@
 # The forge helpers come with every forge, and an unrecorded operator user from an earlier setup goes.
 - name: Install the forge's root helpers and remove any unrecorded operator user
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/helpers.yml"
+
+- name: Install the gathered push and the central forge's CA setting
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/push.yml"

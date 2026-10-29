@@ -913,3 +913,7 @@
     - name: Verify projects registered, isolated and removed on the prepared host's forge
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/projects.yml"
       when: verify_forge == 'on'
+
+    - name: Verify the gathered push run by a project admin and a developer with their own tokens
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/push.yml"
+      when: verify_forge == 'on'

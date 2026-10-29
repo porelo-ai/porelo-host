@@ -117,9 +117,12 @@ The helper accepts no environment overrides for its paths or authority.
 
 `porelo-host-project remove <project>` first lists every repository and package version. For repositories, it calls
 the gathered push's read-only `--check <project> <repositories...>` mode, asking for the central token with hidden
-input. Every repository must have a central address in `/etc/porelo-host/forge/push.conf`. Every commit reachable
-from a local ref, including task branches and tags, must be reachable from a central ref. Missing settings, an
-unreachable forge or unpushed commits refuse removal before any deletion; the comparison pushes nothing.
+input. `--check` reads each repository's central `https://` `original_url` kept by Forgejo from its migration through
+the admin API and trusts the central forge by `/etc/porelo-host/forge/central-ca.conf` (the system CA bundle
+`/etc/ssl/certs/ca-certificates.crt` unless `porelo_host_forge_central_ca` names another); a repository without an
+`original_url` is refused by name. Every commit reachable from a local ref, including task branches and tags, must be
+reachable from a central ref. Missing settings, an unreachable forge or unpushed commits refuse removal before any
+deletion; the comparison pushes nothing.
 
 Once the check passes, removal deletes the repositories and package versions, then the organization and publisher,
 drops `member=<project> …` from every person record in `/etc/porelo-host/people/` and removes the project record, and
@@ -200,17 +203,25 @@ lifecycle steps are not built:
 - End the task after the person merges its pull request: not built yet.
 
 **Second, start a gathered push of accepted local `main` to the central forge.** This is a separate decision about
-sending the merged work outward. The person starts it on the host over SSH, naming the repositories in their order:
+sending the merged work outward. Any developer or admin of the project runs it in their own account on the host over
+SSH, never as root and never through `sudo` (root is refused with `77`), naming the project and optionally the
+repositories in their order:
 
-    sudo porelo-host-push porelo-message-sluice
+    porelo-host-push porelo
+    porelo-host-push porelo porelo-message-sluice
 
-It asks once for the central forge's token, without showing it, and keeps it only for the run. For each repository it
-reads local `main` with the forge admin's token and pushes it to the repository's migration source with a plain
-`git push` without force, the next only once the one before was taken. A repository the forge does not hold is refused
-before anything is read. `/etc/porelo-host/forge/push.conf`, root's, names the repositories, their central
-addresses and the authority the central forge is trusted by, `porelo_host_forge_central_ca`, the system's CA bundle by
-default; the host's own CA is never trusted for it. `up` writes the file where repositories are configured, and
-`down` removes it with the command.
+Without repository names it pushes every repository `~/.config/porelo-host/push/<project>.conf` names, in the config's
+order; with names, those, refusing an unknown or duplicate name before asking for credentials. The config is read only
+from the caller's `getent passwd` home (never `$HOME`): a plain file of theirs, not a link, mode `0600`, in a `0700`
+directory of theirs, written by `porelo.host.bring` and `porelo.host.join` from the repositories the person reaches on
+the forge and their `original_url`; anything else is refused naming what was found. It reads local `main` with the
+person's own local forge token `<forge_name>.person` from their vault (a missing entry refuses with `69`, naming the
+entry and `porelo-host-stop --stdin identities`), asks once on the terminal for their central forge write token without
+showing it (`Token for the central forge (not shown): `) and keeps it only for the run, and pushes local `main` to each
+repository's central address with a plain `git push` without force, the next only once the one before was taken. The
+config's `central-ca` names the authority the central forge is trusted by (`porelo_host_forge_central_ca`, the system's
+CA bundle by default), never the host's own CA unless configured so. `up` installs `/usr/local/sbin/porelo-host-push`
+(`0755`) and `/etc/porelo-host/forge/central-ca.conf` (`0644`), and `down` removes both.
 
 When central `main` holds commits local `main` lacks, the push is refused and nothing is lost on either forge. The
 command names those commits and brings central `main` to the local forge as the branch `central/main`. A task joins

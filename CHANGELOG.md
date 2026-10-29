@@ -39,6 +39,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `porelo-host-push <project> [<repository>...]` runs in any project developer's own account (refusing root and `sudo`
+  with `77`), reading `~/.config/porelo-host/push/<project>.conf` (`0600` plain file in a `0700` directory of the
+  caller's `getent passwd` home, never `$HOME`) and the caller's `<forge_name>.person` token from their vault (refusing
+  a missing entry with `69`, naming it and `porelo-host-stop --stdin identities`) while prompting hidden on the terminal
+  for their central forge token; without repository names it pushes every repository in the config's order. `up`
+  installs `/usr/local/sbin/porelo-host-push` (`0755`) and `/etc/porelo-host/forge/central-ca.conf` (`0644`), and
+  `porelo-host-project remove`'s `--check` reads each repository's central address from Forgejo's `original_url`
+  instead of `/etc/porelo-host/forge/push.conf`, refusing any repository without one by name.
 - Person records in `/etc/porelo-host/people/` store ordered `member=hand` and `member=<project> project-admin|developer`
   memberships in place of `role=` and `projects=`; an existing `role=project-admin` record with no `member=` line is
   read as `member=hand` and rewritten on its next write. `porelo-host-person add` records `member=hand`, `lock` keeps
@@ -50,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- `/etc/porelo-host/forge/push.conf`: `up` no longer writes root's shared push configuration, and nothing reads it.
 - Admission makes no `<agent>-<user>` forge identity, and `up` no longer writes `agents=` into
   `/etc/porelo-host/forge.conf`: Porelo lends agents no forge identity of their own. Lock still revokes those a 6j
   host made.

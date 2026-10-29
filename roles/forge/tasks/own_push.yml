@@ -1,5 +1,5 @@
 ---
-# The push config HO47's porelo-host-push reads in the person's own account: the host's forge, the organization, the
+# The push config porelo-host-push reads in the person's own account: the host's forge, the organization, the
 # central forge's CA and each repository's central address, as Forgejo kept it from the migration (original_url).
 # Taken from the forge for bring and join alike, so it names what the person can reach there and nothing else.
 - name: own_push | Ask Forgejo which of the organization's repositories the person reaches, and where each came from
