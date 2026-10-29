@@ -34,6 +34,19 @@ project's signed `access.yml` ([HO46](README.md#ho46)), through the same helper.
   person of the records; keys or addresses differing from those recorded; an address outside the network or taken.
 - It prints names and addresses only, never a token.
 
+## The contract with the interface
+
+- **Standard input of `add`:** one laptop per line, `<laptop> <ssh-ed25519 AAAA…> <WireGuard public key>`, fields
+  separated by one space and no comment; `<laptop>` matches `^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$`, the WireGuard key is
+  44 base64 characters ending in `=`. An optional fourth field `10.73.<n>.<m>` asks for that address; without it the
+  host takes the lowest free one from `.2` up, past the host admin's own. A laptop already recorded keeps its address.
+- **On success** one JSON line on stdout: `add <user> --role project-admin` answers
+  `{"person":"<user>","role":"project-admin","laptops":[{"laptop":"…","vpn_address":"10.73.<n>.<m>"}]}`, `lock <user>`
+  `{"person":"<user>","locked":true}`, `purge <user>` `{"person":"<user>","purged":true}`.
+- **A refusal** goes to stderr as `porelo-host-person: <words>`, with nothing changed and exit 64 (input), 65 (the
+  records say no), 69 (something needed is missing or not root's) or 73 (cannot write).
+- The interface runs it as `ssh root@10.73.<n>.1 /usr/local/sbin/porelo-host-person …` with the rental's key.
+
 ## Acceptance
 
 - Molecule: a project admin added from a key block reaches the host over ssh only through the VPN with that laptop's

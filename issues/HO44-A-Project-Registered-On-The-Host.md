@@ -21,6 +21,18 @@ QH54 a); a publisher per project keeps one project's builds from publishing into
 - **`remove <project>`:** refused while any repository holds a commit the central forge lacks, read with the gathered
   push's own comparison; then the organization with its repositories and packages and the publisher are deleted.
 
+## The contract with the interface
+
+- **`--signed-by`** is the project's signing key as Porelo's `signers` name it: one argument `ssh-ed25519 AAAA…` with no
+  comment.
+- **On success** one JSON line on stdout: `add` answers
+  `{"project":"…","admin":"…","organization":"…","publisher":"porelo-publisher-<project>"}`, `remove`
+  `{"project":"…","removed":true}`.
+- **A refusal** goes to stderr as `porelo-host-project: <words>`, with nothing changed and exit 64 (input), 65 (the
+  records or the forge say no: a name taken, a commit unpushed), 69 (something needed is missing or not root's) or 73
+  (cannot write).
+- The interface runs it as `ssh root@10.73.<n>.1 /usr/local/sbin/porelo-host-project …` with the rental's key.
+
 ## Acceptance
 
 - Molecule: two projects registered for two admins, each organization owned by its admin alone; a build of one cannot
