@@ -796,14 +796,15 @@
           - -c
           - |
             import json, os, pathlib, pwd, shutil, ssl, subprocess, urllib.request
-            import sys, traceback
+            import secrets, sys, traceback
 
             # A failure leaves only its line, its class, an HTTP code and the last sync's refusal; never its words.
             last_sync = {}
 
             def failed(kind, error, tb):
                 lines = [f.lineno for f in traceback.extract_tb(tb) if f.filename == "<string>"]
-                print(json.dumps({"failed_at_line": lines[-1] if lines else None, "error": kind.__name__,
+                print(json.dumps({"failed_at_line": lines[-1] if lines else None, "lines": lines,
+                                  "error": kind.__name__,
                                   "code": getattr(error, "code", None), "last_sync": last_sync}), flush=True)
                 os._exit(0)
 
@@ -1134,7 +1135,29 @@
             eli_matrix_locked = pathlib.Path("/home/eli/.config/porelo/matrix/host-registration-token").exists()
             peers_locked = wg_peers()
             team3_after_drop = team_members("alpha-three")
-            _, eli_user = api("GET", "/users/eli")
+            # The role's token reads no users; a short-lived one of porelo-admin's does, and is deleted after.
+            uid = subprocess.check_output(["/usr/bin/id", "-u", "porelo-forge"], text=True).strip()
+            read_name = "verify-sync-" + secrets.token_hex(12)
+            read_token = subprocess.check_output(
+                [
+                    "/usr/sbin/runuser", "-u", "porelo-forge", "--",
+                    "/usr/bin/env", f"XDG_RUNTIME_DIR=/run/user/{uid}",
+                    "/usr/bin/podman", "exec", "forgejo", "forgejo", "admin", "user",
+                    "generate-access-token", "--username", "porelo-admin",
+                    "--token-name", read_name, "--scopes", "read:user,write:admin", "--raw",
+                ],
+                text=True,
+                cwd="/",
+            ).strip()
+            role_token, token = token, read_token
+            try:
+                _, eli_user = api("GET", "/users/eli")
+            finally:
+                _, read_rows = api("GET", "/admin/users/porelo-admin/tokens?limit=50&page=1")
+                for row in read_rows:
+                    if row.get("name") == read_name:
+                        api("DELETE", f"/admin/users/porelo-admin/tokens/{row['id']}")
+                token = role_token
 
             rm_three = subprocess.run(
                 ["/usr/local/sbin/porelo-host-project", "remove", "alpha-three"],
