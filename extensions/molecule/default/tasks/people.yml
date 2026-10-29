@@ -368,7 +368,9 @@
           ip -n verify-ada link set verify-ada1 up
           ip -n verify-ada link set lo up
           ip -n verify-ada link add wg0 type wireguard
-          ip netns exec verify-ada wg set wg0 private-key /root/verify-people/ada.wg \
+          # wg reads its key where the scenario's own peer keeps one, in /etc/wireguard; root's home it may not read.
+          install -m 0600 /root/verify-people/ada.wg /etc/wireguard/verify-ada.key
+          ip netns exec verify-ada wg set wg0 private-key /etc/wireguard/verify-ada.key \
               peer "$(cat /root/vpn-host.pub)" endpoint 10.250.0.5:51820 allowed-ips 10.73.7.1/32
           ip -n verify-ada address add 10.73.7.3/24 dev wg0
           ip -n verify-ada link set wg0 up
@@ -1059,6 +1061,7 @@
           if [ -e /sys/class/net/verify-ada0 ]; then
               ip link del verify-ada0
           fi
+          rm -f /etc/wireguard/verify-ada.key
         executable: /bin/bash
       changed_when: false
       failed_when: false
