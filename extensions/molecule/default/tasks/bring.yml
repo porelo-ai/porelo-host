@@ -320,6 +320,10 @@
                 '    room: "#porelo-alpha-one:matrix.alpha.porelo.internal"\n'
                 # Where admission left each person's token for the host's homeserver.
                 "    registration_token_file: ~/.config/porelo/matrix/host-registration-token\n"
+                # The host admin's CA, which signed the homeserver's certificate, as PEM text.
+                "    ca_certificate: "
+                + json.dumps(pathlib.Path("/etc/porelo-host/forge/ca.pem").read_text(encoding="ascii"))
+                + "\n"
             )
             git_env = {
                 "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
