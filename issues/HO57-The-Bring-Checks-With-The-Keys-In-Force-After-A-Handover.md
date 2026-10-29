@@ -1,6 +1,9 @@
 # HO57 — The Bring Checks With The Keys In Force After A Handover
 
-**Status:** Idea; blocked by porelo's B332.
+**Status:** Accepted.
+**Blocked by:** porelo#B332.
+**Size:** S - one variable, two arguments and a scenario step, with a VM run; measured S median 54 min, one
+measurement.
 
 **What must be true.** A second bring verifies only what is new since the followed commit, `porelo project verify
 --since <followed commit>`, given the keys in force there. Today it verifies from registration with the machine file's
