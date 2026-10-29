@@ -1,0 +1,523 @@
+---
+# Projects registered and removed through /usr/local/sbin/porelo-host-project as root when the forge is on: two
+# projects owned by bo and cy alone, package publishing isolated to each project's own organization, refusals leaving
+# records untouched, empty-project removal deleting the organization and publisher, and removal of a project holding a
+# committed repository refused while keeping the organization and its record.
+- name: Verify project registration, ownership, package isolation, refusals and removal guards
+  block:
+    - name: Create the root-only workspace, cy's laptop keys and two canonical project signing keys
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          umask 077
+          d=/root/verify-projects
+          rm -rf "$d"
+          mkdir -p "$d"
+          ssh-keygen -q -t ed25519 -N "" -C "" -f "$d/cy.ssh"
+          awk '{print $1, $2}' "$d/cy.ssh.pub" > "$d/cy.ssh.line"
+          wg genkey > "$d/cy.wg"
+          wg pubkey < "$d/cy.wg" | tr -d '\r\n' > "$d/cy.wg.line"
+          printf 'cy-laptop %s %s\n' "$(cat "$d/cy.ssh.line")" "$(cat "$d/cy.wg.line")" > "$d/cy.in"
+          for name in signer1 signer2; do
+              ssh-keygen -q -t ed25519 -N "" -C "" -f "$d/$name"
+              awk '{print $1, $2}' "$d/$name.pub" > "$d/$name.line"
+          done
+        executable: /bin/bash
+      changed_when: true
+      no_log: true
+
+    - name: Read the two canonical comment-free ssh-ed25519 project signing keys
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /root/verify-projects/signer1.line
+        - /root/verify-projects/signer2.line
+      register: verify_projects_signers
+
+    - name: Admit cy as project-admin for the second project
+      ansible.builtin.shell:
+        cmd: >-
+          set -euo pipefail
+          && /usr/local/sbin/porelo-host-person add cy --role project-admin < /root/verify-projects/cy.in
+        executable: /bin/bash
+      register: verify_projects_add_cy
+      changed_when: true
+
+    - name: Assert admitting cy prints one JSON line assigning the freed VPN address 10.73.7.3
+      ansible.builtin.assert:
+        that:
+          - verify_projects_add_cy.rc == 0
+          - verify_projects_add_cy.stdout_lines | length == 1
+          - (verify_projects_add_cy.stdout | from_json) == verify_projects_cy_expected
+        fail_msg: >-
+          asked 'porelo-host-person add cy --role project-admin' for {{ verify_projects_cy_expected }};
+          got rc {{ verify_projects_add_cy.rc }}: {{ verify_projects_add_cy.stdout }}
+          ({{ verify_projects_add_cy.stderr }})
+      vars:
+        verify_projects_cy_expected:
+          person: cy
+          role: project-admin
+          laptops:
+            - laptop: cy-laptop
+              vpn_address: 10.73.7.3
+
+    - name: Register alpha-one for bo and alpha-two for cy with porelo-host-project
+      ansible.builtin.command:
+        argv:
+          - /usr/local/sbin/porelo-host-project
+          - add
+          - "{{ item.project }}"
+          - "{{ item.admin }}"
+          - --signed-by
+          - "{{ item.signer }}"
+      loop:
+        - project: alpha-one
+          admin: bo
+          signer: "{{ verify_projects_signers.results[0].content | b64decode | trim }}"
+        - project: alpha-two
+          admin: cy
+          signer: "{{ verify_projects_signers.results[1].content | b64decode | trim }}"
+      loop_control:
+        label: "{{ item.project }}"
+      register: verify_projects_added
+      changed_when: true
+
+    - name: Assert each registered project prints its contract JSON line
+      ansible.builtin.assert:
+        that:
+          - item.rc == 0
+          - item.stdout_lines | length == 1
+          - (item.stdout | from_json) == verify_projects_expected
+        fail_msg: >-
+          asked 'porelo-host-project add {{ item.item.project }}' for {{ verify_projects_expected }};
+          got rc {{ item.rc }}: {{ item.stdout }} ({{ item.stderr }})
+      vars:
+        verify_projects_expected:
+          project: "{{ item.item.project }}"
+          admin: "{{ item.item.admin }}"
+          organization: "{{ item.item.project }}"
+          publisher: "porelo-publisher-{{ item.item.project }}"
+      loop: "{{ verify_projects_added.results }}"
+      loop_control:
+        label: "{{ item.item.project }}"
+
+    - name: Query each organization's Owners team members with the forge's admin token
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, pathlib, ssl, urllib.request
+            token = pathlib.Path("/home/porelo-forge/.config/porelo-forge/api.token").read_text(
+                encoding="utf-8"
+            ).strip()
+            ctx = ssl.create_default_context(cafile="/etc/porelo-host/forge/ca.pem")
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}),
+                urllib.request.HTTPSHandler(context=ctx),
+            )
+            base = "https://10.73.7.1:3000/api/v1"
+            def get_json(path):
+                req = urllib.request.Request(base + path, headers={"Authorization": "token " + token})
+                with opener.open(req, timeout=30) as resp:
+                    return json.load(resp)
+            owners = {}
+            for org in ("alpha-one", "alpha-two"):
+                teams = [t for t in get_json(f"/orgs/{org}/teams?limit=50&page=1") if t.get("name") == "Owners"]
+                if len(teams) != 1:
+                    raise SystemExit(f"expected one Owners team in {org}, got {len(teams)}")
+                members = get_json(f"/teams/{teams[0]['id']}/members?limit=50&page=1")
+                owners[org] = [m["login"] for m in members]
+            print(json.dumps(owners))
+      register: verify_projects_owners
+      changed_when: false
+      no_log: true
+
+    - name: Assert alpha-one's Owners team holds bo alone and alpha-two's holds cy alone
+      ansible.builtin.assert:
+        that:
+          - "(verify_projects_owners.stdout | from_json) == {'alpha-one': ['bo'], 'alpha-two': ['cy']}"
+        fail_msg: >-
+          asked Owners teams for {'alpha-one': ['bo'], 'alpha-two': ['cy']};
+          got {{ verify_projects_owners.stdout }}
+
+    - name: Mint a write:package token for porelo-publisher-alpha-one, PUT generic packages to both orgs and delete it
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import base64, json, secrets, ssl, subprocess, urllib.error, urllib.request
+            uid = subprocess.check_output(["/usr/bin/id", "-u", "porelo-forge"], text=True).strip()
+            def mint(username, prefix, scopes):
+                name = f"{prefix}-{secrets.token_hex(12)}"
+                value = subprocess.check_output(
+                    [
+                        "/usr/sbin/runuser", "-u", "porelo-forge", "--",
+                        "/usr/bin/env", f"XDG_RUNTIME_DIR=/run/user/{uid}",
+                        "/usr/bin/podman", "exec", "forgejo", "forgejo", "admin", "user",
+                        "generate-access-token", "--username", username,
+                        "--token-name", name, "--scopes", scopes, "--raw",
+                    ],
+                    text=True,
+                    cwd="/",
+                ).strip()
+                return name, value
+            ctx = ssl.create_default_context(cafile="/etc/porelo-host/forge/ca.pem")
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}),
+                urllib.request.HTTPSHandler(context=ctx),
+            )
+            host_base = "https://10.73.7.1:3000"
+            def request(method, path, auth, data=None, content_type="application/octet-stream"):
+                req = urllib.request.Request(
+                    host_base + path,
+                    data=data,
+                    method=method,
+                    headers={"Authorization": auth, "Content-Type": content_type},
+                )
+                try:
+                    with opener.open(req, timeout=30) as resp:
+                        raw = resp.read()
+                        return resp.status, raw
+                except urllib.error.HTTPError as err:
+                    err.close()
+                    return err.code, b""
+            pkg_name, pkg_token = mint("porelo-publisher-alpha-one", "verify-pkg", "write:package")
+            pkg_basic = "Basic " + base64.b64encode(
+                f"porelo-publisher-alpha-one:{pkg_token}".encode("utf-8")
+            ).decode("ascii")
+            admin_name, admin_token = mint("porelo-admin", "verify-pkg-cleanup", "write:admin,read:package")
+            admin_auth = "token " + admin_token
+            pkg_deleted = False
+            admin_deleted = False
+            try:
+                put_one, _ = request(
+                    "PUT",
+                    "/api/packages/alpha-one/generic/probe/1.0.0/probe.txt",
+                    pkg_basic,
+                    b"alpha-one package\n",
+                )
+                put_two, _ = request(
+                    "PUT",
+                    "/api/packages/alpha-two/generic/probe/1.0.0/probe.txt",
+                    pkg_basic,
+                    b"alpha-two package\n",
+                )
+                list_status, list_raw = request(
+                    "GET",
+                    "/api/v1/packages/alpha-two?limit=50&page=1",
+                    admin_auth,
+                    content_type="application/json",
+                )
+                alpha_two_count = len(json.loads(list_raw)) if list_status == 200 else -1
+            finally:
+                _, pub_raw = request(
+                    "GET",
+                    "/api/v1/admin/users/porelo-publisher-alpha-one/tokens?limit=50&page=1",
+                    admin_auth,
+                    content_type="application/json",
+                )
+                for row in json.loads(pub_raw):
+                    if row.get("name") == pkg_name:
+                        del_code, _ = request(
+                            "DELETE",
+                            f"/api/v1/admin/users/porelo-publisher-alpha-one/tokens/{row['id']}",
+                            admin_auth,
+                            content_type="application/json",
+                        )
+                        pkg_deleted = del_code == 204
+                _, adm_raw = request(
+                    "GET",
+                    "/api/v1/admin/users/porelo-admin/tokens?limit=50&page=1",
+                    admin_auth,
+                    content_type="application/json",
+                )
+                for row in json.loads(adm_raw):
+                    if row.get("name") == admin_name:
+                        del_code, _ = request(
+                            "DELETE",
+                            f"/api/v1/admin/users/porelo-admin/tokens/{row['id']}",
+                            admin_auth,
+                            content_type="application/json",
+                        )
+                        admin_deleted = del_code == 204
+            print(
+                json.dumps(
+                    {
+                        "alpha_one_put": put_one,
+                        "alpha_two_put": put_two,
+                        "alpha_two_packages": alpha_two_count,
+                        "pkg_deleted": pkg_deleted,
+                        "admin_deleted": admin_deleted,
+                    }
+                )
+            )
+      register: verify_projects_isolation
+      changed_when: true
+      no_log: true
+
+    - name: Assert porelo-publisher-alpha-one publishes 201 to alpha-one, is refused on alpha-two, and its token is gone
+      ansible.builtin.assert:
+        that:
+          - verify_projects_pkg.alpha_one_put == 201
+          - verify_projects_pkg.alpha_two_put in [401, 403, 404]
+          - verify_projects_pkg.alpha_two_put < 200 or verify_projects_pkg.alpha_two_put >= 300
+          - verify_projects_pkg.alpha_two_packages == 0
+          - verify_projects_pkg.pkg_deleted
+          - verify_projects_pkg.admin_deleted
+        fail_msg: >-
+          asked porelo-publisher-alpha-one PUT to return 201 on alpha-one and 401/403/404 on alpha-two with zero
+          packages in alpha-two and temporary tokens deleted; got {{ verify_projects_pkg }}
+      vars:
+        verify_projects_pkg: "{{ verify_projects_isolation.stdout | from_json }}"
+
+    - name: Ask porelo-host-project to refuse a taken project name, an unrecorded admin and a malformed signer
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import hashlib, json, pathlib, subprocess, sys
+            args = json.loads(sys.argv[1])
+            def state():
+                root = pathlib.Path("/etc/porelo-host/projects")
+                records = sorted((p.name, p.read_text(encoding="utf-8")) for p in root.iterdir())
+                return hashlib.sha256(json.dumps(records).encode("utf-8")).hexdigest()
+            before = state()
+            run = subprocess.run(
+                ["/usr/local/sbin/porelo-host-project", *args], input="", capture_output=True, text=True
+            )
+            after = state()
+            answer = {"rc": run.returncode, "stdout": run.stdout, "stderr": run.stderr, "unchanged": before == after}
+            print(json.dumps(answer))
+          - "{{ item.argv | to_json }}"
+      loop:
+        - label: taken project name
+          argv:
+            - add
+            - alpha-one
+            - cy
+            - --signed-by
+            - "{{ verify_projects_signers.results[1].content | b64decode | trim }}"
+          rc: 65
+          words: /etc/porelo-host/projects/alpha-one.conf exists
+        - label: admin who is no person on the host
+          argv:
+            - add
+            - alpha-three
+            - ghost
+            - --signed-by
+            - "{{ verify_projects_signers.results[1].content | b64decode | trim }}"
+          rc: 65
+          words: ghost is no person on this host
+        - label: malformed signer
+          argv:
+            - add
+            - alpha-three
+            - bo
+            - --signed-by
+            - not-a-signing-key
+          rc: 64
+          words: signing key must be one canonical ssh-ed25519 signing key without a comment
+      loop_control:
+        label: "{{ item.label }}"
+      register: verify_projects_refusals
+      changed_when: false
+
+    - name: Assert every project registration refusal exits with its code and words and leaves project records unchanged
+      ansible.builtin.assert:
+        that:
+          - verify_projects_refusal.rc == item.item.rc
+          - verify_projects_refusal.stdout == ''
+          - "verify_projects_refusal.stderr is match('^porelo-host-project: ')"
+          - item.item.words in verify_projects_refusal.stderr
+          - verify_projects_refusal.unchanged
+        fail_msg: >-
+          asked '{{ item.item.label }}' for rc {{ item.item.rc }}, empty stdout, '{{ item.item.words }}' on stderr and
+          unchanged /etc/porelo-host/projects; got {{ verify_projects_refusal }}
+      vars:
+        verify_projects_refusal: "{{ item.stdout | from_json }}"
+      loop: "{{ verify_projects_refusals.results }}"
+      loop_control:
+        label: "{{ item.item.label }}"
+
+    - name: Remove alpha-two with no repository through /usr/local/sbin/porelo-host-project remove alpha-two
+      ansible.builtin.command:
+        argv: [/usr/local/sbin/porelo-host-project, remove, alpha-two]
+        stdin: ""
+      register: verify_projects_remove_two
+      changed_when: true
+
+    - name: Read whether /etc/porelo-host/projects/alpha-two.conf remains after remove alpha-two
+      ansible.builtin.stat:
+        path: /etc/porelo-host/projects/alpha-two.conf
+      register: verify_projects_two_record
+
+    - name: Check whether organization alpha-two and publisher porelo-publisher-alpha-two are gone from Forgejo
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, pathlib, ssl, subprocess, urllib.error, urllib.request
+            token = pathlib.Path("/home/porelo-forge/.config/porelo-forge/api.token").read_text(
+                encoding="utf-8"
+            ).strip()
+            ctx = ssl.create_default_context(cafile="/etc/porelo-host/forge/ca.pem")
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}),
+                urllib.request.HTTPSHandler(context=ctx),
+            )
+            def org_status(name):
+                req = urllib.request.Request(
+                    f"https://10.73.7.1:3000/api/v1/orgs/{name}",
+                    headers={"Authorization": "token " + token},
+                )
+                try:
+                    with opener.open(req, timeout=30) as resp:
+                        return resp.status
+                except urllib.error.HTTPError as err:
+                    err.close()
+                    return err.code
+            uid = subprocess.check_output(["/usr/bin/id", "-u", "porelo-forge"], text=True).strip()
+            listed = subprocess.check_output(
+                [
+                    "/usr/sbin/runuser", "-u", "porelo-forge", "--",
+                    "/usr/bin/env", f"XDG_RUNTIME_DIR=/run/user/{uid}",
+                    "/usr/bin/podman", "exec", "forgejo", "forgejo", "admin", "user", "list",
+                ],
+                text=True,
+                cwd="/",
+            ).splitlines()
+            users = [line.split()[1] for line in listed[1:] if len(line.split()) >= 2]
+            print(
+                json.dumps(
+                    {
+                        "alpha_two_org": org_status("alpha-two"),
+                        "alpha_one_org": org_status("alpha-one"),
+                        "publisher_two_present": "porelo-publisher-alpha-two" in users,
+                        "publisher_one_present": "porelo-publisher-alpha-one" in users,
+                    }
+                )
+            )
+      register: verify_projects_two_forge
+      changed_when: false
+      no_log: true
+
+    - name: Assert remove alpha-two answers removed true and deletes alpha-two's record, organization and publisher
+      ansible.builtin.assert:
+        that:
+          - verify_projects_remove_two.rc == 0
+          - verify_projects_remove_two.stdout_lines | length == 1
+          - "(verify_projects_remove_two.stdout | from_json) == {'project': 'alpha-two', 'removed': true}"
+          - not verify_projects_two_record.stat.exists
+          - verify_projects_two_state.alpha_two_org == 404
+          - not verify_projects_two_state.publisher_two_present
+          - verify_projects_two_state.alpha_one_org == 200
+          - verify_projects_two_state.publisher_one_present
+        fail_msg: >-
+          asked 'porelo-host-project remove alpha-two' for {"project":"alpha-two","removed":true}, alpha-two.conf gone,
+          alpha-two org 404 and porelo-publisher-alpha-two deleted while keeping alpha-one;
+          got rc {{ verify_projects_remove_two.rc }}: {{ verify_projects_remove_two.stdout }}
+          ({{ verify_projects_remove_two.stderr }}), record exists={{ verify_projects_two_record.stat.exists }},
+          forge {{ verify_projects_two_state }}
+      vars:
+        verify_projects_two_state: "{{ verify_projects_two_forge.stdout | from_json }}"
+
+    - name: Create one repository with one commit in alpha-one and ask remove alpha-one with a piped token to refuse
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import base64, json, pathlib, secrets, ssl, subprocess, urllib.request
+            token = pathlib.Path("/home/porelo-forge/.config/porelo-forge/api.token").read_text(
+                encoding="utf-8"
+            ).strip()
+            ctx = ssl.create_default_context(cafile="/etc/porelo-host/forge/ca.pem")
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}),
+                urllib.request.HTTPSHandler(context=ctx),
+            )
+            base = "https://10.73.7.1:3000/api/v1"
+            def api(method, path, body=None):
+                req = urllib.request.Request(
+                    base + path,
+                    data=json.dumps(body).encode("utf-8") if body is not None else None,
+                    method=method,
+                    headers={"Authorization": "token " + token, "Content-Type": "application/json"},
+                )
+                with opener.open(req, timeout=30) as resp:
+                    raw = resp.read()
+                    return resp.status, (json.loads(raw) if raw else None)
+            repo_code, _ = api("POST", "/orgs/alpha-one/repos", {"name": "code", "private": True, "auto_init": False})
+            content = base64.b64encode(b"# alpha-one\n").decode("ascii")
+            commit_code, commit_body = api(
+                "POST",
+                "/repos/alpha-one/code/contents/README.md",
+                {"content": content, "message": "Add README"},
+            )
+            sha = (commit_body or {}).get("commit", {}).get("sha", "")
+            central_token = "central-probe-" + secrets.token_hex(20)
+            run = subprocess.run(
+                ["/usr/local/sbin/porelo-host-project", "remove", "alpha-one"],
+                input=central_token + "\n",
+                capture_output=True,
+                text=True,
+            )
+            org_after, _ = api("GET", "/orgs/alpha-one")
+            repo_after, _ = api("GET", "/repos/alpha-one/code")
+            journal = subprocess.check_output(["journalctl", "-b", "-o", "cat", "--no-pager"], text=True)
+            token_clean = central_token not in (run.stdout + run.stderr + journal)
+            safe_err = run.stderr.replace(central_token, "<redacted>")
+            print(
+                json.dumps(
+                    {
+                        "repo_created": repo_code,
+                        "commit_created": commit_code,
+                        "commit_sha_len": len(sha),
+                        "rc": run.returncode,
+                        "stdout": run.stdout,
+                        "stderr": safe_err,
+                        "org_after": org_after,
+                        "repo_after": repo_after,
+                        "token_clean": token_clean,
+                    }
+                )
+            )
+      register: verify_projects_remove_one
+      changed_when: true
+      no_log: true
+
+    - name: Read whether /etc/porelo-host/projects/alpha-one.conf still exists after the refused removal
+      ansible.builtin.stat:
+        path: /etc/porelo-host/projects/alpha-one.conf
+      register: verify_projects_one_record
+
+    - name: Assert remove alpha-one refuses with 69 while keeping the organization, repository and project record
+      ansible.builtin.assert:
+        that:
+          - verify_projects_one_result.repo_created == 201
+          - verify_projects_one_result.commit_created == 201
+          - verify_projects_one_result.commit_sha_len == 40
+          - verify_projects_one_result.rc == 69
+          - verify_projects_one_result.stdout == ''
+          - "verify_projects_one_result.stderr is match('^porelo-host-project: ')"
+          - "'/usr/local/sbin/porelo-host-push is missing; no registered record or forge settings'
+            in verify_projects_one_result.stderr"
+          - verify_projects_one_result.org_after == 200
+          - verify_projects_one_result.repo_after == 200
+          - verify_projects_one_record.stat.exists
+          - verify_projects_one_result.token_clean
+        fail_msg: >-
+          asked 'porelo-host-project remove alpha-one' with one committed repository and no central forge push setup to
+          refuse with 69 ('/usr/local/sbin/porelo-host-push is missing'), keep alpha-one and its repository and leak no
+          piped token; got {{ verify_projects_one_result }}, record exists={{ verify_projects_one_record.stat.exists }}
+      vars:
+        verify_projects_one_result: "{{ verify_projects_remove_one.stdout | from_json }}"
+  always:
+    - name: Remove the temporary project registration key directory
+      ansible.builtin.file:
+        path: /root/verify-projects
+        state: absent

@@ -117,6 +117,9 @@
               porelo_host_vpn_peer_public_key: {{ converge_peer_public.content | b64decode | trim }}
               porelo_host_vpn_peer_address: 10.73.7.2/32
               porelo_host_forge: {{ (converge_forge == 'on') | lower }}
+          {% if converge_forge == 'on' %}
+              porelo_host_forge_agents: [probe]
+          {% endif %}
               # Job bounds of the test VM's size: the runner's jobs and the pool share half of its 4 vCPUs and 6 GiB.
               # One job, not the default two, so the written capacity is the variable's.
               forge_runner_capacity: 1

@@ -895,3 +895,10 @@
 
     - name: Verify that the host comes back from a reboot with its firewall, VPN, homeserver and forge
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/reboot.yml"
+
+    - name: Verify project admins admitted, checked, locked and purged on the prepared host
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/people.yml"
+
+    - name: Verify projects registered, isolated and removed on the prepared host's forge
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/projects.yml"
+      when: verify_forge == 'on'

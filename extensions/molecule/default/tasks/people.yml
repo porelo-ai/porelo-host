@@ -1,0 +1,1069 @@
+---
+# Project admins admitted, checked, locked and purged through /usr/local/sbin/porelo-host-person as root: refusals
+# leave accounts and records untouched, SSH works only over the VPN, forge identities and Matrix tokens stay private
+# and leak nowhere, sudo allows only porelo-host-forge-password without arguments, and bo remains admitted at the end.
+- name: Verify project admins admitted, checked, locked and purged by the root helper
+  block:
+    - name: Create the root-only workspace and test laptop keys for ada, bo and refusal probes
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          umask 077
+          d=/root/verify-people
+          rm -rf "$d"
+          mkdir -p "$d"
+          : > "$d/helper.out"
+          : > "$d/tokens.pat"
+          for who in ada bo other; do
+              ssh-keygen -q -t ed25519 -N "" -C "" -f "$d/$who.ssh"
+              awk '{print $1, $2}' "$d/$who.ssh.pub" > "$d/$who.ssh.line"
+              wg genkey > "$d/$who.wg"
+              wg pubkey < "$d/$who.wg" | tr -d '\r\n' > "$d/$who.wg.line"
+          done
+          printf 'ada-laptop %s %s\n' "$(cat "$d/ada.ssh.line")" "$(cat "$d/ada.wg.line")" > "$d/ada.in"
+          printf 'ada-laptop %s %s\n' "$(cat "$d/other.ssh.line")" "$(cat "$d/ada.wg.line")" > "$d/ada-diff.in"
+          printf 'bo-laptop %s %s 10.73.7.9\n' "$(cat "$d/bo.ssh.line")" "$(cat "$d/bo.wg.line")" > "$d/bo.in"
+          printf 'other-laptop %s %s\n' "$(cat "$d/other.ssh.line")" "$(cat "$d/other.wg.line")" > "$d/other.in"
+          printf 'other-laptop %s %s 10.73.8.4\n' \
+              "$(cat "$d/other.ssh.line")" "$(cat "$d/other.wg.line")" > "$d/outside.in"
+          printf 'other-laptop %s %s 10.73.7.3\n' \
+              "$(cat "$d/other.ssh.line")" "$(cat "$d/other.wg.line")" > "$d/taken.in"
+          python3 -c "import json; print(json.load(open('/etc/porelo-host/host.json'))['address'])" > "$d/public.ip"
+          host_key=$(awk '{print $1, $2}' /etc/ssh/ssh_host_ed25519_key.pub)
+          printf '10.73.7.1 %s\n%s %s\n' "$host_key" "$(cat "$d/public.ip")" "$host_key" > "$d/known_hosts"
+        executable: /bin/bash
+      changed_when: true
+      no_log: true
+
+    - name: Read the public laptop keys and the host's public IPv4 address
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /root/verify-people/ada.ssh.line
+        - /root/verify-people/ada.wg.line
+        - /root/verify-people/bo.ssh.line
+        - /root/verify-people/bo.wg.line
+        - /root/verify-people/public.ip
+      register: verify_people_public_inputs
+
+    - name: Run pre-admission refusals against porelo-host-person and compare passwd and records before and after
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import hashlib, json, pathlib, subprocess, sys
+            args = json.loads(sys.argv[1])
+            stdin_path = pathlib.Path(sys.argv[2])
+            def state():
+                passwd = subprocess.check_output(["getent", "passwd"], text=True)
+                lines = sorted(passwd.splitlines())
+                root = pathlib.Path("/etc/porelo-host/people")
+                records = (
+                    sorted((p.name, p.read_text(encoding="utf-8")) for p in root.iterdir())
+                    if root.exists() else None
+                )
+                raw = json.dumps({"passwd": lines, "records": records}, sort_keys=True).encode("utf-8")
+                return hashlib.sha256(raw).hexdigest()
+            before = state()
+            data = stdin_path.read_bytes() if str(stdin_path) != "/dev/null" else b""
+            run = subprocess.run(
+                ["/usr/local/sbin/porelo-host-person", *args],
+                input=data,
+                capture_output=True,
+            )
+            after = state()
+            out = run.stdout.decode("utf-8", errors="replace")
+            err = run.stderr.decode("utf-8", errors="replace")
+            with open("/root/verify-people/helper.out", "a", encoding="utf-8") as log:
+                log.write(out + err)
+            print(json.dumps({"rc": run.returncode, "stdout": out, "stderr": err, "unchanged": before == after}))
+          - "{{ item.argv | to_json }}"
+          - "{{ item.stdin }}"
+      loop:
+        - label: account name outside pattern
+          argv: [add, Ada, --role, project-admin]
+          stdin: /root/verify-people/other.in
+          rc: 64
+          words: "the person name must match [a-z][a-z0-9-]{0,30}"
+        - label: address outside 10.73.7.0/24
+          argv: [add, eli, --role, project-admin]
+          stdin: /root/verify-people/outside.in
+          rc: 65
+          words: a requested VPN address is outside the network or already reserved
+        - label: lock unknown person
+          argv: [lock, ghost]
+          stdin: /dev/null
+          rc: 65
+          words: the person is unknown to the people records
+        - label: purge unknown person
+          argv: [purge, ghost]
+          stdin: /dev/null
+          rc: 65
+          words: the person is unknown to the people records
+      loop_control:
+        label: "{{ item.label }}"
+      register: verify_people_pre_refusals
+      changed_when: false
+
+    - name: Assert every pre-admission refusal exits with its code and words and changes neither passwd nor records
+      ansible.builtin.assert:
+        that:
+          - verify_people_refusal.rc == item.item.rc
+          - verify_people_refusal.stdout == ''
+          - "verify_people_refusal.stderr is match('^porelo-host-person: ')"
+          - item.item.words in verify_people_refusal.stderr
+          - verify_people_refusal.unchanged
+        fail_msg: >-
+          asked '{{ item.item.label }}' for rc {{ item.item.rc }}, empty stdout, '{{ item.item.words }}' on stderr and
+          unchanged passwd/records; got {{ verify_people_refusal }}
+      vars:
+        verify_people_refusal: "{{ item.stdout | from_json }}"
+      loop: "{{ verify_people_pre_refusals.results }}"
+      loop_control:
+        label: "{{ item.item.label }}"
+
+    - name: Admit ada as project-admin with one laptop line on standard input
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          out=$(mktemp)
+          err=$(mktemp)
+          trap 'rm -f "$out" "$err"' EXIT
+          rc=0
+          /usr/local/sbin/porelo-host-person add ada --role project-admin \
+              < /root/verify-people/ada.in > "$out" 2> "$err" || rc=$?
+          cat "$out" "$err" >> /root/verify-people/helper.out
+          cat "$err" >&2
+          cat "$out"
+          exit "$rc"
+        executable: /bin/bash
+      register: verify_people_add_ada
+      changed_when: true
+
+    - name: Assert admitting ada prints one JSON line assigning VPN address 10.73.7.3
+      ansible.builtin.assert:
+        that:
+          - verify_people_add_ada.rc == 0
+          - verify_people_add_ada.stdout_lines | length == 1
+          - (verify_people_add_ada.stdout | from_json) == verify_people_ada_expected
+        fail_msg: >-
+          asked 'porelo-host-person add ada --role project-admin' for {{ verify_people_ada_expected }};
+          got rc {{ verify_people_add_ada.rc }}: {{ verify_people_add_ada.stdout }} ({{ verify_people_add_ada.stderr }})
+      vars:
+        verify_people_ada_expected:
+          person: ada
+          role: project-admin
+          laptops:
+            - laptop: ada-laptop
+              vpn_address: 10.73.7.3
+
+    - name: Ask porelo-host-person to refuse a second add of ada with a different key and an address already taken
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import hashlib, json, pathlib, subprocess, sys
+            args = json.loads(sys.argv[1])
+            stdin_path = pathlib.Path(sys.argv[2])
+            def state():
+                passwd = subprocess.check_output(["getent", "passwd"], text=True)
+                lines = sorted(passwd.splitlines())
+                root = pathlib.Path("/etc/porelo-host/people")
+                records = (
+                    sorted((p.name, p.read_text(encoding="utf-8")) for p in root.iterdir())
+                    if root.exists() else None
+                )
+                raw = json.dumps({"passwd": lines, "records": records}, sort_keys=True).encode("utf-8")
+                return hashlib.sha256(raw).hexdigest()
+            before = state()
+            run = subprocess.run(
+                ["/usr/local/sbin/porelo-host-person", *args],
+                input=stdin_path.read_bytes(),
+                capture_output=True,
+            )
+            after = state()
+            out = run.stdout.decode("utf-8", errors="replace")
+            err = run.stderr.decode("utf-8", errors="replace")
+            with open("/root/verify-people/helper.out", "a", encoding="utf-8") as log:
+                log.write(out + err)
+            print(json.dumps({"rc": run.returncode, "stdout": out, "stderr": err, "unchanged": before == after}))
+          - "{{ item.argv | to_json }}"
+          - "{{ item.stdin }}"
+      loop:
+        - label: second add ada with a different key
+          argv: [add, ada, --role, project-admin]
+          stdin: /root/verify-people/ada-diff.in
+          rc: 65
+          words: keys or addresses differ from the recorded laptop
+        - label: address 10.73.7.3 already taken by ada
+          argv: [add, eli, --role, project-admin]
+          stdin: /root/verify-people/taken.in
+          rc: 65
+          words: a requested VPN address is outside the network or already reserved
+      loop_control:
+        label: "{{ item.label }}"
+      register: verify_people_post_ada_refusals
+      changed_when: false
+
+    - name: Assert post-admission refusals exit 65 with their words and leave passwd and people records unchanged
+      ansible.builtin.assert:
+        that:
+          - verify_people_refusal.rc == item.item.rc
+          - verify_people_refusal.stdout == ''
+          - "verify_people_refusal.stderr is match('^porelo-host-person: ')"
+          - item.item.words in verify_people_refusal.stderr
+          - verify_people_refusal.unchanged
+        fail_msg: >-
+          asked '{{ item.item.label }}' for rc {{ item.item.rc }}, empty stdout, '{{ item.item.words }}' on stderr and
+          unchanged passwd/records; got {{ verify_people_refusal }}
+      vars:
+        verify_people_refusal: "{{ item.stdout | from_json }}"
+      loop: "{{ verify_people_post_ada_refusals.results }}"
+      loop_control:
+        label: "{{ item.item.label }}"
+
+    - name: Admit bo as project-admin with explicit fourth field 10.73.7.9
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          out=$(mktemp)
+          err=$(mktemp)
+          trap 'rm -f "$out" "$err"' EXIT
+          rc=0
+          /usr/local/sbin/porelo-host-person add bo --role project-admin \
+              < /root/verify-people/bo.in > "$out" 2> "$err" || rc=$?
+          cat "$out" "$err" >> /root/verify-people/helper.out
+          cat "$err" >&2
+          cat "$out"
+          exit "$rc"
+        executable: /bin/bash
+      register: verify_people_add_bo
+      changed_when: true
+
+    - name: Assert admitting bo prints one JSON line assigning explicit VPN address 10.73.7.9
+      ansible.builtin.assert:
+        that:
+          - verify_people_add_bo.rc == 0
+          - verify_people_add_bo.stdout_lines | length == 1
+          - (verify_people_add_bo.stdout | from_json) == verify_people_bo_expected
+        fail_msg: >-
+          asked 'porelo-host-person add bo --role project-admin' for {{ verify_people_bo_expected }};
+          got rc {{ verify_people_add_bo.rc }}: {{ verify_people_add_bo.stdout }} ({{ verify_people_add_bo.stderr }})
+      vars:
+        verify_people_bo_expected:
+          person: bo
+          role: project-admin
+          laptops:
+            - laptop: bo-laptop
+              vpn_address: 10.73.7.9
+
+    - name: Read passwd, host groups and ada's and bo's group memberships
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import grp, json, pwd, subprocess
+            host_groups = {g.gr_name for g in grp.getgrall()}
+            users = {}
+            for name in ("ada", "bo"):
+                pw = pwd.getpwnam(name)
+                groups = subprocess.check_output(["id", "-Gn", name], text=True).split()
+                users[name] = {"uid": pw.pw_uid, "home": pw.pw_dir, "shell": pw.pw_shell, "groups": sorted(groups)}
+            present_virt = sorted(g for g in ("kvm", "libvirt") if g in host_groups)
+            print(json.dumps({"users": users, "present_virt": present_virt}))
+      register: verify_people_accounts
+      changed_when: false
+
+    - name: Assert ada and bo exist with porelo-people and whichever of kvm and libvirt exist on the host
+      ansible.builtin.assert:
+        that:
+          - verify_people_account_info.users.ada.uid >= 1000
+          - verify_people_account_info.users.ada.home == '/home/ada'
+          - verify_people_account_info.users.bo.uid >= 1000
+          - verify_people_account_info.users.bo.home == '/home/bo'
+          - "'porelo-people' in verify_people_account_info.users.ada.groups"
+          - "'porelo-people' in verify_people_account_info.users.bo.groups"
+          - verify_people_account_info.present_virt | difference(verify_people_account_info.users.ada.groups) == []
+          - verify_people_account_info.present_virt | difference(verify_people_account_info.users.bo.groups) == []
+        fail_msg: >-
+          asked for ada and bo with uid >= 1000, homes /home/ada and /home/bo, group porelo-people and installed
+          virtualization groups; got {{ verify_people_account_info }}
+      vars:
+        verify_people_account_info: "{{ verify_people_accounts.stdout | from_json }}"
+
+    - name: Read ada's authorized_keys file and WireGuard peer file metadata
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/ssh/authorized_keys/ada
+        - /etc/wireguard/porelo-host-peers/ada.conf
+      register: verify_people_access_stats
+
+    - name: Read ada's authorized_keys file and WireGuard peer file contents
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /etc/ssh/authorized_keys/ada
+        - /etc/wireguard/porelo-host-peers/ada.conf
+      register: verify_people_access_contents
+
+    - name: Validate the SSH daemon's configuration with sshd -t
+      ansible.builtin.command:
+        argv: [/usr/sbin/sshd, -t]
+      register: verify_people_sshd_test
+      changed_when: false
+      failed_when: false
+
+    - name: Read the live WireGuard peers on wg-porelo
+      ansible.builtin.command:
+        argv: [wg, show, wg-porelo, peers]
+      register: verify_people_wg_peers
+      changed_when: false
+
+    - name: Assert ada's authorized_keys, sshd -t, peer file and wg-porelo peers match her admitted laptop
+      ansible.builtin.assert:
+        that:
+          - verify_people_access_stats.results[0].stat.exists
+          - verify_people_access_stats.results[0].stat.isreg | default(false)
+          - verify_people_access_stats.results[0].stat.uid | default(-1) == 0
+          - verify_people_access_stats.results[0].stat.gid | default(-1) == 0
+          - verify_people_access_stats.results[0].stat.mode | default('') == '0644'
+          - (verify_people_access_contents.results[0].content | b64decode)
+            == ('from="10.73.7.3" ' ~ verify_people_ada_ssh ~ '\n')
+          - verify_people_sshd_test.rc == 0
+          - verify_people_access_stats.results[1].stat.exists
+          - verify_people_access_stats.results[1].stat.isreg | default(false)
+          - verify_people_access_stats.results[1].stat.uid | default(-1) == 0
+          - verify_people_access_stats.results[1].stat.gid | default(-1) == 0
+          - verify_people_access_stats.results[1].stat.mode | default('') == '0600'
+          - (verify_people_access_contents.results[1].content | b64decode)
+            == ('[Peer]\nPublicKey = ' ~ verify_people_ada_wg ~ '\nAllowedIPs = 10.73.7.3/32\n\n')
+          - verify_people_ada_wg in verify_people_wg_peers.stdout_lines
+          - verify_people_bo_wg in verify_people_wg_peers.stdout_lines
+        fail_msg: >-
+          asked for root-owned /etc/ssh/authorized_keys/ada (0644) with from="10.73.7.3", sshd -t rc 0, root-owned
+          /etc/wireguard/porelo-host-peers/ada.conf (0600) and ada/bo peers on wg-porelo;
+          got stats {{ verify_people_access_stats.results | map(attribute='stat') | list }},
+          authorized_keys '{{ verify_people_access_contents.results[0].content | b64decode }}',
+          sshd rc {{ verify_people_sshd_test.rc }} ({{ verify_people_sshd_test.stderr }}),
+          peer conf '{{ verify_people_access_contents.results[1].content | b64decode }}',
+          wg peers {{ verify_people_wg_peers.stdout_lines }}
+      vars:
+        verify_people_ada_ssh: "{{ verify_people_public_inputs.results[0].content | b64decode | trim }}"
+        verify_people_ada_wg: "{{ verify_people_public_inputs.results[1].content | b64decode | trim }}"
+        verify_people_bo_wg: "{{ verify_people_public_inputs.results[3].content | b64decode | trim }}"
+
+    - name: Create ada's WireGuard peer namespace at 10.73.7.3 linked to the host
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          ip netns add verify-ada
+          ip link add verify-ada0 type veth peer name verify-ada1 netns verify-ada
+          ip address add 10.250.0.5/30 dev verify-ada0
+          ip link set verify-ada0 up
+          ip -n verify-ada address add 10.250.0.6/30 dev verify-ada1
+          ip -n verify-ada link set verify-ada1 up
+          ip -n verify-ada link set lo up
+          ip -n verify-ada link add wg0 type wireguard
+          ip netns exec verify-ada wg set wg0 private-key /root/verify-people/ada.wg \
+              peer "$(cat /root/vpn-host.pub)" endpoint 10.250.0.5:51820 allowed-ips 10.73.7.1/32
+          ip -n verify-ada address add 10.73.7.3/24 dev wg0
+          ip -n verify-ada link set wg0 up
+        executable: /bin/bash
+        creates: /run/netns/verify-ada
+
+    - name: Reach ada@10.73.7.1 over SSH through ada's VPN peer namespace
+      ansible.builtin.command:
+        argv:
+          - ip
+          - netns
+          - exec
+          - verify-ada
+          - ssh
+          - -o
+          - BatchMode=yes
+          - -o
+          - ConnectTimeout=10
+          - -o
+          - IdentitiesOnly=yes
+          - -o
+          - StrictHostKeyChecking=yes
+          - -o
+          - UserKnownHostsFile=/root/verify-people/known_hosts
+          - -i
+          - /root/verify-people/ada.ssh
+          - ada@10.73.7.1
+          - "true"
+      register: verify_people_vpn_ssh
+      changed_when: false
+      failed_when: false
+
+    - name: Try SSH with ada's key from and to the host's public IPv4 address
+      ansible.builtin.command:
+        argv:
+          - ssh
+          - -b
+          - "{{ verify_people_public_ip }}"
+          - -o
+          - BatchMode=yes
+          - -o
+          - ConnectTimeout=10
+          - -o
+          - IdentitiesOnly=yes
+          - -o
+          - StrictHostKeyChecking=yes
+          - -o
+          - UserKnownHostsFile=/root/verify-people/known_hosts
+          - -i
+          - /root/verify-people/ada.ssh
+          - "ada@{{ verify_people_public_ip }}"
+          - "true"
+      vars:
+        verify_people_public_ip: "{{ verify_people_public_inputs.results[4].content | b64decode | trim }}"
+      register: verify_people_public_ssh
+      changed_when: false
+      failed_when: false
+
+    - name: Assert ada's SSH key reaches 10.73.7.1 through the VPN and is refused on the public address
+      ansible.builtin.assert:
+        that:
+          - verify_people_vpn_ssh.rc == 0
+          - verify_people_public_ssh.rc != 0
+          - "'Permission denied' in verify_people_public_ssh.stderr"
+        fail_msg: >-
+          asked for ssh ada@10.73.7.1 over the VPN to succeed and ssh from the public address to fail with Permission
+          denied; got VPN rc {{ verify_people_vpn_ssh.rc }} ({{ verify_people_vpn_ssh.stderr }}),
+          public rc {{ verify_people_public_ssh.rc }} ({{ verify_people_public_ssh.stderr }})
+
+    - name: Verify ada's forge identities, private token delivery file and self-removal when the forge is on
+      when: verify_forge == 'on'
+      block:
+        - name: Read /etc/porelo-host/forge.conf to inspect configured agents
+          ansible.builtin.slurp:
+            src: /etc/porelo-host/forge.conf
+          register: verify_people_forge_conf
+
+        - name: List every Forgejo user after ada and bo are admitted
+          ansible.builtin.shell:
+            cmd: >-
+              set -o pipefail && cd / && runuser -u porelo-forge --
+              env XDG_RUNTIME_DIR="/run/user/$(id -u porelo-forge)"
+              podman exec forgejo forgejo admin user list
+            executable: /bin/bash
+          register: verify_people_forge_users
+          changed_when: false
+          no_log: true
+
+        - name: Read ada's forge token delivery directory and file metadata
+          ansible.builtin.stat:
+            path: "{{ item }}"
+          loop:
+            - /run/porelo-host/people/ada
+            - /run/porelo-host/people/ada/identities.tokens
+          register: verify_people_identity_stats
+
+        - name: Validate delivered forge identity tokens and record them for the leak scan
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -c
+              - |
+                import pathlib, re
+                conf = dict(
+                    line.split("=", 1)
+                    for line in pathlib.Path("/etc/porelo-host/forge.conf").read_text(encoding="utf-8").splitlines()
+                    if "=" in line
+                )
+                agents = [a for a in conf.get("agents", "").split(",") if a]
+                if not agents:
+                    raise SystemExit("forge.conf has an empty agents= reference set")
+                found = []
+                for person in ("ada", "bo"):
+                    expected = [person, f"porelo-{person}", *(f"{a}-{person}" for a in agents)]
+                    lines = pathlib.Path(f"/run/porelo-host/people/{person}/identities.tokens").read_text(
+                        encoding="utf-8"
+                    ).splitlines()
+                    got = []
+                    for line in lines:
+                        parts = line.split(" ")
+                        if len(parts) != 2 or not re.fullmatch(r"[0-9a-f]{40}", parts[1]):
+                            raise SystemExit(f"malformed token line for {person}")
+                        got.append(parts[0])
+                        found.append(parts[1])
+                    if got != expected:
+                        raise SystemExit(f"expected identities {expected}, got {got}")
+                with open("/root/verify-people/tokens.pat", "a", encoding="utf-8") as pat:
+                    for token in found:
+                        pat.write(token + "\n")
+                print("recorded")
+          register: verify_people_identity_recorded
+          changed_when: false
+          no_log: true
+
+        - name: Remove /run/porelo-host/people/ada/identities.tokens as ada
+          ansible.builtin.command:
+            chdir: /
+            argv:
+              - sudo
+              - -u
+              - ada
+              - python3
+              - -c
+              - "import os; os.unlink('/run/porelo-host/people/ada/identities.tokens')"
+          changed_when: true
+
+        - name: Read whether /run/porelo-host/people/ada/identities.tokens is gone after ada removes it
+          ansible.builtin.stat:
+            path: /run/porelo-host/people/ada/identities.tokens
+          register: verify_people_identity_removed
+
+        - name: Assert Forgejo holds ada, porelo-ada and each <agent>-ada, and ada owned and removed identities.tokens
+          ansible.builtin.assert:
+            that:
+              - verify_people_agents | length > 0
+              - verify_people_expected_ada | difference(verify_people_listed_users) == []
+              - verify_people_expected_bo | difference(verify_people_listed_users) == []
+              - verify_people_identity_stats.results[0].stat.isdir | default(false)
+              - verify_people_identity_stats.results[0].stat.pw_name | default('') == 'ada'
+              - verify_people_identity_stats.results[0].stat.gr_name | default('') == 'ada'
+              - verify_people_identity_stats.results[0].stat.mode | default('') == '0700'
+              - verify_people_identity_stats.results[1].stat.isreg | default(false)
+              - verify_people_identity_stats.results[1].stat.pw_name | default('') == 'ada'
+              - verify_people_identity_stats.results[1].stat.gr_name | default('') == 'ada'
+              - verify_people_identity_stats.results[1].stat.mode | default('') == '0600'
+              - verify_people_identity_recorded.stdout | trim == 'recorded'
+              - not verify_people_identity_removed.stat.exists
+            fail_msg: >-
+              asked for configured agents {{ verify_people_agents }}, Forgejo users {{ verify_people_expected_ada }} and
+              {{ verify_people_expected_bo }}, /run/porelo-host/people/ada (ada:ada 0700) with identities.tokens
+              (ada:ada 0600) removable by ada; got listed users {{ verify_people_listed_users }},
+              stats {{ verify_people_identity_stats.results | map(attribute='stat') | list }},
+              removed exists={{ verify_people_identity_removed.stat.exists }}
+          vars:
+            verify_people_agents_line: >-
+              {{ (verify_people_forge_conf.content | b64decode).splitlines()
+              | select('match', '^agents=') | first | default('agents=') }}
+            verify_people_agents: >-
+              {{ verify_people_agents_line.split('=', 1)[1].split(',') | reject('equalto', '') | list }}
+            verify_people_expected_ada: >-
+              {{ ['ada', 'porelo-ada'] + (verify_people_agents | map('regex_replace', '$', '-ada') | list) }}
+            verify_people_expected_bo: >-
+              {{ ['bo', 'porelo-bo'] + (verify_people_agents | map('regex_replace', '$', '-bo') | list) }}
+            verify_people_listed_users: >-
+              {{ verify_people_forge_users.stdout_lines[1:] | map('split') | map(attribute=1) | list }}
+
+    - name: Read ada's Matrix directory and host-registration-token metadata
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /home/ada/.config/porelo/matrix
+        - /home/ada/.config/porelo/matrix/host-registration-token
+      register: verify_people_matrix_stats
+
+    - name: Validate Matrix registration tokens and record them for the leak scan
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import pathlib, re
+            paths = [
+                pathlib.Path("/home/ada/.config/porelo/matrix/host-registration-token"),
+                pathlib.Path("/home/bo/.config/porelo/matrix/host-registration-token"),
+            ]
+            admin = pathlib.Path("/etc/porelo-host/matrix-admin.token")
+            if admin.exists():
+                paths.append(admin)
+            tokens = []
+            for path in paths:
+                value = path.read_text(encoding="utf-8").removesuffix("\n")
+                if not re.fullmatch(r"[!-~]{1,1024}", value):
+                    raise SystemExit(f"invalid Matrix token shape in {path}")
+                tokens.append(value)
+            with open("/root/verify-people/tokens.pat", "a", encoding="utf-8") as pat:
+                for token in tokens:
+                    pat.write(token + "\n")
+            print("recorded")
+      register: verify_people_matrix_recorded
+      changed_when: false
+      no_log: true
+
+    - name: Assert ada's ~/.config/porelo/matrix (0700) holds her host-registration-token (0600)
+      ansible.builtin.assert:
+        that:
+          - verify_people_matrix_stats.results[0].stat.isdir | default(false)
+          - verify_people_matrix_stats.results[0].stat.pw_name | default('') == 'ada'
+          - verify_people_matrix_stats.results[0].stat.gr_name | default('') == 'ada'
+          - verify_people_matrix_stats.results[0].stat.mode | default('') == '0700'
+          - verify_people_matrix_stats.results[1].stat.isreg | default(false)
+          - verify_people_matrix_stats.results[1].stat.pw_name | default('') == 'ada'
+          - verify_people_matrix_stats.results[1].stat.gr_name | default('') == 'ada'
+          - verify_people_matrix_stats.results[1].stat.mode | default('') == '0600'
+          - verify_people_matrix_stats.results[1].stat.size | default(0) > 0
+          - verify_people_matrix_recorded.stdout | trim == 'recorded'
+        fail_msg: >-
+          asked for /home/ada/.config/porelo/matrix (ada:ada 0700) and non-empty host-registration-token (ada:ada 0600);
+          got {{ verify_people_matrix_stats.results | map(attribute='stat') | list }}
+
+    - name: Explain why live @….alpha-ada Matrix registration is skipped here
+      ansible.builtin.debug:
+        msg: >-
+          Skipping @….alpha-ada registration against the homeserver: porelo-message-transport-matrix belongs to
+          porelo-message-matrix, and the 0.5.1~snapshot.81 package installed on this build machine predates
+          machine-token and exposes no host-registration CLI call to read without guessing its contract.
+        verbosity: 0
+
+    - name: Set ada's own forge password through sudo -n /usr/local/sbin/porelo-host-forge-password
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          cd /
+          umask 077
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          head -c 24 /dev/urandom | base64 > "$work/pw"
+          sudo -u ada sudo -n /usr/local/sbin/porelo-host-forge-password < "$work/pw" > "$work/out" 2> "$work/err"
+          cat "$work/out" "$work/err" >> /root/verify-people/helper.out
+          cat "$work/pw" >> /root/verify-people/tokens.pat
+          cat "$work/err" >&2
+          cat "$work/out"
+        executable: /bin/bash
+      register: verify_people_sudo_password
+      changed_when: true
+      no_log: true
+      when: verify_forge == 'on'
+
+    - name: Assert sudo -u ada sudo -n /usr/local/sbin/porelo-host-forge-password succeeds for ada's login
+      ansible.builtin.assert:
+        that:
+          - verify_people_sudo_password.rc == 0
+          - verify_people_sudo_password.stdout | trim == "ada's password is set; sign in at the forge with it."
+        fail_msg: >-
+          asked sudo -u ada sudo -n /usr/local/sbin/porelo-host-forge-password to set ada's password;
+          got rc {{ verify_people_sudo_password.rc }}
+      when: verify_forge == 'on'
+
+    - name: Ask sudo -n as ada to refuse other commands and any extra argument to porelo-host-forge-password
+      ansible.builtin.command:
+        chdir: /
+        argv: "{{ item.argv }}"
+      loop:
+        - label: /usr/bin/id
+          argv: [sudo, -u, ada, sudo, -n, /usr/bin/id]
+        - label: porelo-host-person lock bo
+          argv: [sudo, -u, ada, sudo, -n, /usr/local/sbin/porelo-host-person, lock, bo]
+        - label: porelo-host-forge-password with an argument
+          argv: [sudo, -u, ada, sudo, -n, /usr/local/sbin/porelo-host-forge-password, extra]
+      loop_control:
+        label: "{{ item.label }}"
+      register: verify_people_sudo_refusals
+      changed_when: false
+      failed_when: false
+
+    - name: Assert sudo -n as ada refuses every command other than no-argument porelo-host-forge-password
+      ansible.builtin.assert:
+        that:
+          - item.rc != 0
+          - "'password is required' in item.stderr or 'not allowed' in item.stderr"
+        fail_msg: >-
+          asked sudo -n as ada for '{{ item.item.label }}' to fail without privilege;
+          got rc {{ item.rc }}: {{ item.stdout }} ({{ item.stderr }})
+      loop: "{{ verify_people_sudo_refusals.results }}"
+      loop_control:
+        label: "{{ item.item.label }}"
+
+    - name: Lock ada with /usr/local/sbin/porelo-host-person lock ada
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          out=$(mktemp)
+          err=$(mktemp)
+          trap 'rm -f "$out" "$err"' EXIT
+          rc=0
+          /usr/local/sbin/porelo-host-person lock ada < /dev/null > "$out" 2> "$err" || rc=$?
+          cat "$out" "$err" >> /root/verify-people/helper.out
+          cat "$err" >&2
+          cat "$out"
+          exit "$rc"
+        executable: /bin/bash
+      register: verify_people_lock_ada
+      changed_when: true
+
+    - name: Assert lock ada answers one JSON line with locked true
+      ansible.builtin.assert:
+        that:
+          - verify_people_lock_ada.rc == 0
+          - verify_people_lock_ada.stdout_lines | length == 1
+          - "(verify_people_lock_ada.stdout | from_json) == {'person': 'ada', 'locked': true}"
+        fail_msg: >-
+          asked 'porelo-host-person lock ada' for {"person":"ada","locked":true};
+          got rc {{ verify_people_lock_ada.rc }}: {{ verify_people_lock_ada.stdout }}
+          ({{ verify_people_lock_ada.stderr }})
+
+    - name: Try SSH through ada's VPN namespace after lock ada
+      ansible.builtin.command:
+        argv:
+          - ip
+          - netns
+          - exec
+          - verify-ada
+          - ssh
+          - -o
+          - BatchMode=yes
+          - -o
+          - ConnectTimeout=5
+          - -o
+          - IdentitiesOnly=yes
+          - -o
+          - StrictHostKeyChecking=yes
+          - -o
+          - UserKnownHostsFile=/root/verify-people/known_hosts
+          - -i
+          - /root/verify-people/ada.ssh
+          - ada@10.73.7.1
+          - "true"
+      register: verify_people_locked_ssh
+      changed_when: false
+      failed_when: false
+
+    - name: Read wg-porelo's peers after lock ada
+      ansible.builtin.command:
+        argv: [wg, show, wg-porelo, peers]
+      register: verify_people_locked_peers
+      changed_when: false
+
+    - name: Read ada's SSH key, VPN peer and Matrix registration token paths after lock ada
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/ssh/authorized_keys/ada
+        - /etc/wireguard/porelo-host-peers/ada.conf
+        - /home/ada/.config/porelo/matrix/host-registration-token
+      register: verify_people_locked_paths
+
+    - name: Assert lock ada blocks VPN SSH, removes her peer and deletes her SSH, peer and Matrix token files
+      ansible.builtin.assert:
+        that:
+          - verify_people_locked_ssh.rc != 0
+          - verify_people_ada_wg not in verify_people_locked_peers.stdout_lines
+          - verify_people_bo_wg in verify_people_locked_peers.stdout_lines
+          - verify_people_locked_paths.results | selectattr('stat.exists') | list | length == 0
+        fail_msg: >-
+          asked lock ada to fail VPN ssh, remove ada's WireGuard peer while keeping bo's, and remove ada's SSH, peer and
+          Matrix token files; got ssh rc {{ verify_people_locked_ssh.rc }},
+          peers {{ verify_people_locked_peers.stdout_lines }},
+          existing paths {{ verify_people_locked_paths.results | selectattr('stat.exists')
+          | map(attribute='item') | list }}
+      vars:
+        verify_people_ada_wg: "{{ verify_people_public_inputs.results[1].content | b64decode | trim }}"
+        verify_people_bo_wg: "{{ verify_people_public_inputs.results[3].content | b64decode | trim }}"
+
+    - name: Read prohibit_login and remaining tokens on ada's Forgejo identities after lock ada
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, pathlib, secrets, ssl, subprocess, urllib.request
+            conf = dict(
+                line.split("=", 1)
+                for line in pathlib.Path("/etc/porelo-host/forge.conf").read_text(encoding="utf-8").splitlines()
+                if "=" in line
+            )
+            account = conf["account"]
+            agents = [a for a in conf.get("agents", "").split(",") if a]
+            identities = ["ada", "porelo-ada", *(f"{a}-ada" for a in agents)]
+            uid = subprocess.check_output(["/usr/bin/id", "-u", account], text=True).strip()
+            tname = "verify-lock-check-" + secrets.token_hex(12)
+            token = subprocess.check_output(
+                [
+                    "/usr/sbin/runuser", "-u", account, "--",
+                    "/usr/bin/env", f"XDG_RUNTIME_DIR=/run/user/{uid}",
+                    "/usr/bin/podman", "exec", "forgejo", "forgejo", "admin", "user",
+                    "generate-access-token", "--username", "porelo-admin",
+                    "--token-name", tname, "--scopes", "write:admin,read:user", "--raw",
+                ],
+                text=True,
+                cwd="/",
+            ).strip()
+            ctx = ssl.create_default_context(cafile="/etc/porelo-host/forge/ca.pem")
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}),
+                urllib.request.HTTPSHandler(context=ctx),
+            )
+            base = f"https://{conf['address']}:{conf['port']}/api/v1"
+            def call(method, path):
+                req = urllib.request.Request(
+                    base + path,
+                    method=method,
+                    headers={"Authorization": "token " + token, "Content-Type": "application/json"},
+                )
+                with opener.open(req, timeout=30) as resp:
+                    body = resp.read()
+                    return resp.status, (json.loads(body) if body else None)
+            cleaned = False
+            try:
+                prohibited = {}
+                token_counts = {}
+                for identity in identities:
+                    _, user_obj = call("GET", f"/users/{identity}")
+                    _, tok_list = call("GET", f"/admin/users/{identity}/tokens?limit=50&page=1")
+                    prohibited[identity] = bool(user_obj.get("prohibit_login"))
+                    token_counts[identity] = len(tok_list)
+            finally:
+                _, admin_tokens = call("GET", "/admin/users/porelo-admin/tokens?limit=50&page=1")
+                for entry in admin_tokens:
+                    if entry.get("name") == tname:
+                        status, _ = call("DELETE", f"/admin/users/porelo-admin/tokens/{entry['id']}")
+                        cleaned = status == 204
+            print(json.dumps({"prohibited": prohibited, "token_counts": token_counts, "cleaned": cleaned}))
+      register: verify_people_locked_forge
+      changed_when: false
+      no_log: true
+      when: verify_forge == 'on'
+
+    - name: Assert every Forgejo login of ada is disabled (prohibit_login) and holds zero tokens after lock ada
+      ansible.builtin.assert:
+        that:
+          - verify_people_forge_lock.cleaned
+          - verify_people_forge_lock.prohibited | dict2items | rejectattr('value') | list | length == 0
+          - verify_people_forge_lock.token_counts | dict2items
+            | rejectattr('value', 'equalto', 0) | list | length == 0
+        fail_msg: >-
+          asked every Forgejo identity of ada to carry prohibit_login=true and zero tokens, with the probe token
+          deleted; got {{ verify_people_forge_lock }}
+      vars:
+        verify_people_forge_lock: "{{ verify_people_locked_forge.stdout | from_json }}"
+      when: verify_forge == 'on'
+
+    - name: Run /usr/local/sbin/porelo-host-person lock ada a second time
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          out=$(mktemp)
+          err=$(mktemp)
+          trap 'rm -f "$out" "$err"' EXIT
+          rc=0
+          /usr/local/sbin/porelo-host-person lock ada < /dev/null > "$out" 2> "$err" || rc=$?
+          cat "$out" "$err" >> /root/verify-people/helper.out
+          cat "$err" >&2
+          cat "$out"
+          exit "$rc"
+        executable: /bin/bash
+      register: verify_people_lock_ada_again
+      changed_when: false
+
+    - name: Assert a second lock ada is green with the same JSON line
+      ansible.builtin.assert:
+        that:
+          - verify_people_lock_ada_again.rc == 0
+          - verify_people_lock_ada_again.stdout_lines | length == 1
+          - "(verify_people_lock_ada_again.stdout | from_json) == {'person': 'ada', 'locked': true}"
+        fail_msg: >-
+          asked a second 'porelo-host-person lock ada' for rc 0 and {"person":"ada","locked":true};
+          got rc {{ verify_people_lock_ada_again.rc }}: {{ verify_people_lock_ada_again.stdout }}
+          ({{ verify_people_lock_ada_again.stderr }})
+
+    - name: Purge ada with /usr/local/sbin/porelo-host-person purge ada
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          out=$(mktemp)
+          err=$(mktemp)
+          trap 'rm -f "$out" "$err"' EXIT
+          rc=0
+          /usr/local/sbin/porelo-host-person purge ada < /dev/null > "$out" 2> "$err" || rc=$?
+          cat "$out" "$err" >> /root/verify-people/helper.out
+          cat "$err" >&2
+          cat "$out"
+          exit "$rc"
+        executable: /bin/bash
+      register: verify_people_purge_ada
+      changed_when: true
+
+    - name: Assert purge ada answers one JSON line with purged true
+      ansible.builtin.assert:
+        that:
+          - verify_people_purge_ada.rc == 0
+          - verify_people_purge_ada.stdout_lines | length == 1
+          - "(verify_people_purge_ada.stdout | from_json) == {'person': 'ada', 'purged': true}"
+        fail_msg: >-
+          asked 'porelo-host-person purge ada' for {"person":"ada","purged":true};
+          got rc {{ verify_people_purge_ada.rc }}: {{ verify_people_purge_ada.stdout }}
+          ({{ verify_people_purge_ada.stderr }})
+
+    - name: Check getent passwd ada and ada's home and record paths after purge ada
+      ansible.builtin.command:
+        argv: [getent, passwd, ada]
+      register: verify_people_purged_account
+      changed_when: false
+      failed_when: false
+
+    - name: Read whether /home/ada or /etc/porelo-host/people/ada.conf remains after purge ada
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /home/ada
+        - /etc/porelo-host/people/ada.conf
+      register: verify_people_purged_paths
+
+    - name: Run /usr/local/sbin/porelo-host-person purge ada a second time
+      ansible.builtin.shell:
+        cmd: |
+          set -uo pipefail
+          out=$(mktemp)
+          err=$(mktemp)
+          trap 'rm -f "$out" "$err"' EXIT
+          rc=0
+          /usr/local/sbin/porelo-host-person purge ada < /dev/null > "$out" 2> "$err" || rc=$?
+          cat "$out" "$err" >> /root/verify-people/helper.out
+          cat "$err" >&2
+          cat "$out"
+          exit "$rc"
+        executable: /bin/bash
+      register: verify_people_purge_ada_again
+      changed_when: false
+      failed_when: false
+
+    - name: Assert ada's account, home and record are gone and a second purge ada refuses with 65
+      ansible.builtin.assert:
+        that:
+          - verify_people_purged_account.rc == 2
+          - verify_people_purged_paths.results | selectattr('stat.exists') | list | length == 0
+          - verify_people_purge_ada_again.rc == 65
+          - verify_people_purge_ada_again.stdout == ''
+          - "verify_people_purge_ada_again.stderr is match('^porelo-host-person: ')"
+          - "'the person is unknown to the people records' in verify_people_purge_ada_again.stderr"
+        fail_msg: >-
+          asked purge ada to delete the account (getent rc 2), /home/ada and /etc/porelo-host/people/ada.conf, and
+          refuse a second purge with 65; got getent rc {{ verify_people_purged_account.rc }},
+          paths {{ verify_people_purged_paths.results | selectattr('stat.exists') | map(attribute='item') | list }},
+          second purge rc {{ verify_people_purge_ada_again.rc }}: {{ verify_people_purge_ada_again.stdout }}
+          ({{ verify_people_purge_ada_again.stderr }})
+
+    - name: Write every registered stdout and stderr from the people tasks into a root-only file for the leak scan
+      ansible.builtin.copy:
+        dest: /root/verify-people/registered.out
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          {{ verify_people_pre_refusals.results | map(attribute='stdout') | join('\n') }}
+          {{ verify_people_pre_refusals.results | map(attribute='stderr') | join('\n') }}
+          {{ verify_people_add_ada.stdout }}
+          {{ verify_people_add_ada.stderr }}
+          {{ verify_people_post_ada_refusals.results | map(attribute='stdout') | join('\n') }}
+          {{ verify_people_post_ada_refusals.results | map(attribute='stderr') | join('\n') }}
+          {{ verify_people_add_bo.stdout }}
+          {{ verify_people_add_bo.stderr }}
+          {{ verify_people_accounts.stdout }}
+          {{ verify_people_accounts.stderr }}
+          {{ verify_people_sshd_test.stdout }}
+          {{ verify_people_sshd_test.stderr }}
+          {{ verify_people_wg_peers.stdout }}
+          {{ verify_people_wg_peers.stderr }}
+          {{ verify_people_vpn_ssh.stdout }}
+          {{ verify_people_vpn_ssh.stderr }}
+          {{ verify_people_public_ssh.stdout }}
+          {{ verify_people_public_ssh.stderr }}
+          {{ (verify_people_forge_users | default({})).stdout | default('') }}
+          {{ (verify_people_forge_users | default({})).stderr | default('') }}
+          {{ (verify_people_sudo_password | default({})).stdout | default('') }}
+          {{ (verify_people_sudo_password | default({})).stderr | default('') }}
+          {{ verify_people_sudo_refusals.results | map(attribute='stdout') | join('\n') }}
+          {{ verify_people_sudo_refusals.results | map(attribute='stderr') | join('\n') }}
+          {{ verify_people_lock_ada.stdout }}
+          {{ verify_people_lock_ada.stderr }}
+          {{ verify_people_locked_ssh.stdout }}
+          {{ verify_people_locked_ssh.stderr }}
+          {{ verify_people_locked_peers.stdout }}
+          {{ verify_people_locked_peers.stderr }}
+          {{ (verify_people_locked_forge | default({})).stdout | default('') }}
+          {{ (verify_people_locked_forge | default({})).stderr | default('') }}
+          {{ verify_people_lock_ada_again.stdout }}
+          {{ verify_people_lock_ada_again.stderr }}
+          {{ verify_people_purge_ada.stdout }}
+          {{ verify_people_purge_ada.stderr }}
+          {{ verify_people_purged_account.stdout }}
+          {{ verify_people_purged_account.stderr }}
+          {{ verify_people_purge_ada_again.stdout }}
+          {{ verify_people_purge_ada_again.stderr }}
+      changed_when: false
+      no_log: true
+
+    - name: Search registered outputs, helper outputs and journalctl -b for Matrix and identity tokens with a control
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          umask 077
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          expected_min={{ 8 if verify_forge == 'on' else 2 }}
+          count=$(wc -l < /root/verify-people/tokens.pat)
+          [ "$count" -ge "$expected_min" ] || {
+              echo "asked for at least $expected_min recorded tokens, got $count" >&2
+              exit 1
+          }
+          awk 'length($0) < 8 { exit 1 }' /root/verify-people/tokens.pat || {
+              echo "recorded token pattern file holds a short or empty line" >&2
+              exit 1
+          }
+          sort -u /root/verify-people/tokens.pat > "$work/tokens.pat"
+          head -n 1 "$work/tokens.pat" > "$work/planted"
+          if ! grep -Fq -f "$work/tokens.pat" -- "$work/planted"; then
+              echo "planted control token did not match" >&2
+              exit 1
+          fi
+          echo "planted: refused"
+          journalctl -b -o cat --no-pager > "$work/journal"
+          check_clean() {
+              local label=$1 target=$2 rc=0
+              [ -s "$target" ] || { echo "empty scan target for $label" >&2; exit 1; }
+              grep -Fq -f "$work/tokens.pat" -- "$target" || rc=$?
+              case $rc in
+                  0) echo "a secret token appeared in $label" >&2; exit 1 ;;
+                  1) echo "$label: clean" ;;
+                  *) echo "grep ended $rc scanning $label" >&2; exit 1 ;;
+              esac
+          }
+          check_clean registered /root/verify-people/registered.out
+          check_clean helper /root/verify-people/helper.out
+          check_clean journal "$work/journal"
+        executable: /bin/bash
+      register: verify_people_leak_scan
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: Assert the planted token control matched and no token leaked to output or journal
+      ansible.builtin.assert:
+        that:
+          - verify_people_leak_scan.rc == 0
+          - >-
+            verify_people_leak_scan.stdout_lines
+            == ['planted: refused', 'registered: clean', 'helper: clean', 'journal: clean']
+        fail_msg: >-
+          asked for no Matrix or Forgejo identity token in registered stdout/stderr, helper output or journalctl -b;
+          got rc {{ verify_people_leak_scan.rc }}: {{ verify_people_leak_scan.stderr }}
+  always:
+    - name: Remove ada's temporary WireGuard peer namespace and veth interface
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          if [ -e /run/netns/verify-ada ]; then
+              ip netns del verify-ada
+          fi
+          if [ -e /sys/class/net/verify-ada0 ]; then
+              ip link del verify-ada0
+          fi
+        executable: /bin/bash
+      changed_when: false
+      failed_when: false
+
+    - name: Remove the temporary people test key and scan directory
+      ansible.builtin.file:
+        path: /root/verify-people
+        state: absent
