@@ -7,6 +7,8 @@ nav:
     - What a program reads: lines.md
     - Testing: testing.md
     - Decisions: decisions.md
+    - Guides:
+        - "Sprint 6j: the host's side of the walk": guides/6j-host.md
 validation:
     links:
         anchors: warn
