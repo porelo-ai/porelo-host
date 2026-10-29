@@ -123,6 +123,15 @@
           text: Starting the Matrix homeserver
           seconds: 20
 
+    - name: Install the helper by which the host admin admits, locks and purges people
+      ansible.builtin.include_role:
+        name: porelo.host.porelo
+        tasks_from: person
+      vars:
+        porelo_host_step:
+          text: Installing the people's helper
+          seconds: 5
+
     - name: Write and print what a project's access file needs of the host
       ansible.builtin.include_role:
         name: porelo.host.base
