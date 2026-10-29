@@ -460,7 +460,7 @@ def test_lock_removes_access_before_stopping_tasks_and_is_idempotent(host, capsy
         ["wg", "set", "wg-porelo", "peer", wg_key(1), "remove"],
         ["forge_lock", "alice"],
         ["matrix_expel_revoke", "alice"],
-        ["runuser", "-u", "alice", "--", "porelo", "task", "stop", "--all"],
+        ["runuser", "-u", "alice", "--", "env", "XDG_RUNTIME_DIR=/run/user/1000", "porelo", "task", "stop", "--all"],
         ["loginctl", "terminate-user", "alice"],
         ["usermod", "--lock", "--expiredate", "1", "alice"],
     ]
@@ -502,9 +502,22 @@ def test_purge_locks_first_clears_vault_then_removes_account_and_ranges(host, ca
     capsys.readouterr()
     assert host.invoke("purge", "alice", data=b"") == 0
     assert json.loads(capsys.readouterr().out) == {"person": "alice", "purged": True}
-    assert host.calls[-4:] == [
+    assert host.calls[-5:] == [
         ["usermod", "--lock", "--expiredate", "1", "alice"],
-        ["runuser", "-u", "alice", "--", "porelo", "vault", "clear"],
+        ["runuser", "-u", "alice", "--", "env", "XDG_RUNTIME_DIR=/run/user/1000", "porelo", "task", "stop", "--all"],
+        [
+            "runuser",
+            "-u",
+            "alice",
+            "--",
+            "env",
+            "XDG_RUNTIME_DIR=/run/user/1000",
+            "porelo",
+            "vault",
+            "clear",
+            "--yes",
+            "--force",
+        ],
         ["loginctl", "disable-linger", "alice"],
         ["userdel", "--remove", "alice"],
     ]
@@ -689,12 +702,26 @@ def test_failed_peer_removal_still_disables_the_account_and_allows_retry(host, c
     assert "locked=true" in host.path("/etc/porelo-host/people/alice.conf").read_text()
 
 
+def test_purge_clears_no_vault_while_a_task_of_the_person_still_runs(host, capsys):
+    """Prevent clearing a vault whose token a surviving task still holds, as Porelo's lock-out order says."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    assert host.invoke("lock", "alice", data=b"") == 0
+    capsys.readouterr()
+    host.calls.clear()
+    host.fail = ["runuser", "-u", "alice", "--", "env", "XDG_RUNTIME_DIR=/run/user/1000", "porelo", "task", "stop"]
+    assert host.invoke("purge", "alice", data=b"") == 69
+    assert not any("vault" in args for args in host.calls)
+    assert not any(args[0] == "userdel" for args in host.calls)
+    assert "alice" in host.accounts
+    assert host.path("/etc/porelo-host/people/alice.conf").exists()
+
+
 def test_failed_vault_clear_keeps_the_locked_account_and_record_for_retry(host, capsys):
     """Prevent account deletion before the person's vault has been cleared successfully."""
     assert host.invoke("add", "alice", "--role", "project-admin") == 0
     capsys.readouterr()
     host.calls.clear()
-    host.fail = ["runuser", "-u", "alice", "--", "porelo", "vault", "clear"]
+    host.fail = ["runuser", "-u", "alice", "--", "env", "XDG_RUNTIME_DIR=/run/user/1000", "porelo", "vault", "clear"]
     assert host.invoke("purge", "alice", data=b"") == 69
     assert not any(args[0] == "userdel" for args in host.calls)
     assert "locked=true" in host.path("/etc/porelo-host/people/alice.conf").read_text()
@@ -795,7 +822,18 @@ def test_failed_service_revocation_still_locks_the_host_account_for_retry(host, 
     assert host.invoke("lock", "alice", data=b"") == 69
     assert ["usermod", "--lock", "--expiredate", "1", "alice"] in host.calls
     assert ["loginctl", "terminate-user", "alice"] in host.calls
-    assert ["runuser", "-u", "alice", "--", "porelo", "task", "stop", "--all"] in host.calls
+    assert [
+        "runuser",
+        "-u",
+        "alice",
+        "--",
+        "env",
+        "XDG_RUNTIME_DIR=/run/user/1000",
+        "porelo",
+        "task",
+        "stop",
+        "--all",
+    ] in host.calls
     assert "locked=false" in host.path("/etc/porelo-host/people/alice.conf").read_text()
     assert not capsys.readouterr().out
 

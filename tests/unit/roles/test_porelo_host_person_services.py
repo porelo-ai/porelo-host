@@ -92,7 +92,7 @@ class Services:
                         self.tokens.setdefault(user, []).append(len(self.tokens.get(user, [])) + 1)
                         answer = PERSON_TOKEN + "\n"
             return subprocess.CompletedProcess(args, 0, answer, "")
-        if "porelo-message-transport-matrix" in args:
+        if "/usr/libexec/porelo/transports/porelo-message-transport-matrix" in args:
             assert args[2] == "porelo-matrix"
             assert "XDG_RUNTIME_DIR=/run/user/1201" in args
             assert any(arg.startswith("HOME=") for arg in args)
@@ -147,7 +147,7 @@ def services(tmp_path, monkeypatch):
     scope = namespace["Host"].__init__.__globals__
     host = namespace["Host"]()
     host.root, host.owner, host.group = tmp_path, os.getuid(), os.getgid()
-    host.commands = {"runuser", "podman", "porelo-message-transport-matrix"}
+    host.commands = {"runuser", "podman", "/usr/libexec/porelo/transports/porelo-message-transport-matrix"}
     home = tmp_path / "home" / "alice"
     home.mkdir(parents=True)
     host.home, host.env = home, namespace["ENV"]

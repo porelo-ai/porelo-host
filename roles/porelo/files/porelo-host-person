@@ -62,6 +62,8 @@ import urllib.error
 import urllib.request
 import uuid
 
+# Installed by the transport's package outside every PATH, as the matrix role names it too.
+TRANSPORT = "/usr/libexec/porelo/transports/porelo-message-transport-matrix"
 ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
 USER = r"[a-z][a-z0-9-]{0,30}"
 LAPTOP = r"[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?"
@@ -382,6 +384,11 @@ class Host:
             refuse("a required account is root or has no usable absolute home", 69)
         return entry
 
+    def porelo(self, user, *arguments):
+        """Porelo as the person, with their own user manager's runtime, which rootless podman needs."""
+        uid = self.accounts[user] if self.accounts is not None else pwd.getpwnam(user).pw_uid
+        return ["runuser", "-u", user, "--", "env", f"XDG_RUNTIME_DIR=/run/user/{uid}", "porelo", *arguments]
+
     def as_account(self, user, arguments, **kwargs):
         """Pass credentials on stdin only, with a fixed runtime and the account's own home."""
         entry = self.account(user)
@@ -623,7 +630,7 @@ class Host:
         if not re.fullmatch(LAPTOP, host):
             refuse("forge.conf names no valid host", 69)
         self.account("porelo-matrix")
-        self.require(["runuser", "porelo-message-transport-matrix"])
+        self.require(["runuser", TRANSPORT])
         path = self.path("/etc/porelo-host/matrix-admin.token")
         self.check(path, mode=0o600)
         admin = self.secret(self.read(path).removesuffix("\n")) if path.exists() else None
@@ -639,7 +646,7 @@ class Host:
         """Exchange JSON secrets on stdin; persist a first admin credential before using the answer."""
         machine, path, admin = self.matrix_context(user)
         result = self.as_account(
-            "porelo-matrix", ["porelo-message-transport-matrix", "machine-token", verb, machine],
+            "porelo-matrix", [TRANSPORT, "machine-token", verb, machine],
             input=json.dumps({"secrets": {"PORELO_MATRIX_ADMIN_TOKEN": admin}} if admin else {}),
             accepted=(0, 78),
         )
@@ -826,7 +833,7 @@ class Host:
             except Refusal as error:
                 errors.append(error)
         if porelo:
-            self.command(["runuser", "-u", user, "--", "porelo", "task", "stop", "--all"], required=False)
+            self.command(self.porelo(user, "task", "stop", "--all"), required=False)
         for args in (["loginctl", "terminate-user", user], ["usermod", "--lock", "--expiredate", "1", user]):
             try:
                 self.command(args)
@@ -843,8 +850,10 @@ class Host:
             self.lock(user, record, porelo)
         self.remove_forge_tokens(user)
         if account_exists:
+            # Porelo's lock-out order: no task left that could hold a token, then the vault, with no terminal.
             if porelo:
-                self.command(["runuser", "-u", user, "--", "porelo", "vault", "clear"])
+                self.command(self.porelo(user, "task", "stop", "--all"))
+                self.command(self.porelo(user, "vault", "clear", "--yes", "--force"))
             self.command(["loginctl", "disable-linger", user])
             self.command(["userdel", "--remove", user])
         for kind in ("subuid", "subgid"):
