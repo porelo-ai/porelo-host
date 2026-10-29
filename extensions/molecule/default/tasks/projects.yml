@@ -796,6 +796,18 @@
           - -c
           - |
             import json, os, pathlib, pwd, shutil, ssl, subprocess, urllib.request
+            import sys, traceback
+
+            # A failure leaves only its line, its class, an HTTP code and the last sync's refusal; never its words.
+            last_sync = {}
+
+            def failed(kind, error, tb):
+                lines = [f.lineno for f in traceback.extract_tb(tb) if f.filename == "<string>"]
+                print(json.dumps({"failed_at_line": lines[-1] if lines else None, "error": kind.__name__,
+                                  "code": getattr(error, "code", None), "last_sync": last_sync}), flush=True)
+                os._exit(0)
+
+            sys.excepthook = failed
 
             work = pathlib.Path("/root/verify-projects/sync")
             shutil.rmtree(work, ignore_errors=True)
@@ -908,6 +920,7 @@
                     "/usr/bin/sudo", "-n", "/usr/local/sbin/porelo-host-person", "sync", *extra,
                 ]
                 res = subprocess.run(cmd, input="", capture_output=True, text=True)
+                last_sync.update(caller=caller, extra=list(extra), rc=res.returncode, err=res.stderr[-400:])
                 return {
                     "rc": res.returncode,
                     "out": json.loads(res.stdout) if res.returncode == 0 and res.stdout.strip() else res.stdout,
@@ -1210,6 +1223,7 @@
     - name: Assert porelo-host-person sync enforces every verification, diff, laptop, membership and lock rule
       ansible.builtin.assert:
         that:
+          - "'failed_at_line' not in verify_sync"
           - verify_sync.wrong_caller.rc == 65
           - verify_sync.bad_usage.rc == 64
           - verify_sync.missing_team.rc == 65
