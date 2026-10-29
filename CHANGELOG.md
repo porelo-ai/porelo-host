@@ -13,11 +13,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   organization and package-only publisher. Removal checks every repository's commits against the central forge
   before deleting its repositories, packages, organization, publisher and root-only record.
 - A root person helper admits project admins with per-laptop SSH keys restricted to their VPN addresses, persistent
-  WireGuard peers and private records, and locks or purges their host accounts. A separate install task provides the
-  helper, SSH key lookup and a no-argument forge-password sudo rule; forge and Matrix admission hooks are placeholders.
+  WireGuard peers and private records, and locks or purges their host accounts. Admission creates their forge login,
+  gate and configured agent identities, delivering new tokens in their own private runtime directory for vault import
+  and removal, and issues their Matrix machine token into their own account. Lock disables the forge identities and
+  deletes their tokens, expels Matrix accounts and revokes registration in one operation, and removes delivered
+  credentials and their runtime directory. A separate install task provides the helper, SSH key lookup and a
+  no-argument forge-password sudo rule.
 
 ### Fixed
 
+- A sudo call to the forge-password helper changes only the caller's own login and requires their unlocked,
+  root-owned person record. Direct root calls retain the configured login.
+- SSH for the `porelo-people` group reads only root's VPN-restricted authorized keys, so a person cannot add an
+  unrestricted key in their home. Other accounts retain their existing key lookup.
 - `down` gives the host back when only a room's transport could not clear what it keeps with the vault, such as a
   homeserver taken off the VPN before the give-back. An open vault is then cleared with `--force` in a step of its own
   name; anything else Porelo does not remove still stops `down`. It needs Porelo's `vault clear --json`.

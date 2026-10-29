@@ -34,7 +34,10 @@
 
 - name: person | Let SSH read the person's VPN-restricted keys
   ansible.builtin.copy:
-    content: "AuthorizedKeysFile .ssh/authorized_keys /etc/ssh/authorized_keys/%u\n"
+    content: |
+      Match Group porelo-people
+          AuthorizedKeysFile /etc/ssh/authorized_keys/%u
+      Match all
     dest: /etc/ssh/sshd_config.d/porelo-host-person.conf
     owner: root
     group: root

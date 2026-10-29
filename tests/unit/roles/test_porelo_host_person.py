@@ -8,6 +8,7 @@ import stat
 import struct
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -731,3 +732,57 @@ def test_command_runner_failures_do_not_escape_as_tracebacks_or_disclose_output(
     assert not output.out and "useradd" in output.err
     assert "untrusted-token" not in output.err
     assert not host.path("/etc/porelo-host/people/alice.conf").exists()
+
+
+@pytest.mark.parametrize("service", ["forge_lock", "matrix_expel_revoke"])
+def test_failed_service_revocation_still_locks_the_host_account_for_retry(host, capsys, service):
+    """Prevent a forge or homeserver failure from leaving SSH sessions and the Linux login enabled."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    capsys.readouterr()
+    host.calls.clear()
+
+    def unavailable(name, values):
+        if name == service:
+            raise host.factory.__globals__["Refusal"]("service unavailable", 69)
+
+    host.hook_inspect = unavailable
+    assert host.invoke("lock", "alice", data=b"") == 69
+    assert ["usermod", "--lock", "--expiredate", "1", "alice"] in host.calls
+    assert ["loginctl", "terminate-user", "alice"] in host.calls
+    assert ["runuser", "-u", "alice", "--", "porelo", "task", "stop", "--all"] in host.calls
+    assert "locked=false" in host.path("/etc/porelo-host/people/alice.conf").read_text()
+    assert not capsys.readouterr().out
+
+
+def test_service_configuration_is_validated_before_creating_an_account(host, capsys):
+    """Prevent a missing Matrix machine name from leaving a newly admitted but unrecorded account."""
+    host.write("/etc/porelo-host/forge.conf", "address=10.73.7.1\nhost=invalid/host\n")
+    call = host.factory(
+        host.root, host.run, euid=0, owner=os.getuid(), accounts=host.accounts,
+        groups=host.groups, commands=host.commands, hooks=None,
+    )
+    assert call(["add", "alice", "--role", "project-admin"], laptop().encode()) == 69
+    assert host.calls == []
+    assert not host.path("/etc/ssh/authorized_keys/alice").exists()
+    assert not capsys.readouterr().out
+
+
+@pytest.mark.parametrize("verb", ["lock", "purge"])
+def test_teardown_removes_a_locked_persons_runtime_delivery_directory(host, capsys, monkeypatch, verb):
+    """Prevent a completed or retried teardown from leaving the person's delivered credentials behind."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    assert host.invoke("lock", "alice", data=b"") == 0
+    capsys.readouterr()
+    directory = host.path("/run/porelo-host/people/alice")
+    directory.mkdir(parents=True, mode=0o700)
+    for parent in (directory.parent, directory.parent.parent, host.path("/run")):
+        parent.chmod(0o755)
+    (directory / "identities.tokens").write_text("fixture credential")
+    monkeypatch.setattr(
+        host.factory.__globals__["pwd"],
+        "getpwnam",
+        lambda user: SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid(), pw_dir=str(host.root / "home/alice")),
+    )
+    assert host.invoke(verb, "alice", data=b"") == 0
+    assert not directory.exists()
+    assert ("alice" not in host.accounts) == (verb == "purge")

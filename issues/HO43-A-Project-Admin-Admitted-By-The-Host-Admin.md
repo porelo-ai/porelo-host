@@ -22,11 +22,15 @@ project's signed `access.yml` ([HO46](README.md#ho46)), through the same helper.
   - the account by `porelo-setup.sh --user`, with KVM and libvirt groups;
   - per laptop, the ssh key in `/etc/ssh/authorized_keys/<user>` (root's) and a VPN peer at its address;
   - the forge login; the gate's and agents' identities `porelo-<user>` and `<agent>-<user>`, their tokens in a
-    `0600` file of the person's on `/run`, for the person's own act to pipe into their own vault;
+    `0600` `identities.tokens` in the person's own `0700` `/run/porelo-host/people/<user>/`, under root's `0755`
+    `people` directory, for the person's own act to pipe into their own vault and remove; links and a directory not
+    owned by the person are refused, and lock and purge remove the delivery directory without following its links;
   - the Matrix token, `machine-token issue <host>-<user>` (QB77 a) run as `porelo-matrix`, into the person's
     `~/.config/porelo/matrix/host-registration-token`, `0600` in a `0700` directory.
 - **Lock** (a person in no project any more, QH65 a): the ssh keys and peers out, the forge login disabled, their
-  tasks stopped (`task stop --all`), `machine-token expel` then `revoke`. **`purge <user>`**, the host admin's only:
+  tasks stopped (`task stop --all`), `machine-token expel` expelling the accounts and revoking registration together.
+  Exit 78 with case-insensitive `knows nothing` on stderr means there is no machine to take away; another refusal
+  stops with its own words. **`purge <user>`**, the host admin's only:
   `vault clear`, then the account.
 - **Sudoers:** each person may run `porelo-host-forge-password` for their own login only, taken from `SUDO_USER`;
   project admins may also run `porelo-host-person sync` ([HO46](README.md#ho46)).
@@ -57,7 +61,10 @@ project's signed `access.yml` ([HO46](README.md#ho46)), through the same helper.
 ## To be checked
 
 - That porelo-message-matrix's verbs, run as `porelo-matrix`, answer on stdout only: `machine-token issue M` with
-  `{"machine":"M","token":"…"}`, the same token again for a person already admitted; `revoke M` with
-  `{"machine":"M","revoked":true|false}`, after which the homeserver refuses the token at its next registration;
-  `expel M` with `{"machine":"M","expelled":[…]}`, every `@….<M>` account taken out server-wide, run before `revoke`.
+  `{"machine":"M","token":"…"}`, the same token again for a person already admitted; `expel M` with
+  `{"machine":"M","expelled":[…],"revoked":true|false}`, every `@….<M>` account taken out server-wide and its
+  registration token revoked together, so the homeserver refuses it at the next registration. Expelling a machine
+  with no token, record or account exits 78.
+- That the unknown-machine refusal actually includes `knows nothing`; the case-insensitive text match is a guess
+  to confirm against the homeserver's stderr, since it has no distinct refusal code.
 - That Porelo names a transport's machine `<host>-<account>` (`porelo talk machine` prints it).

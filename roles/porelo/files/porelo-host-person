@@ -10,6 +10,24 @@ There is one laptop line per laptop, in admission order. Projects is empty until
 project synchronization is implemented; locked is true or false. Keys never go
 to output. The VPN role must load porelo-host-peers/*.conf at wg-porelo startup.
 
+With account= in forge.conf, admission creates the login, porelo-<user> gate
+and each <agent>-<user> from agents= (required, comma separated, possibly empty).
+Only new identities get tokens, atomically delivered as identity/token lines in
+the person's 0600 /run/porelo-host/people/<user>/identities.tokens, for import and
+removal. Its directory is the person's, 0700, in root's 0755 people directory;
+links and another account's directory are refused. Lock and purge remove the
+person's entire delivery directory without following links inside it.
+Lock prohibits all those logins and deletes all their tokens through the TLS
+admin API, trusting forge/ca.pem; its temporary admin token stays in memory.
+
+Matrix uses host= from forge.conf and machine <host>-<user>, as porelo-matrix.
+The first admin credential is atomically saved in root's 0600 matrix-admin.token;
+credentials reach commands only on stdin. The machine token is written by the
+person into private ~/.config/porelo/matrix directories, refusing links. Lock
+uses expel alone to expel accounts and revoke registration, then removes the
+person's local token. Exit 78 saying "knows nothing" (case insensitive) means
+there is nothing to revoke during lock; this wording match needs confirmation.
+
 Validation precedes changes; publication of the record is last. Command failures
 can leave partial system changes and are reported without their captured output.
 Do not manually admit a partial account: inspect and remove its partial access
@@ -26,6 +44,7 @@ import base64
 import binascii
 import fcntl
 import grp
+import http.client
 import ipaddress
 import json
 import os
@@ -33,10 +52,14 @@ from pathlib import Path
 import pwd
 import re
 import shutil
+import ssl
 import stat
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
+import uuid
 
 ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
 USER = r"[a-z][a-z0-9-]{0,30}"
@@ -58,11 +81,12 @@ def refuse(message, code=64):
     raise Refusal(message, code)
 
 
-def run_command(arguments):
+def run_command(arguments, input=None):
     """The only system command runner; no shell or inherited input/output."""
     return subprocess.run(
         arguments,
-        stdin=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL if input is None else None,
+        input=input,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -135,20 +159,54 @@ def key_block(data, code=64, addresses_required=False):
     return result
 
 
-def forge_admit(user, laptops):
-    """Reserved for admission to the host's forge."""
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Keep an admin credential from following an API redirect to another address."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        """Let the API caller refuse the redirect without forwarding its header."""
+        return None
 
 
-def matrix_issue(user):
-    """Reserved for issuing the person's Matrix registration token."""
-
-
-def forge_lock(user):
-    """Reserved for disabling the person's forge login."""
-
-
-def matrix_expel_revoke(user):
-    """Reserved for expelling Matrix accounts before revoking their token."""
+# This runs only as the person: a link cannot turn a root write into a home-file write.
+MATRIX_FILE = r"""
+set -eu
+case $HOME in /?*) ;; *) exit 73 ;; esac
+part=$HOME
+while [ "$part" != / ]; do
+    [ ! -L "$part" ] || exit 73
+    part=${part%/*}
+    [ -n "$part" ] || part=/
+done
+[ -d "$HOME" ] && [ ! -L "$HOME" ] || exit 73
+cd -P -- "$HOME"
+home=$PWD
+umask 077
+for d in .config porelo matrix; do
+    [ ! -L "$d" ] || exit 73
+    if [ ! -e "$d" ]; then
+        [ "$1" = write ] || exit 0
+        [ -O . ] && [ -w . ] || exit 73
+        mkdir -- "$d"
+    fi
+    [ -d "$d" ] && [ -O "$d" ] || exit 73
+    cd -P -- "$d"
+    [ "$1" != write ] || chmod 0700 .
+done
+[ "$PWD" = "$home/.config/porelo/matrix" ] || exit 73
+[ -O . ] && [ -O .. ] && [ -w . ] || exit 73
+f=host-registration-token
+[ ! -L "$f" ] && { [ ! -e "$f" ] || [ -f "$f" ]; } || exit 73
+if [ "$1" = remove ]; then
+    rm -f -- "$f"
+    exit 0
+fi
+t=$(mktemp .host-registration-token.XXXXXX)
+trap 'rm -f -- "$t"' EXIT HUP INT TERM
+cat > "$t"
+chmod 0600 "$t"
+mv -fT -- "$t" "$f"
+trap - EXIT HUP INT TERM
+"""
 
 
 class Host:
@@ -164,7 +222,7 @@ class Host:
         self.groups = None
         self.commands = None
         self.hooks = {
-            name: globals()[name] for name in ("forge_admit", "matrix_issue", "forge_lock", "matrix_expel_revoke")
+            name: getattr(self, name) for name in ("forge_admit", "matrix_issue", "forge_lock", "matrix_expel_revoke")
         }
 
     def path(self, name):
@@ -298,12 +356,12 @@ class Host:
             if not self.available(program):
                 refuse(f"{program} is missing from the fixed PATH", 69)
 
-    def command(self, arguments, required=True):
+    def command(self, arguments, required=True, input=None, accepted=(0,)):
         """Report only the program and exit status; never relay stdout, stderr or key arguments."""
         try:
-            result = self.runner(arguments)
-            if result.returncode == 0:
-                return True
+            result = self.runner(arguments) if input is None else self.runner(arguments, input=input)
+            if result.returncode in accepted:
+                return result
             message = f"{arguments[0]} failed (exit {result.returncode})"
         except (OSError, subprocess.TimeoutExpired, UnicodeError) as error:
             message = f"{arguments[0]} failed to complete ({type(error).__name__})"
@@ -311,6 +369,325 @@ class Host:
             refuse(message, 69)
         print(f"porelo-host-person: task stop for the person failed: {message}; lock continues", file=sys.stderr)
         return False
+
+    def account(self, user):
+        """Resolve a non-root service or person account without trusting caller-supplied IDs or homes."""
+        try:
+            entry = pwd.getpwnam(user)
+        except KeyError:
+            refuse("a required service or person account is missing", 69)
+        home = entry.pw_dir
+        if entry.pw_uid == 0 or not home.startswith("/") or str(Path(home)) != home or ".." in Path(home).parts:
+            refuse("a required account is root or has no usable absolute home", 69)
+        return entry
+
+    def as_account(self, user, arguments, **kwargs):
+        """Pass credentials on stdin only, with a fixed runtime and the account's own home."""
+        entry = self.account(user)
+        return self.command(
+            [
+                "runuser", "-u", user, "--", "env", f"HOME={entry.pw_dir}",
+                f"XDG_RUNTIME_DIR=/run/user/{entry.pw_uid}", *arguments,
+            ],
+            **kwargs,
+        )
+
+    def forge_configuration(self, user):
+        """An absent/empty account switches the forge off; an enabled forge requires agents=."""
+        path = self.path("/etc/porelo-host/forge.conf")
+        self.check(path)
+        if not path.exists():
+            return None
+        accounts = [line[8:] for line in self.read(path).splitlines() if line.startswith("account=")]
+        if not accounts or accounts == [""]:
+            return None
+        if len(accounts) != 1 or not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", accounts[0]):
+            refuse("forge.conf names no single valid account", 69)
+        agents = self.setting("/etc/porelo-host/forge.conf", "agents")
+        agents = agents.split(",") if agents else []
+        if any(not re.fullmatch(USER, agent) for agent in agents):
+            refuse("forge.conf names no valid agent list", 69)
+        identities = [user, "porelo-" + user] + [agent + "-" + user for agent in agents]
+        if len(set(identities)) != len(identities):
+            refuse("forge.conf repeats an identity", 69)
+        self.account(accounts[0])
+        self.require(["runuser", "podman"])
+        return accounts[0], identities
+
+    def forge_command(self, account, arguments):
+        """Run Forgejo's admin command as its rootless container account."""
+        return self.as_account(account, ["podman", "exec", "forgejo", "forgejo", "admin", "user", *arguments])
+
+    def forge_token(self, account, user, scopes):
+        """Capture a generated token in memory without ever relaying the command's output."""
+        result = self.forge_command(
+            account,
+            [
+                "generate-access-token", "--username", user, "--token-name",
+                "porelo-host-person-" + uuid.uuid4().hex, "--scopes", scopes, "--raw",
+            ],
+        )
+        token = result.stdout.strip()
+        if not re.fullmatch(r"[0-9a-f]{40}", token):
+            refuse("Forgejo made no valid access token", 69)
+        return token
+
+    def forge_tokens_directory(self, user, private=True):
+        """Refuse a linked delivery directory or one owned by another account."""
+        directory = self.path(f"/run/porelo-host/people/{user}")
+        self.check(directory.parent, 73, directory=True)
+        try:
+            status = directory.lstat()
+        except FileNotFoundError:
+            return directory
+        if (
+            not stat.S_ISDIR(status.st_mode)
+            or status.st_uid != self.account(user).pw_uid
+            or (private and stat.S_IMODE(status.st_mode) != 0o700)
+        ):
+            refuse("the forge token delivery directory is not a private directory of the person's", 73)
+        return directory
+
+    def forge_tokens_path(self, user, private=True):
+        """Validate the person's delivery directory and any existing private token file."""
+        path = self.forge_tokens_directory(user, private) / "identities.tokens"
+        if private and (path.exists() or path.is_symlink()):
+            entry, status = self.account(user), path.lstat()
+            if not stat.S_ISREG(status.st_mode) or status.st_uid != entry.pw_uid or stat.S_IMODE(status.st_mode) != 0o600:
+                refuse("the person's forge token delivery file is not private and plain", 73)
+        return path
+
+    def remove_forge_tokens(self, user):
+        """Remove only this person's delivery directory, never following links in its writable contents."""
+        directory = self.forge_tokens_directory(user, private=False)
+        if directory.exists():
+            if not shutil.rmtree.avoids_symlink_attacks:
+                refuse("safe removal of the forge token delivery directory is unavailable", 69)
+            try:
+                shutil.rmtree(directory)
+            except OSError:
+                refuse("cannot remove the person's forge token delivery directory; it remains for retry", 73)
+
+    def forge_domain(self):
+        """Validate the email domain before it reaches Forgejo's account creation command."""
+        domain = self.setting("/etc/porelo-host/forge.conf", "name")
+        if not re.fullmatch(r"[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?", domain):
+            refuse("forge.conf names no valid name", 69)
+        return domain
+
+    def forge_endpoint(self):
+        """Validate the fixed API endpoint and its trusted CA before revocation starts."""
+        address = str(ipv4(self.setting("/etc/porelo-host/forge.conf", "address"), 69))
+        port = self.setting("/etc/porelo-host/forge.conf", "port")
+        if not re.fullmatch(r"[1-9][0-9]{0,4}", port) or int(port) > 65535:
+            refuse("forge.conf names no valid port", 69)
+        ca = self.path("/etc/porelo-host/forge/ca.pem")
+        self.check(ca, required=True)
+        return f"https://{address}:{port}/api/v1/admin/users/", ca
+
+    def prepare_services(self, user, verb):
+        """Validate real hooks' settings, root paths and programs before changing host access."""
+        forge = "forge_admit" if verb == "add" else "forge_lock"
+        matrix = "matrix_issue" if verb == "add" else "matrix_expel_revoke"
+        if self.hooks[forge] == getattr(self, forge):
+            config = self.forge_configuration(user)
+            if config is not None or verb != "add":
+                self.forge_tokens_path(user, private=verb == "add")
+            if config is not None:
+                if verb == "add":
+                    self.forge_domain()
+                else:
+                    self.forge_endpoint()
+        if self.hooks[matrix] == getattr(self, matrix):
+            self.matrix_context(user)
+
+    def forge_admit(self, user, laptops):
+        """Make only missing identities and deliver their credentials for the person's own vault import."""
+        config = self.forge_configuration(user)
+        if config is None:
+            return
+        account, identities = config
+        path = self.forge_tokens_path(user)
+        domain = self.forge_domain()
+        lines = self.forge_command(account, ["list"]).stdout.splitlines()
+        if not lines or not re.match(r"ID\s+Username\s+Email\b", lines[0]):
+            refuse("Forgejo answered no valid user list", 69)
+        users = set()
+        for line in lines[1:]:
+            fields = line.split()
+            if len(fields) < 3 or not fields[0].isdigit():
+                refuse("Forgejo answered no valid user list", 69)
+            users.add(fields[1])
+        tokens = []
+        for identity in identities:
+            if identity in users:
+                continue
+            self.forge_command(
+                account,
+                ["create", "--username", identity, "--email", identity + "@" + domain,
+                 "--random-password", "--must-change-password=false"],
+            )
+            scopes = "write:repository,read:organization"
+            if identity not in (user, "porelo-" + user):
+                scopes += ",read:package"
+            tokens.append(identity + " " + self.forge_token(account, identity, scopes) + "\n")
+        if tokens:
+            entry = self.account(user)
+            self.directories(path.parent.parent)
+            for directory in (path.parent.parent.parent, path.parent.parent):
+                self.check(directory, 73, required=True, directory=True)
+                directory.chmod(0o755)
+            if not path.parent.exists():
+                path.parent.mkdir(mode=0o700)
+                os.chown(path.parent, entry.pw_uid, entry.pw_gid)
+                path.parent.chmod(0o700)
+            self.write(path, "".join(tokens), 0o600, owner=entry.pw_uid, group=entry.pw_gid)
+
+    def forge_api(self, opener, base, token, method, route, expected, body=None):
+        """Refuse HTTP and TLS failures without printing a header, credential or response body."""
+        request = urllib.request.Request(
+            base + route,
+            method=method,
+            data=None if body is None else json.dumps(body).encode(),
+            headers={"Authorization": "token " + token, "Content-Type": "application/json"},
+        )
+        try:
+            with opener.open(request, timeout=30) as answer:
+                if answer.status != expected:
+                    refuse(f"Forgejo admin API answered HTTP {answer.status}", 69)
+                return None if expected == 204 else json.load(answer)
+        except urllib.error.HTTPError as error:
+            refuse(f"Forgejo admin API answered HTTP {error.code}", 69)
+        except (OSError, urllib.error.URLError, http.client.HTTPException, ValueError, UnicodeError):
+            refuse("Forgejo admin API did not answer valid JSON over trusted TLS", 69)
+
+    def forge_lock(self, user):
+        """Prohibit all the person's logins and delete every token, including tokens outside delivery."""
+        config = self.forge_configuration(user)
+        self.forge_tokens_directory(user, private=False)
+        errors = []
+        try:
+            self.remove_forge_tokens(user)
+        except Refusal as error:
+            errors.append(error)
+        if config is None:
+            if errors:
+                raise errors[0]
+            return
+        account, identities = config
+        base, ca = self.forge_endpoint()
+        try:
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}),
+                NoRedirect(),
+                urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=str(ca))),
+            )
+        except (OSError, ValueError):
+            refuse("the forge CA cannot be loaded", 69)
+        token = self.forge_token(account, "porelo-admin", "write:admin")
+        for identity in identities:
+            try:
+                self.forge_revoke_identity(opener, base, token, identity)
+            except Refusal as error:
+                errors.append(error)
+        if errors:
+            refuse("; ".join(str(error) for error in errors), errors[0].code)
+
+    def forge_revoke_identity(self, opener, base, token, identity):
+        """Disable one login and enumerate its complete token set before any deletion shrinks a page."""
+        self.forge_api(
+            opener, base, token, "PATCH", identity, 200,
+            {"login_name": identity, "source_id": 0, "prohibit_login": True},
+        )
+        ids, page = set(), 1
+        while True:
+            rows = self.forge_api(opener, base, token, "GET", identity + f"/tokens?limit=50&page={page}", 200)
+            if not isinstance(rows, list) or any(
+                not isinstance(row, dict) or type(row.get("id")) is not int or row["id"] < 1 for row in rows
+            ):
+                refuse("Forgejo answered no valid access-token list", 69)
+            if not rows:
+                break
+            batch = {row["id"] for row in rows}
+            if batch & ids:
+                refuse("Forgejo repeated a page of access tokens", 69)
+            ids.update(batch)
+            page += 1
+        for identifier in sorted(ids):
+            self.forge_api(opener, base, token, "DELETE", identity + f"/tokens/{identifier}", 204)
+
+    def matrix_context(self, user):
+        """Resolve the exact machine name and root's optional private admin credential."""
+        host = self.setting("/etc/porelo-host/forge.conf", "host")
+        if not re.fullmatch(LAPTOP, host):
+            refuse("forge.conf names no valid host", 69)
+        self.account("porelo-matrix")
+        self.require(["runuser", "porelo-message-transport-matrix"])
+        path = self.path("/etc/porelo-host/matrix-admin.token")
+        self.check(path, mode=0o600)
+        admin = self.secret(self.read(path).removesuffix("\n")) if path.exists() else None
+        return host + "-" + user, path, admin
+
+    def secret(self, value):
+        """Accept one bounded graphic-ASCII token without ever including it in a refusal."""
+        if not isinstance(value, str) or not re.fullmatch(r"[!-~]{1,1024}", value):
+            refuse("Matrix answered no valid token", 69)
+        return value
+
+    def matrix_call(self, user, verb):
+        """Exchange JSON secrets on stdin; persist a first admin credential before using the answer."""
+        machine, path, admin = self.matrix_context(user)
+        result = self.as_account(
+            "porelo-matrix", ["porelo-message-transport-matrix", "machine-token", verb, machine],
+            input=json.dumps({"secrets": {"PORELO_MATRIX_ADMIN_TOKEN": admin}} if admin else {}),
+            accepted=(0, 78),
+        )
+        if result.returncode == 78:
+            message = result.stderr.strip()
+            if admin:
+                message = message.replace(admin, "[redacted]")
+            if verb == "expel" and "knows nothing" in message.casefold():
+                return {"machine": machine, "expelled": [], "revoked": False}
+            refuse(message or "Matrix refused the expelled machine", 65)
+        try:
+            answer = json.loads(result.stdout)
+        except (ValueError, UnicodeError):
+            refuse("Matrix answered no valid JSON", 69)
+        if not isinstance(answer, dict):
+            refuse("Matrix answered no machine object", 69)
+        if "account" in answer:
+            account = answer["account"]
+            if not isinstance(account, dict):
+                refuse("Matrix answered no valid admin account", 69)
+            received = self.secret(account.get("PORELO_MATRIX_ADMIN_TOKEN"))
+            self.write(path, received + "\n", 0o600)
+        if answer.get("machine") != machine:
+            refuse("Matrix answered for another machine", 69)
+        return answer
+
+    def matrix_file(self, user, action, token=None):
+        """Run the link-refusing atomic writer/remover as the person, with a token only on stdin."""
+        result = self.as_account(
+            user, ["/bin/sh", "-c", MATRIX_FILE, "matrix-token", action], input=token, accepted=(0, 73)
+        )
+        if result.returncode != 0:
+            refuse("cannot write or remove the person's Matrix token safely", 73)
+
+    def matrix_issue(self, user):
+        """Issue <host>-<user> and deliver its registration credential in the person's own home."""
+        answer = self.matrix_call(user, "issue")
+        self.matrix_file(user, "write", self.secret(answer.get("token")))
+
+    def matrix_expel_revoke(self, user):
+        """Expulsion revokes registration too; only a validated answer permits local cleanup."""
+        answer = self.matrix_call(user, "expel")
+        if (
+            not isinstance(answer.get("expelled"), list)
+            or any(not isinstance(account, str) for account in answer["expelled"])
+            or type(answer.get("revoked")) is not bool
+        ):
+            refuse("Matrix answered no valid expulsion and revocation result", 69)
+        self.matrix_file(user, "remove")
 
     def targets(self, user):
         """Check all publication/removal paths without creating directories."""
@@ -328,17 +705,20 @@ class Host:
         if directory.exists():
             return
         self.directories(directory.parent)
-        directory.mkdir(mode=0o755 if directory == self.path("/etc/ssh/authorized_keys") else 0o700)
+        public = ("/etc/ssh/authorized_keys", "/run/porelo-host", "/run/porelo-host/people")
+        mode = 0o755 if directory in map(self.path, public) else 0o700
+        directory.mkdir(mode=mode)
         os.chown(directory, self.owner, self.group)
+        directory.chmod(mode)
 
-    def write(self, path, text, mode):
+    def write(self, path, text, mode, owner=None, group=None):
         """Write beside the target, fsync and rename so no reader can see partial access or a record."""
         temporary = None
         try:
             self.directories(path.parent)
             fd, temporary = tempfile.mkstemp(prefix=".porelo-host-person.", dir=path.parent)
             with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                os.fchown(stream.fileno(), self.owner, self.group)
+                os.fchown(stream.fileno(), self.owner if owner is None else owner, self.group if group is None else group)
                 os.fchmod(stream.fileno(), mode)
                 stream.write(text)
                 stream.flush()
@@ -439,8 +819,11 @@ class Host:
                 self.command(["wg", "set", "wg-porelo", "peer", item["wg"], "remove"])
             except Refusal as error:
                 errors.append(error)
-        self.hooks["forge_lock"](user)
-        self.hooks["matrix_expel_revoke"](user)
+        for name in ("forge_lock", "matrix_expel_revoke"):
+            try:
+                self.hooks[name](user)
+            except Refusal as error:
+                errors.append(error)
         if porelo:
             self.command(["runuser", "-u", user, "--", "porelo", "task", "stop", "--all"], required=False)
         for args in (["loginctl", "terminate-user", user], ["usermod", "--lock", "--expiredate", "1", user]):
@@ -449,7 +832,7 @@ class Host:
             except Refusal as error:
                 errors.append(error)
         if errors:
-            refuse("; ".join(str(error) for error in errors), 69)
+            refuse("; ".join(str(error) for error in errors), errors[0].code)
         record["locked"] = True
         self.record(user, record)
 
@@ -457,6 +840,7 @@ class Host:
         """Lock before clearing the vault, deleting the account and releasing recorded IDs."""
         if not record["locked"]:
             self.lock(user, record, porelo)
+        self.remove_forge_tokens(user)
         if account_exists:
             if porelo:
                 self.command(["runuser", "-u", user, "--", "porelo", "vault", "clear"])
@@ -524,9 +908,11 @@ class Host:
                 self.require(
                     ["useradd", "loginctl", "usermod", "wg"] + ([] if "porelo-people" in groups else ["groupadd"])
                 )
+                self.prepare_services(user, verb)
                 self.add(user, laptops, groups, uid_range, gid_range)
                 return self.add_answer(user, laptops)
             if verb == "lock" and record["locked"]:
+                self.remove_forge_tokens(user)
                 return {"person": user, "locked": True}
             if uid is None and not record["locked"]:
                 refuse("the unlocked person has no account", 65)
@@ -543,6 +929,8 @@ class Host:
                 if uid is not None:
                     programs.extend(["loginctl", "userdel"])
             self.require(programs)
+            if not record["locked"]:
+                self.prepare_services(user, verb)
             if verb == "lock":
                 self.lock(user, record, porelo)
                 return {"person": user, "locked": True}
@@ -581,10 +969,12 @@ if __name__ == "__main__":
     sys.exit(entry(Host(), sys.argv[1:]))
 else:
 
-    def _test_entry(root, runner, *, euid, owner, accounts, groups, commands, hooks):
+    def _test_entry(root, runner, *, euid, owner, accounts, groups, commands, hooks=None):
         """Import-only injection; there is no production argument or environment switch to reach it."""
         host = Host()
         host.root, host.runner, host.euid = root, runner, euid
         host.owner, host.group = owner, os.getgid()
-        host.accounts, host.groups, host.commands, host.hooks = accounts, groups, commands, hooks
+        host.accounts, host.groups, host.commands = accounts, groups, commands
+        if hooks is not None:
+            host.hooks = hooks
         return lambda arguments, data: entry(host, arguments, data)
