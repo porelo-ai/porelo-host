@@ -1,0 +1,1793 @@
+---
+- name: Verify a project brought in the project admin's account and joined in a developer's account
+  block:
+    - name: Read whether /root/verify-people already exists before bring's leak scan records its secrets
+      ansible.builtin.stat:
+        path: /root/verify-people
+      register: verify_bring_people_dir_before
+
+    - name: Create private scratch and pattern directories for the bring and join verification acts
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      loop:
+        - /root/verify-people
+        - /root/verify-bring
+
+    - name: Record the forge token and bo's and cy's waiting identity tokens in tokens.pat before their stops run
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, os, pathlib, re
+            pat_path = pathlib.Path("/root/verify-people/tokens.pat")
+            existing = (
+                [line for line in pat_path.read_text(encoding="utf-8").splitlines() if line]
+                if pat_path.exists()
+                else []
+            )
+            seen = list(dict.fromkeys(existing))
+            def add_secret(value):
+                if value and value not in seen:
+                    seen.append(value)
+            forge_tok = pathlib.Path("/home/porelo-forge/.config/porelo-forge/api.token").read_text(
+                encoding="utf-8"
+            ).strip()
+            if not re.fullmatch(r"[0-9a-f]{40}", forge_tok):
+                raise SystemExit("unexpected forge api.token format")
+            add_secret(forge_tok)
+            counts = {}
+            for user in ("bo", "cy"):
+                lines = pathlib.Path(f"/run/porelo-host/people/{user}/identities.tokens").read_text(
+                    encoding="utf-8"
+                ).splitlines()
+                user_tokens = []
+                for line in lines:
+                    parts = line.split(" ")
+                    if len(parts) != 2 or not re.fullmatch(r"[0-9a-f]{40}", parts[1]):
+                        raise SystemExit(f"unexpected identities.tokens line for {user}")
+                    user_tokens.append(parts[1])
+                    add_secret(parts[1])
+                counts[user] = len(user_tokens)
+            fd = os.open(str(pat_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                os.fchmod(handle.fileno(), 0o600)
+                handle.write("".join(item + "\n" for item in seen))
+            out_fd = os.open("/root/verify-bring/act.out", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            os.close(out_fd)
+            print(json.dumps({"bo_tokens": counts["bo"], "cy_tokens": counts["cy"], "patterns": len(seen)}))
+      register: verify_bring_seed_patterns
+      changed_when: true
+      no_log: true
+
+    - name: Assert waiting identity tokens for bo and cy were recorded in /root/verify-people/tokens.pat
+      ansible.builtin.assert:
+        that:
+          - verify_bring_seeded.bo_tokens == 2
+          - verify_bring_seeded.cy_tokens == 2
+          - verify_bring_seeded.patterns >= 5
+        fail_msg: >-
+          asked /run/porelo-host/people/{bo,cy}/identities.tokens for 2 tokens each and >=5 patterns in tokens.pat;
+          got {{ verify_bring_seeded }}
+      vars:
+        verify_bring_seeded: "{{ verify_bring_seed_patterns.stdout | from_json }}"
+
+    # converge installs the collection into /root/.ansible/collections; give bo and cy each their own copy from the
+    # host's tarball so their unprivileged ansible-playbook runs resolve porelo.host without root paths.
+    - name: Stage the collection tarball for bo and cy, install it into each account's ~/.ansible and remove the copy
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, os, pwd, shutil, subprocess, sys
+            user = sys.argv[1]
+            pw = pwd.getpwnam(user)
+            staged = f"{pw.pw_dir}/.porelo-host-install.tar.gz"
+            shutil.copyfile("/root/porelo-host.tar.gz", staged)
+            os.chown(staged, pw.pw_uid, pw.pw_gid)
+            os.chmod(staged, 0o600)
+            try:
+                install = subprocess.run(
+                    [
+                        "/usr/sbin/runuser", "-u", user, "--",
+                        "/usr/bin/env", f"HOME={pw.pw_dir}", f"USER={user}", f"LOGNAME={user}",
+                        "LC_ALL=C.UTF-8",
+                        "ansible-galaxy", "collection", "install", "--force", staged,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    cwd=pw.pw_dir,
+                )
+            finally:
+                if os.path.lexists(staged):
+                    os.unlink(staged)
+            listed = subprocess.run(
+                [
+                    "/usr/sbin/runuser", "-u", user, "--",
+                    "/usr/bin/env", f"HOME={pw.pw_dir}", f"USER={user}", f"LOGNAME={user}",
+                    "LC_ALL=C.UTF-8",
+                    "ansible-galaxy", "collection", "list", "porelo.host", "--format", "json",
+                ],
+                capture_output=True,
+                text=True,
+                cwd=pw.pw_dir,
+            )
+            versions = []
+            if listed.returncode == 0 and listed.stdout.strip():
+                for mapping in json.loads(listed.stdout).values():
+                    if "porelo.host" in mapping:
+                        versions.append(mapping["porelo.host"].get("version"))
+            print(
+                json.dumps(
+                    {
+                        "install_rc": install.returncode,
+                        "install_err": install.stderr,
+                        "list_rc": listed.returncode,
+                        "versions": versions,
+                    }
+                )
+            )
+          - "{{ item }}"
+      loop: [bo, cy]
+      register: verify_bring_collection_install
+      changed_when: true
+
+    - name: Assert bo and cy each have the collection under test in ~/.ansible/collections
+      ansible.builtin.assert:
+        that:
+          - verify_bring_col.install_rc == 0
+          - verify_bring_col.list_rc == 0
+          - verify_bring_col.versions == [verify_version]
+        fail_msg: >-
+          asked {{ item.item }}'s ~/.ansible/collections for porelo.host {{ verify_version }};
+          got {{ verify_bring_col }}
+      vars:
+        verify_bring_col: "{{ item.stdout | from_json }}"
+      loop: "{{ verify_bring_collection_install.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Create stand-in central organization central-alpha-one with repository app and mint bo's central token
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import base64, json, os, pathlib, re, secrets, ssl, subprocess, urllib.request
+            conf = dict(
+                line.split("=", 1)
+                for line in pathlib.Path("/etc/porelo-host/forge.conf").read_text(encoding="utf-8").splitlines()
+                if "=" in line
+            )
+            address = conf["address"]
+            port = conf["port"]
+            forge_name = conf["name"]
+            account = conf["account"]
+            admin_token = pathlib.Path("/home/porelo-forge/.config/porelo-forge/api.token").read_text(
+                encoding="utf-8"
+            ).strip()
+            ctx = ssl.create_default_context(cafile="/etc/porelo-host/forge/ca.pem")
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}),
+                urllib.request.HTTPSHandler(context=ctx),
+            )
+            base = f"https://{address}:{port}/api/v1"
+            def api(method, path, body=None):
+                req = urllib.request.Request(
+                    base + path,
+                    data=json.dumps(body).encode("utf-8") if body is not None else None,
+                    method=method,
+                    headers={"Authorization": "token " + admin_token, "Content-Type": "application/json"},
+                )
+                with opener.open(req, timeout=30) as resp:
+                    raw = resp.read()
+                    return resp.status, (json.loads(raw) if raw else None)
+            org_status, _ = api("POST", "/orgs", {"username": "central-alpha-one", "visibility": "private"})
+            repo_status, _ = api(
+                "POST",
+                "/orgs/central-alpha-one/repos",
+                {"name": "app", "private": True, "auto_init": False, "default_branch": "main"},
+            )
+            readme = base64.b64encode(b"# central-alpha-one app\n").decode("ascii")
+            commit_status, _ = api(
+                "POST",
+                "/repos/central-alpha-one/app/contents/README.md",
+                {"branch": "main", "content": readme, "message": "Add README on main"},
+            )
+            branch_status, branch_body = api("GET", "/repos/central-alpha-one/app/branches/main")
+            central_sha = ((branch_body or {}).get("commit") or {}).get("id", "")
+            uid = subprocess.check_output(["/usr/bin/id", "-u", account], text=True).strip()
+            tok_name = "verify-bring-central-" + secrets.token_hex(12)
+            central_tok = subprocess.check_output(
+                [
+                    "/usr/sbin/runuser", "-u", account, "--",
+                    "/usr/bin/env", f"XDG_RUNTIME_DIR=/run/user/{uid}",
+                    "/usr/bin/podman", "exec", "forgejo", "forgejo", "admin", "user",
+                    "generate-access-token", "--username", "porelo-admin",
+                    "--token-name", tok_name, "--scopes", "read:repository", "--raw",
+                ],
+                text=True,
+                cwd="/",
+            ).strip()
+            if not re.fullmatch(r"[0-9a-f]{40}", central_tok):
+                raise SystemExit("unexpected minted central token format")
+            for target, value in (
+                ("/root/verify-bring/central-token.name", tok_name + "\n"),
+                ("/root/verify-bring/bo-central.token", central_tok + "\n"),
+            ):
+                fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    os.fchmod(handle.fileno(), 0o600)
+                    handle.write(value)
+            with open("/root/verify-people/tokens.pat", "a", encoding="utf-8") as pat_file:
+                pat_file.write(central_tok + "\n")
+            print(
+                json.dumps(
+                    {
+                        "forge_address": address,
+                        "forge_port": port,
+                        "forge_name": forge_name,
+                        "central_url": f"https://{address}:{port}/central-alpha-one/app.git",
+                        "org_status": org_status,
+                        "repo_status": repo_status,
+                        "commit_status": commit_status,
+                        "branch_status": branch_status,
+                        "central_sha": central_sha,
+                        "token_recorded": True,
+                    }
+                )
+            )
+      register: verify_bring_central_setup
+      changed_when: true
+      no_log: true
+
+    - name: Keep the central forge stand-in's non-secret metadata
+      ansible.builtin.set_fact:
+        verify_bring_central: "{{ verify_bring_central_setup.stdout | from_json }}"
+
+    - name: Assert central-alpha-one/app holds one commit on main and bo's central token is recorded
+      ansible.builtin.assert:
+        that:
+          - verify_bring_central.forge_port == '3000'
+          - verify_bring_central.org_status == 201
+          - verify_bring_central.repo_status == 201
+          - verify_bring_central.commit_status == 201
+          - verify_bring_central.branch_status == 200
+          - verify_bring_central.central_sha is match('^[0-9a-f]{40}$')
+          - verify_bring_central.central_url
+            == ('https://' ~ verify_bring_central.forge_address ~ ':3000/central-alpha-one/app.git')
+          - verify_bring_central.token_recorded
+        fail_msg: >-
+          asked central-alpha-one/app for 201 org/repo/commit, 200 main branch with 40-hex SHA and central URL on port
+          3000; got {{ verify_bring_central }}
+
+    - name: Build and bundle alpha-one's signed project and access repositories
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, os, pathlib, subprocess
+            host = json.loads(pathlib.Path("/etc/porelo-host/host.json").read_text(encoding="utf-8"))
+            signer_pub = pathlib.Path("/root/verify-projects/signer1.line").read_text(encoding="utf-8").strip()
+            signer_key = "/root/verify-projects/signer1"
+            cy_lines = pathlib.Path("/etc/porelo-host/people/cy.conf").read_text(encoding="utf-8").splitlines()
+            laptops = [line[7:].split(" ") for line in cy_lines if line.startswith("laptop=")]
+            if len(laptops) != 1 or len(laptops[0]) != 5:
+                raise SystemExit(f"expected one 5-field laptop line in cy.conf, got {len(laptops)}")
+            _, ssh_kind, ssh_b64, cy_wg, cy_ip = laptops[0]
+            cy_ssh = f"{ssh_kind} {ssh_b64}"
+            project_yml = (
+                "project:\n"
+                "  name: alpha-one\n"
+                "  security_class: guarded\n"
+                "  signers:\n"
+                f"    - {json.dumps(signer_pub)}\n"
+                "image:\n"
+                "  base_image: ubuntu:24.04\n"
+                "access:\n"
+                "  repository: https://forge.invalid/alpha-one/access.git\n"
+            )
+            access_yml = (
+                "host:\n"
+                f"  address: {json.dumps(host['address'])}\n"
+                f"  endpoint: {json.dumps(host['endpoint'])}\n"
+                f"  wireguard_public_key: {json.dumps(host['wireguard_public_key'])}\n"
+                f"  network: {json.dumps(host['network'])}\n"
+                f"  ssh_host_key: {json.dumps(host['ssh_host_key'])}\n"
+                f"  ca_sha256: {json.dumps(host['ca_sha256'])}\n"
+                "developers:\n"
+                "  cy:\n"
+                "    laptops:\n"
+                f"      - ssh_public_key: {json.dumps(cy_ssh)}\n"
+                f"        wireguard_public_key: {json.dumps(cy_wg)}\n"
+                f"        vpn_address: {json.dumps(cy_ip)}\n"
+            )
+            git_env = {
+                "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "LC_ALL": "C.UTF-8",
+                "GIT_CONFIG_GLOBAL": "/dev/null",
+                "GIT_CONFIG_NOSYSTEM": "1",
+            }
+            def build_bundle(repo_dir, filename, content, bundle_path):
+                subprocess.run(["git", "init", "-q", "-b", "main", repo_dir], env=git_env, check=True, cwd="/")
+                target = pathlib.Path(repo_dir) / filename
+                target.write_text(content, encoding="utf-8")
+                subprocess.run(["git", "-C", repo_dir, "add", filename], env=git_env, check=True, cwd="/")
+                subprocess.run(
+                    [
+                        "git", "-C", repo_dir,
+                        "-c", "user.name=Alpha One Signer",
+                        "-c", "user.email=signer@example.org",
+                        "-c", "gpg.format=ssh",
+                        "-c", f"user.signingkey={signer_key}",
+                        "commit", "-q", "-S", "-m", f"Sign {filename}",
+                    ],
+                    env=git_env,
+                    check=True,
+                    cwd="/",
+                )
+                commit = subprocess.check_output(
+                    ["git", "-C", repo_dir, "rev-parse", "HEAD"], env=git_env, text=True, cwd="/"
+                ).strip()
+                subprocess.run(
+                    ["git", "-C", repo_dir, "bundle", "create", bundle_path, "--all"],
+                    env=git_env,
+                    check=True,
+                    cwd="/",
+                )
+                os.chmod(bundle_path, 0o600)
+                heads = subprocess.check_output(
+                    ["git", "bundle", "list-heads", bundle_path], env=git_env, text=True, cwd="/"
+                ).splitlines()
+                return commit, heads
+            proj_commit, proj_heads = build_bundle(
+                "/root/verify-bring/project-repo",
+                "project.yml",
+                project_yml,
+                "/root/verify-bring/project.bundle",
+            )
+            acc_commit, acc_heads = build_bundle(
+                "/root/verify-bring/access-repo",
+                "access.yml",
+                access_yml,
+                "/root/verify-bring/access.bundle",
+            )
+            print(
+                json.dumps(
+                    {
+                        "signer": signer_pub,
+                        "host_network": host["network"],
+                        "cy_vpn_address": cy_ip,
+                        "project_commit": proj_commit,
+                        "access_commit": acc_commit,
+                        "project_heads": proj_heads,
+                        "access_heads": acc_heads,
+                    }
+                )
+            )
+      register: verify_bring_make_bundles
+      changed_when: true
+      no_log: true
+
+    - name: Keep the signed bundles' non-secret commit metadata
+      ansible.builtin.set_fact:
+        verify_bring_bundles: "{{ verify_bring_make_bundles.stdout | from_json }}"
+
+    - name: Assert both signed bundles carry main heads on this host's network and cy's admitted VPN address
+      ansible.builtin.assert:
+        that:
+          - verify_bring_bundles.host_network == '10.73.7.0/24'
+          - verify_bring_bundles.cy_vpn_address == '10.73.7.3'
+          - verify_bring_bundles.project_commit is match('^[0-9a-f]{40}$')
+          - verify_bring_bundles.access_commit is match('^[0-9a-f]{40}$')
+          - (verify_bring_bundles.project_commit ~ ' refs/heads/main') in verify_bring_bundles.project_heads
+          - (verify_bring_bundles.access_commit ~ ' refs/heads/main') in verify_bring_bundles.access_heads
+        fail_msg: >-
+          asked signed project.bundle and access.bundle for 40-hex main heads with host network 10.73.7.0/24 and cy at
+          10.73.7.3; got {{ verify_bring_bundles }}
+
+    - name: Create bo's private setup directory hierarchy under /home/bo/.local/share/porelo-host/setup/alpha-one
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: bo
+        group: bo
+        mode: "0700"
+      loop:
+        - /home/bo/.local
+        - /home/bo/.local/share
+        - /home/bo/.local/share/porelo-host
+        - /home/bo/.local/share/porelo-host/setup
+        - /home/bo/.local/share/porelo-host/setup/alpha-one
+
+    - name: Upload project.bundle and access.bundle into bo's setup directory with mode 0600
+      ansible.builtin.copy:
+        src: "/root/verify-bring/{{ item }}"
+        dest: "/home/bo/.local/share/porelo-host/setup/alpha-one/{{ item }}"
+        remote_src: true
+        owner: bo
+        group: bo
+        mode: "0600"
+      loop:
+        - project.bundle
+        - access.bundle
+
+    - name: Write bo's 0600 machine.yml naming project.bundle, access.bundle and central-alpha-one/app
+      ansible.builtin.copy:
+        dest: /home/bo/.local/share/porelo-host/setup/alpha-one/machine.yml
+        owner: bo
+        group: bo
+        mode: "0600"
+        content: |
+          project:
+            name: alpha-one
+            url: /home/bo/.local/share/porelo-host/setup/alpha-one/project.bundle
+            signed_by: {{ verify_bring_bundles.signer | to_json }}
+          keys: []
+          access:
+            bundle: access.bundle
+          forge:
+            repositories:
+              - name: app
+                url: {{ verify_bring_central.central_url | to_json }}
+
+    - name: Read bo's uploaded setup directory and files
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /home/bo/.local/share/porelo-host/setup/alpha-one
+        - /home/bo/.local/share/porelo-host/setup/alpha-one/machine.yml
+        - /home/bo/.local/share/porelo-host/setup/alpha-one/project.bundle
+        - /home/bo/.local/share/porelo-host/setup/alpha-one/access.bundle
+      register: verify_bring_bo_upload
+
+    - name: Assert bo's setup directory is 0700 and its machine.yml and bundles are bo's 0600 plain files
+      ansible.builtin.assert:
+        that:
+          - verify_bring_bo_upload.results[0].stat.isdir | default(false)
+          - verify_bring_bo_upload.results[0].stat.pw_name | default('') == 'bo'
+          - verify_bring_bo_upload.results[0].stat.gr_name | default('') == 'bo'
+          - verify_bring_bo_upload.results[0].stat.mode | default('') == '0700'
+          - verify_bring_bo_upload.results[1:] | rejectattr('stat.isreg') | list | length == 0
+          - verify_bring_bo_upload.results[1:] | map(attribute='stat.pw_name') | unique | list == ['bo']
+          - verify_bring_bo_upload.results[1:] | map(attribute='stat.gr_name') | unique | list == ['bo']
+          - verify_bring_bo_upload.results[1:] | map(attribute='stat.mode') | unique | list == ['0600']
+        fail_msg: >-
+          asked /home/bo/.local/share/porelo-host/setup/alpha-one for bo:bo 0700 holding bo:bo 0600 plain files;
+          got {{ verify_bring_bo_upload.results | map(attribute='stat') | list }}
+
+    - name: Run bo's own stop as bo with no sudo for vault-new, forge-central-token and identities
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import base64, json, pathlib, pwd, secrets, subprocess
+            pw = pwd.getpwnam("bo")
+            passphrase = "bo-vault-passphrase-" + secrets.token_hex(20)
+            central_tok = pathlib.Path("/root/verify-bring/bo-central.token").read_text(encoding="utf-8").strip()
+            pat_path = pathlib.Path("/root/verify-people/tokens.pat")
+            with pat_path.open("a", encoding="utf-8") as handle:
+                handle.write(passphrase + "\n")
+            patterns = [line for line in pat_path.read_text(encoding="utf-8").splitlines() if line]
+            b64_pass = base64.b64encode(passphrase.encode("utf-8")).decode("ascii")
+            b64_tok = base64.b64encode(central_tok.encode("utf-8")).decode("ascii")
+            payload = f"vault-new {b64_pass}\nforge-central-token {b64_tok}\n"
+            run = subprocess.run(
+                [
+                    "/usr/sbin/runuser", "-u", "bo", "--",
+                    "/usr/bin/env", f"HOME={pw.pw_dir}", "USER=bo", "LOGNAME=bo",
+                    f"XDG_RUNTIME_DIR=/run/user/{pw.pw_uid}",
+                    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                    "LC_ALL=C.UTF-8",
+                    "/usr/local/bin/porelo-host-stop", "--stdin",
+                    "vault-new", "forge-central-token", "identities",
+                ],
+                input=payload,
+                capture_output=True,
+                text=True,
+                cwd=pw.pw_dir,
+            )
+            with open("/root/verify-bring/act.out", "a", encoding="utf-8") as out_file:
+                out_file.write(run.stdout + run.stderr)
+            def redact(text):
+                for item in patterns:
+                    text = text.replace(item, "<redacted>")
+                return text
+            print(
+                json.dumps(
+                    {
+                        "uid": pw.pw_uid,
+                        "rc": run.returncode,
+                        "stdout": redact(run.stdout),
+                        "stderr": redact(run.stderr),
+                    }
+                )
+            )
+      register: verify_bring_bo_stop
+      changed_when: true
+      no_log: true
+
+    - name: List bo's vault entries as bo and check whether bo's waiting identities.tokens is gone
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, pathlib, pwd, subprocess
+            pw = pwd.getpwnam("bo")
+            listed = subprocess.run(
+                [
+                    "/usr/sbin/runuser", "-u", "bo", "--",
+                    "/usr/bin/env", f"HOME={pw.pw_dir}", "USER=bo", "LOGNAME=bo",
+                    f"XDG_RUNTIME_DIR=/run/user/{pw.pw_uid}",
+                    "LC_ALL=C.UTF-8",
+                    "porelo", "vault", "list",
+                ],
+                capture_output=True,
+                text=True,
+                cwd=pw.pw_dir,
+            )
+            with open("/root/verify-bring/act.out", "a", encoding="utf-8") as out_file:
+                out_file.write(listed.stdout + listed.stderr)
+            entries = [line.split()[0] for line in listed.stdout.splitlines() if line.split()]
+            tokens_path = pathlib.Path("/run/porelo-host/people/bo/identities.tokens")
+            print(
+                json.dumps(
+                    {
+                        "rc": listed.returncode,
+                        "entries": entries,
+                        "identities_exists": tokens_path.exists() or tokens_path.is_symlink(),
+                    }
+                )
+            )
+      register: verify_bring_bo_vault
+      changed_when: false
+
+    - name: Assert bo's own stop succeeded, filled bo's vault with both forge entries and removed identities.tokens
+      ansible.builtin.assert:
+        that:
+          - verify_bring_stop_out.rc == 0
+          - verify_bring_stop_out.stdout == 'Your stop is done.\n'
+          - verify_bring_stop_out.stderr == ''
+          - verify_bring_vault_out.rc == 0
+          - (verify_bring_central.forge_name ~ '.person') in verify_bring_vault_out.entries
+          - ('git.token.' ~ verify_bring_central.forge_name) in verify_bring_vault_out.entries
+          - not verify_bring_vault_out.identities_exists
+        fail_msg: >-
+          asked bo's own stop for rc 0 ('Your stop is done.'), vault entries {{ verify_bring_central.forge_name
+          }}.person and git.token.{{ verify_bring_central.forge_name }}, and identities.tokens gone;
+          got stop {{ verify_bring_stop_out }}, vault {{ verify_bring_vault_out }}
+      vars:
+        verify_bring_stop_out: "{{ verify_bring_bo_stop.stdout | from_json }}"
+        verify_bring_vault_out: "{{ verify_bring_bo_vault.stdout | from_json }}"
+
+    - name: Run porelo.host.bring as bo with no sudo to bring alpha-one onto the host
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, pathlib, pwd, re, subprocess
+            pw = pwd.getpwnam("bo")
+            patterns = [
+                line for line in pathlib.Path("/root/verify-people/tokens.pat").read_text(encoding="utf-8").splitlines()
+                if line
+            ]
+            run = subprocess.run(
+                [
+                    "/usr/sbin/runuser", "-u", "bo", "--",
+                    "/usr/bin/env", f"HOME={pw.pw_dir}", "USER=bo", "LOGNAME=bo",
+                    f"XDG_RUNTIME_DIR=/run/user/{pw.pw_uid}",
+                    "ANSIBLE_NOCOLOR=1",
+                    "ANSIBLE_STDOUT_CALLBACK=default",
+                    "LC_ALL=C.UTF-8",
+                    "ansible-playbook", "-v", "-c", "local", "porelo.host.bring", "-e", "porelo_project=alpha-one",
+                ],
+                capture_output=True,
+                text=True,
+                cwd=pw.pw_dir,
+            )
+            with open("/root/verify-bring/act.out", "a", encoding="utf-8") as out_file:
+                out_file.write(run.stdout + run.stderr)
+            sync_answer = None
+            marker = "own_sync | Keep the host's developers to the signed access file, through root's sync]"
+            pos = run.stdout.find(marker)
+            if pos != -1:
+                next_task = run.stdout.find("\nTASK [", pos)
+                recap_pos = run.stdout.find("\nPLAY RECAP", pos)
+                ends = [idx for idx in (next_task, recap_pos) if idx != -1]
+                section = run.stdout[pos : min(ends)] if ends else run.stdout[pos:]
+                arrow = section.find("=> ")
+                if arrow != -1:
+                    task_obj, _ = json.JSONDecoder().raw_decode(section[arrow + 3 :].lstrip())
+                    if isinstance(task_obj, dict) and task_obj.get("stdout"):
+                        sync_answer = json.loads(task_obj["stdout"])
+            def redact(text):
+                for item in patterns:
+                    text = text.replace(item, "<redacted>")
+                return text
+            recap_match = re.search(r"(?m)^localhost\s*:\s*(.+)$", run.stdout)
+            print(
+                json.dumps(
+                    {
+                        "rc": run.returncode,
+                        "recap": recap_match.group(1) if recap_match else "",
+                        "sync": sync_answer,
+                        "tail": redact((run.stdout + "\n" + run.stderr)[-3000:]),
+                    }
+                )
+            )
+      register: verify_bring_first_run
+      changed_when: true
+      no_log: true
+
+    - name: Read cy's person record and getent passwd entries after bring's sync
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, pathlib, subprocess
+            cy_conf = pathlib.Path("/etc/porelo-host/people/cy.conf").read_text(encoding="utf-8")
+            passwd = subprocess.check_output(["/usr/bin/getent", "passwd"], text=True).splitlines()
+            cy_accounts = [line.split(":", 1)[0] for line in passwd if line.split(":", 1)[0].startswith("cy")]
+            print(json.dumps({"cy_conf": cy_conf, "cy_accounts": cy_accounts}))
+      register: verify_bring_cy_after_sync
+      changed_when: false
+
+    - name: Assert porelo.host.bring ended green and sync added alpha-one developer to cy with no second account
+      ansible.builtin.assert:
+        that:
+          - verify_bring_first.rc == 0
+          - verify_bring_first.sync is mapping
+          - not (verify_bring_first.sync.unchanged | default(true))
+          - verify_bring_first.sync.added is defined
+          - >-
+            'cy' in verify_bring_first.sync.added
+            or (verify_bring_first.sync.added is sequence
+                and verify_bring_first.sync.added | select('mapping')
+                | selectattr('person', 'defined') | selectattr('person', 'equalto', 'cy') | list | length == 1)
+          - verify_bring_cy_sync.cy_accounts == ['cy']
+          - >-
+            verify_bring_cy_sync.cy_conf is match(
+            '^member=hand\nmember=alpha-one developer\nmember=alpha-two project-admin\nlocked=false\nlaptop=cy-laptop '
+            )
+        fail_msg: >-
+          asked porelo.host.bring for rc 0, sync JSON naming cy in added, one cy account and cy.conf holding
+          member=hand, member=alpha-one developer and member=alpha-two project-admin;
+          got bring {{ verify_bring_first }}, cy {{ verify_bring_cy_sync }}
+      vars:
+        verify_bring_first: "{{ verify_bring_first_run.stdout | from_json }}"
+        verify_bring_cy_sync: "{{ verify_bring_cy_after_sync.stdout | from_json }}"
+
+    - name: Read alpha-one/app, main's protection, teams and Actions variables and secrets from Forgejo
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, pathlib, ssl, urllib.request
+            token = pathlib.Path("/home/porelo-forge/.config/porelo-forge/api.token").read_text(
+                encoding="utf-8"
+            ).strip()
+            conf = dict(
+                line.split("=", 1)
+                for line in pathlib.Path("/etc/porelo-host/forge.conf").read_text(encoding="utf-8").splitlines()
+                if "=" in line
+            )
+            ctx = ssl.create_default_context(cafile="/etc/porelo-host/forge/ca.pem")
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}),
+                urllib.request.HTTPSHandler(context=ctx),
+            )
+            base = f"https://{conf['address']}:{conf['port']}/api/v1"
+            def get_json(path):
+                req = urllib.request.Request(base + path, headers={"Authorization": "token " + token})
+                with opener.open(req, timeout=30) as resp:
+                    return json.load(resp)
+            repo = get_json("/repos/alpha-one/app")
+            branch = get_json("/repos/alpha-one/app/branches/main")
+            protection = get_json("/repos/alpha-one/app/branch_protections/main")
+            teams_raw = get_json("/orgs/alpha-one/teams?limit=50&page=1")
+            teams = {}
+            for entry in teams_raw:
+                detail = get_json(f"/teams/{entry['id']}")
+                members = [m["login"] for m in get_json(f"/teams/{entry['id']}/members?limit=50&page=1")]
+                teams[entry["name"]] = {
+                    "includes_all_repositories": detail.get("includes_all_repositories"),
+                    "can_create_org_repo": detail.get("can_create_org_repo"),
+                    "units_map": detail.get("units_map"),
+                    "members": sorted(members),
+                }
+            variables = {}
+            for key in ("PORELO_PUBLISH", "JF_URL", "PORELO_DEPLOY_PROFILE", "MAVEN_SNAPSHOTS_URL"):
+                variables[key] = get_json(f"/orgs/alpha-one/actions/variables/{key}").get("data")
+            secret_names = [row["name"] for row in get_json("/orgs/alpha-one/actions/secrets?limit=50&page=1")]
+            print(
+                json.dumps(
+                    {
+                        "original_url": repo.get("original_url"),
+                        "mirror": repo.get("mirror"),
+                        "private": repo.get("private"),
+                        "merge": {
+                            "allow_fast_forward_only_merge": repo.get("allow_fast_forward_only_merge"),
+                            "default_merge_style": repo.get("default_merge_style"),
+                            "allow_merge_commits": repo.get("allow_merge_commits"),
+                            "allow_rebase": repo.get("allow_rebase"),
+                            "allow_rebase_explicit": repo.get("allow_rebase_explicit"),
+                            "allow_squash_merge": repo.get("allow_squash_merge"),
+                        },
+                        "main_sha": (branch.get("commit") or {}).get("id"),
+                        "protection": {
+                            "rule_name": protection.get("rule_name"),
+                            "enable_push": protection.get("enable_push"),
+                            "enable_push_whitelist": protection.get("enable_push_whitelist"),
+                            "required_approvals": protection.get("required_approvals"),
+                            "enable_approvals_whitelist": protection.get("enable_approvals_whitelist"),
+                            "approvals_whitelist_teams": sorted(protection.get("approvals_whitelist_teams") or []),
+                            "enable_merge_whitelist": protection.get("enable_merge_whitelist"),
+                            "merge_whitelist_teams": sorted(protection.get("merge_whitelist_teams") or []),
+                            "enable_status_check": protection.get("enable_status_check"),
+                            "apply_to_admins": protection.get("apply_to_admins"),
+                        },
+                        "teams": teams,
+                        "variables": variables,
+                        "secrets": secret_names,
+                    }
+                )
+            )
+      register: verify_bring_forge_state
+      changed_when: false
+      no_log: true
+
+    - name: Assert Forgejo holds migrated alpha-one/app, fast-forward main protection, teams with cy, and Actions vars
+      ansible.builtin.assert:
+        that:
+          - verify_bring_forge.original_url == verify_bring_central.central_url
+          - not verify_bring_forge.mirror
+          - verify_bring_forge.private
+          - verify_bring_forge.main_sha == verify_bring_central.central_sha
+          - verify_bring_forge.merge == verify_bring_expected_merge
+          - verify_bring_forge.protection == verify_bring_expected_protection
+          - "verify_bring_forge.teams.developers == (verify_bring_expected_code_team | combine({'members': ['cy']}))"
+          - "verify_bring_forge.teams.gates == (verify_bring_expected_gates_team | combine({'members': []}))"
+          - "verify_bring_forge.teams.agents == (verify_bring_expected_code_team | combine({'members': []}))"
+          - verify_bring_forge.variables == verify_bring_expected_variables
+          - "'JF_ACCESS_TOKEN' in verify_bring_forge.secrets"
+        fail_msg: >-
+          asked Forgejo alpha-one for migrated app ({{ verify_bring_central.central_url }}, SHA
+          {{ verify_bring_central.central_sha }}), fast-forward-only protection with Owners and developers,
+          teams developers (with cy), gates and agents, and Actions variables/secrets; got {{ verify_bring_forge }}
+      vars:
+        verify_bring_forge: "{{ verify_bring_forge_state.stdout | from_json }}"
+        verify_bring_expected_merge:
+          allow_fast_forward_only_merge: true
+          default_merge_style: fast-forward-only
+          allow_merge_commits: false
+          allow_rebase: false
+          allow_rebase_explicit: false
+          allow_squash_merge: false
+        verify_bring_expected_protection:
+          rule_name: main
+          enable_push: false
+          enable_push_whitelist: false
+          required_approvals: 1
+          enable_approvals_whitelist: true
+          approvals_whitelist_teams: [Owners, developers]
+          enable_merge_whitelist: true
+          merge_whitelist_teams: [Owners, developers]
+          enable_status_check: false
+          apply_to_admins: true
+        verify_bring_expected_code_team:
+          includes_all_repositories: true
+          can_create_org_repo: false
+          units_map:
+            repo.code: write
+            repo.pulls: write
+            repo.issues: write
+            repo.actions: read
+            repo.packages: read
+        verify_bring_expected_gates_team:
+          includes_all_repositories: true
+          can_create_org_repo: false
+          units_map:
+            repo.code: write
+            repo.pulls: write
+            repo.actions: read
+        verify_bring_expected_variables:
+          PORELO_PUBLISH: "false"
+          JF_URL: https://jfrog.invalid
+          PORELO_DEPLOY_PROFILE: forge-release
+          MAVEN_SNAPSHOTS_URL: >-
+            https://{{ verify_bring_central.forge_address }}:{{ verify_bring_central.forge_port
+            }}/api/packages/alpha-one/maven
+
+    - name: Read bo's push config, runtime token files, sync timer and followed projects after bring
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, os, pathlib, pwd, stat, subprocess
+            pw = pwd.getpwnam("bo")
+            push_dir = pathlib.Path(f"{pw.pw_dir}/.config/porelo-host/push")
+            push_file = push_dir / "alpha-one.conf"
+            dir_st = push_dir.lstat()
+            file_st = push_file.lstat()
+            runtime_dir = pathlib.Path(f"/run/user/{pw.pw_uid}/porelo-host")
+            forge_tok = runtime_dir / "forge.token"
+            central_tok = runtime_dir / "forge-central-token"
+            env = {
+                "HOME": pw.pw_dir,
+                "USER": "bo",
+                "LOGNAME": "bo",
+                "XDG_RUNTIME_DIR": f"/run/user/{pw.pw_uid}",
+                "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "LC_ALL": "C.UTF-8",
+            }
+            def as_bo(args):
+                env_args = [f"{k}={v}" for k, v in env.items()]
+                res = subprocess.run(
+                    ["/usr/sbin/runuser", "-u", "bo", "--", "/usr/bin/env", *env_args, *args],
+                    capture_output=True,
+                    text=True,
+                    cwd=pw.pw_dir,
+                )
+                with open("/root/verify-bring/act.out", "a", encoding="utf-8") as out_file:
+                    out_file.write(res.stdout + res.stderr)
+                return res
+            enabled = as_bo(["systemctl", "--user", "is-enabled", "porelo-host-sync-alpha-one.timer"])
+            active = as_bo(["systemctl", "--user", "is-active", "porelo-host-sync-alpha-one.timer"])
+            following = as_bo(["porelo", "project", "following", "--json"])
+            print(
+                json.dumps(
+                    {
+                        "dir_is_dir": stat.S_ISDIR(dir_st.st_mode),
+                        "dir_uid": dir_st.st_uid,
+                        "dir_mode": f"{stat.S_IMODE(dir_st.st_mode):04o}",
+                        "file_is_reg": stat.S_ISREG(file_st.st_mode),
+                        "file_uid": file_st.st_uid,
+                        "file_mode": f"{stat.S_IMODE(file_st.st_mode):04o}",
+                        "push_lines": push_file.read_text(encoding="utf-8").splitlines(),
+                        "bo_uid": pw.pw_uid,
+                        "forge_token_exists": os.path.lexists(forge_tok),
+                        "central_token_exists": os.path.lexists(central_tok),
+                        "timer_enabled": enabled.stdout.strip(),
+                        "timer_active": active.stdout.strip(),
+                        "following_rc": following.returncode,
+                        "following": json.loads(following.stdout) if following.returncode == 0 else {},
+                    }
+                )
+            )
+      register: verify_bring_bo_local
+      changed_when: false
+
+    - name: Assert bo's push config, empty runtime token paths, active sync timer and Porelo follow of alpha-one
+      ansible.builtin.assert:
+        that:
+          - verify_bring_bo_state.dir_is_dir
+          - verify_bring_bo_state.dir_uid == verify_bring_bo_state.bo_uid
+          - verify_bring_bo_state.dir_mode == '0700'
+          - verify_bring_bo_state.file_is_reg
+          - verify_bring_bo_state.file_uid == verify_bring_bo_state.bo_uid
+          - verify_bring_bo_state.file_mode == '0600'
+          - ('repository app ' ~ verify_bring_central.central_url) in verify_bring_bo_state.push_lines
+          - not verify_bring_bo_state.forge_token_exists
+          - not verify_bring_bo_state.central_token_exists
+          - verify_bring_bo_state.timer_enabled == 'enabled'
+          - verify_bring_bo_state.timer_active == 'active'
+          - verify_bring_bo_state.following_rc == 0
+          - verify_bring_bo_alpha | length == 1
+          - verify_bring_bo_alpha[0].verified
+          - verify_bring_bo_alpha[0].commit == verify_bring_bundles.project_commit
+        fail_msg: >-
+          asked bo's account for 0700/0600 push/alpha-one.conf naming 'repository app {{
+          verify_bring_central.central_url }}', no runtime forge.token or forge-central-token, enabled+active
+          porelo-host-sync-alpha-one.timer and followed alpha-one; got {{ verify_bring_bo_state }}
+      vars:
+        verify_bring_bo_state: "{{ verify_bring_bo_local.stdout | from_json }}"
+        verify_bring_bo_alpha: >-
+          {{ (verify_bring_bo_state.following.follows | default([]))
+          | selectattr('name', 'equalto', 'alpha-one') | list }}
+
+    - name: Run porelo.host.bring a second time as bo to verify idempotence
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, pathlib, pwd, re, subprocess
+            pw = pwd.getpwnam("bo")
+            patterns = [
+                line for line in pathlib.Path("/root/verify-people/tokens.pat").read_text(encoding="utf-8").splitlines()
+                if line
+            ]
+            run = subprocess.run(
+                [
+                    "/usr/sbin/runuser", "-u", "bo", "--",
+                    "/usr/bin/env", f"HOME={pw.pw_dir}", "USER=bo", "LOGNAME=bo",
+                    f"XDG_RUNTIME_DIR=/run/user/{pw.pw_uid}",
+                    "ANSIBLE_NOCOLOR=1",
+                    "ANSIBLE_STDOUT_CALLBACK=default",
+                    "LC_ALL=C.UTF-8",
+                    "ansible-playbook", "-c", "local", "porelo.host.bring", "-e", "porelo_project=alpha-one",
+                ],
+                capture_output=True,
+                text=True,
+                cwd=pw.pw_dir,
+            )
+            with open("/root/verify-bring/act.out", "a", encoding="utf-8") as out_file:
+                out_file.write(run.stdout + run.stderr)
+            changed_tasks = []
+            current_task = ""
+            for line in run.stdout.splitlines():
+                task_match = re.match(r"^TASK \[(.+)\]\s*\*", line)
+                if task_match:
+                    current_task = task_match.group(1)
+                elif line.startswith("changed: "):
+                    changed_tasks.append(current_task)
+            recap = {}
+            recap_match = re.search(r"(?m)^localhost\s*:\s*(.+)$", run.stdout)
+            if recap_match:
+                for pair in recap_match.group(1).split():
+                    if "=" in pair:
+                        k, v = pair.split("=", 1)
+                        recap[k] = int(v)
+            def redact(text):
+                for item in patterns:
+                    text = text.replace(item, "<redacted>")
+                return text
+            print(
+                json.dumps(
+                    {
+                        "rc": run.returncode,
+                        "recap": recap,
+                        "changed_tasks": changed_tasks,
+                        "tail": redact((run.stdout + "\n" + run.stderr)[-2000:]),
+                    }
+                )
+            )
+      register: verify_bring_second_run
+      changed_when: false
+      no_log: true
+
+    # roles/forge/tasks/own.yml stages forge.token with changed_when: false and deletes it in always: with
+    # ansible.builtin.file (state: absent), so that single cleanup task reports changed=1 on purpose.
+    - name: Assert the second bring changes nothing beyond removing the per-run runtime forge.token
+      ansible.builtin.assert:
+        that:
+          - verify_bring_second.rc == 0
+          - verify_bring_second.recap.failed | default(-1) == 0
+          - verify_bring_second.recap.unreachable | default(-1) == 0
+          - >-
+            (verify_bring_second.recap.changed | default(-1) == 0 and verify_bring_second.changed_tasks == [])
+            or (verify_bring_second.recap.changed | default(-1) == 1
+                and verify_bring_second.changed_tasks
+                == ["porelo.host.forge : own | Remove the person's forge token from the runtime directory"])
+        fail_msg: >-
+          asked second porelo.host.bring run for rc 0 and changed=0 (or changed=1 solely from
+          "porelo.host.forge : own | Remove the person's forge token from the runtime directory");
+          got {{ verify_bring_second }}
+      vars:
+        verify_bring_second: "{{ verify_bring_second_run.stdout | from_json }}"
+
+    - name: Ask porelo.host.bring to refuse a 0644 machine.yml, a symlinked access.bundle and a user-bearing forge URL
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import hashlib, json, os, pathlib, pwd, shutil, ssl, subprocess, sys, urllib.request
+            probe = sys.argv[1]
+            bad_url = sys.argv[2]
+            pw = pwd.getpwnam("bo")
+            setup = pathlib.Path(f"{pw.pw_dir}/.local/share/porelo-host/setup/alpha-one")
+            machine = setup / "machine.yml"
+            access = setup / "access.bundle"
+            saved_machine = machine.read_bytes()
+            saved_access = pathlib.Path("/root/verify-bring/access.bundle.saved")
+            token = pathlib.Path("/home/porelo-forge/.config/porelo-forge/api.token").read_text(
+                encoding="utf-8"
+            ).strip()
+            conf = dict(
+                line.split("=", 1)
+                for line in pathlib.Path("/etc/porelo-host/forge.conf").read_text(encoding="utf-8").splitlines()
+                if "=" in line
+            )
+            ctx = ssl.create_default_context(cafile="/etc/porelo-host/forge/ca.pem")
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}),
+                urllib.request.HTTPSHandler(context=ctx),
+            )
+            def snapshot():
+                req = urllib.request.Request(
+                    f"https://{conf['address']}:{conf['port']}/api/v1/orgs/alpha-one/repos?limit=50&page=1",
+                    headers={"Authorization": "token " + token},
+                )
+                with opener.open(req, timeout=30) as resp:
+                    repos = sorted((r["name"], r.get("original_url")) for r in json.load(resp))
+                follow = subprocess.check_output(
+                    [
+                        "/usr/sbin/runuser", "-u", "bo", "--",
+                        "/usr/bin/env", f"HOME={pw.pw_dir}", "USER=bo", "LOGNAME=bo",
+                        f"XDG_RUNTIME_DIR=/run/user/{pw.pw_uid}",
+                        "LC_ALL=C.UTF-8",
+                        "porelo", "project", "following", "--json",
+                    ],
+                    text=True,
+                    cwd=pw.pw_dir,
+                )
+                push_bytes = pathlib.Path(f"{pw.pw_dir}/.config/porelo-host/push/alpha-one.conf").read_text(
+                    encoding="utf-8"
+                )
+                cy_conf = pathlib.Path("/etc/porelo-host/people/cy.conf").read_text(encoding="utf-8")
+                blob = json.dumps(
+                    {"repos": repos, "follow": json.loads(follow), "push": push_bytes, "cy": cy_conf},
+                    sort_keys=True,
+                )
+                return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+            before = snapshot()
+            try:
+                if probe == "mode_0644":
+                    os.chmod(machine, 0o644)
+                elif probe == "access_link":
+                    shutil.copyfile(access, saved_access)
+                    os.chmod(saved_access, 0o600)
+                    link_target = pathlib.Path(f"{pw.pw_dir}/.local/share/porelo-host/access.bundle.target")
+                    shutil.copyfile(access, link_target)
+                    os.chown(link_target, pw.pw_uid, pw.pw_gid)
+                    os.chmod(link_target, 0o600)
+                    access.unlink()
+                    os.symlink(str(link_target), str(access))
+                    os.lchown(access, pw.pw_uid, pw.pw_gid)
+                elif probe == "url_with_user":
+                    text = saved_machine.decode("utf-8").splitlines()
+                    replaced = []
+                    for line in text:
+                        if line.lstrip().startswith("url: ") and "central-alpha-one/app.git" in line:
+                            indent = line[: len(line) - len(line.lstrip())]
+                            replaced.append(f"{indent}url: {json.dumps(bad_url)}")
+                        else:
+                            replaced.append(line)
+                    machine.write_text("\n".join(replaced) + "\n", encoding="utf-8")
+                    os.chown(machine, pw.pw_uid, pw.pw_gid)
+                    os.chmod(machine, 0o600)
+                else:
+                    raise SystemExit(f"unknown probe {probe}")
+                run = subprocess.run(
+                    [
+                        "/usr/sbin/runuser", "-u", "bo", "--",
+                        "/usr/bin/env", f"HOME={pw.pw_dir}", "USER=bo", "LOGNAME=bo",
+                        f"XDG_RUNTIME_DIR=/run/user/{pw.pw_uid}",
+                        "ANSIBLE_STDOUT_CALLBACK=porelo.host.lines",
+                        "LC_ALL=C.UTF-8",
+                        "ansible-playbook", "-c", "local", "porelo.host.bring", "-e", "porelo_project=alpha-one",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    cwd=pw.pw_dir,
+                )
+                with open("/root/verify-bring/act.out", "a", encoding="utf-8") as out_file:
+                    out_file.write(run.stdout + run.stderr)
+            finally:
+                if os.path.lexists(access) and os.path.islink(access):
+                    access.unlink()
+                if not access.exists() and saved_access.exists():
+                    shutil.copyfile(saved_access, access)
+                    os.chown(access, pw.pw_uid, pw.pw_gid)
+                    os.chmod(access, 0o600)
+                if saved_access.exists():
+                    saved_access.unlink()
+                extra_target = pathlib.Path(f"{pw.pw_dir}/.local/share/porelo-host/access.bundle.target")
+                if os.path.lexists(extra_target):
+                    extra_target.unlink()
+                machine.write_bytes(saved_machine)
+                os.chown(machine, pw.pw_uid, pw.pw_gid)
+                os.chmod(machine, 0o600)
+            after = snapshot()
+            lines = [json.loads(line) for line in run.stdout.splitlines() if line.strip().startswith("{")]
+            failed = [line.get("msg", "") for line in lines if line.get("state") == "failed"]
+            changed = [line.get("task", "") for line in lines if line.get("state") == "changed"]
+            print(
+                json.dumps(
+                    {
+                        "rc": run.returncode,
+                        "failed": failed,
+                        "changed": changed,
+                        "unchanged": before == after,
+                    }
+                )
+            )
+          - "{{ item.probe }}"
+          - "https://user@{{ verify_bring_central.forge_address }}:{{
+            verify_bring_central.forge_port }}/central-alpha-one/app.git"
+      loop:
+        - probe: mode_0644
+          words:
+            - /home/bo/.local/share/porelo-host/setup/alpha-one/machine.yml
+            - mode 0644
+        - probe: access_link
+          words:
+            - /home/bo/.local/share/porelo-host/setup/alpha-one/access.bundle
+            - link
+        - probe: url_with_user
+          words:
+            - "forge:"
+            - https://user@
+      loop_control:
+        label: "{{ item.probe }}"
+      register: verify_bring_refusals
+      changed_when: false
+      no_log: true
+
+    - name: Assert every bring refusal names what was wrong and leaves follow, push, people and forge state unchanged
+      ansible.builtin.assert:
+        that:
+          - verify_bring_refusal.rc == 2
+          - verify_bring_refusal.failed | length == 1
+          - verify_bring_refusal.changed == []
+          - verify_bring_refusal.unchanged
+          - item.item.words | reject('in', verify_bring_refusal.failed[0]) | list | length == 0
+        fail_msg: >-
+          asked bring refusal '{{ item.item.probe }}' for rc 2, zero changed tasks, unchanged state and
+          {{ item.item.words }} in failed message; got {{ verify_bring_refusal }}
+      vars:
+        verify_bring_refusal: "{{ item.stdout | from_json }}"
+      loop: "{{ verify_bring_refusals.results }}"
+      loop_control:
+        label: "{{ item.item.probe }}"
+
+    - name: Create cy's private setup directory hierarchy under /home/cy/.local/share/porelo-host/setup/alpha-one
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: cy
+        group: cy
+        mode: "0700"
+      loop:
+        - /home/cy/.local
+        - /home/cy/.local/share
+        - /home/cy/.local/share/porelo-host
+        - /home/cy/.local/share/porelo-host/setup
+        - /home/cy/.local/share/porelo-host/setup/alpha-one
+
+    - name: Upload project.bundle and access.bundle into cy's setup directory with mode 0600
+      ansible.builtin.copy:
+        src: "/root/verify-bring/{{ item }}"
+        dest: "/home/cy/.local/share/porelo-host/setup/alpha-one/{{ item }}"
+        remote_src: true
+        owner: cy
+        group: cy
+        mode: "0600"
+      loop:
+        - project.bundle
+        - access.bundle
+
+    - name: Write cy's 0600 machine.yml without a forge section
+      ansible.builtin.copy:
+        dest: /home/cy/.local/share/porelo-host/setup/alpha-one/machine.yml
+        owner: cy
+        group: cy
+        mode: "0600"
+        content: |
+          project:
+            name: alpha-one
+            url: /home/cy/.local/share/porelo-host/setup/alpha-one/project.bundle
+            signed_by: {{ verify_bring_bundles.signer | to_json }}
+          keys: []
+          access:
+            bundle: access.bundle
+
+    - name: Run cy's own stop as cy with no sudo for vault-new and identities
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import base64, json, pathlib, pwd, secrets, subprocess
+            pw = pwd.getpwnam("cy")
+            passphrase = "cy-vault-passphrase-" + secrets.token_hex(20)
+            pat_path = pathlib.Path("/root/verify-people/tokens.pat")
+            with pat_path.open("a", encoding="utf-8") as handle:
+                handle.write(passphrase + "\n")
+            patterns = [line for line in pat_path.read_text(encoding="utf-8").splitlines() if line]
+            b64_pass = base64.b64encode(passphrase.encode("utf-8")).decode("ascii")
+            run = subprocess.run(
+                [
+                    "/usr/sbin/runuser", "-u", "cy", "--",
+                    "/usr/bin/env", f"HOME={pw.pw_dir}", "USER=cy", "LOGNAME=cy",
+                    f"XDG_RUNTIME_DIR=/run/user/{pw.pw_uid}",
+                    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                    "LC_ALL=C.UTF-8",
+                    "/usr/local/bin/porelo-host-stop", "--stdin", "vault-new", "identities",
+                ],
+                input=f"vault-new {b64_pass}\n",
+                capture_output=True,
+                text=True,
+                cwd=pw.pw_dir,
+            )
+            listed = subprocess.run(
+                [
+                    "/usr/sbin/runuser", "-u", "cy", "--",
+                    "/usr/bin/env", f"HOME={pw.pw_dir}", "USER=cy", "LOGNAME=cy",
+                    f"XDG_RUNTIME_DIR=/run/user/{pw.pw_uid}",
+                    "LC_ALL=C.UTF-8",
+                    "porelo", "vault", "list",
+                ],
+                capture_output=True,
+                text=True,
+                cwd=pw.pw_dir,
+            )
+            with open("/root/verify-bring/act.out", "a", encoding="utf-8") as out_file:
+                out_file.write(run.stdout + run.stderr + listed.stdout + listed.stderr)
+            def redact(text):
+                for item in patterns:
+                    text = text.replace(item, "<redacted>")
+                return text
+            entries = [line.split()[0] for line in listed.stdout.splitlines() if line.split()]
+            tokens_path = pathlib.Path("/run/porelo-host/people/cy/identities.tokens")
+            print(
+                json.dumps(
+                    {
+                        "rc": run.returncode,
+                        "stdout": redact(run.stdout),
+                        "stderr": redact(run.stderr),
+                        "vault_rc": listed.returncode,
+                        "entries": entries,
+                        "identities_exists": tokens_path.exists() or tokens_path.is_symlink(),
+                    }
+                )
+            )
+      register: verify_bring_cy_stop
+      changed_when: true
+      no_log: true
+
+    - name: Assert cy's own stop succeeded, filled cy's vault and removed cy's identities.tokens
+      ansible.builtin.assert:
+        that:
+          - verify_bring_cy_stop_out.rc == 0
+          - verify_bring_cy_stop_out.stdout == 'Your stop is done.\n'
+          - verify_bring_cy_stop_out.stderr == ''
+          - verify_bring_cy_stop_out.vault_rc == 0
+          - (verify_bring_central.forge_name ~ '.person') in verify_bring_cy_stop_out.entries
+          - ('git.token.' ~ verify_bring_central.forge_name) in verify_bring_cy_stop_out.entries
+          - not verify_bring_cy_stop_out.identities_exists
+        fail_msg: >-
+          asked cy's own stop for rc 0 ('Your stop is done.'), vault entries {{ verify_bring_central.forge_name
+          }}.person and git.token.{{ verify_bring_central.forge_name }}, and cy's identities.tokens gone;
+          got {{ verify_bring_cy_stop_out }}
+      vars:
+        verify_bring_cy_stop_out: "{{ verify_bring_cy_stop.stdout | from_json }}"
+
+    - name: Run porelo.host.join as cy with no sudo and inspect cy's push config, runtime directory and follow state
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, os, pathlib, pwd, stat, subprocess
+            pw = pwd.getpwnam("cy")
+            patterns = [
+                line for line in pathlib.Path("/root/verify-people/tokens.pat").read_text(encoding="utf-8").splitlines()
+                if line
+            ]
+            run = subprocess.run(
+                [
+                    "/usr/sbin/runuser", "-u", "cy", "--",
+                    "/usr/bin/env", f"HOME={pw.pw_dir}", "USER=cy", "LOGNAME=cy",
+                    f"XDG_RUNTIME_DIR=/run/user/{pw.pw_uid}",
+                    "ANSIBLE_NOCOLOR=1",
+                    "LC_ALL=C.UTF-8",
+                    "ansible-playbook", "-c", "local", "porelo.host.join", "-e", "porelo_project=alpha-one",
+                ],
+                capture_output=True,
+                text=True,
+                cwd=pw.pw_dir,
+            )
+            following = subprocess.run(
+                [
+                    "/usr/sbin/runuser", "-u", "cy", "--",
+                    "/usr/bin/env", f"HOME={pw.pw_dir}", "USER=cy", "LOGNAME=cy",
+                    f"XDG_RUNTIME_DIR=/run/user/{pw.pw_uid}",
+                    "LC_ALL=C.UTF-8",
+                    "porelo", "project", "following", "--json",
+                ],
+                capture_output=True,
+                text=True,
+                cwd=pw.pw_dir,
+            )
+            with open("/root/verify-bring/act.out", "a", encoding="utf-8") as out_file:
+                out_file.write(run.stdout + run.stderr + following.stdout + following.stderr)
+            push_dir = pathlib.Path(f"{pw.pw_dir}/.config/porelo-host/push")
+            push_file = push_dir / "alpha-one.conf"
+            runtime_dir = pathlib.Path(f"/run/user/{pw.pw_uid}/porelo-host")
+            runtime_entries = sorted(p.name for p in runtime_dir.iterdir()) if runtime_dir.exists() else []
+            def redact(text):
+                for item in patterns:
+                    text = text.replace(item, "<redacted>")
+                return text
+            result = {
+                "rc": run.returncode,
+                "cy_uid": pw.pw_uid,
+                "push_exists": push_file.exists(),
+                "runtime_entries": runtime_entries,
+                "forge_token_exists": os.path.lexists(runtime_dir / "forge.token"),
+                "central_token_exists": os.path.lexists(runtime_dir / "forge-central-token"),
+                "following_rc": following.returncode,
+                "following": json.loads(following.stdout) if following.returncode == 0 else {},
+                "tail": redact((run.stdout + "\n" + run.stderr)[-2000:]),
+            }
+            if push_file.exists():
+                dir_st = push_dir.lstat()
+                file_st = push_file.lstat()
+                result.update(
+                    {
+                        "dir_uid": dir_st.st_uid,
+                        "dir_mode": f"{stat.S_IMODE(dir_st.st_mode):04o}",
+                        "file_uid": file_st.st_uid,
+                        "file_mode": f"{stat.S_IMODE(file_st.st_mode):04o}",
+                        "push_lines": push_file.read_text(encoding="utf-8").splitlines(),
+                    }
+                )
+            print(json.dumps(result))
+      register: verify_bring_cy_join
+      changed_when: true
+      no_log: true
+
+    - name: Assert porelo.host.join wrote cy's 0600 push config naming app, followed alpha-one and left no runtime token
+      ansible.builtin.assert:
+        that:
+          - verify_bring_join.rc == 0
+          - verify_bring_join.push_exists
+          - verify_bring_join.dir_uid == verify_bring_join.cy_uid
+          - verify_bring_join.dir_mode == '0700'
+          - verify_bring_join.file_uid == verify_bring_join.cy_uid
+          - verify_bring_join.file_mode == '0600'
+          - ('repository app ' ~ verify_bring_central.central_url) in verify_bring_join.push_lines
+          - not verify_bring_join.forge_token_exists
+          - not verify_bring_join.central_token_exists
+          - verify_bring_join.runtime_entries == []
+          - verify_bring_join.following_rc == 0
+          - verify_bring_cy_alpha | length == 1
+          - verify_bring_cy_alpha[0].verified
+          - verify_bring_cy_alpha[0].commit == verify_bring_bundles.project_commit
+        fail_msg: >-
+          asked porelo.host.join as cy for rc 0, cy:cy 0700/0600 push/alpha-one.conf naming 'repository app {{
+          verify_bring_central.central_url }}', empty runtime token directory and followed alpha-one;
+          got {{ verify_bring_join }}
+      vars:
+        verify_bring_join: "{{ verify_bring_cy_join.stdout | from_json }}"
+        verify_bring_cy_alpha: >-
+          {{ (verify_bring_join.following.follows | default([]))
+          | selectattr('name', 'equalto', 'alpha-one') | list }}
+
+    - name: Ask porelo.host.join as cy to refuse a machine.yml carrying a forge section
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import hashlib, json, os, pathlib, pwd, subprocess, sys
+            central_url = sys.argv[1]
+            pw = pwd.getpwnam("cy")
+            machine = pathlib.Path(f"{pw.pw_dir}/.local/share/porelo-host/setup/alpha-one/machine.yml")
+            push_file = pathlib.Path(f"{pw.pw_dir}/.config/porelo-host/push/alpha-one.conf")
+            saved = machine.read_bytes()
+            before = hashlib.sha256(push_file.read_bytes()).hexdigest()
+            try:
+                with_forge = (
+                    saved.decode("utf-8")
+                    + "forge:\n"
+                    + "  repositories:\n"
+                    + "    - name: app\n"
+                    + f"      url: {json.dumps(central_url)}\n"
+                )
+                machine.write_text(with_forge, encoding="utf-8")
+                os.chown(machine, pw.pw_uid, pw.pw_gid)
+                os.chmod(machine, 0o600)
+                run = subprocess.run(
+                    [
+                        "/usr/sbin/runuser", "-u", "cy", "--",
+                        "/usr/bin/env", f"HOME={pw.pw_dir}", "USER=cy", "LOGNAME=cy",
+                        f"XDG_RUNTIME_DIR=/run/user/{pw.pw_uid}",
+                        "ANSIBLE_STDOUT_CALLBACK=porelo.host.lines",
+                        "LC_ALL=C.UTF-8",
+                        "ansible-playbook", "-c", "local", "porelo.host.join", "-e", "porelo_project=alpha-one",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    cwd=pw.pw_dir,
+                )
+                with open("/root/verify-bring/act.out", "a", encoding="utf-8") as out_file:
+                    out_file.write(run.stdout + run.stderr)
+            finally:
+                machine.write_bytes(saved)
+                os.chown(machine, pw.pw_uid, pw.pw_gid)
+                os.chmod(machine, 0o600)
+            after = hashlib.sha256(push_file.read_bytes()).hexdigest()
+            lines = [json.loads(line) for line in run.stdout.splitlines() if line.strip().startswith("{")]
+            failed = [line.get("msg", "") for line in lines if line.get("state") == "failed"]
+            changed = [line.get("task", "") for line in lines if line.get("state") == "changed"]
+            print(
+                json.dumps(
+                    {
+                        "rc": run.returncode,
+                        "failed": failed,
+                        "changed": changed,
+                        "unchanged": before == after,
+                    }
+                )
+            )
+          - "{{ verify_bring_central.central_url }}"
+      register: verify_bring_join_refusal
+      changed_when: false
+      no_log: true
+
+    - name: Assert porelo.host.join refuses a machine.yml with a forge section naming forge and changes nothing
+      ansible.builtin.assert:
+        that:
+          - verify_bring_join_refused.rc == 2
+          - verify_bring_join_refused.failed | length == 1
+          - verify_bring_join_refused.changed == []
+          - verify_bring_join_refused.unchanged
+          - "'a join reads no forge section' in verify_bring_join_refused.failed[0]"
+        fail_msg: >-
+          asked porelo.host.join with a forge: section for rc 2, 'a join reads no forge section', zero changed tasks
+          and unchanged push config; got {{ verify_bring_join_refused }}
+      vars:
+        verify_bring_join_refused: "{{ verify_bring_join_refusal.stdout | from_json }}"
+
+    - name: Scan all captured bring/join outputs and the journal against /root/verify-people/tokens.pat with a control
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, pathlib, subprocess
+            pat_path = pathlib.Path("/root/verify-people/tokens.pat")
+            patterns = [line for line in pat_path.read_text(encoding="utf-8").splitlines() if line]
+            if len(patterns) < 8 or min(len(item) for item in patterns) < 20:
+                raise SystemExit(f"expected >=8 patterns of len >=20, got {len(patterns)}")
+            planted = "\n".join(patterns) + "\n"
+            planted_matched = all(item in planted for item in patterns)
+            act_out = pathlib.Path("/root/verify-bring/act.out").read_text(encoding="utf-8")
+            journal = subprocess.check_output(["/usr/bin/journalctl", "-b", "-o", "cat", "--no-pager"], text=True)
+            grep_act = subprocess.run(
+                ["/usr/bin/grep", "-Fq", "-f", str(pat_path), "--", "/root/verify-bring/act.out"],
+                capture_output=True,
+                text=True,
+            )
+            journal_path = pathlib.Path("/root/verify-bring/journal.out")
+            journal_path.write_text(journal, encoding="utf-8")
+            try:
+                grep_journal = subprocess.run(
+                    ["/usr/bin/grep", "-Fq", "-f", str(pat_path), "--", str(journal_path)],
+                    capture_output=True,
+                    text=True,
+                )
+            finally:
+                journal_path.unlink(missing_ok=True)
+            print(
+                json.dumps(
+                    {
+                        "pattern_count": len(patterns),
+                        "min_len": min(len(item) for item in patterns),
+                        "planted_matched": planted_matched,
+                        "act_bytes": len(act_out),
+                        "act_clean": (not any(item in act_out for item in patterns)) and grep_act.returncode == 1,
+                        "journal_clean": (
+                            (not any(item in journal for item in patterns)) and grep_journal.returncode == 1
+                        ),
+                    }
+                )
+            )
+      register: verify_bring_leak_scan
+      changed_when: false
+      no_log: true
+
+    - name: Assert no token or vault passphrase appeared in the act's outputs or the journal
+      ansible.builtin.assert:
+        that:
+          - verify_bring_leaks.pattern_count >= 8
+          - verify_bring_leaks.min_len >= 20
+          - verify_bring_leaks.planted_matched
+          - verify_bring_leaks.act_bytes > 0
+          - verify_bring_leaks.act_clean
+          - verify_bring_leaks.journal_clean
+        fail_msg: >-
+          asked /root/verify-people/tokens.pat (>=8 patterns, planted control matching) for zero matches in act.out and
+          the journal; got {{ verify_bring_leaks }}
+      vars:
+        verify_bring_leaks: "{{ verify_bring_leak_scan.stdout | from_json }}"
+
+    - name: Remove bo's and cy's setup directories and timers, central-alpha-one and bo's minted central token
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, os, pathlib, pwd, secrets, shutil, ssl, subprocess, urllib.error, urllib.request
+            for user in ("bo", "cy"):
+                pw = pwd.getpwnam(user)
+                env = [
+                    f"HOME={pw.pw_dir}",
+                    f"USER={user}",
+                    f"LOGNAME={user}",
+                    f"XDG_RUNTIME_DIR=/run/user/{pw.pw_uid}",
+                    "LC_ALL=C.UTF-8",
+                ]
+                unit_dir = pathlib.Path(f"{pw.pw_dir}/.config/systemd/user")
+                timer_file = unit_dir / "porelo-host-sync-alpha-one.timer"
+                service_file = unit_dir / "porelo-host-sync-alpha-one.service"
+                wants_link = unit_dir / "timers.target.wants" / "porelo-host-sync-alpha-one.timer"
+                if timer_file.exists() or service_file.exists() or os.path.lexists(wants_link):
+                    subprocess.run(
+                        [
+                            "/usr/sbin/runuser", "-u", user, "--", "/usr/bin/env", *env,
+                            "systemctl", "--user", "disable", "--now", "porelo-host-sync-alpha-one.timer",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        cwd=pw.pw_dir,
+                    )
+                    subprocess.run(
+                        [
+                            "/usr/sbin/runuser", "-u", user, "--", "/usr/bin/env", *env,
+                            "systemctl", "--user", "stop", "porelo-host-sync-alpha-one.service",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        cwd=pw.pw_dir,
+                    )
+                    for target in (wants_link, timer_file, service_file):
+                        if os.path.lexists(target):
+                            os.unlink(target)
+                    subprocess.run(
+                        [
+                            "/usr/sbin/runuser", "-u", user, "--", "/usr/bin/env", *env,
+                            "systemctl", "--user", "daemon-reload",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        cwd=pw.pw_dir,
+                    )
+                for rel in (".local/share/porelo-host", ".ansible"):
+                    target_dir = pathlib.Path(pw.pw_dir) / rel
+                    if target_dir.exists():
+                        shutil.rmtree(target_dir)
+            conf = dict(
+                line.split("=", 1)
+                for line in pathlib.Path("/etc/porelo-host/forge.conf").read_text(encoding="utf-8").splitlines()
+                if "=" in line
+            )
+            api_token = pathlib.Path("/home/porelo-forge/.config/porelo-forge/api.token").read_text(
+                encoding="utf-8"
+            ).strip()
+            ctx = ssl.create_default_context(cafile="/etc/porelo-host/forge/ca.pem")
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}),
+                urllib.request.HTTPSHandler(context=ctx),
+            )
+            base = f"https://{conf['address']}:{conf['port']}/api/v1"
+            def call(method, path, tok):
+                req = urllib.request.Request(
+                    base + path,
+                    method=method,
+                    headers={"Authorization": "token " + tok, "Content-Type": "application/json"},
+                )
+                try:
+                    with opener.open(req, timeout=30) as resp:
+                        raw = resp.read()
+                        return resp.status, (json.loads(raw) if raw else None)
+                except urllib.error.HTTPError as err:
+                    err.close()
+                    return err.code, None
+            del_repo, _ = call("DELETE", "/repos/central-alpha-one/app", api_token)
+            del_org, _ = call("DELETE", "/orgs/central-alpha-one", api_token)
+            central_after, _ = call("GET", "/orgs/central-alpha-one", api_token)
+            alpha_app_after, _ = call("GET", "/repos/alpha-one/app", api_token)
+            central_name = pathlib.Path("/root/verify-bring/central-token.name").read_text(encoding="utf-8").strip()
+            uid = subprocess.check_output(["/usr/bin/id", "-u", conf["account"]], text=True).strip()
+            cleanup_name = "verify-bring-cleanup-" + secrets.token_hex(12)
+            cleanup_tok = subprocess.check_output(
+                [
+                    "/usr/sbin/runuser", "-u", conf["account"], "--",
+                    "/usr/bin/env", f"XDG_RUNTIME_DIR=/run/user/{uid}",
+                    "/usr/bin/podman", "exec", "forgejo", "forgejo", "admin", "user",
+                    "generate-access-token", "--username", "porelo-admin",
+                    "--token-name", cleanup_name, "--scopes", "write:admin", "--raw",
+                ],
+                text=True,
+                cwd="/",
+            ).strip()
+            central_tok_deleted = False
+            cleanup_tok_deleted = False
+            try:
+                _, rows = call("GET", "/admin/users/porelo-admin/tokens?limit=50&page=1", cleanup_tok)
+                for row in rows or []:
+                    if row.get("name") == central_name:
+                        code, _ = call("DELETE", f"/admin/users/porelo-admin/tokens/{row['id']}", cleanup_tok)
+                        central_tok_deleted = code == 204
+            finally:
+                _, rows = call("GET", "/admin/users/porelo-admin/tokens?limit=50&page=1", cleanup_tok)
+                for row in rows or []:
+                    if row.get("name") == cleanup_name:
+                        code, _ = call("DELETE", f"/admin/users/porelo-admin/tokens/{row['id']}", cleanup_tok)
+                        cleanup_tok_deleted = code == 204
+            pathlib.Path("/root/verify-bring/central-token.name").unlink(missing_ok=True)
+            bo_pw = pwd.getpwnam("bo")
+            timer_state = subprocess.run(
+                [
+                    "/usr/sbin/runuser", "-u", "bo", "--",
+                    "/usr/bin/env", f"HOME={bo_pw.pw_dir}", "USER=bo", "LOGNAME=bo",
+                    f"XDG_RUNTIME_DIR=/run/user/{bo_pw.pw_uid}",
+                    "systemctl", "--user", "is-active", "porelo-host-sync-alpha-one.timer",
+                ],
+                capture_output=True,
+                text=True,
+                cwd=bo_pw.pw_dir,
+            )
+            print(
+                json.dumps(
+                    {
+                        "del_repo": del_repo,
+                        "del_org": del_org,
+                        "central_after": central_after,
+                        "alpha_app_after": alpha_app_after,
+                        "central_tok_deleted": central_tok_deleted,
+                        "cleanup_tok_deleted": cleanup_tok_deleted,
+                        "bo_setup_exists": pathlib.Path("/home/bo/.local/share/porelo-host").exists(),
+                        "cy_setup_exists": pathlib.Path("/home/cy/.local/share/porelo-host").exists(),
+                        "bo_timer_active": timer_state.stdout.strip(),
+                    }
+                )
+            )
+      register: verify_bring_cleanup
+      changed_when: true
+      no_log: true
+
+    - name: Assert central-alpha-one, setup directories and timers are removed while alpha-one/app stays for removal
+      ansible.builtin.assert:
+        that:
+          - verify_bring_cleaned.del_repo == 204
+          - verify_bring_cleaned.del_org == 204
+          - verify_bring_cleaned.central_after == 404
+          - verify_bring_cleaned.alpha_app_after == 200
+          - verify_bring_cleaned.central_tok_deleted
+          - verify_bring_cleaned.cleanup_tok_deleted
+          - not verify_bring_cleaned.bo_setup_exists
+          - not verify_bring_cleaned.cy_setup_exists
+          - verify_bring_cleaned.bo_timer_active != 'active'
+        fail_msg: >-
+          asked cleanup to delete central-alpha-one (404), minted admin tokens, setup directories and bo's sync timer
+          while leaving alpha-one/app (200) for projects.yml; got {{ verify_bring_cleaned }}
+      vars:
+        verify_bring_cleaned: "{{ verify_bring_cleanup.stdout | from_json }}"
+  always:
+    - name: Ensure timers, setup directories, central-alpha-one and minted tokens are gone after any failure
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, os, pathlib, pwd, secrets, shutil, ssl, subprocess, urllib.error, urllib.request
+            for user in ("bo", "cy"):
+                try:
+                    pw = pwd.getpwnam(user)
+                except KeyError:
+                    continue
+                env = [
+                    f"HOME={pw.pw_dir}",
+                    f"USER={user}",
+                    f"LOGNAME={user}",
+                    f"XDG_RUNTIME_DIR=/run/user/{pw.pw_uid}",
+                    "LC_ALL=C.UTF-8",
+                ]
+                unit_dir = pathlib.Path(f"{pw.pw_dir}/.config/systemd/user")
+                timer_file = unit_dir / "porelo-host-sync-alpha-one.timer"
+                service_file = unit_dir / "porelo-host-sync-alpha-one.service"
+                wants_link = unit_dir / "timers.target.wants" / "porelo-host-sync-alpha-one.timer"
+                if timer_file.exists() or service_file.exists() or os.path.lexists(wants_link):
+                    subprocess.run(
+                        [
+                            "/usr/sbin/runuser", "-u", user, "--", "/usr/bin/env", *env,
+                            "systemctl", "--user", "disable", "--now", "porelo-host-sync-alpha-one.timer",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        cwd=pw.pw_dir,
+                    )
+                    for target in (wants_link, timer_file, service_file):
+                        if os.path.lexists(target):
+                            os.unlink(target)
+                    subprocess.run(
+                        [
+                            "/usr/sbin/runuser", "-u", user, "--", "/usr/bin/env", *env,
+                            "systemctl", "--user", "daemon-reload",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        cwd=pw.pw_dir,
+                    )
+                for rel in (".local/share/porelo-host", ".ansible"):
+                    target_dir = pathlib.Path(pw.pw_dir) / rel
+                    if target_dir.exists():
+                        shutil.rmtree(target_dir)
+            forge_conf = pathlib.Path("/etc/porelo-host/forge.conf")
+            api_tok_path = pathlib.Path("/home/porelo-forge/.config/porelo-forge/api.token")
+            ca_path = pathlib.Path("/etc/porelo-host/forge/ca.pem")
+            if forge_conf.exists() and api_tok_path.exists() and ca_path.exists():
+                conf = dict(
+                    line.split("=", 1)
+                    for line in forge_conf.read_text(encoding="utf-8").splitlines()
+                    if "=" in line
+                )
+                api_token = api_tok_path.read_text(encoding="utf-8").strip()
+                ctx = ssl.create_default_context(cafile=str(ca_path))
+                opener = urllib.request.build_opener(
+                    urllib.request.ProxyHandler({}),
+                    urllib.request.HTTPSHandler(context=ctx),
+                )
+                base = f"https://{conf['address']}:{conf['port']}/api/v1"
+                def call(method, path, tok):
+                    req = urllib.request.Request(
+                        base + path,
+                        method=method,
+                        headers={"Authorization": "token " + tok, "Content-Type": "application/json"},
+                    )
+                    try:
+                        with opener.open(req, timeout=30) as resp:
+                            raw = resp.read()
+                            return resp.status, (json.loads(raw) if raw else None)
+                    except urllib.error.HTTPError as err:
+                        err.close()
+                        return err.code, None
+                call("DELETE", "/repos/central-alpha-one/app", api_token)
+                call("DELETE", "/orgs/central-alpha-one", api_token)
+                name_file = pathlib.Path("/root/verify-bring/central-token.name")
+                if name_file.exists() and conf.get("account"):
+                    central_name = name_file.read_text(encoding="utf-8").strip()
+                    uid = subprocess.check_output(["/usr/bin/id", "-u", conf["account"]], text=True).strip()
+                    cleanup_name = "verify-bring-always-" + secrets.token_hex(12)
+                    cleanup_tok = subprocess.check_output(
+                        [
+                            "/usr/sbin/runuser", "-u", conf["account"], "--",
+                            "/usr/bin/env", f"XDG_RUNTIME_DIR=/run/user/{uid}",
+                            "/usr/bin/podman", "exec", "forgejo", "forgejo", "admin", "user",
+                            "generate-access-token", "--username", "porelo-admin",
+                            "--token-name", cleanup_name, "--scopes", "write:admin", "--raw",
+                        ],
+                        text=True,
+                        cwd="/",
+                    ).strip()
+                    try:
+                        _, rows = call("GET", "/admin/users/porelo-admin/tokens?limit=50&page=1", cleanup_tok)
+                        for row in rows or []:
+                            if row.get("name") == central_name:
+                                call("DELETE", f"/admin/users/porelo-admin/tokens/{row['id']}", cleanup_tok)
+                    finally:
+                        _, rows = call("GET", "/admin/users/porelo-admin/tokens?limit=50&page=1", cleanup_tok)
+                        for row in rows or []:
+                            if row.get("name") == cleanup_name:
+                                call("DELETE", f"/admin/users/porelo-admin/tokens/{row['id']}", cleanup_tok)
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: Remove the temporary bring verification scratch directory
+      ansible.builtin.file:
+        path: /root/verify-bring
+        state: absent
+
+    - name: Remove /root/verify-people when bring created it
+      ansible.builtin.file:
+        path: /root/verify-people
+        state: absent
+      when: not (verify_bring_people_dir_before.stat.exists | default(false))

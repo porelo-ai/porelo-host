@@ -119,6 +119,8 @@
               porelo_host_forge: {{ (converge_forge == 'on') | lower }}
           {% if converge_forge == 'on' %}
               porelo_host_forge_agents: [probe]
+              # Lets Forgejo migrate from the stand-in central organization on the host's own forge.
+              forge_migrations_allow_local: true
           {% endif %}
               # Job bounds of the test VM's size: the runner's jobs and the pool share half of its 4 vCPUs and 6 GiB.
               # One job, not the default two, so the written capacity is the variable's.

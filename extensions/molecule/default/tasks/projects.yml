@@ -181,6 +181,10 @@
         verify_projects_di_ssh: "{{ verify_projects_signers.results[4].content | b64decode | trim }}"
         verify_projects_di_wg: "{{ verify_projects_signers.results[5].content | b64decode | trim }}"
 
+    - name: Verify alpha-one brought in bo's account and joined in cy's account
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/bring.yml"
+      when: verify_forge == 'on'
+
     - name: Query each organization's Owners team members with the forge's admin token
       ansible.builtin.command:
         argv:
@@ -438,7 +442,7 @@
           - verify_projects_down_refused.rc == 2
           - verify_projects_down_failed | length == 1
           - "'bo (hand, alpha-one project-admin)' in verify_projects_down_failed[0].msg"
-          - "'cy (hand, alpha-two project-admin)' in verify_projects_down_failed[0].msg"
+          - "'cy (hand, alpha-one developer, alpha-two project-admin)' in verify_projects_down_failed[0].msg"
           - "'di (alpha-two developer)' in verify_projects_down_failed[0].msg"
           - "'Take the project off' in verify_projects_down_failed[0].msg"
           - "'Purge' in verify_projects_down_failed[0].msg"
@@ -639,7 +643,7 @@
       ansible.builtin.assert:
         that:
           - (verify_projects_people_after.results[0].content | b64decode)
-            == ('member=hand\nlocked=false\nlaptop=cy-laptop '
+            == ('member=hand\nmember=alpha-one developer\nlocked=false\nlaptop=cy-laptop '
                 ~ verify_projects_cy_ssh ~ ' ' ~ verify_projects_cy_wg ~ ' 10.73.7.3\n')
           - (verify_projects_people_after.results[1].content | b64decode)
             == ('locked=true\nlaptop=di-laptop '
@@ -710,6 +714,7 @@
                 text=True,
             )
             org_after, _ = api("GET", "/orgs/alpha-one")
+            app_after, _ = api("GET", "/repos/alpha-one/app")
             repo_after, _ = api("GET", "/repos/alpha-one/code")
             journal = subprocess.check_output(["journalctl", "-b", "-o", "cat", "--no-pager"], text=True)
             token_clean = central_token not in (run.stdout + run.stderr + journal)
@@ -724,6 +729,7 @@
                         "stdout": run.stdout,
                         "stderr": safe_err,
                         "org_after": org_after,
+                        "app_after": app_after,
                         "repo_after": repo_after,
                         "token_clean": token_clean,
                     }
@@ -738,7 +744,7 @@
         path: /etc/porelo-host/projects/alpha-one.conf
       register: verify_projects_one_record
 
-    - name: Assert remove alpha-one refuses with 69 while keeping the organization, repository and project record
+    - name: Assert remove alpha-one refuses with 69 while keeping the organization, repositories and project record
       ansible.builtin.assert:
         that:
           - verify_projects_one_result.repo_created == 201
@@ -750,17 +756,19 @@
           - "'/usr/local/sbin/porelo-host-push is missing; no registered record or forge settings'
             in verify_projects_one_result.stderr"
           - verify_projects_one_result.org_after == 200
+          - verify_projects_one_result.app_after == 200
           - verify_projects_one_result.repo_after == 200
           - verify_projects_one_record.stat.exists
           - verify_projects_one_result.token_clean
         fail_msg: >-
-          asked 'porelo-host-project remove alpha-one' with one committed repository and no central forge push setup to
-          refuse with 69 ('/usr/local/sbin/porelo-host-push is missing'), keep alpha-one and its repository and leak no
-          piped token; got {{ verify_projects_one_result }}, record exists={{ verify_projects_one_record.stat.exists }}
+          asked 'porelo-host-project remove alpha-one' with committed repositories and no central forge push setup to
+          refuse with 69 ('/usr/local/sbin/porelo-host-push is missing'), keep alpha-one and its repositories and leak
+          no piped token; got {{ verify_projects_one_result }},
+          record exists={{ verify_projects_one_record.stat.exists }}
       vars:
         verify_projects_one_result: "{{ verify_projects_remove_one.stdout | from_json }}"
 
-    - name: Delete alpha-one's probe repository and remove alpha-one before purging the remaining people
+    - name: Delete alpha-one's repositories and remove alpha-one before purging the remaining people
       ansible.builtin.command:
         argv:
           - python3
@@ -775,34 +783,36 @@
                 urllib.request.ProxyHandler({}),
                 urllib.request.HTTPSHandler(context=ctx),
             )
-            req = urllib.request.Request(
-                "https://10.73.7.1:3000/api/v1/repos/alpha-one/code",
-                method="DELETE",
-                headers={"Authorization": "token " + token},
-            )
-            with opener.open(req, timeout=30) as resp:
-                deleted = resp.status
+            deleted = {}
+            for name in ("app", "code"):
+                req = urllib.request.Request(
+                    f"https://10.73.7.1:3000/api/v1/repos/alpha-one/{name}",
+                    method="DELETE",
+                    headers={"Authorization": "token " + token},
+                )
+                with opener.open(req, timeout=30) as resp:
+                    deleted[name] = resp.status
             run = subprocess.run(
                 ["/usr/local/sbin/porelo-host-project", "remove", "alpha-one"],
                 input="",
                 capture_output=True,
                 text=True,
             )
-            print(json.dumps({"repo_deleted": deleted, "rc": run.returncode, "out": run.stdout, "err": run.stderr}))
+            print(json.dumps({"repos_deleted": deleted, "rc": run.returncode, "out": run.stdout, "err": run.stderr}))
       register: verify_projects_cleanup_one
       changed_when: true
       no_log: true
 
-    - name: Assert removing emptied alpha-one succeeds without locking hand-admitted bo
+    - name: Assert removing emptied alpha-one succeeds without locking hand-admitted bo or cy
       ansible.builtin.assert:
         that:
-          - verify_projects_cleanup_result.repo_deleted == 204
+          - "verify_projects_cleanup_result.repos_deleted == {'app': 204, 'code': 204}"
           - verify_projects_cleanup_result.rc == 0
           - >-
             (verify_projects_cleanup_result.out | from_json)
             == {'project': 'alpha-one', 'removed': true, 'locked': []}
         fail_msg: >-
-          asked DELETE /repos/alpha-one/code for 204 and 'porelo-host-project remove alpha-one' for
+          asked DELETE /repos/alpha-one/{app,code} for 204 and 'porelo-host-project remove alpha-one' for
           {"project":"alpha-one","removed":true,"locked":[]}; got {{ verify_projects_cleanup_result }}
       vars:
         verify_projects_cleanup_result: "{{ verify_projects_cleanup_one.stdout | from_json }}"
