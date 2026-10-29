@@ -2,6 +2,7 @@
 
 import base64
 import errno
+import fcntl
 import http.client
 import io
 import json
@@ -215,13 +216,16 @@ def https_forge(forge, tmp_path):
         thread.join()
 
 
+PERSON_RECORD = "role=project-admin\nprojects=\nlocked=false\nlaptop=laptop ssh-ed25519 AAAA wg= 10.73.7.3\n"
+
+
 @pytest.fixture
 def project_host(tmp_path, forge, push_host):
     etc = tmp_path / "project-etc"
     etc.mkdir(mode=0o700)
     (etc / "people").mkdir(mode=0o700)
     for person in ("alice", "bob"):
-        (etc / "people" / f"{person}.conf").write_text("user=" + person + "\n")
+        (etc / "people" / f"{person}.conf").write_text(PERSON_RECORD)
         (etc / "people" / f"{person}.conf").chmod(0o600)
     (etc / "forge.conf").write_text(f"address=127.0.0.1\nport={forge.port}\nperson=alice\naccount=porelo-forge\n")
     (etc / "forge.conf").chmod(0o600)
@@ -417,6 +421,32 @@ def test_an_untrusted_person_record_changes_nothing(project_host, monkeypatch, c
     assert not (project_host["etc"] / "projects").exists()
 
 
+@pytest.mark.parametrize(
+    "record",
+    [PERSON_RECORD.replace("locked=false", "locked=true"), PERSON_RECORD.replace("role=project-admin", "role=x")],
+)
+def test_a_locked_or_other_person_cannot_own_a_project(project_host, monkeypatch, capsys, record):
+    """Prevent registering a project for an admin the host has locked out, or who is no project admin."""
+    (project_host["etc"] / "people/alice.conf").write_text(record)
+    result = project(project_host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)
+    assert_refused(project_host, result, "alice", 65)
+    assert not project_host["forge"].calls
+
+
+def test_an_admin_purged_while_waiting_for_the_lock_owns_no_project(project_host, monkeypatch, capsys):
+    """Prevent a purge holding the lock from being followed by a project for the person it removed."""
+    flock = fcntl.flock
+
+    def purge_first(descriptor, operation):
+        (project_host["etc"] / "people/alice.conf").unlink(missing_ok=True)
+        return flock(descriptor, operation)
+
+    monkeypatch.setattr(fcntl, "flock", purge_first)
+    result = project(project_host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)
+    assert result[0] == 65 and "alice is no person on this host" in result[2], result
+    assert not project_host["forge"].calls
+
+
 def test_an_existing_record_is_never_overwritten(project_host, monkeypatch, capsys):
     """Prevent re-registration from replacing the pinned signing key or original owner."""
     directory = project_host["etc"] / "projects"
@@ -549,7 +579,7 @@ def test_an_untrusted_or_unavailable_forge_changes_nothing(api_host, monkeypatch
     result = project(
         project_host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY, overrides=overrides
     )
-    assert result[0] == (69 if failure == "ca" else 65) and result[2].startswith("porelo-host-project: "), result
+    assert result[0] == (65 if failure == "redirect" else 69) and result[2].startswith("porelo-host-project: "), result
     assert not [call for call in forge.calls if call[0] != "GET"]
     assert not (project_host["etc"] / "projects").exists()
     assert not forge.redirected, "the admin token followed a forge redirect"
@@ -651,7 +681,8 @@ def test_failed_registration_removes_its_own_partial_identities(memory_host, mon
     forge = host["forge"]
     forge.failure = ("PUT" if "/secrets/" in path else "POST", "/api/v1" + path)
     code, out, err = project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)
-    assert code == 65 and "HTTP 503" in err and not out, (code, out, err)
+    # A forge answering 503 is a forge not working: something needed is missing.
+    assert code == 69 and "HTTP 503" in err and not out, (code, out, err)
     assert not forge.organizations
     assert set(forge.users) == {"alice", "bob"}
     assert list((host["etc"] / "projects").iterdir()) == []
@@ -700,7 +731,7 @@ def test_failed_cli_commands_never_publish_a_record_or_credentials(memory_host, 
 
     host["cli"] = cli
     code, out, err = project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)
-    assert code == (69 if failure == "uid" else 65) and not out and err.startswith("porelo-host-project: "), (
+    assert code == 69 and not out and err.startswith("porelo-host-project: "), (
         code,
         out,
         err,
@@ -717,7 +748,7 @@ def test_failed_cleanup_still_attempts_both_identities_and_names_leftovers(memor
     forge.failure = ("PUT", "/api/v1/orgs/alpha/actions/secrets/PORELO_PUBLISHER_TOKEN")
     forge.responses[("DELETE", "/api/v1/orgs/alpha")] = (503, {"message": ADMIN_TOKEN})
     code, out, err = project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)
-    assert code == 65 and not out, (code, out, err)
+    assert code == 69 and not out, (code, out, err)
     assert "cleanup left organization alpha" in err, err
     assert set(forge.users) == {"alice", "bob"}
     assert not (host["etc"] / "projects/alpha.conf").exists()

@@ -184,7 +184,7 @@ def token(account, username, scopes):
     )
     value = made.stdout.strip()
     if made.returncode or not re.fullmatch(r"[0-9a-f]{40}", value):
-        refuse(f"Forgejo made no token for {username} (exit {made.returncode})")
+        refuse(f"Forgejo made no token for {username} (exit {made.returncode})", 69)
     return value
 
 
@@ -242,7 +242,8 @@ class Forge:
         except (urllib.error.URLError, OSError, http.client.HTTPException) as error:
             refuse(f"the forge did not answer {method} {path}: {type(error).__name__}", 69)
         if status not in expected:
-            refuse(f"the forge answered HTTP {status} for {method} {path}")
+            # A forge that fails in itself is missing; one that answers otherwise says no.
+            refuse(f"the forge answered HTTP {status} for {method} {path}", 69 if status >= 500 else 65)
         if status == 404 or (not data and method != "GET"):
             return None
         try:
@@ -306,7 +307,7 @@ def add(forge, project, admin, key, record):
             "--must-change-password=false",
         )
         if made.returncode:
-            refuse(f"Forgejo made no publisher {publisher} (exit {made.returncode})")
+            refuse(f"Forgejo made no publisher {publisher} (exit {made.returncode})", 69)
         publisher_made = True
         team = forge.request(
             "POST",
@@ -453,6 +454,22 @@ def remove(forge, project, record, publisher):
         print(json.dumps(dict(project=project, removed=True), separators=(",", ":")), flush=True)
 
 
+def admitted(admin, person):
+    """Under the lock, the admin must still be a project admin the host has not locked out or purged."""
+    if not os.path.lexists(person):
+        refuse(f"{admin} is no person on this host", 65)
+    trusted(person, private=True)
+    try:
+        with open(person, encoding="utf-8") as text:
+            lines = text.read().splitlines()
+    except UnicodeError:
+        refuse(f"{person} is not UTF-8", 69)
+    if "role=project-admin" not in lines:
+        refuse(f"{admin} is no project admin on this host", 65)
+    if [line for line in lines if line.startswith("locked=")] != ["locked=false"]:
+        refuse(f"{admin} is locked on this host", 65)
+
+
 def run():
     """Check root before the call or filesystem, then hold one lock through all preflight and mutation."""
     if os.geteuid() != 0:
@@ -496,6 +513,8 @@ def run():
             refuse(f"{record} exists")
         if action == "remove" and not os.path.lexists(record):
             refuse(f"unknown project {project}")
+        if action == "add":
+            admitted(admin, person)
         publisher = registered_publisher(project, record) if action == "remove" else None
         forge = Forge(read_values(CONF))
         if action == "add":

@@ -76,9 +76,19 @@ def test_sudo_needs_a_trusted_unlocked_person_record(password_host, capsys, reco
         path.write_text("locked=false\nlocked=true\n")
     with pytest.raises(SystemExit) as error:
         password_host.scope["main"]()
-    assert error.value.code in (65, 69)
+    # The records say no to a person locked or never admitted; a record root cannot trust is something missing.
+    assert error.value.code == (65 if record in ("locked", "missing", "duplicate") else 69)
     assert password_host.changes == []
     assert "fixture-password" not in capsys.readouterr().err
+
+
+def test_a_call_without_root_is_something_missing(password_host, capsys):
+    """Keep the exit code the other host helpers give a caller who is not root."""
+    password_host.scope["os"].geteuid = lambda: 1000
+    with pytest.raises(SystemExit) as error:
+        password_host.scope["main"]()
+    assert error.value.code == 69 and "root" in capsys.readouterr().err
+    assert password_host.changes == []
 
 
 def test_sudo_does_not_require_the_configured_person(password_host):
