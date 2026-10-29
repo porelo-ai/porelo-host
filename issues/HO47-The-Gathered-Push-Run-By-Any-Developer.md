@@ -1,6 +1,6 @@
 # HO47 — The Gathered Push Run By Any Developer
 
-**Status:** Estimated.
+**Status:** Backlog.
 **Size:** S - `porelo-host-push` turned from a root tool with one config into a user tool reading the person's
 own config and token.
 

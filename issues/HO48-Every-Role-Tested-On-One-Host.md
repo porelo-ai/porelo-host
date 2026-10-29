@@ -1,6 +1,6 @@
 # HO48 — Every Role Tested On One Host
 
-**Status:** Estimated.
+**Status:** Backlog.
 **Size:** L - the Molecule scenario rebuilt around the three roles, grown with each issue it tests.
 
 **What must be true.** One throwaway VM runs a host admin, two project admins and a developer with two laptops in both
