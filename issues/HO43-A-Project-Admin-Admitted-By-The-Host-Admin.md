@@ -29,8 +29,8 @@ project's signed `access.yml` ([HO46](README.md#ho46)), through the same helper.
     `~/.config/porelo/matrix/host-registration-token`, `0600` in a `0700` directory.
 - **Lock** (a person in no project any more, QH65 a): the ssh keys and peers out, the forge login disabled, their
   tasks stopped (`task stop --all`), `machine-token expel` expelling the accounts and revoking registration together.
-  Exit 78 with case-insensitive `knows nothing` on stderr means there is no machine to take away; another refusal
-  stops with its own words. **`purge <user>`**, the host admin's only:
+  An answer `"known": false` (exit 0, nothing expelled) means there is no machine to take away; every refusal stops
+  with its own words. **`purge <user>`**, the host admin's only:
   `vault clear`, then the account.
 - **Sudoers:** each person may run `porelo-host-forge-password` for their own login only, taken from `SUDO_USER`;
   project admins may also run `porelo-host-person sync` ([HO46](README.md#ho46)).
@@ -62,9 +62,8 @@ project's signed `access.yml` ([HO46](README.md#ho46)), through the same helper.
 
 - That porelo-message-matrix's verbs, run as `porelo-matrix`, answer on stdout only: `machine-token issue M` with
   `{"machine":"M","token":"…"}`, the same token again for a person already admitted; `expel M` with
-  `{"machine":"M","expelled":[…],"revoked":true|false}`, every `@….<M>` account taken out server-wide and its
-  registration token revoked together, so the homeserver refuses it at the next registration. Expelling a machine
-  with no token, record or account exits 78.
-- That the unknown-machine refusal actually includes `knows nothing`; the case-insensitive text match is a guess
-  to confirm against the homeserver's stderr, since it has no distinct refusal code.
+  `{"machine":"M","known":true,"expelled":[…],"revoked":true|false}`, every `@….<M>` account taken out server-wide
+  and its registration token revoked together, so the homeserver refuses it at the next registration. Expelling a
+  machine with no token, record or account exits 0 with `{"machine":"M","known":false,"revoked":false,"expelled":[]}`
+  and changes nothing; every refusal exits non-zero (Agent Matrix, room 2026-10-29, from its next commit on).
 - That Porelo names a transport's machine `<host>-<account>` (`porelo talk machine` prints it).

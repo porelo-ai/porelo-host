@@ -46,6 +46,7 @@ class Services:
         }
         self.expulsion = {
             "machine": "host-alice",
+            "known": True,
             "expelled": ["@person.host-alice:matrix.example.org"],
             "revoked": True,
         }
@@ -172,6 +173,7 @@ def services(tmp_path, monkeypatch):
             directory.chmod(0o755)
     recorder = Services(host)
     host.runner = recorder.run
+
     def context(*, cafile):
         assert cafile == str(ca)
         return ("CA", cafile)
@@ -219,7 +221,10 @@ def test_existing_forge_identities_receive_no_new_tokens(services):
     """Prevent overwriting a person's existing vault credentials when only some accounts are new."""
     services.recorder.users = {"alice": False, "codex-alice": False}
     hook(services, "forge_admit", "alice", [])
-    assert token_file(services).read_text().splitlines() == [f"porelo-alice {PERSON_TOKEN}", f"claude-alice {PERSON_TOKEN}"]
+    assert token_file(services).read_text().splitlines() == [
+        f"porelo-alice {PERSON_TOKEN}",
+        f"claude-alice {PERSON_TOKEN}",
+    ]
 
 
 @pytest.mark.parametrize("config", [None, "host=host\nagents=\n", "account=\nhost=host\nagents=\n"])
@@ -541,29 +546,28 @@ def test_failed_runtime_cleanup_still_revokes_forge_access_and_reports_the_lefto
     assert token_file(services).parent.exists()
 
 
-@pytest.mark.parametrize(
-    "message", ["the homeserver knows nothing of this machine", "KNOWS NOTHING about host-alice"]
-)
-def test_lock_treats_an_unknown_matrix_machine_as_already_revoked(services, message):
+def test_lock_treats_an_unknown_matrix_machine_as_already_revoked(services):
     """Prevent an already absent machine from blocking lock or retaining its local registration token."""
     hook(services, "matrix_issue", "alice")
     services.recorder.calls.clear()
-    services.recorder.transport_exit = 78
-    services.recorder.transport_error = message
+    services.recorder.expulsion = {"machine": "host-alice", "known": False, "revoked": False, "expelled": []}
     hook(services, "matrix_expel_revoke", "alice")
     assert [args[-2:] for args in services.recorder.calls if "machine-token" in args] == [["expel", "host-alice"]]
     assert not machine_file(services).exists()
 
 
-def test_a_different_matrix_refusal_still_blocks_lock_with_its_own_words(services):
-    """Prevent a permission or expulsion failure from being mistaken for an absent machine."""
+@pytest.mark.parametrize(
+    "message", ["the homeserver refused expulsion", "the homeserver knows nothing of this machine"]
+)
+def test_every_matrix_refusal_blocks_lock_with_its_own_words(services, message):
+    """Prevent a refusal, whatever its words, from being mistaken for an absent machine."""
     hook(services, "matrix_issue", "alice")
     services.recorder.transport_exit = 78
-    services.recorder.transport_error = "the homeserver refused expulsion"
+    services.recorder.transport_error = message
     with pytest.raises(services.scope["Refusal"]) as error:
         hook(services, "matrix_expel_revoke", "alice")
     assert error.value.code == 65
-    assert str(error.value) == services.recorder.transport_error
+    assert str(error.value) == message
     assert machine_file(services).exists()
 
 
@@ -584,6 +588,14 @@ def test_issue_still_refuses_a_machine_the_homeserver_knows_nothing_of(services)
         {"machine": "host-alice", "expelled": [], "revoked": "true"},
         {"machine": "host-alice", "expelled": "account", "revoked": True},
         {"machine": "host-alice", "expelled": [None], "revoked": True},
+        {"machine": "host-alice", "expelled": [], "revoked": False},
+        {"machine": "host-alice", "known": "false", "expelled": [], "revoked": False},
+        {
+            "machine": "host-alice",
+            "known": False,
+            "expelled": ["@person.host-alice:matrix.example.org"],
+            "revoked": False,
+        },
     ],
 )
 def test_invalid_expulsion_answers_cannot_report_completed_revocation(services, reply):
@@ -674,6 +686,7 @@ def test_admin_api_errors_do_not_echo_credentials_or_response_bodies(services):
 
 def test_a_malformed_http_reply_cannot_escape_with_sensitive_response_text(services, monkeypatch):
     """Prevent a broken HTTP status line from reaching stderr through an uncaught exception."""
+
     def broken(request, timeout):
         raise http.client.BadStatusLine(ADMIN_TOKEN)
 
@@ -724,9 +737,24 @@ def test_forge_lock_over_local_tls_checks_the_ca_and_revokes_tokens(services, tm
         for stem in ("server", "other"):
             made = subprocess.run(
                 [
-                    openssl, "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256",
-                    "-nodes", "-keyout", str(tmp_path / (stem + ".key")), "-out", str(tmp_path / (stem + ".pem")),
-                    "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1",
+                    openssl,
+                    "req",
+                    "-x509",
+                    "-newkey",
+                    "ec",
+                    "-pkeyopt",
+                    "ec_paramgen_curve:P-256",
+                    "-nodes",
+                    "-keyout",
+                    str(tmp_path / (stem + ".key")),
+                    "-out",
+                    str(tmp_path / (stem + ".pem")),
+                    "-days",
+                    "1",
+                    "-subj",
+                    "/CN=localhost",
+                    "-addext",
+                    "subjectAltName=IP:127.0.0.1",
                 ],
                 capture_output=True,
                 text=True,

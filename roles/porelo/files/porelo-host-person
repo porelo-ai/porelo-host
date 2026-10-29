@@ -25,8 +25,9 @@ The first admin credential is atomically saved in root's 0600 matrix-admin.token
 credentials reach commands only on stdin. The machine token is written by the
 person into private ~/.config/porelo/matrix directories, refusing links. Lock
 uses expel alone to expel accounts and revoke registration, then removes the
-person's local token. Exit 78 saying "knows nothing" (case insensitive) means
-there is nothing to revoke during lock; this wording match needs confirmation.
+person's local token. Expel answers "known": false, nothing expelled, for a
+machine the homeserver never admitted, so lock has nothing to revoke there;
+every refusal (78 or any other exit) stops the lock.
 
 Validation precedes changes; publication of the record is last. Command failures
 can leave partial system changes and are reported without their captured output.
@@ -646,8 +647,6 @@ class Host:
             message = result.stderr.strip()
             if admin:
                 message = message.replace(admin, "[redacted]")
-            if verb == "expel" and "knows nothing" in message.casefold():
-                return {"machine": machine, "expelled": [], "revoked": False}
             refuse(message or "Matrix refused the expelled machine", 65)
         try:
             answer = json.loads(result.stdout)
@@ -685,6 +684,8 @@ class Host:
             not isinstance(answer.get("expelled"), list)
             or any(not isinstance(account, str) for account in answer["expelled"])
             or type(answer.get("revoked")) is not bool
+            or type(answer.get("known")) is not bool
+            or (not answer["known"] and (answer["expelled"] or answer["revoked"]))
         ):
             refuse("Matrix answered no valid expulsion and revocation result", 69)
         self.matrix_file(user, "remove")
