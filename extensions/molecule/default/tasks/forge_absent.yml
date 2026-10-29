@@ -8,13 +8,12 @@
   changed_when: false
   failed_when: forge_absent_accounts.rc not in [0, 2]
 
-- name: Read whether the forge's homes, trust, units or enablement links exist
+- name: Read whether the forge's homes, units or enablement links exist
   ansible.builtin.stat:
     path: "{{ item }}"
   loop:
     - /home/porelo-forge
     - /home/porelo-runner
-    - /etc/porelo-host/forge
     - /home/porelo-forge/.config/containers/systemd/forgejo.container
     - /home/porelo-forge/.config/containers/systemd/forgejo-runner.container
     - /home/porelo-runner/.config/containers/systemd/forgejo.container
@@ -27,8 +26,12 @@
     - /etc/systemd/system/sockets.target.wants/porelo-forge-https.socket
     - /usr/local/sbin/porelo-host-push
     - /usr/local/sbin/porelo-host-forge-password
-    - /etc/porelo-host/forge.conf
   register: forge_absent_paths
+
+- name: Read /etc/hosts to check that no forge name block was written
+  ansible.builtin.slurp:
+    src: /etc/hosts
+  register: forge_absent_hosts
 
 - name: Read whether any generated forge unit or its enablement link exists
   ansible.builtin.command:
@@ -46,13 +49,11 @@
   register: forge_absent_generated
   changed_when: false
 
-- name: Read every image in Porelo's account's podman
-  ansible.builtin.command:
-    argv: [podman, images, --format, "{% raw %}{{.Repository}}{% endraw %}"]
+- name: Read every image in the homeserver account's podman
+  ansible.builtin.shell:
+    cmd: XDG_RUNTIME_DIR=/run/user/$(id -u) podman images --format {% raw %}'{{.Repository}}'{% endraw %}
   become: true
-  become_user: porelo-test
-  environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd']['porelo-test'][1] }}"
+  become_user: porelo-matrix
   register: forge_absent_images
   changed_when: false
 
@@ -67,12 +68,14 @@
     that:
       - forge_absent_accounts.results | map(attribute='rc') | list == [2, 2]
       - forge_absent_paths.results | selectattr('stat.exists') | list | length == 0
+      - "'porelo-host forge name' not in (forge_absent_hosts.content | b64decode)"
       - forge_absent_generated.stdout | from_json | length == 0
       - forge_absent_images.stdout_lines | select('search', '/forgejo/(forgejo|runner)$') | list | length == 0
       - forge_absent_ports.stdout | trim == ''
     fail_msg: >-
-      asked for no forge accounts, paths, generated units, images or listeners;
+      asked for no forge accounts, paths, /etc/hosts block, generated units, images or listeners;
       accounts {{ forge_absent_accounts.results | map(attribute='stdout') | list }},
       paths {{ forge_absent_paths.results | selectattr('stat.exists') | map(attribute='item') | list }},
+      hosts {{ forge_absent_hosts.content | b64decode }},
       generated {{ forge_absent_generated.stdout }}, images {{ forge_absent_images.stdout_lines }},
       listeners {{ forge_absent_ports.stdout_lines }}

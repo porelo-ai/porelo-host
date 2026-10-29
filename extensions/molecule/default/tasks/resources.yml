@@ -111,13 +111,13 @@
     that:
       - verify_runner_cache.enabled
       - verify_runner_cache.dir == '/data/cache'
-      - verify_runner_cache.host == '10.73.0.1'
+      - verify_runner_cache.host == '10.73.7.1'
       - verify_runner_cache.port == 4000
       - verify_runner_cache.proxy_port == 4001
-      - verify_runner_published == ['PublishPort=10.73.0.1:4000:4000', 'PublishPort=10.73.0.1:4001:4001']
+      - verify_runner_published == ['PublishPort=10.73.7.1:4000:4000', 'PublishPort=10.73.7.1:4001:4001']
     fail_msg: >-
-      asked for the cache enabled in /data/cache on host 10.73.0.1, port 4000 and proxy port 4001, both published on
-      10.73.0.1 and nowhere else; got {{ verify_runner_cache }} and {{ verify_runner_published }}
+      asked for the cache enabled in /data/cache on host 10.73.7.1, port 4000 and proxy port 4001, both published on
+      10.73.7.1 and nowhere else; got {{ verify_runner_cache }} and {{ verify_runner_published }}
   vars:
     verify_runner_cache: "{{ (verify_runner_config.content | b64decode | from_yaml).cache | default({}) }}"
     verify_runner_published: >-

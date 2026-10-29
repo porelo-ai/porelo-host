@@ -1,27 +1,99 @@
 ---
-# What a host has after `up`, read on the host. Each role's issue adds what its role promises.
+# What a host prepared by `up` with no project and no person has, read on the host itself.
 - name: Verify
   hosts: all
   gather_facts: false
   become: true
   vars:
     verify_version: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_VERSION') }}"
-    verify_account: porelo-test
-    verify_porelo_config: "{{ ansible_facts['getent_passwd'][verify_account][4] }}/.config/porelo"
-    verify_vault_passphrase: converge-passphrase
-    verify_setup_script: "{{ (lookup('ansible.builtin.file', playbook_dir
-      ~ '/../../../roles/porelo/defaults/main.yml') | from_yaml).porelo_setup_script }}"
     verify_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
     verify_forge: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_FORGE', default='on') }}"
-    verify_forge_inventory: "{{ '-i /root/porelo-host-forge.yml' if verify_forge == 'on' else '' }}"
     verify_container_bounds:
       - {account: porelo-forge, container: forgejo, pids: 1024, memory: 2G, bytes: 2147483648, cpus: 2}
       - {account: porelo-runner, container: forgejo-runner, pids: 256, memory: 512M, bytes: 536870912, cpus: 1}
   tasks:
-    - name: Read the account's id for the person's steps
+    - name: Read every account on the host from getent passwd
       ansible.builtin.getent:
         database: passwd
-        key: "{{ verify_account }}"
+
+    # The VM's own login user comes from Molecule's inventory (ansible_user, set to molecule by build/molecule.sh);
+    # Debian/Ubuntu's unmapped overflow account nobody sits at uid 65534 and is excluded by name and uid pair.
+    - name: List every account in getent passwd with uid >= 1000 aside from nobody (65534)
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail && getent passwd
+          | awk -F: '$3 >= 1000 && !($1 == "nobody" && $3 == 65534) {print $1}' | sort
+        executable: /bin/bash
+      register: verify_regular_accounts
+      changed_when: false
+
+    - name: Assert getent passwd lists only the VM login user from inventory and the host's service accounts
+      ansible.builtin.assert:
+        that: verify_regular_accounts.stdout_lines == verify_expected_accounts
+        fail_msg: >-
+          asked getent passwd (uid >= 1000, excluding nobody=65534) for only the inventory login user
+          '{{ ansible_user }}' and host service accounts {{ verify_expected_accounts }};
+          got {{ verify_regular_accounts.stdout_lines }}
+      vars:
+        verify_expected_accounts: >-
+          {{ ([ansible_user, 'porelo-matrix']
+          + (['porelo-forge', 'porelo-runner'] if verify_forge == 'on' else [])) | unique | sort }}
+
+    - name: Read whether stop.conf or a person's setup directory exists on the host
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: [/etc/porelo-host/stop.conf, /etc/porelo-host/setup]
+      register: verify_person_paths
+
+    - name: Assert neither /etc/porelo-host/stop.conf nor /etc/porelo-host/setup exists
+      ansible.builtin.assert:
+        that: verify_person_paths.results | selectattr('stat.exists') | list | length == 0
+        fail_msg: >-
+          asked for neither /etc/porelo-host/stop.conf nor /etc/porelo-host/setup on a host with no person;
+          found {{ verify_person_paths.results | selectattr('stat.exists') | map(attribute='item') | list }}
+
+    - name: Search user systemd directories and running user managers for any porelo user unit outside porelo-matrix
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          for root in /etc/systemd/user /root/.config/systemd/user /home/*/.config/systemd/user; do
+              [ -e "$root" ] || continue
+              find "$root" -iname '*porelo*' | while IFS= read -r path; do
+                  case "$path" in
+                      /home/porelo-matrix/.config/systemd/user/*/porelo-matrix-homeserver*|\
+                      /home/porelo-matrix/.config/systemd/user/porelo-matrix-homeserver*)
+                          continue ;;
+                  esac
+                  printf 'file: %s\n' "$path"
+              done
+          done
+          for runtime in /run/user/*; do
+              [ -d "$runtime" ] || continue
+              uid=${runtime##*/}
+              account=$(getent passwd "$uid" | cut -d: -f1)
+              [ -n "$account" ] || continue
+              units=$(runuser -u "$account" -- env XDG_RUNTIME_DIR="$runtime" \
+                  systemctl --user list-units --plain --no-legend 'porelo*' 2>/dev/null || true)
+              [ -n "$units" ] || continue
+              while IFS= read -r line; do
+                  [ -n "$line" ] || continue
+                  unit=${line%% *}
+                  if [ "$account" = porelo-matrix ]; then
+                      case "$unit" in porelo-matrix-homeserver*) continue ;; esac
+                  fi
+                  printf 'active(%s): %s\n' "$account" "$line"
+              done <<< "$units"
+          done
+        executable: /bin/bash
+      register: verify_porelo_user_units
+      changed_when: false
+
+    - name: Assert no porelo user units are enabled or loaded outside porelo-matrix's homeserver
+      ansible.builtin.assert:
+        that: verify_porelo_user_units.stdout_lines | length == 0
+        fail_msg: >-
+          asked for no porelo user units outside porelo-matrix's homeserver;
+          found {{ verify_porelo_user_units.stdout_lines }}
 
     - name: Verify a host without the forge holds none of it
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_absent.yml"
@@ -58,66 +130,17 @@
     - name: Verify the containers' resource bounds and the host's refusals
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/resources.yml"
 
-    # Missing trust strands the broker and tasks; writable trust lets another account choose their CAs.
-    - name: Read the account's CA files and their permissions after up
-      ansible.builtin.stat:
-        path: "{{ verify_porelo_config }}/{{ item }}"
-      loop: [ca-certificates.pem, task-ca-certificates.pem]
-      register: verify_ca_files
-      when: verify_forge == 'on'
-
-    - name: Assert both CA files belong to the account with mode 0600
-      ansible.builtin.assert:
-        that:
-          - item.stat.exists
-          - item.stat.isreg | default(false)
-          - item.stat.pw_name | default('') == verify_account
-          - item.stat.mode | default('') == '0600'
-        fail_msg: "asked for {{ item.item }} owned by {{ verify_account }} with mode 0600, got {{ item.stat }}"
-      loop: "{{ verify_ca_files.results }}"
-      loop_control:
-        label: "{{ item.item }}"
-      when: verify_forge == 'on'
-
-    - name: Read the forge's CA and the account's two CA files after up
-      ansible.builtin.slurp:
-        src: "{{ item }}"
-      loop:
-        - /etc/porelo-host/forge/ca.pem
-        - "{{ verify_porelo_config }}/ca-certificates.pem"
-        - "{{ verify_porelo_config }}/task-ca-certificates.pem"
-      register: verify_ca_contents
-      when: verify_forge == 'on'
-
-    - name: Assert the account trusts exactly one forge CA block and tasks get the CA alone
-      ansible.builtin.assert:
-        that:
-          - verify_ca is search('-----BEGIN CERTIFICATE-----')
-          - verify_host_ca | regex_findall('(?m)^# BEGIN porelo-host forge CA$') | length == 1
-          - verify_host_ca | regex_findall('(?m)^# END porelo-host forge CA$') | length == 1
-          - verify_host_ca | regex_findall('(?ms)^# BEGIN porelo-host forge CA\n(.*?)^# END porelo-host forge CA$')
-            == [verify_ca]
-          - verify_ca_contents.results[2].content == verify_ca_contents.results[0].content
-        fail_msg: >-
-          asked for one marked block holding the forge's CA and an identical task CA file;
-          forge {{ verify_ca }}, account {{ verify_host_ca }},
-          task {{ verify_ca_contents.results[2].content | b64decode }}
-      vars:
-        verify_ca: "{{ verify_ca_contents.results[0].content | b64decode }}"
-        verify_host_ca: "{{ verify_ca_contents.results[1].content | b64decode }}"
-      when: verify_forge == 'on'
-
-    - name: Read the person's stop command and its permissions
+    - name: Read the stop command and its permissions
       ansible.builtin.stat:
         path: /usr/local/bin/porelo-host-stop
       register: verify_host_stop
 
     # A malformed call must refuse before it can ask for credentials.
-    - name: Ask the stop command to refuse an unknown need as the account
+    - name: Ask the stop command to refuse an unknown need as an unprivileged user
       ansible.builtin.command:
         argv: [/usr/local/bin/porelo-host-stop, nonsense]
       become: true
-      become_user: "{{ verify_account }}"
+      become_user: "{{ ansible_user }}"
       register: verify_host_stop_refusal
       changed_when: false
       failed_when: false
@@ -135,51 +158,6 @@
           asked for /usr/local/bin/porelo-host-stop as root's regular file with mode 0755 and nonsense refused with 64;
           got stat {{ verify_host_stop.stat }}, rc {{ verify_host_stop_refusal.rc }}:
           {{ verify_host_stop_refusal.stdout }} {{ verify_host_stop_refusal.stderr }}
-
-    - name: Install the stub explicitly as the person does
-      ansible.builtin.command:
-        argv: [sh, "{{ verify_setup_script }}", --user, "{{ verify_account }}",
-               --distribution, snapshots, --with, porelo-agent-stub]
-      changed_when: true
-
-    - name: Sign the stub's provider in, as the person's step does
-      ansible.builtin.shell:
-        cmd: >-
-          set -o pipefail && printf 'converge-not-a-key\n' | XDG_RUNTIME_DIR=/run/user/$(id -u)
-          porelo vault put anthropic
-        executable: /bin/bash
-      become: true
-      become_user: "{{ verify_account }}"
-      changed_when: true
-      no_log: true
-
-    - name: Start the task by hand as the account
-      ansible.builtin.command:
-        cmd: porelo task start converge-1 -p converge -r code --agent stub --detach --no-input
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      changed_when: true
-
-    - name: Read the task after the person's start
-      ansible.builtin.command:
-        cmd: porelo task status porelo-converge-converge-1 --json
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      register: verify_person_task
-      changed_when: false
-
-    - name: Assert the task started by hand is running
-      ansible.builtin.assert:
-        that: (verify_person_task.stdout | from_json).running
-        fail_msg: "asked for the task running after the person's start, got {{ verify_person_task.stdout }}"
-
-    - name: Verify the task reaches only its declared host service with its own trust store
-      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_task.yml"
-      when: verify_forge == 'on'
 
     - name: Read which collections the host has
       ansible.builtin.command:
@@ -199,16 +177,30 @@
           | map('dict2items') | flatten | selectattr('key', 'equalto', 'porelo.host') | map(attribute='value')
           | list }}"
 
-    - name: Read whether ansible-core is Ubuntu's own package
+    - name: Ask dpkg whether ansible-core, Porelo and the Matrix packages are installed
       ansible.builtin.command:
-        cmd: dpkg-query -W -f=${Status} ansible-core
-      register: verify_ansible_core
+        argv: "{{ ['dpkg-query', '-W', '-f=${Package} ${Status}\n'] + verify_expected_packages }}"
+      register: verify_packages
       changed_when: false
+      failed_when: false
+      vars:
+        verify_expected_packages: >-
+          {{ ['ansible-core', 'porelo', 'porelo-matrix-homeserver', 'porelo-message-transport-matrix']
+          + (['porelo-adapter-forgejo'] if verify_forge == 'on' else []) }}
 
-    - name: Assert ansible-core came from Ubuntu
+    - name: Assert ansible-core, Porelo and the Matrix packages are installed
       ansible.builtin.assert:
-        that: verify_ansible_core.stdout == 'install ok installed'
-        fail_msg: "asked for Ubuntu's ansible-core, dpkg says {{ verify_ansible_core.stdout }}"
+        that:
+          - verify_packages.rc == 0
+          - verify_packages.stdout_lines | sort
+            == verify_expected_packages | map('regex_replace', '$', ' install ok installed') | sort
+        fail_msg: >-
+          asked dpkg for {{ verify_expected_packages }} installed;
+          got rc {{ verify_packages.rc }}: {{ verify_packages.stdout_lines }} ({{ verify_packages.stderr }})
+      vars:
+        verify_expected_packages: >-
+          {{ ['ansible-core', 'porelo', 'porelo-matrix-homeserver', 'porelo-message-transport-matrix']
+          + (['porelo-adapter-forgejo'] if verify_forge == 'on' else []) }}
 
     # Asked of KVM itself: Ubuntu makes /dev/kvm as a static node even where no CPU extension stands behind it.
     - name: Ask KVM for its API version through /dev/kvm
@@ -224,69 +216,13 @@
         fail_msg: >-
           asked KVM_GET_API_VERSION for 12, got rc {{ verify_kvm.rc }}: {{ verify_kvm.stdout }} {{ verify_kvm.stderr }}
 
-    # The base role: the account itself uses KVM, libvirt and rootless podman.
-    - name: Ask KVM for its API version as the account
-      ansible.builtin.command:
-        cmd: python3 -c "import fcntl, os; print(fcntl.ioctl(os.open('/dev/kvm', os.O_RDWR), 0xAE00))"
-      become: true
-      become_user: "{{ verify_account }}"
-      register: verify_account_kvm
-      changed_when: false
-      failed_when: false
-
-    - name: Assert the account opens KVM
-      ansible.builtin.assert:
-        that: verify_account_kvm.rc == 0 and verify_account_kvm.stdout == '12'
-        fail_msg: >-
-          {{ verify_account }} asked KVM_GET_API_VERSION for 12, got rc {{ verify_account_kvm.rc }}:
-          {{ verify_account_kvm.stdout }} {{ verify_account_kvm.stderr }}
-
-    - name: Ask libvirt for its domains as the account
-      ansible.builtin.command:
-        cmd: virsh -c qemu:///system list --all --name
-      become: true
-      become_user: "{{ verify_account }}"
-      register: verify_account_libvirt
-      changed_when: false
-      failed_when: false
-
-    - name: Assert the account reaches libvirt
-      ansible.builtin.assert:
-        that: verify_account_libvirt.rc == 0
-        fail_msg: "{{ verify_account }} could not reach libvirt: {{ verify_account_libvirt.stderr }}"
-
-    - name: Read the account's id
-      ansible.builtin.getent:
-        database: passwd
-        key: "{{ verify_account }}"
-
-    - name: Map the account's subordinate ids in rootless podman
-      ansible.builtin.command:
-        cmd: podman unshare cat /proc/self/uid_map
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      register: verify_account_podman
-      changed_when: false
-      failed_when: false
-
-    - name: Assert rootless podman maps more than the account's own id
-      ansible.builtin.assert:
-        that: verify_account_podman.rc == 0 and verify_account_podman.stdout_lines | length > 1
-        fail_msg: >-
-          {{ verify_account }}'s rootless podman mapped {{ verify_account_podman.stdout_lines }}
-          (rc {{ verify_account_podman.rc }}: {{ verify_account_podman.stderr }})
-
-    # Nothing of Tresorit is on a host: no client in the account, no unit of it, nothing mounted for a drive.
+    # Nothing of Tresorit or a drive is on a host.
     - name: Read whether anything of Tresorit or a drive is on the host
       ansible.builtin.shell:
         cmd: |
           set -uo pipefail
-          home=/home/{{ verify_account }}
-          [ -e "$home/.local/share/tresorit" ] && echo "client: $home/.local/share/tresorit"
           command -v tresorit-cli && echo "client on PATH"
-          find /etc/systemd /usr/lib/systemd "$home/.config/systemd" \
+          find /etc/systemd /usr/lib/systemd /home \
               \( -iname '*tresorit*' -o -iname '*drive*.mount' \) 2>/dev/null | sed 's/^/unit: /'
           findmnt --noheadings --output TARGET | grep -F /srv/porelo-host | sed 's/^/mount: /'
           [ -e /srv/porelo-host/drive ] && echo "folder: /srv/porelo-host/drive"
@@ -301,14 +237,14 @@
         that: verify_tresorit.stdout_lines | length == 0
         fail_msg: "asked for nothing of Tresorit or a drive on the host, found {{ verify_tresorit.stdout_lines }}"
 
-    # The vpn role: a service bound to every address is reached through the VPN, from a peer in a network namespace of
-    # its own, and refused on the public address, from where Molecule itself connects.
+    # The vpn role: a service bound to every address is reached through the VPN on 10.73.7.1, from a peer at 10.73.7.2
+    # in a network namespace of its own, and refused on the public address, from where Molecule itself connects.
     - name: Start a service bound to every address
       ansible.builtin.command:
         argv: [systemd-run, --unit, verify-listener, --collect, python3, -m, http.server, --bind, "::", "8080"]
         creates: /run/systemd/transient/verify-listener.service
 
-    - name: Make the test peer in a network namespace of its own, linked to the host
+    - name: Make the test peer in a network namespace of its own, linked to the host on 10.73.7.0/24
       ansible.builtin.shell:
         cmd: |
           set -eu
@@ -319,32 +255,54 @@
           ip -n verify-peer link set verify-ns up && ip -n verify-peer link set lo up
           ip -n verify-peer link add wg0 type wireguard
           ip netns exec verify-peer wg set wg0 private-key /etc/wireguard/verify-peer.key \
-              peer "$(cat /root/vpn-host.pub)" endpoint 10.250.0.1:51820 allowed-ips 10.73.0.1/32
-          ip -n verify-peer address add 10.73.0.2/24 dev wg0 && ip -n verify-peer link set wg0 up
+              peer "$(cat /root/vpn-host.pub)" endpoint 10.250.0.1:51820 allowed-ips 10.73.7.1/32
+          ip -n verify-peer address add 10.73.7.2/24 dev wg0 && ip -n verify-peer link set wg0 up
         executable: /bin/bash
         creates: /run/netns/verify-peer
 
     - name: Reach the service through the VPN from the test peer
       ansible.builtin.command:
-        cmd: ip netns exec verify-peer curl -fsS --max-time 10 -o /dev/null -w '%{http_code}' http://10.73.0.1:8080/
+        cmd: ip netns exec verify-peer curl -fsS --max-time 10 -o /dev/null -w '%{http_code}' http://10.73.7.1:8080/
       register: verify_vpn_reach
       changed_when: false
       failed_when: false
 
-    - name: Assert the service answers through the VPN
+    - name: Assert the service answers through the VPN on 10.73.7.1
       ansible.builtin.assert:
         that: verify_vpn_reach.rc == 0 and verify_vpn_reach.stdout == '200'
         fail_msg: >-
-          through the VPN: rc {{ verify_vpn_reach.rc }}, {{ verify_vpn_reach.stdout }} {{ verify_vpn_reach.stderr }}
+          asked http://10.73.7.1:8080/ through the VPN for 200;
+          got rc {{ verify_vpn_reach.rc }}, {{ verify_vpn_reach.stdout }} {{ verify_vpn_reach.stderr }}
 
-    # A missing loopback endpoint strands tasks; a missing VPN endpoint strands the person using the forge's URLs.
-    # uri cannot pin a name to an address as --resolve does, which the certificate's name needs.
+    - name: Reach Forgejo by name on VPN port 3000 with the stand-in CA
+      ansible.builtin.command:  # noqa: command-instead-of-module
+        cmd: >-
+          curl -fsS --max-time 10 --noproxy '*' --cacert /root/desktop-ca/ca.pem
+          --resolve forge.alpha.porelo.internal:3000:10.73.7.1 -w '\n%{http_code}'
+          https://forge.alpha.porelo.internal:3000/api/v1/version
+      register: verify_forge_vpn_port_3000
+      changed_when: false
+      failed_when: false
+      when: verify_forge == 'on'
+
+    - name: Assert Forgejo answers 200 on forge.alpha.porelo.internal:3000 at 10.73.7.1 under the host CA
+      ansible.builtin.assert:
+        that:
+          - verify_forge_vpn_port_3000.rc == 0
+          - verify_forge_vpn_port_3000.stdout_lines | last == '200'
+          - (verify_forge_vpn_port_3000.stdout_lines[:-1] | join('\n') | from_json).version is defined
+        fail_msg: >-
+          asked https://forge.alpha.porelo.internal:3000/api/v1/version at 10.73.7.1 for HTTP 200 and JSON version;
+          got rc {{ verify_forge_vpn_port_3000.rc }}, {{ verify_forge_vpn_port_3000.stdout }}
+          {{ verify_forge_vpn_port_3000.stderr }}
+      when: verify_forge == 'on'
+
     - name: Reach Forgejo by name on loopback port 443, trusting only the host's CA
       ansible.builtin.command:  # noqa: command-instead-of-module
         cmd: >-
           curl -fsS --max-time 10 --noproxy '*' --cacert /etc/porelo-host/forge/ca.pem
-          --resolve forge.porelo.internal:443:127.0.0.1 -o /dev/null -w '%{http_code}'
-          https://forge.porelo.internal/api/v1/version
+          --resolve forge.alpha.porelo.internal:443:127.0.0.1 -o /dev/null -w '%{http_code}'
+          https://forge.alpha.porelo.internal/api/v1/version
       register: verify_forge_loopback
       changed_when: false
       failed_when: false
@@ -354,47 +312,34 @@
       ansible.builtin.assert:
         that: verify_forge_loopback['rc'] == 0 and verify_forge_loopback['stdout'] == '200'
         fail_msg: >-
-          asked https://forge.porelo.internal/api/v1/version through 127.0.0.1:443 for 200;
+          asked https://forge.alpha.porelo.internal/api/v1/version through 127.0.0.1:443 for 200;
           got rc {{ verify_forge_loopback['rc'] }}, {{ verify_forge_loopback['stdout'] }}
           {{ verify_forge_loopback['stderr'] }}
       when: verify_forge == 'on'
 
-    - name: Reach Forgejo by name on VPN port 443 from the test peer
+    - name: Reach Forgejo by name on VPN port 443 and port 3000 from the test peer
       ansible.builtin.command:
         cmd: >-
           ip netns exec verify-peer curl -fsS --max-time 10 --noproxy '*'
-          --cacert /etc/porelo-host/forge/ca.pem --resolve forge.porelo.internal:443:10.73.0.1
-          -o /dev/null -w '%{http_code}' https://forge.porelo.internal/api/v1/version
+          --cacert /etc/porelo-host/forge/ca.pem
+          --resolve forge.alpha.porelo.internal:{{ item }}:10.73.7.1
+          -o /dev/null -w '%{http_code}'
+          https://forge.alpha.porelo.internal:{{ item }}/api/v1/version
+      loop: [443, 3000]
       register: verify_forge_https_peer
       changed_when: false
       failed_when: false
       when: verify_forge == 'on'
 
-    - name: Assert Forgejo answers by name on VPN port 443 with the host's certificate
+    - name: Assert Forgejo answers by name on VPN ports 443 and 3000 from the test peer
       ansible.builtin.assert:
-        that: verify_forge_https_peer['rc'] == 0 and verify_forge_https_peer['stdout'] == '200'
+        that: item['rc'] == 0 and item['stdout'] == '200'
         fail_msg: >-
-          asked https://forge.porelo.internal/api/v1/version through the test peer's VPN for 200;
-          got rc {{ verify_forge_https_peer['rc'] }}, {{ verify_forge_https_peer['stdout'] }}
-          {{ verify_forge_https_peer['stderr'] }}
-      when: verify_forge == 'on'
-
-    # The runner and existing clients still use the original VPN port.
-    - name: Reach Forgejo's API through the VPN over TLS, trusting only the host's CA
-      ansible.builtin.command:
-        cmd: >-
-          ip netns exec verify-peer curl -fsS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem
-          https://10.73.0.1:3000/api/v1/version
-      register: verify_forge_api
-      changed_when: false
-      failed_when: false
-      when: verify_forge == 'on'
-
-    - name: Assert Forgejo answers through the VPN with the host's certificate
-      ansible.builtin.assert:
-        that: verify_forge_api.rc == 0 and (verify_forge_api.stdout | from_json).version is defined
-        fail_msg: "Forgejo through the VPN: rc {{ verify_forge_api.rc }}, {{ verify_forge_api.stdout }}
-          {{ verify_forge_api.stderr }}"
+          asked https://forge.alpha.porelo.internal:{{ item['item'] }}/api/v1/version through the test peer's VPN for
+          200; got rc {{ item['rc'] }}, {{ item['stdout'] }} {{ item['stderr'] }}
+      loop: "{{ verify_forge_https_peer['results'] }}"
+      loop_control:
+        label: "{{ item['item'] }}"
       when: verify_forge == 'on'
 
     - name: Read where Forgejo's ports listen
@@ -404,14 +349,171 @@
       changed_when: false
       when: verify_forge == 'on'
 
-    - name: Assert Forgejo listens on loopback and VPN port 443 and keeps its original VPN ports
+    - name: Assert Forgejo listens on loopback and VPN port 443 and keeps its VPN ports on 10.73.7.1
       ansible.builtin.assert:
         that:
-          - verify_forge_ports | sort == ['10.73.0.1:2222', '10.73.0.1:3000', '10.73.0.1:443', '127.0.0.1:443']
-        fail_msg: "Forgejo listens on: {{ verify_forge_listen.stdout_lines }}"
+          - verify_forge_ports | sort == ['10.73.7.1:2222', '10.73.7.1:3000', '10.73.7.1:443', '127.0.0.1:443']
+        fail_msg: >-
+          asked Forgejo to listen on 10.73.7.1:{2222,3000,443} and 127.0.0.1:443;
+          got {{ verify_forge_listen.stdout_lines }}
       vars:
         verify_forge_ports: "{{ verify_forge_listen.stdout_lines | map('split') | map(attribute=3) | list }}"
       when: verify_forge == 'on'
+
+    # The shared Matrix homeserver under porelo-matrix: linger enabled, user unit active, TLS files owned by the
+    # account alone with no CA key, and HTTPS answering on matrix.alpha.porelo.internal:8448 at 10.73.7.1.
+    - name: Read porelo-matrix's linger file and TLS paths
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /var/lib/systemd/linger/porelo-matrix
+        - /home/porelo-matrix/.config/porelo/matrix/ca.crt
+        - /home/porelo-matrix/.config/porelo/matrix/tls
+        - /home/porelo-matrix/.config/porelo/matrix/tls/server.crt
+        - /home/porelo-matrix/.config/porelo/matrix/tls/server.key
+        - /home/porelo-matrix/.config/porelo/matrix/ca.key
+        - /home/porelo-matrix/.config/porelo/matrix/tls/ca.key
+      register: verify_matrix_paths
+
+    - name: Assert porelo-matrix has its linger file and TLS files with mode 0644/0700/0600 and no CA key
+      ansible.builtin.assert:
+        that:
+          - verify_matrix_paths.results[0].stat.exists
+          - verify_matrix_paths.results[1].stat.exists
+          - verify_matrix_paths.results[1].stat.pw_name | default('') == 'porelo-matrix'
+          - verify_matrix_paths.results[1].stat.mode | default('') == '0644'
+          - verify_matrix_paths.results[2].stat.isdir | default(false)
+          - verify_matrix_paths.results[2].stat.pw_name | default('') == 'porelo-matrix'
+          - verify_matrix_paths.results[2].stat.mode | default('') == '0700'
+          - verify_matrix_paths.results[3].stat.exists
+          - verify_matrix_paths.results[3].stat.pw_name | default('') == 'porelo-matrix'
+          - verify_matrix_paths.results[3].stat.mode | default('') == '0600'
+          - verify_matrix_paths.results[4].stat.exists
+          - verify_matrix_paths.results[4].stat.pw_name | default('') == 'porelo-matrix'
+          - verify_matrix_paths.results[4].stat.mode | default('') == '0600'
+          - not verify_matrix_paths.results[5].stat.exists
+          - not verify_matrix_paths.results[6].stat.exists
+        fail_msg: >-
+          asked for /var/lib/systemd/linger/porelo-matrix, ca.crt (0644), tls/ (0700), server.crt and server.key (0600)
+          owned by porelo-matrix with no ca.key; got {{ verify_matrix_paths.results | map(attribute='stat') | list }}
+
+    - name: Ask systemd whether porelo-matrix-homeserver.service is enabled and active for porelo-matrix
+      ansible.builtin.command:
+        argv: [systemctl, --user, "{{ item }}", porelo-matrix-homeserver.service]
+      loop: [is-enabled, is-active]
+      become: true
+      become_user: porelo-matrix
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd']['porelo-matrix'][1] }}"
+      register: verify_homeserver_unit
+      changed_when: false
+      failed_when: false
+
+    - name: Assert porelo-matrix-homeserver.service is enabled and active for porelo-matrix
+      ansible.builtin.assert:
+        that:
+          - verify_homeserver_unit.results[0].stdout == 'enabled'
+          - verify_homeserver_unit.results[1].stdout == 'active'
+        fail_msg: >-
+          asked porelo-matrix's user manager for porelo-matrix-homeserver.service enabled and active;
+          got is-enabled '{{ verify_homeserver_unit.results[0].stdout }}'
+          ({{ verify_homeserver_unit.results[0].stderr }}),
+          is-active '{{ verify_homeserver_unit.results[1].stdout }}'
+          ({{ verify_homeserver_unit.results[1].stderr }})
+
+    - name: Reach the Matrix homeserver by name on 10.73.7.1:8448 with the stand-in CA
+      ansible.builtin.command:  # noqa: command-instead-of-module
+        cmd: >-
+          curl -fsS --max-time 10 --noproxy '*' --cacert /root/desktop-ca/ca.pem
+          --resolve matrix.alpha.porelo.internal:8448:10.73.7.1 -w '\n%{http_code}'
+          https://matrix.alpha.porelo.internal:8448/_matrix/client/versions
+      register: verify_homeserver_https
+      until: >-
+        verify_homeserver_https.rc == 0
+        and (verify_homeserver_https.stdout_lines | last | default('')) == '200'
+      retries: 30
+      delay: 2
+      changed_when: false
+      failed_when: false
+
+    - name: Reach the Matrix homeserver through the VPN from the test peer
+      ansible.builtin.command:
+        cmd: >-
+          ip netns exec verify-peer curl -fsS --max-time 10 --noproxy '*'
+          --cacert /etc/porelo-host/forge/ca.pem
+          --resolve matrix.alpha.porelo.internal:8448:10.73.7.1 -o /dev/null -w '%{http_code}'
+          https://matrix.alpha.porelo.internal:8448/_matrix/client/versions
+      register: verify_homeserver_peer
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the Matrix homeserver answers 200 with versions on matrix.alpha.porelo.internal:8448
+      ansible.builtin.assert:
+        that:
+          - verify_homeserver_https.rc == 0
+          - verify_homeserver_https.stdout_lines | last == '200'
+          - (verify_homeserver_https.stdout_lines[:-1] | join('\n') | from_json).versions | default([]) | length > 0
+          - verify_homeserver_peer.rc == 0
+          - verify_homeserver_peer.stdout == '200'
+        fail_msg: >-
+          asked https://matrix.alpha.porelo.internal:8448/_matrix/client/versions at 10.73.7.1 for HTTP 200 with
+          Matrix versions on the host and through the VPN; got host rc {{ verify_homeserver_https.rc }}
+          '{{ verify_homeserver_https.stdout }}' ({{ verify_homeserver_https.stderr }}),
+          peer rc {{ verify_homeserver_peer.rc }} '{{ verify_homeserver_peer.stdout }}'
+          ({{ verify_homeserver_peer.stderr }})
+
+    # The host admin's CA is constrained critically to alpha.porelo.internal and 10.73.7.0/24, so a certificate signed
+    # by that same CA for another host's name must fail verification.
+    - name: Verify a certificate signed by the same CA for forge.beta.porelo.internal fails openssl verify
+      block:
+        - name: Make a temporary directory for the cross-host certificate check
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: porelo-beta-cert-
+          register: verify_beta_dir
+
+        - name: Sign a certificate for forge.beta.porelo.internal with the stand-in host CA
+          ansible.builtin.shell:
+            cmd: |
+              set -euo pipefail
+              umask 077
+              work={{ verify_beta_dir.path | quote }}
+              openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
+                  -subj "/CN=forge.beta.porelo.internal" -keyout "$work/beta.key" -out "$work/beta.csr" 2> /dev/null
+              {
+                  printf 'subjectAltName=DNS:forge.beta.porelo.internal,IP:10.73.7.1\n'
+                  printf 'basicConstraints=critical,CA:FALSE\n'
+                  printf 'keyUsage=critical,digitalSignature\n'
+                  printf 'extendedKeyUsage=serverAuth\n'
+              } > "$work/ext"
+              openssl x509 -req -in "$work/beta.csr" -CA /root/desktop-ca/ca.pem -CAkey /root/desktop-ca/ca.key \
+                  -CAcreateserial -days 365 -extfile "$work/ext" -out "$work/beta.pem" 2> /dev/null
+            executable: /bin/bash
+          changed_when: true
+          no_log: true
+
+        - name: Run openssl verify on forge.beta.porelo.internal against the host's CA
+          ansible.builtin.command:
+            argv: [openssl, verify, -CAfile, /etc/porelo-host/forge/ca.pem, "{{ verify_beta_dir.path }}/beta.pem"]
+          register: verify_beta_cert
+          changed_when: false
+          failed_when: false
+
+        - name: Assert openssl verify rejects forge.beta.porelo.internal for violating the CA's name constraints
+          ansible.builtin.assert:
+            that:
+              - verify_beta_cert.rc != 0
+              - (verify_beta_cert.stdout ~ verify_beta_cert.stderr) is search('permitted subtree violation')
+            fail_msg: >-
+              asked openssl verify -CAfile /etc/porelo-host/forge/ca.pem to reject forge.beta.porelo.internal for a
+              permitted subtree violation; got rc {{ verify_beta_cert.rc }}:
+              {{ verify_beta_cert.stdout }} {{ verify_beta_cert.stderr }}
+      always:
+        - name: Remove the temporary directory of the cross-host certificate check
+          ansible.builtin.file:
+            path: "{{ verify_beta_dir.path }}"
+            state: absent
+          when: verify_beta_dir.path is defined
 
     - name: Reach ssh on the public address, from where Molecule connects
       ansible.builtin.wait_for:
@@ -421,58 +523,36 @@
       delegate_to: localhost
       become: false
 
-    - name: Try the service and forge ports on the public address, from where Molecule connects
+    - name: Try the test listener, homeserver and forge ports on the public address, from where Molecule connects
       ansible.builtin.wait_for:
         host: "{{ ansible_host }}"
         port: "{{ item }}"
         timeout: 5
-      loop: "{{ [8080, 3000, 2222, 443] if verify_forge == 'on' else [8080] }}"
+      loop: "{{ [8080, 8448, 3000, 2222, 443] if verify_forge == 'on' else [8080, 8448] }}"
       delegate_to: localhost
       become: false
       register: verify_public_reach
       failed_when: false
 
-    - name: Assert the public address refuses the service and every forge port
+    - name: Assert the public address refuses the test listener, the homeserver and every forge port
       ansible.builtin.assert:
         that: item['msg'] is defined and item['msg'] is search('Timeout')
-        fail_msg: "asked {{ ansible_host }}:{{ item['item'] }} to refuse connections; got {{ item }}"
+        fail_msg: "asked {{ ansible_host }}:{{ item['item'] }} to refuse public connections; got {{ item }}"
       loop: "{{ verify_public_reach['results'] }}"
       loop_control:
         label: "{{ item['item'] }}"
 
-    - name: Read the host's private key's value, only to search the run's lines for it
-      ansible.builtin.slurp:
-        src: /root/vpn-host.key
-      register: verify_host_key
-      no_log: true
-
-    - name: Read the lines of the last up, to search for the key
-      ansible.builtin.slurp:
-        src: /root/porelo-host-up.lines
-      register: verify_key_lines
-
-    - name: Assert the host's private key appears in no line of up
-      ansible.builtin.assert:
-        that: (verify_host_key.content | b64decode | trim) not in (verify_key_lines.content | b64decode)
-        fail_msg: the host's private VPN key appears in up's lines
-      no_log: true
-
-    - name: Verify the agent's credential and its repository access after idempotence
-      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_agents.yml"
-      when: verify_forge == 'on'
-
-    - name: Verify the person's first sign-in and organization ownership after idempotence
+    - name: Verify the person's forge login and password script after idempotence
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_person.yml"
       when: verify_forge == 'on'
 
-    # Recreating the person makes the verbose run make the person again, whose lasting password is then set anew.
+    # Recreating the person makes the verbose run make the person again, whose password script is checked anew.
     - name: Remove the person's forge login before up with -vvv
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
           cd /
           as_forge() { runuser -u porelo-forge -- env XDG_RUNTIME_DIR="/run/user/$(id -u porelo-forge)" "$@"; }
-          # The person owns the organization, which Forgejo refuses to delete a user for without --purge (measured).
           as_forge podman exec forgejo forgejo admin user delete --username operator --purge
           users=$(as_forge podman exec forgejo forgejo admin user list)
           rc=0
@@ -482,1140 +562,104 @@
       changed_when: true
       when: verify_forge == 'on'
 
-    # Up made the publisher's token once; forgetting that it did makes the -vvv run below make it again, so that run's
-    # output is searched for a token it handled.
-    - name: Forget that the publisher's secret was set, so up with -vvv makes its token again
-      ansible.builtin.file:
-        path: /home/porelo-forge/.config/porelo-forge/publisher.set
-        state: absent
-      when: verify_forge == 'on'
-
-    # Removing the machine's key before up with -vvv makes up refuse naming it, and the stop give it again.
-    - name: Remove the machine's key from the vault before up with -vvv
-      ansible.builtin.command:
-        cmd: porelo vault remove converge-key
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      changed_when: true
-
-    - name: Read the gate's vault entry before making up with -vvv handle it again
-      ansible.builtin.command:
-        cmd: porelo vault list
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      register: verify_gate_before_vvv
-      changed_when: false
-      no_log: true
-      when: verify_forge == 'on'
-
-    - name: Assert the gate's token was deposited before the verbose run
-      ansible.builtin.assert:
-        that: "'git.token.forge.porelo.internal' in (verify_gate_before_vvv.stdout_lines | map('split') | map('first'))"
-        fail_msg: "asked for git.token.forge.porelo.internal in the vault, got {{ verify_gate_before_vvv.stdout }}"
-      when: verify_forge == 'on'
-
-    # The running task predates token regeneration, so both token digests must be checked for leaks.
-    - name: Read only the gate token's digest before removing its vault entry
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          export XDG_RUNTIME_DIR=/run/user/$(id -u)
-          printf 'protocol=https\nhost=forge.porelo.internal\n\n' \
-              | porelo vault credential --entry git.token.forge.porelo.internal get \
-              | python3 -I -c 'import hashlib,re,sys
-          fields=dict(line.rstrip("\n").split("=",1) for line in sys.stdin if "=" in line)
-          token=fields.get("password","").encode()
-          if not re.fullmatch(rb"[0-9a-f]{40}",token):
-              sys.exit("asked for the gate token on a vault pipe, got another form")
-          print(hashlib.sha256(token).hexdigest())'
-        executable: /bin/bash
-      become: true
-      become_user: "{{ verify_account }}"
-      register: verify_gate_prior_digest
-      changed_when: false
-      failed_when: false
-      no_log: true
-      when: verify_forge == 'on'
-
-    - name: Assert the first gate token can be checked after its vault entry is replaced
-      ansible.builtin.assert:
-        that: verify_gate_prior_digest.rc == 0 and verify_gate_prior_digest.stdout is match('^[0-9a-f]{64}$')
-        fail_msg: "asked for the first gate token's digest, got exit {{ verify_gate_prior_digest.rc }} or another form"
-      when: verify_forge == 'on'
-
-    - name: Remove the gate's token so up with -vvv deposits a new one
-      ansible.builtin.command:
-        argv: [porelo, vault, remove, git.token.forge.porelo.internal]
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      changed_when: true
-      no_log: true
-      when: verify_forge == 'on'
-
-    - name: Ask Porelo what the vault holds before up with -vvv
-      ansible.builtin.command:
-        cmd: porelo vault list
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      register: verify_vault_before_vvv
-      changed_when: false
-
-    - name: Assert the machine's key is not in the vault before up with -vvv
-      ansible.builtin.assert:
-        that: verify_vault_before_vvv.stdout is not search('^converge-key ', multiline=True)
-        fail_msg: "asked for converge-key to be absent from the vault, got: {{ verify_vault_before_vvv.stdout }}"
-
-    - name: Run up while the vault lacks the machine's key, its steps as JSON lines
-      ansible.builtin.command:
-        cmd: >-
-          ansible-playbook -c local -i /root/porelo-host-inventory.yml {{ verify_forge_inventory }} porelo.host.up
-      environment:
-        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
-        LC_ALL: C.UTF-8
-      register: verify_keyless_up
-      changed_when: false
-      failed_when: false
-
-    - name: Assert up refused naming the missing key and how to give it
-      ansible.builtin.assert:
-        that:
-          - verify_keyless_up.rc == 2
-          - verify_keyless_failed | length == 1
-          - >-
-            verify_keyless_failed[0].msg is search('keys: the vault holds no converge-key; give them with')
-          - verify_keyless_failed[0].msg is search('porelo-host-stop --stdin keys')
-        fail_msg: "up without the key gave rc {{ verify_keyless_up.rc }}: {{ verify_keyless_up.stdout }}"
-      vars:
-        verify_keyless_failed: "{{ verify_keyless_up.stdout_lines | select | map('from_json')
-          | selectattr('state', 'equalto', 'failed') | list }}"
-
-    - name: Give the machine's key on the stop's standard input, as the desktop does after that refusal
-      ansible.builtin.shell:
-        cmd: >-
-          set -o pipefail && printf 'key converge-key %s\n' "$(base64 -w0 < /root/secrets/converge-key)"
-          | porelo-host-stop --stdin keys
-        executable: /bin/bash
-      changed_when: true
-      no_log: true
-
-    - name: Assert the gate's token is absent before up with -vvv
-      ansible.builtin.assert:
-        that: >-
-          'git.token.forge.porelo.internal' not in
-          (verify_vault_before_vvv.stdout_lines | map('split') | map('first'))
-        fail_msg: "asked for the gate's entry absent before up -vvv, got {{ verify_vault_before_vvv.stdout }}"
-      when: verify_forge == 'on'
-
-    # Ansible's own most talkative output of a whole up, searched for the host's and the pool's private keys and tokens.
-    - name: Run up again with Ansible's -vvv and its own output
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          umask 077
-          ansible-playbook -vvv -c local -i /root/porelo-host-inventory.yml {{ verify_forge_inventory }} \
-              porelo.host.up 2>&1 | tee /root/porelo-host-vvv.out
-        executable: /bin/bash
-      environment:
-        LC_ALL: C.UTF-8
-      register: verify_vvv
-      changed_when: false
-      no_log: true
-
-    - name: Check up with -vvv kept the agent's first token file
-      ansible.builtin.command:
-        cmd: sha256sum --check /root/porelo-host-agent-probe.sha256
-      register: verify_agent_vvv_retained
-      changed_when: false
-      failed_when: false
-      no_log: true
-      when: verify_forge == 'on'
-
-    - name: Assert up with -vvv kept the agent's first token file
-      ansible.builtin.assert:
-        that: verify_agent_vvv_retained.rc == 0
-        fail_msg: >-
-          asked for the agent's token file digest to match before and after up with -vvv,
-          got rc {{ verify_agent_vvv_retained.rc }}:
-          {{ verify_agent_vvv_retained.stdout }} {{ verify_agent_vvv_retained.stderr }}
-      when: verify_forge == 'on'
-
-    - name: Read the person's token for the central forge, only to search the run's output for it
-      ansible.builtin.slurp:
-        src: /root/forge-central.token
-      register: verify_central_token
-      no_log: true
-      when: verify_forge == 'on'
-
-    - name: Read the forge's API token, only to search the run's output for it
-      ansible.builtin.slurp:
-        src: /home/porelo-forge/.config/porelo-forge/api.token
-      register: verify_forge_token
-      no_log: true
-      when: verify_forge == 'on'
-
-    - name: Read the room's registration token given at the stop, only to search the run's output for it
-      ansible.builtin.slurp:
-        src: /root/secrets/matrix-token
-      register: verify_matrix_token
-      no_log: true
-
-    - name: Assert up with -vvv ran, and its output holds no trace of the host's private key or any token
-      ansible.builtin.assert:
-        that:
-          - verify_vvv.rc == 0
-          - (verify_matrix_token.content | b64decode | trim) | length > 20
-          - (verify_matrix_token.content | b64decode | trim) not in (verify_vvv.stdout + verify_vvv.stderr)
-          - (verify_host_key.content | b64decode | trim) not in (verify_vvv.stdout + verify_vvv.stderr)
-          - verify_forge != 'on' or (verify_central_token.content | b64decode | trim) | length > 20
-          - verify_forge != 'on' or (verify_central_token.content | b64decode | trim)
-            not in (verify_vvv.stdout + verify_vvv.stderr)
-          - verify_forge != 'on' or (verify_forge_token.content | b64decode | trim) | length > 20
-          - verify_forge != 'on' or (verify_forge_token.content | b64decode | trim)
-            not in (verify_vvv.stdout + verify_vvv.stderr)
-        fail_msg: "up with -vvv gave rc {{ verify_vvv.rc }}, or its output holds the host's private VPN key, the
-          room's registration token, the person's token for the central forge or the forge's API token"
-      no_log: true
-
-    - name: Set the person's lasting password again on the forge up with -vvv made them anew
-      ansible.builtin.shell:
-        cmd: porelo-host-forge-password < /root/secrets/forge-person-password
-        executable: /bin/bash
-      register: verify_person_password_set
-      changed_when: true
-      no_log: true
-      when: verify_forge == 'on'
-
-    - name: Verify up with -vvv recreated the person's login and ownership, and the lasting password signs in
-      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_person.yml"
-      when: verify_forge == 'on'
-
-    # The pool-key search removes the verbose file, so the person's password must be checked first.
-    - name: Search verbose output, the script's own and the journal for the password and prove a planted leak is refused
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          umask 077
-          work=$(mktemp -d)
-          trap 'rm -rf "$work"' EXIT
-          pattern=/root/secrets/forge-person-password
-          [ -s "$pattern" ] && [ "$(wc -l < "$pattern")" = 1 ] \
-              || { echo "asked for one nonempty password pattern, got another form" >&2; exit 1; }
-          journalctl -o cat --no-pager > "$work/journal"
-          search() {
-              local rc=0
-              [ -s "$1" ] || { echo "asked for nonempty search input, got none" >&2; return 2; }
-              grep -F -f "$pattern" -- "$1" > /dev/null || rc=$?
-              case $rc in
-                  0) echo "the password appears in search input" >&2; return 1 ;;
-                  1) return 0 ;;
-                  *) echo "password search ended $rc" >&2; return 2 ;;
-              esac
-          }
-          cat "$pattern" > "$work/planted"
-          rc=0
-          search "$work/planted" > "$work/probe" 2>&1 || rc=$?
-          [ "$rc" = 1 ] || { echo "asked to refuse a planted password, got rc $rc" >&2; exit 1; }
-          echo 'planted password: refused'
-          search /root/porelo-host-vvv.out
-          echo 'up -vvv: clean'
-          search "$work/journal"
-          echo 'journal: clean'
-          printf '%s\n%s\n' {{ (verify_person_password_set.stdout | default('')) | quote }} \
-              {{ (verify_person_password_set.stderr | default('')) | quote }} > "$work/script"
-          search "$work/script"
-          echo 'script: clean'
-        executable: /bin/bash
-      register: verify_person_password_search
-      changed_when: false
-      failed_when: false
-      no_log: true
-      when: verify_forge == 'on'
-
-    - name: Assert the password is absent from verbose output, the script's own and the journal, a planted leak refused
-      ansible.builtin.assert:
-        that:
-          - verify_person_password_search.rc == 0
-          - >-
-            verify_person_password_search.stdout_lines
-            == ['planted password: refused', 'up -vvv: clean', 'journal: clean', 'script: clean']
-        fail_msg: >-
-          asked to refuse a planted password and find none in up -vvv or the journal,
-          got rc {{ verify_person_password_search.rc }}: {{ verify_person_password_search.stderr }}
-      when: verify_forge == 'on'
-
-    - name: Verify the gate's branch, protected main and installed build reader
-      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_gate.yml"
-      when: verify_forge == 'on'
-
-    - name: Verify the regenerated gate token stays outside output, journals and task containers
-      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_gate_secrets.yml"
-      when: verify_forge == 'on'
-
-    - name: Search the -vvv output for every body line of the pool's private keys
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          trap 'rm -f /root/porelo-host-vvv.out' EXIT
-          [ -s /root/porelo-host-vvv.out ] || { echo "no -vvv output at /root/porelo-host-vvv.out" >&2; exit 1; }
-          for key in /var/lib/porelo-host/pool/run-key /var/lib/porelo-host/pool/porelo-pool-ubuntu-1/host; do
-              [ "$(sed '1d;$d' "$key" | wc -l)" -gt 0 ] || { echo "no key body in $key" >&2; exit 1; }
-              if sed '1d;$d' "$key" | grep -Fq -f - /root/porelo-host-vvv.out; then
-                  echo "$key appears in up -vvv output" >&2
-                  exit 1
-              fi
-          done
-        executable: /bin/bash
-      register: verify_pool_keys_vvv
-      changed_when: false
-      failed_when: false
-      no_log: true
-      when: verify_vm_pool == 'on'
-
-    - name: Assert the -vvv output holds no body line of the pool's private keys
-      ansible.builtin.assert:
-        that: verify_pool_keys_vvv.rc == 0
-        fail_msg: "{{ verify_pool_keys_vvv.stderr }}"
-      when: verify_vm_pool == 'on'
-
-    # The machine's key given by the stop is in no output, journal or ~/.ansible file (no fact cache is configured).
-    - name: Ask Porelo what the vault holds after up with -vvv
-      ansible.builtin.command:
-        cmd: porelo vault list
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      register: verify_vault_after_vvv
-      changed_when: false
-
-    - name: Read the machine's key, only to search the run's output for it
-      ansible.builtin.slurp:
-        src: /root/secrets/converge-key
-      register: verify_machine_key
-      no_log: true
-
-    - name: Search the journal and Ansible's directories for the machine's key
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          umask 077
-          key=$(mktemp) journal=$(mktemp)
-          trap 'rm -f "$key" "$journal"' EXIT
-          tr -d '\r\n' < /root/secrets/converge-key > "$key"
-          echo >> "$key"
-          [ "$(wc -c < "$key")" -gt 21 ] || { echo "key file too short" >&2; exit 1; }
-          journalctl -o cat --no-pager > "$journal"
-          # grep's 2 is a search that could not run, which must never read as clean.
-          search() {
-              rc=0
-              grep "$@" || rc=$?
-              case $rc in 0) echo found ;; 1) echo clean ;; *) echo "grep ended $rc" >&2; return 1 ;; esac
-          }
-          found=$(search -Fq -f "$key" "$journal")
-          echo "journal: $found"
-          for dir in /root/.ansible /home/{{ verify_account }}/.ansible; do
-              if [ ! -d "$dir" ]; then
-                  echo "$dir: absent"
-              else
-                  found=$(search -rFq -f "$key" "$dir")
-                  echo "$dir: $found"
-              fi
-          done
-        executable: /bin/bash
-      register: verify_machine_key_search
-      changed_when: false
-      no_log: true
-
-    - name: Assert the stop put the machine's key back and its value is in no output, journal or Ansible file
-      ansible.builtin.assert:
-        that:
-          - verify_vault_after_vvv.stdout is search('^converge-key ', multiline=True)
-          - (verify_machine_key.content | b64decode | trim) | length > 20
-          - (verify_machine_key.content | b64decode | trim) not in (verify_vvv.stdout + verify_vvv.stderr)
-          - verify_machine_key_search.stdout_lines | length == 3
-          - verify_machine_key_search.stdout_lines[0] is match('journal')
-          - verify_machine_key_search.stdout_lines | reject('search', ' (clean|absent)$') | list | length == 0
-        fail_msg: >-
-          asked for converge-key in the vault and its value in no -vvv output, journal or ~/.ansible file;
-          vault list gave '{{ verify_vault_after_vvv.stdout }}',
-          in -vvv: {{ (verify_machine_key.content | b64decode | trim) in (verify_vvv.stdout + verify_vvv.stderr) }},
-          search gave {{ verify_machine_key_search.stdout_lines }}
-      no_log: true
-
-    # A vault passphrase leaked by up must be caught in its output, the whole journal and persistent host files.
-    - name: Search for the vault passphrase with protected temporary files
-      vars:
-        verify_account_home: "{{ ansible_facts['getent_passwd'][verify_account][4] }}"
+    # Ansible's own most talkative output of a whole up, searched for the host's, CA's and pool's private keys and the
+    # forge's API token without reading any secret into an Ansible variable.
+    - name: Run up again with Ansible's -vvv and search up's lines, -vvv output and the journal for any secret
       block:
-        - name: Create a private directory for the passphrase search
-          ansible.builtin.tempfile:
-            state: directory
-            prefix: porelo-passphrase-search-
-          register: verify_passphrase_files
-
-        - name: Write the passphrase search pattern privately
-          ansible.builtin.copy:
-            content: "{{ verify_vault_passphrase }}\n"
-            dest: "{{ verify_passphrase_files.path }}/pattern"
-            mode: '0600'
-          no_log: true
-
-        - name: Write the registered verbose output privately for the search
-          ansible.builtin.copy:
-            content: "{{ verify_vvv.stdout }}\n{{ verify_vvv.stderr }}"
-            dest: "{{ verify_passphrase_files.path }}/verbose"
-            mode: '0600'
-          no_log: true
-
-        - name: Search the verbose output, journal and host files for the passphrase
+        - name: Run up with Ansible's -vvv into a root-only file
           ansible.builtin.shell:
             cmd: |
               set -euo pipefail
               umask 077
-              work={{ verify_passphrase_files.path | quote }}
-              pattern="$work/pattern"
-              [ -s "$pattern" ] || { echo "empty passphrase pattern" >&2; exit 1; }
-              journalctl -o cat --no-pager > "$work/journal"
-              search() {
-                  rc=0
-                  grep -rFq -f "$pattern" -- "$1" || rc=$?
-                  case $rc in 0) echo found ;; 1) echo clean ;; *) echo "grep ended $rc" >&2; return 1 ;; esac
-              }
-              echo "/root/.ansible/tmp: excluded"
-              echo "{{ verify_account_home }}/.ansible/tmp: excluded"
-              # The run's stand-in for the person's secrets file, the one place the passphrase is meant to be.
-              echo "/root/secrets: excluded"
-              result=$(search "$work/verbose")
-              echo "up -vvv: $result"
-              result=$(search "$work/journal")
-              echo "journal: $result"
-              # One grep per batch of files, not per file: the account's container storage holds very many.
-              for dir in /root /home /srv /etc /var/log; do
-                  : > "$work/hits"; : > "$work/errors"
-                  find "$dir" \( -path /root/.ansible/tmp -o -path /root/secrets \
-                      -o -path {{ (verify_account_home ~ '/.ansible/tmp') | quote }} \) \
-                      -prune -o -type f -print0 2> "$work/find-errors" |
-                      xargs -0 -r grep -lF -D skip -f "$pattern" -- > "$work/hits" 2> "$work/errors" || true
-                  # A file gone between find and grep, such as an SQLite journal of a running container store, held
-                  # nothing that stays on the host; it is dropped only when it is gone still. Every other error stays.
-                  for errors in "$work/errors" "$work/find-errors"; do
-                      while IFS= read -r line; do
-                          case $line in
-                              'grep: '*': No such file or directory' | 'find: '*': No such file or directory')
-                                  gone=${line#*: }; gone=${gone%: No such file or directory}
-                                  gone=${gone#\'}; gone=${gone%\'}
-                                  if [ ! -e "$gone" ] && [ ! -L "$gone" ]; then continue; fi ;;
-                          esac
-                          printf '%s\n' "$line"
-                      done < "$errors" > "$errors.kept"
-                      mv "$errors.kept" "$errors"
-                  done
-                  # A file grep could not read is a search that did not run, never a clean one.
-                  [ ! -s "$work/errors" ] && [ ! -s "$work/find-errors" ] ||
-                      { echo "grep or find could not read under $dir:" >&2
-                        cat "$work/errors" "$work/find-errors" | cut -c1-200 | head -5 >&2; exit 1; }
-                  if [ -s "$work/hits" ]; then echo "$dir: found"; else echo "$dir: clean"; fi
-              done
+              ansible-playbook -vvv -c local -i /root/porelo-host-inventory.yml porelo.host.up \
+                  > /root/porelo-host-vvv.out 2>&1
             executable: /bin/bash
-          register: verify_passphrase_search
+          environment:
+            LC_ALL: C.UTF-8
           changed_when: false
-          failed_when: false
           no_log: true
-      always:
-        - name: Remove the passphrase search's private directory
-          ansible.builtin.file:
-            path: "{{ verify_passphrase_files.path }}"
-            state: absent
-          when: verify_passphrase_files.path is defined
 
-    - name: Assert the passphrase appears in no verbose output, journal or persistent host file
-      ansible.builtin.assert:
-        that:
-          - verify_passphrase_search.rc == 0
-          - verify_passphrase_search.stdout_lines == verify_passphrase_expected
-        fail_msg: >-
-          passphrase search expected every place clean; found in
-          {{ verify_passphrase_search.stdout_lines | select('search', ': found$') | list }};
-          search rc {{ verify_passphrase_search.rc }}, places checked {{ verify_passphrase_search.stdout_lines }},
-          unreadable {{ verify_passphrase_search.stderr | default('') }}
-        success_msg: "{{ verify_passphrase_search.stdout_lines }}"
-      vars:
-        verify_passphrase_expected:
-          - '/root/.ansible/tmp: excluded'
-          - "{{ ansible_facts['getent_passwd'][verify_account][4] }}/.ansible/tmp: excluded"
-          - '/root/secrets: excluded'
-          - 'up -vvv: clean'
-          - 'journal: clean'
-          - '/root: clean'
-          - '/home: clean'
-          - '/srv: clean'
-          - '/etc: clean'
-          - '/var/log: clean'
-
-    # A shut vault stops up with needs: ["vault"] alone; the stop's pipeline then unlocks it and gives the key.
-    - name: Remove the machine's key from the vault and lock the vault
-      ansible.builtin.command:
-        cmd: "{{ item }}"
-      loop: [porelo vault remove converge-key, porelo vault lock]
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      changed_when: true
-
-    - name: Ask Porelo whether the vault is shut
-      ansible.builtin.command:
-        cmd: porelo vault status
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      register: verify_vault_locked
-      changed_when: false
-      failed_when: false
-
-    - name: Assert the vault is shut
-      ansible.builtin.assert:
-        that: verify_vault_locked.rc == 3
-        fail_msg: "asked porelo vault status for 3 (shut), got {{ verify_vault_locked.rc }}"
-
-    - name: Run up while the vault is shut, its steps as JSON lines
-      ansible.builtin.command:
-        cmd: >-
-          ansible-playbook -c local -i /root/porelo-host-inventory.yml {{ verify_forge_inventory }} porelo.host.up
-      environment:
-        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
-        LC_ALL: C.UTF-8
-      register: verify_locked_up
-      changed_when: false
-      failed_when: false
-
-    - name: Unlock the vault and give the machine's key on the stop's standard input, as the desktop does
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          {
-              printf 'vault %s\n' "$(base64 -w0 < /root/secrets/vault-passphrase)"
-              printf 'key converge-key %s\n' "$(base64 -w0 < /root/secrets/converge-key)"
-          } | porelo-host-stop --stdin vault keys
-        executable: /bin/bash
-      changed_when: true
-      no_log: true
-
-    - name: Ask Porelo for the vault's status and entries after up on the shut vault
-      ansible.builtin.command:
-        cmd: "{{ item }}"
-      loop: [porelo vault status, porelo vault list]
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      register: verify_after_locked_up
-      changed_when: false
-      failed_when: false
-
-    - name: Assert up stopped for the vault alone, and the stop opened the vault and put the key
-      ansible.builtin.assert:
-        that:
-          - verify_locked_up.rc == 2
-          - verify_locked_waiting | length == 1
-          - verify_locked_waiting[0].needs == ['vault']
-          - verify_locked_failed | length == 0
-          - verify_after_locked_up.results[0].rc == 0
-          - verify_after_locked_up.results[1].stdout is search('^converge-key ', multiline=True)
-        fail_msg: >-
-          up on shut vault gave rc {{ verify_locked_up.rc }} and lines {{ verify_locked_up.stdout }};
-          after unlock, vault status rc {{ verify_after_locked_up.results[0].rc }},
-          vault list '{{ verify_after_locked_up.results[1].stdout }}'
-      vars:
-        verify_locked_lines: "{{ verify_locked_up.stdout_lines | select | map('from_json') | list }}"
-        verify_locked_waiting: "{{ verify_locked_lines | selectattr('state', 'equalto', 'waiting') | list }}"
-        verify_locked_failed: "{{ verify_locked_lines | selectattr('state', 'equalto', 'failed') | list }}"
-
-    - name: Run up after unlocking the vault, its steps as JSON lines
-      ansible.builtin.command:
-        cmd: >-
-          ansible-playbook -c local -i /root/porelo-host-inventory.yml {{ verify_forge_inventory }} porelo.host.up
-      environment:
-        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
-        LC_ALL: C.UTF-8
-      register: verify_unlocked_up
-      changed_when: >-
-        verify_unlocked_up.stdout is search('"state": "changed"')
-
-    - name: Ask Porelo what the vault holds after up on the unlocked vault
-      ansible.builtin.command:
-        cmd: porelo vault list
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      register: verify_vault_restored
-      changed_when: false
-
-    - name: Assert up after unlocking the vault runs to its end with the key in the vault
-      ansible.builtin.assert:
-        that:
-          - verify_unlocked_up.rc == 0
-          - verify_vault_restored.stdout is search('^converge-key ', multiline=True)
-        fail_msg: >-
-          up after unlock gave rc {{ verify_unlocked_up.rc }};
-          asked vault list for converge-key, got '{{ verify_vault_restored.stdout }}'
-
-    # A machine file whose signature does not check stops up with Porelo's refusal, and starts no task.
-    - name: Stop the task started by hand before testing a refused signature
-      ansible.builtin.command:
-        cmd: porelo task stop porelo-converge-converge-1
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      changed_when: true
-
-    - name: Ask Porelo whether the task runs after stopping it
-      ansible.builtin.command:
-        cmd: porelo task status porelo-converge-converge-1 --json
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      register: verify_stopped_task
-      changed_when: false
-
-    - name: Assert the task is not running before testing a refused signature
-      ansible.builtin.assert:
-        that: not (verify_stopped_task.stdout | from_json).running
-        fail_msg: "asked for porelo-converge-converge-1 to be stopped, got: {{ verify_stopped_task.stdout }}"
-
-    # Read as up left them, before any test below changes them.
-    - name: Read the setup's directory and files, and search /srv for any of them
-      ansible.builtin.find:
-        paths: [/etc/porelo-host/setup, /srv]
-        recurse: true
-        file_type: any
-        patterns: ["machine.yml", "*.bundle"]
-      register: verify_setup_files
-
-    - name: Read the setup's directory itself
-      ansible.builtin.stat:
-        path: /etc/porelo-host/setup
-      register: verify_setup_dir
-
-    - name: Assert the setup's files lie in the setup's directory alone, the account reading and root writing them
-      ansible.builtin.assert:
-        that:
-          - verify_setup_files.files | map(attribute='path') | sort
-            == ['/etc/porelo-host/setup/converge.bundle', '/etc/porelo-host/setup/machine.yml']
-          - verify_setup_files.files | map(attribute='mode') | unique | list == ['0640']
-          - verify_setup_files.files | map(attribute='uid') | unique | list == [0]
-          - verify_setup_files.files | map(attribute='gr_name') | unique | list == [verify_account]
-          - verify_setup_dir.stat.mode == '0750' and verify_setup_dir.stat.uid == 0
-          - verify_setup_dir.stat.gr_name == verify_account
-        fail_msg: >-
-          asked for machine.yml and the bundle in /etc/porelo-host/setup alone, 0640 root:{{ verify_account }} in a
-          0750 directory; found {{ verify_setup_files.files | map(attribute='path') | list }} with modes
-          {{ verify_setup_files.files | map(attribute='mode') | list }}, the directory {{ verify_setup_dir.stat.mode }}
-
-    - name: Refuse a machine file whose signature does not check, and always restore the original
-      block:
-        - name: Keep the original machine file as a backup
-          ansible.builtin.copy:
-            src: /etc/porelo-host/setup/machine.yml
-            dest: /root/machine.yml.bak
-            remote_src: true
-            owner: root
-            group: root
-            mode: "0600"
-
-        - name: Replace signed_by in a copy of the machine file with a throwaway ed25519 key's fingerprint
+        - name: Search up's lines, -vvv output and the journal for private keys and tokens, with a planted control
           ansible.builtin.shell:
             cmd: |
               set -euo pipefail
-              tmp=$(mktemp -d)
-              trap 'rm -rf "$tmp"' EXIT
-              ssh-keygen -q -t ed25519 -N "" -C throwaway -f "$tmp/key"
-              other=$(ssh-keygen -lf "$tmp/key.pub" | cut -d' ' -f2)
-              sed "s|^  signed_by: .*|  signed_by: \"$other\"|" /root/machine.yml.bak \
-                  > /etc/porelo-host/setup/machine.yml
-              printf '%s\n' "$other"
+              umask 077
+              work=$(mktemp -d)
+              trap 'rm -rf "$work"' EXIT
+              [ -s /root/porelo-host-up.lines ] || { echo "missing /root/porelo-host-up.lines" >&2; exit 1; }
+              [ -s /root/porelo-host-vvv.out ] || { echo "missing /root/porelo-host-vvv.out" >&2; exit 1; }
+              journalctl -o cat --no-pager > "$work/journal"
+              check_absent() {
+                  local label=$1 patterns=$2 target_name=$3 target_file=$4 rc=0
+                  [ -s "$patterns" ] || { echo "empty pattern file for $label" >&2; exit 1; }
+                  grep -Fq -f "$patterns" -- "$target_file" || rc=$?
+                  case $rc in
+                      0) echo "$label appears in $target_name" >&2; exit 1 ;;
+                      1) ;;
+                      *) echo "grep ended $rc for $label in $target_name" >&2; exit 1 ;;
+                  esac
+              }
+              tr -d '\r\n' < /root/vpn-host.key > "$work/vpn.pat"
+              echo >> "$work/vpn.pat"
+              [ "$(wc -c < "$work/vpn.pat")" -gt 20 ] || { echo "VPN key too short" >&2; exit 1; }
+              cat "$work/vpn.pat" > "$work/planted"
+              if ! grep -Fq -f "$work/vpn.pat" -- "$work/planted"; then
+                  echo "planted control did not match" >&2; exit 1
+              fi
+              sed '1d;$d' /root/desktop-ca/ca.key > "$work/ca.pat"
+              for target in "up.lines:/root/porelo-host-up.lines" "up-vvv:/root/porelo-host-vvv.out" \
+                  "journal:$work/journal"; do
+                  tname=${target%%:*}
+                  tfile=${target#*:}
+                  check_absent "host VPN key" "$work/vpn.pat" "$tname" "$tfile"
+                  check_absent "desktop CA key" "$work/ca.pat" "$tname" "$tfile"
+              done
+              {% if verify_forge == 'on' %}
+              tr -d '\r\n' < /home/porelo-forge/.config/porelo-forge/api.token > "$work/forge.pat"
+              echo >> "$work/forge.pat"
+              grep -Eqx '[0-9a-f]{40}' "$work/forge.pat" || { echo "unexpected forge token form" >&2; exit 1; }
+              for target in "up.lines:/root/porelo-host-up.lines" "up-vvv:/root/porelo-host-vvv.out" \
+                  "journal:$work/journal"; do
+                  check_absent "forge API token" "$work/forge.pat" "${target%%:*}" "${target#*:}"
+              done
+              {% endif %}
+              {% if verify_vm_pool == 'on' %}
+              for key in /var/lib/porelo-host/pool/run-key /var/lib/porelo-host/pool/porelo-pool-ubuntu-1/host; do
+                  base=$(basename "$key")
+                  sed '1d;$d' "$key" > "$work/pool-$base.pat"
+                  for target in "up.lines:/root/porelo-host-up.lines" "up-vvv:/root/porelo-host-vvv.out" \
+                      "journal:$work/journal"; do
+                      check_absent "pool key $base" "$work/pool-$base.pat" "${target%%:*}" "${target#*:}"
+                  done
+              done
+              {% endif %}
+              echo clean
             executable: /bin/bash
-          register: verify_other_signer
-          changed_when: true
-
-        - name: Run up with the machine file naming the wrong signing key
-          ansible.builtin.command:
-            cmd: >-
-              ansible-playbook -c local -i /root/porelo-host-inventory.yml {{ verify_forge_inventory }}
-              porelo.host.up
-          environment:
-            ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
-            LC_ALL: C.UTF-8
-          register: verify_wrong_key_up
+          register: verify_secret_search
           changed_when: false
           failed_when: false
+          no_log: true
 
-        - name: Ask Porelo whether the task runs after the refused machine file
-          ansible.builtin.command:
-            cmd: porelo task status porelo-converge-converge-1 --json
-          become: true
-          become_user: "{{ verify_account }}"
-          environment:
-            XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-          register: verify_wrong_key_task
-          changed_when: false
-
-        - name: Assert up failed with Porelo's signature refusal and started no task
+        - name: Assert no private key or forge token appeared in up's lines, -vvv output or the journal
           ansible.builtin.assert:
             that:
-              - verify_wrong_key_up.rc != 0
-              - verify_wrong_key_waiting | length == 0
-              - verify_wrong_key_failed | length == 1
-              - verify_wrong_key_failed[0].msg is search('refused .* with 65 ')
-              - verify_wrong_key_failed[0].msg is search('signed by SHA256:\S+, not by '
-                ~ (verify_other_signer.stdout | trim | regex_escape)
-                ~ '\. Nothing was pinned\. No inventory was written\.')
-              - not (verify_wrong_key_task.stdout | from_json).running
+              - verify_secret_search.rc == 0
+              - verify_secret_search.stdout == 'clean'
             fail_msg: >-
-              asked for up to fail with 65 and 'signed by ..., not by {{ verify_other_signer.stdout | trim }}.
-              Nothing was pinned.' and no running task; got rc {{ verify_wrong_key_up.rc }},
-              lines {{ verify_wrong_key_up.stdout }}, task {{ verify_wrong_key_task.stdout }}
-          vars:
-            verify_wrong_key_lines: "{{ verify_wrong_key_up.stdout_lines | select | map('from_json') | list }}"
-            verify_wrong_key_waiting: >-
-              {{ verify_wrong_key_lines | selectattr('state', 'equalto', 'waiting') | list }}
-            verify_wrong_key_failed: >-
-              {{ verify_wrong_key_lines | selectattr('state', 'equalto', 'failed') | list }}
+              asked for no private key or forge API token in up's lines, up -vvv output or the journal;
+              got rc {{ verify_secret_search.rc }}: {{ verify_secret_search.stderr }}
       always:
-        - name: Restore the original machine file in the setup's directory
-          ansible.builtin.copy:
-            src: /root/machine.yml.bak
-            dest: /etc/porelo-host/setup/machine.yml
-            remote_src: true
-            owner: root
-            group: "{{ verify_account }}"
-            mode: "0640"
-
-        - name: Remove the backup of the machine file
+        - name: Remove the -vvv output file
           ansible.builtin.file:
-            path: /root/machine.yml.bak
+            path: /root/porelo-host-vvv.out
             state: absent
 
-    # machine.yml pins the project's signing key and names the bundle followed as the origin: neither may be the
-    # account's to change, and install never makes such a file look as uploaded again.
-    - name: Refuse the setup's files where the account could change them, and always make them root's alone again
-      block:
-        - name: Run up with each fault in turn
-          ansible.builtin.shell:
-            cmd: |
-              set -uo pipefail
-              {{ item.fault }}
-              ANSIBLE_STDOUT_CALLBACK=porelo.host.lines LC_ALL=C.UTF-8 ansible-playbook -c local \
-                  -i /root/porelo-host-inventory.yml {{ verify_forge_inventory }} porelo.host.up
-              rc=$?
-              chown root:{{ verify_account }} /etc/porelo-host/setup/machine.yml /etc/porelo-host/setup/converge.bundle
-              chmod 0640 /etc/porelo-host/setup/machine.yml /etc/porelo-host/setup/converge.bundle
-              exit $rc
-            executable: /bin/bash
-          loop:
-            - fault: chmod 0660 /etc/porelo-host/setup/machine.yml
-              found: "/etc/porelo-host/setup/machine.yml: plain file uid 0 mode 0660"
-            - fault: chown {{ verify_account }} /etc/porelo-host/setup/machine.yml
-              found: "setup/machine.yml: plain file uid {{ ansible_facts['getent_passwd'][verify_account][1] }}"
-            - fault: chmod 0660 /etc/porelo-host/setup/converge.bundle
-              found: "/etc/porelo-host/setup/converge.bundle: plain file uid 0 mode 0660"
-          loop_control:
-            label: "{{ item.fault }}"
-          register: verify_faulty_ups
-          changed_when: false
-          failed_when: false
-
-        - name: Assert up stopped on each, naming the file, its owner and mode, before Porelo followed anything
-          ansible.builtin.assert:
-            that:
-              - item.rc == 2
-              - verify_faulty_failed | length == 1
-              - verify_faulty_failed[0].msg is search(item.item.found | regex_escape)
-            fail_msg: "{{ item.item.fault }}: up gave rc {{ item.rc }}, lines {{ item.stdout }}"
-          loop: "{{ verify_faulty_ups.results }}"
-          loop_control:
-            label: "{{ item.item.fault }}"
-          vars:
-            verify_faulty_failed: >-
-              {{ item.stdout_lines | select | map('from_json') | selectattr('state', 'equalto', 'failed') | list }}
-      always:
-        - name: Make the setup's files root's alone again
-          ansible.builtin.file:
-            path: "{{ item }}"
-            owner: root
-            group: "{{ verify_account }}"
-            mode: "0640"
-          loop: [/etc/porelo-host/setup/machine.yml, /etc/porelo-host/setup/converge.bundle]
-
-    # Replacing the bundle would silently discard certificates the person already trusts.
-    - name: Read the system's CA bundle for a certificate of the person's own
-      ansible.builtin.slurp:
-        src: /etc/ssl/certs/ca-certificates.crt
-      register: verify_system_ca
+    - name: Verify up with -vvv recreated the person's forge login and password sign-in still holds
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_person.yml"
       when: verify_forge == 'on'
 
-    - name: Put a certificate of the person's own beside the forge's block before another up
-      ansible.builtin.copy:
-        dest: "{{ verify_porelo_config }}/ca-certificates.pem"
-        content: "{{ verify_ca_contents.results[1].content | b64decode }}{{ verify_person_ca }}"
-        owner: "{{ verify_account }}"
-        group: "{{ verify_account }}"
-        mode: "0600"
-      vars:
-        verify_person_ca: >-
-          {{ verify_system_ca.content | b64decode
-          | regex_search('(?s)-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----\n') }}
-      when: verify_forge == 'on'
-
-    - name: Run up again after restoring the machine file
-      ansible.builtin.command:
-        cmd: >-
-          ansible-playbook -c local -i /root/porelo-host-inventory.yml {{ verify_forge_inventory }} porelo.host.up
-      environment:
-        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
-        LC_ALL: C.UTF-8
-      register: verify_restored_up
-      changed_when: >-
-        verify_restored_up.stdout is search('"state": "changed"')
-
-    - name: Read both CA files after another up
-      ansible.builtin.slurp:
-        src: "{{ verify_porelo_config }}/{{ item }}"
-      loop: [ca-certificates.pem, task-ca-certificates.pem]
-      register: verify_ca_after_up
-      when: verify_forge == 'on'
-
-    - name: Assert another up kept the person's certificate beside one forge block and changed no trust task
-      ansible.builtin.assert:
-        that:
-          - verify_person_ca is search('-----BEGIN CERTIFICATE-----')
-          - verify_person_ca != verify_ca_contents.results[0].content | b64decode
-          - verify_ca_after_up.results[0].content | b64decode
-            == (verify_ca_contents.results[1].content | b64decode) ~ verify_person_ca
-          - verify_ca_after_up.results[1].content == verify_ca_contents.results[0].content
-          - verify_trust_steps | length > 0
-          - verify_trust_steps | rejectattr('state', 'equalto', 'ok') | list | length == 0
-        fail_msg: >-
-          asked for the original forge block and the person's certificate unchanged, the task CA alone,
-          and every trust task unchanged; account {{ verify_ca_after_up.results[0].content | b64decode }},
-          task {{ verify_ca_after_up.results[1].content | b64decode }}, trust steps {{ verify_trust_steps }}
-      vars:
-        verify_person_ca: >-
-          {{ verify_system_ca.content | b64decode
-          | regex_search('(?s)-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----\n') }}
-        verify_trust_steps: >-
-          {{ verify_restored_up.stdout_lines | select | map('from_json') | selectattr('task', 'defined')
-          | selectattr('task', 'search', 'trust [|]') | rejectattr('state', 'equalto', 'started') | list }}
-      when: verify_forge == 'on'
-
-    - name: Ask Porelo whether up left the task stopped after restoring the machine file
-      ansible.builtin.command:
-        cmd: porelo task status porelo-converge-converge-1 --json
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      register: verify_restored_task
-      changed_when: false
-
-    - name: Assert up after restoring the machine file ended 0 and left the task stopped
-      ansible.builtin.assert:
-        that:
-          - verify_restored_up.rc == 0
-          - not (verify_restored_task.stdout | from_json).running
-        fail_msg: >-
-          asked for up rc 0 and porelo-converge-converge-1 stopped;
-          got rc {{ verify_restored_up.rc }} ({{ verify_restored_up.stdout }}),
-          task {{ verify_restored_task.stdout }}
-
-    - name: Start the task again by hand after up left it stopped
-      ansible.builtin.command:
-        cmd: porelo task start converge-1 -p converge -r code --agent stub --detach --no-input
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      changed_when: true
-
-    # The forge role: the repository migrated with its content, no mirror, and no push mirror.
-    - name: Ask the forge for the migrated repository and its push mirrors
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          api() { curl -fsS --cacert /etc/porelo-host/forge/ca.pem -H @<(printf 'Authorization: token %s\n' \
-              "$(cat /home/porelo-forge/.config/porelo-forge/api.token)") "$@"; }
-          base=https://10.73.0.1:3000/api/v1/repos/porelo/stand-in
-          api "$base" && echo && api "$base/push_mirrors" && echo && api "$base/contents/README.md" \
-              && echo && api https://10.73.0.1:3000/api/v1/orgs/porelo/actions/variables/PORELO_PUBLISH \
-              && echo && api https://10.73.0.1:3000/api/v1/orgs/porelo/actions/variables/JF_URL \
-              && echo && api https://10.73.0.1:3000/api/v1/orgs/porelo/actions/secrets
-        executable: /bin/bash
-      register: verify_forge_repo
-      no_log: true
-      changed_when: false
-      failed_when: false
-      when: verify_forge == 'on'
-
-    - name: Assert the repository has its content and no mirrors and the organization's publishing settings exist
-      ansible.builtin.assert:
-        that:
-          - verify_forge_repo.rc == 0
-          - not verify_forge_lines[0].mirror
-          - verify_forge_lines[0]['clone_url'] == 'https://forge.porelo.internal/porelo/stand-in.git'
-          - verify_forge_lines[1] == []
-          - verify_forge_lines[2].name == 'README.md'
-          - verify_forge_lines[3].name == 'PORELO_PUBLISH'
-          - verify_forge_lines[3].data == 'false'
-          - verify_forge_lines[4].name == 'JF_URL'
-          - verify_forge_lines[4].data == 'https://jfrog.invalid'
-          - "'JF_ACCESS_TOKEN' in (verify_forge_lines[5] | map(attribute='name') | list)"
-          - verify_forge_lines[0].allow_fast_forward_only_merge
-          - verify_forge_lines[0].default_merge_style == 'fast-forward-only'
-          - not verify_forge_lines[0].allow_merge_commits
-          - not verify_forge_lines[0].allow_rebase
-          - not verify_forge_lines[0].allow_rebase_explicit
-          - not verify_forge_lines[0].allow_squash_merge
-        fail_msg: >-
-          asked for the repository migrated with its content, no mirror, no push mirror, fast-forward its only and
-          default merge style, PORELO_PUBLISH=false, JF_URL=https://jfrog.invalid and secret name JF_ACCESS_TOKEN;
-          got rc {{ verify_forge_repo.rc }}: {{ verify_forge_repo.stdout }} {{ verify_forge_repo.stderr }}
-      vars:
-        verify_forge_lines: "{{ verify_forge_repo.stdout_lines | select | map('from_json') | list }}"
-      when: verify_forge == 'on'
-
-    # The forge role's runner and registry: the workflow converge committed to the unreviewed branch runs again for a
-    # second commit there, after the -vvv run made the publisher's token anew, so that run publishes with the new one.
-    - name: Commit again to the unreviewed branch, which runs the workflow with the publisher's new token
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          curl -fsS --cacert /etc/porelo-host/forge/ca.pem -H 'Content-Type: application/json' \
-              -H @<(printf 'Authorization: token %s\n' "$(cat /home/porelo-forge/.config/porelo-forge/api.token)") \
-              -X POST https://10.73.0.1:3000/api/v1/repos/porelo/stand-in/contents/again \
-              -d '{"content": "YWdhaW4K", "message": "Run again", "branch": "task-probe"}'
-        executable: /bin/bash
-      register: verify_forge_again
-      no_log: true
-      changed_when: true
-      when: verify_forge == 'on'
-
-    # The first GitHub-shaped job pulls the large act image before it can start.
-    - name: Wait until both jobs of each branch run have ended on the host's runner
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          curl -fsS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem \
-              -H @<(printf 'Authorization: token %s\n' "$(cat /home/porelo-forge/.config/porelo-forge/api.token)") \
-              https://10.73.0.1:3000/api/v1/repos/porelo/stand-in/actions/tasks
-        executable: /bin/bash
-      register: verify_forge_runs
-      no_log: true
-      until: >-
-        verify_forge_runs.rc != 0
-        or verify_forge_branch | selectattr('status', 'in', ['failure', 'cancelled', 'skipped']) | list | length > 0
-        or verify_forge_branch | selectattr('status', 'equalto', 'success') | list | length == 4
-      retries: 80
-      delay: 15
-      changed_when: false
-      failed_when: false
-      vars:
-        verify_forge_branch: >-
-          {{ (verify_forge_runs.stdout | from_json).workflow_runs
-          | selectattr('head_branch', 'equalto', 'task-probe') | list }}
-      when: verify_forge == 'on'
-
-    - name: Assert the branch's tasks could be read before checking their results
-      ansible.builtin.assert:
-        that: verify_forge_runs.rc == 0
-        fail_msg: >-
-          asked Actions tasks for JSON, got rc {{ verify_forge_runs.rc }}:
-          {{ verify_forge_runs.stdout }} {{ verify_forge_runs.stderr }}
-      when: verify_forge == 'on'
-
-    # Read only when a job did not succeed: the runner's journal on this VM says why.
-    - name: Read the runner's journal, to say why a job failed
-      ansible.builtin.shell:
-        cmd: >-
-          set -o pipefail && journalctl --no-pager -n 400 _UID="$(id -u porelo-runner)"
-          | grep -e 'exited with status' -e 'level=' -e "the run's own token"
-        executable: /bin/bash
-      register: verify_forge_job_log
-      changed_when: false
-      failed_when: false
-      when: verify_forge == 'on' and verify_forge_failed | length > 0
-      vars:
-        verify_forge_failed: >-
-          {{ (verify_forge_runs.stdout | default('{}') | from_json).workflow_runs | default([])
-          | rejectattr('status', 'equalto', 'success') | list }}
-
-    # The journal holds only the runner's own lines; a step's output is in Forgejo's job logs, which mask secrets.
-    - name: Read the tail of each job's own log, to say why a job failed
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          logs=$(mktemp -d) && trap 'rm -rf "$logs"' EXIT
-          cd / && sudo -u porelo-forge XDG_RUNTIME_DIR="/run/user/$(id -u porelo-forge)" \
-              podman exec forgejo tar -C /var/lib/gitea -cf - actions_log | tar -xf - -C "$logs"
-          find "$logs" -type f | sort | while read -r f; do
-              echo "== ${f#"$logs"/}"
-              case "$f" in *.zst) zstd -qdc "$f" ;; *) cat "$f" ;; esac | tail -n 40
-          done
-        executable: /bin/bash
-      register: verify_forge_job_steps
-      changed_when: false
-      failed_when: false
-      when: verify_forge == 'on' and verify_forge_failed | length > 0
-      vars:
-        verify_forge_failed: >-
-          {{ (verify_forge_runs.stdout | default('{}') | from_json).workflow_runs | default([])
-          | rejectattr('status', 'equalto', 'success') | list }}
-
-    - name: Show the tail of each job's own log
-      ansible.builtin.debug:
-        msg: "{{ verify_forge_job_steps.stdout_lines + verify_forge_job_steps.stderr_lines }}"
-      when: verify_forge_job_steps.stdout_lines is defined
-
-    - name: >-
-        Assert each job succeeded in both branch runs, reaching the forge, publishing snapshots and checking out code
-      ansible.builtin.assert:
-        that:
-          - verify_forge_branch | length == 2
-          - verify_forge_branch | map(attribute='run_number') | unique | list | length == 2
-          - verify_forge_branch | rejectattr('status', 'equalto', 'success') | list | length == 0
-          - verify_forge_branch | selectattr('head_sha', 'equalto', verify_forge_again_sha) | list | length == 1
-        fail_msg: >-
-          asked {{ item }} to succeed in both branch runs, including {{ verify_forge_again_sha }};
-          got {{ verify_forge_runs.stdout }}; the runner: {{ verify_forge_job_log.stdout | default('') }}
-      vars:
-        verify_forge_branch: >-
-          {{ (verify_forge_runs.stdout | from_json).workflow_runs | selectattr('head_branch', 'equalto', 'task-probe')
-          | selectattr('name', 'equalto', item) | list }}
-        verify_forge_again_sha: "{{ (verify_forge_again.stdout | from_json).commit.sha }}"
-      loop: [probe, github-shape]
-      when: verify_forge == 'on'
-
-    # The second run's package holds the digests of the publisher's token the -vvv run made and of the pool's run key;
-    # neither secret is read here. The forge's API token may not read packages, so verify pipes a read:package token of
-    # the admin's straight into curl's header.
-    - name: Read the digests of the publisher's token and the pool's run key from the package the second run published
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          cd /
-          probe=https://forge.porelo.internal/api/packages/porelo/generic/probe/{{ verify_forge_again_run }}
-          curl -fLsS --max-time 30 --noproxy '*' --cacert /etc/porelo-host/forge/ca.pem \
-              --resolve forge.porelo.internal:443:127.0.0.1 \
-              -H @<(runuser -u porelo-forge -- env XDG_RUNTIME_DIR=/run/user/$(id -u porelo-forge) \
-                  podman exec forgejo forgejo admin user generate-access-token --username porelo-admin \
-                  --token-name verify-$(date -u +%Y%m%dT%H%M%SZ) --scopes read:package --raw \
-                  | sed 's/^/Authorization: token /') \
-              "$probe/digest"{% if verify_vm_pool == 'on' %} "$probe/pool-key-digest"{% endif %}
-        executable: /bin/bash
-      register: verify_publisher_digest
-      changed_when: false
-      failed_when: false
-      no_log: true
-      vars:
-        verify_forge_again_run: >-
-          {{ ((verify_forge_runs.stdout | from_json).workflow_runs
-          | selectattr('name', 'equalto', 'probe')
-          | selectattr('head_sha', 'equalto', (verify_forge_again.stdout | from_json).commit.sha) | first).run_number }}
-      when: verify_forge == 'on'
-
-    - name: Stop when the second run's package digests could not be read, with curl's answer
-      ansible.builtin.assert:
-        that:
-          - verify_publisher_digest.rc == 0
-          - verify_publisher_digest.stdout_lines | length == (2 if verify_vm_pool == 'on' else 1)
-        fail_msg: "{{ verify_publisher_digest.stderr }}"
-      when: verify_forge == 'on'
-
-    - name: Read every 40-digit hex string in the journal, the form of Forgejo's tokens
-      ansible.builtin.shell:
-        cmd: set -o pipefail && journalctl -o cat --no-pager | grep -oE '[0-9a-f]{40}' | sort -u || true
-        executable: /bin/bash
-      register: verify_journal_hex
-      changed_when: false
-      no_log: true
-      when: verify_forge == 'on'
-
-    - name: Read every 40-digit hex string in the environment of the account's task containers
-      ansible.builtin.shell:
-        cmd: >-
-          set -o pipefail && podman ps -aq | xargs -r podman inspect --format {% raw %}'{{.Config.Env}}'{% endraw %}
-          | grep -oE '[0-9a-f]{40}' | sort -u || true
-        executable: /bin/bash
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      register: verify_task_hex
-      changed_when: false
-      no_log: true
-      when: verify_forge == 'on'
-
-    - name: Read only the agent token's digest after checking the form the leak search looks for
-      ansible.builtin.command:
-        argv:
-          - python3
-          - -I
-          - -c
-          - |
-            import hashlib, re
-            from pathlib import Path
-            path = Path('/etc/porelo-host/forge/agents/probe.token')
-            if not re.fullmatch(rb'[0-9a-f]{40}\n?', path.read_bytes()):
-                raise SystemExit('asked for a 40-digit hex agent token, got another form')
-            print(hashlib.sha256(path.read_bytes().strip()).hexdigest())
-      register: verify_agent_digest
-      changed_when: false
-      no_log: true
-      when: verify_forge == 'on'
-
-    # A candidate is a token only if its digest matches; the raw agent token never reaches an Ansible variable.
-    - name: Assert the publisher and agent tokens are in no verbose output, journal line or task container
-      ansible.builtin.assert:
-        that:
-          - verify_forge_token.content | b64decode | trim is match('^[0-9a-f]{40}$')
-          - verify_publisher_digest.stdout_lines[0] is match('^[0-9a-f]{64}$')
-          - verify_publisher_digest.stdout_lines[0] not in verify_hex_digests
-          - verify_agent_digest.stdout is match('^[0-9a-f]{64}$')
-          - verify_agent_digest.stdout not in verify_hex_digests
-        fail_msg: >-
-          asked for 40-digit hex tokens with no digest matching a candidate in verbose output, the journal or tasks;
-          got admin form {{ verify_forge_token.content | b64decode | trim is match('^[0-9a-f]{40}$') }},
-          publisher digest form {{ verify_publisher_digest.stdout_lines[0] is match('^[0-9a-f]{64}$') }},
-          agent digest form {{ verify_agent_digest.stdout is match('^[0-9a-f]{64}$') }},
-          publisher match {{ verify_publisher_digest.stdout_lines[0] in verify_hex_digests }},
-          agent match {{ verify_agent_digest.stdout in verify_hex_digests }}
-      vars:
-        verify_hex_digests: >-
-          {{ ((verify_vvv.stdout + verify_vvv.stderr) | regex_findall('[0-9a-f]{40}')
-          + verify_journal_hex.stdout_lines + verify_task_hex.stdout_lines) | unique | map('hash', 'sha256') | list }}
-      no_log: true
-      when: verify_forge == 'on'
-
-    - name: Verify a plain push refuses when the central forge moved and keeps its work
-      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_push.yml"
-      when: verify_forge == 'on'
-
-    # A key file missing stops the vpn role before the firewall's rules are written again.
-
-    # The VM pool: one VM per run account, its file for porelo-machines holding no key, its run key on the host alone
-    # and reaching jobs as the forge organization's Actions secret, and a give-back that leaves nothing of the run on
-    # the VM, what the run wrote as root included.
+    # The VM pool: one VM per run account, its file for porelo-machines holding no key, its run key root's alone on the
+    # host, and a give-back that leaves nothing of the run on the VM, what the run wrote as root included.
     - name: Read the pool file porelo-machines reads
       ansible.builtin.slurp:
         src: /etc/porelo-host/pool/pool.json
@@ -1634,20 +678,7 @@
       register: verify_pool_key
       when: verify_vm_pool == 'on'
 
-    - name: Compute the digest of the pool's run key on the host
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          printf '%s' "$(cat /var/lib/porelo-host/pool/run-key)" | sha256sum | cut -d' ' -f1
-        executable: /bin/bash
-      register: verify_pool_key_digest
-      changed_when: false
-      no_log: true
-      when: verify_vm_pool == 'on'
-
-    - name: >-
-        Assert the pool file names one VM with one account and no key, is mode 0644, and the run key stays root's on
-        the host and reached the job as the organization's Actions secret
+    - name: Assert the pool file names one VM with one account and no key, mode 0644, and the run key stays root's 0600
       ansible.builtin.assert:
         that:
           - verify_pool.format == 'porelo-machines-pool/1'
@@ -1663,12 +694,9 @@
           - verify_pool_key.stat.pw_name == 'root'
           - verify_pool_key.stat.gr_name == 'root'
           - verify_pool_key.stat.mode == '0600'
-          - verify_pool_key_digest.stdout is match('^[0-9a-f]{64}$')
-          - verify_publisher_digest.stdout_lines[1] == verify_pool_key_digest.stdout
         fail_msg: >-
-          the pool file: {{ verify_pool }} ({{ verify_pool_file_stat.stat }});
-          the run key: {{ verify_pool_key.stat }};
-          digest {{ verify_publisher_digest.stdout_lines[1] }} vs {{ verify_pool_key_digest.stdout }}
+          asked for pool.json (root:root 0644) naming one Ubuntu VM with account run and no key, and run-key (root:root
+          0600); got pool {{ verify_pool }} ({{ verify_pool_file_stat.stat }}), key {{ verify_pool_key.stat }}
       vars:
         verify_pool: "{{ verify_pool_file.content | b64decode | from_json }}"
       when: verify_vm_pool == 'on'
@@ -1689,7 +717,7 @@
     - name: Assert no seed volume stays in libvirt's pool and the pool VM has no cdrom media
       ansible.builtin.assert:
         that: verify_pool_seed.stdout | trim == ''
-        fail_msg: "seed left in libvirt: {{ verify_pool_seed.stdout_lines }}"
+        fail_msg: "asked for no seed ISO or attached cdrom in libvirt, found {{ verify_pool_seed.stdout_lines }}"
       when: verify_vm_pool == 'on'
 
     - name: Verify the pool through porelo-machines, including a forcibly killed renter
@@ -1730,6 +758,7 @@
           the revert: {{ verify_pool_revert_log.stdout | default('') }}
       when: verify_vm_pool == 'on'
 
+    # A key file missing stops the vpn role before the firewall's rules are written again.
     - name: Read the firewall's rules before an up without the key
       ansible.builtin.stat:
         path: /etc/porelo-host/firewall.nft
@@ -1760,156 +789,50 @@
             verify_no_key.stdout is search('wireguard: no key file of root.s alone, mode 0600, at
             /etc/wireguard/no-such.key')
           - verify_rules_after.stat.checksum == verify_rules_before.stat.checksum
-        fail_msg: "up without the key gave rc {{ verify_no_key.rc }}: {{ verify_no_key.stdout_lines | select('search',
-          'failed') | list }}; rules {{ verify_rules_before.stat.checksum }} -> {{ verify_rules_after.stat.checksum }}"
-
-    # The porelo role: Porelo itself says the account can run tasks.
-    - name: Ask porelo doctor as the account
-      ansible.builtin.command:
-        cmd: porelo doctor
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      register: verify_doctor
-      changed_when: false
-      failed_when: false
-
-    - name: Assert porelo doctor passes, with the vault there and the daemon running
-      ansible.builtin.assert:
-        that:
-          - verify_doctor.rc == 0
-          - verify_doctor.stdout is search('^vault +there', multiline=True)
-          - verify_doctor.stdout is search('^daemon +running', multiline=True)
-        fail_msg: "porelo doctor gave rc {{ verify_doctor.rc }}: {{ verify_doctor.stdout_lines }}"
-
-    - name: Ask Porelo which projects the account follows, and what its vault holds
-      ansible.builtin.command:
-        cmd: "{{ item }}"
-      loop: [porelo project following --json, porelo vault list]
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      register: verify_project
-      changed_when: false
-
-    - name: Assert the machine file's project is followed with its signature checked, and its key is in the vault
-      ansible.builtin.assert:
-        that:
-          - verify_follows | length == 1
-          - verify_follows[0].verified and verify_follows[0].outcome == 'applied'
-          - verify_follows[0].url == '/etc/porelo-host/setup/converge.bundle'
-          - verify_project.results[1].stdout is search('^converge-key ', multiline=True)
-        fail_msg: "following: {{ verify_project.results[0].stdout }}; vault: {{ verify_project.results[1].stdout }}"
-      vars:
-        verify_follows: "{{ (verify_project.results[0].stdout | from_json).follows
-          | selectattr('name', 'equalto', 'converge') | list }}"
-
-    - name: Ask Porelo for the task started by hand, and which agents are signed in
-      ansible.builtin.command:
-        cmd: "{{ item }}"
-      loop: [porelo task status porelo-converge-converge-1 --json, porelo agents --json]
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      register: verify_tasks
-      changed_when: false
-
-    - name: Assert the task started by hand runs on its repository, with the stub signed in
-      ansible.builtin.assert:
-        that:
-          - verify_task.running
-          - verify_task.project == 'converge' and verify_task.repository == 'code'
-          - verify_stub | length == 1 and verify_stub[0].signed_in
-        fail_msg: "task: {{ verify_tasks.results[0].stdout }}; agents: {{ verify_tasks.results[1].stdout }}"
-      vars:
-        verify_task: "{{ verify_tasks.results[0].stdout | from_json }}"
-        verify_stub: "{{ (verify_tasks.results[1].stdout | from_json).agents | selectattr('name', 'equalto', 'stub')
-          | list }}"
-
-    # The first task start of a project naming the Matrix transport enabled and started the account's homeserver.
-    - name: Ask systemd whether the homeserver unit is enabled and active after the task started
-      ansible.builtin.command:
-        argv: [systemctl, --user, "{{ item }}", porelo-matrix-homeserver]
-      loop: [is-enabled, is-active]
-      become: true
-      become_user: "{{ verify_account }}"
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][verify_account][1] }}"
-      register: verify_homeserver_unit
-      changed_when: false
-      failed_when: false
-
-    - name: Read the homeserver's port from the configuration the transport wrote
-      ansible.builtin.slurp:
-        src: /home/{{ verify_account }}/.config/porelo/matrix/homeserver.conf
-      register: verify_homeserver_conf
-
-    - name: Ask the homeserver on loopback for the Matrix client versions it serves
-      ansible.builtin.uri:
-        url: http://127.0.0.1:{{ verify_homeserver_port }}/_matrix/client/versions
-        return_content: true
-      become: true
-      become_user: "{{ verify_account }}"
-      register: verify_homeserver_versions
-      until: >-
-        verify_homeserver_versions.status | default(0) == 200
-        and verify_homeserver_versions.json is defined
-        and verify_homeserver_versions.json.versions is defined
-      retries: 60
-      delay: 3
-      changed_when: false
-      failed_when: false
-      vars:
-        verify_homeserver_port: >-
-          {{ (verify_homeserver_conf.content | b64decode).splitlines()
-          | select('match', '^PORELO_MATRIX_PORT=[0-9]+$') | map('split', '=') | map('last') | first | default('') }}
-
-    - name: Assert the homeserver unit is enabled and active and answers with Matrix's versions on its port
-      ansible.builtin.assert:
-        that:
-          - verify_homeserver_unit.results[0].stdout == 'enabled'
-          - verify_homeserver_unit.results[1].stdout == 'active'
-          - verify_homeserver_port is match('^[0-9]+$')
-          - verify_homeserver_versions.status | default(0) == 200
-          - verify_homeserver_versions.json is defined
-          - verify_homeserver_versions.json.versions | default([]) | length > 0
         fail_msg: >-
-          asked for porelo-matrix-homeserver enabled and active and 200 with versions from
-          http://127.0.0.1:{{ verify_homeserver_port }}/_matrix/client/versions;
-          got is-enabled '{{ verify_homeserver_unit.results[0].stdout }}',
-          is-active '{{ verify_homeserver_unit.results[1].stdout }}',
-          uri status {{ verify_homeserver_versions.status | default('none') }}:
-          {{ verify_homeserver_versions.content | default(verify_homeserver_versions.msg | default('')) }}
-      vars:
-        verify_homeserver_port: >-
-          {{ (verify_homeserver_conf.content | b64decode).splitlines()
-          | select('match', '^PORELO_MATRIX_PORT=[0-9]+$') | map('split', '=') | map('last') | first | default('') }}
+          up without the key gave rc {{ verify_no_key.rc }}:
+          {{ verify_no_key.stdout_lines | select('search', 'failed') | list }};
+          rules {{ verify_rules_before.stat.checksum }} -> {{ verify_rules_after.stat.checksum }}
 
-    # base: the person reaches the account itself over ssh, as porelo's doc/hosts.md has them open the vault.
-    - name: Log in over ssh as the account with the person's key, and ask Porelo for the vault
-      ansible.builtin.command:
-        argv: [ssh, -o, BatchMode=yes, -o, IdentitiesOnly=yes, -o, StrictHostKeyChecking=accept-new,
-               -o, UserKnownHostsFile=/root/person-known-hosts, -i, /root/person-ssh, "{{ verify_account }}@127.0.0.1",
-               "cd /tmp && XDG_RUNTIME_DIR=/run/user/$(id -u) porelo vault status"]
-      register: verify_person_ssh
-      changed_when: false
-      failed_when: false
-
-    - name: Assert the person's key logs in as the account
-      ansible.builtin.assert:
-        that: verify_person_ssh.rc == 0 and verify_person_ssh.stdout is search('^open', multiline=True)
-        fail_msg: "ssh as {{ verify_account }}: rc {{ verify_person_ssh.rc }}, {{ verify_person_ssh.stderr }}"
-
-    # The lines callback, as porelo-frontend's host command reads it from a real up on the host.
-    - name: Read the lines of the last up
+    # The lines callback and /etc/porelo-host/host.json: one state=="host" line matching host.json and the live host.
+    - name: Read the lines of the last up and /etc/porelo-host/host.json
       ansible.builtin.slurp:
-        src: /root/porelo-host-up.lines
-      register: verify_lines_file
+        src: "{{ item }}"
+      loop:
+        - /root/porelo-host-up.lines
+        - /etc/porelo-host/host.json
+        - /etc/ssh/ssh_host_ed25519_key.pub
+        - /root/desktop-ca/ca.pem
+        - /etc/porelo-host/forge/ca.pem
+      register: verify_summary_files
 
-    - name: Assert every line is the contract's JSON, every task ends, and nothing failed or waits
+    - name: Read /etc/porelo-host/host.json's owner and mode
+      ansible.builtin.stat:
+        path: /etc/porelo-host/host.json
+      register: verify_host_json_stat
+
+    - name: Read the live WireGuard public key from wg-porelo
+      ansible.builtin.command:
+        argv: [wg, show, wg-porelo, public-key]
+      register: verify_wg_public_key
+      changed_when: false
+
+    - name: Compute the SHA-256 digest of the stand-in CA's DER certificate
+      ansible.builtin.shell:
+        cmd: >-
+          set -euo pipefail
+          && openssl x509 -in /root/desktop-ca/ca.pem -outform DER | sha256sum | cut -d' ' -f1
+        executable: /bin/bash
+      register: verify_ca_der_sha256
+      changed_when: false
+
+    - name: Read the host's global IPv4 addresses
+      ansible.builtin.command:
+        argv: [ip, -o, "-4", addr, show, scope, global]
+      register: verify_global_ipv4
+      changed_when: false
+
+    - name: Assert every line of up is valid JSON of version 1, every task ended, and nothing failed or waits
       ansible.builtin.assert:
         that:
           - verify_lines | length > 0
@@ -1919,19 +842,56 @@
           - verify_lines | selectattr('state', 'in', ['failed', 'waiting']) | list | length == 0
           - verify_lines | selectattr('state', 'equalto', 'started') | map(attribute='task') | list
             == verify_lines | selectattr('state', 'in', ['ok', 'changed', 'skipped']) | map(attribute='task') | list
-        fail_msg: "the last up's lines: {{ verify_lines }}"
+        fail_msg: >-
+          asked every line of up to carry v=1 with matching started and ended tasks and no failed or waiting line;
+          got {{ verify_lines }}
       vars:
-        verify_lines: "{{ (verify_lines_file.content | b64decode).splitlines() | select | map('from_json') | list }}"
+        verify_lines: >-
+          {{ (verify_summary_files.results[0].content | b64decode).splitlines() | select | map('from_json') | list }}
 
-    - name: Verify that a project naming the room's token file is refused without it, or at another path
-      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/matrix_token.yml"
+    - name: >-
+        Assert up printed one state==host object equal to /etc/porelo-host/host.json (root 0644) and matching the live
+        host's keys, CA digest, network, homeserver and endpoint
+      ansible.builtin.assert:
+        that:
+          - verify_host_lines | length == 1
+          - verify_host_lines[0] | dict2items | map(attribute='key') | sort == ['host', 'state', 'v']
+          - verify_host_lines[0].v == 1
+          - verify_host_json_stat.stat.exists
+          - verify_host_json_stat.stat.isreg | default(false)
+          - verify_host_json_stat.stat.uid | default(-1) == 0
+          - verify_host_json_stat.stat.gid | default(-1) == 0
+          - verify_host_json_stat.stat.mode | default('') == '0644'
+          - verify_host_lines[0].host == verify_host_json
+          - verify_host_json | dict2items | map(attribute='key') | sort
+            == ['address', 'ca_sha256', 'endpoint', 'homeserver', 'network', 'ssh_host_key', 'wireguard_public_key']
+          - verify_summary_files.results[3].content == verify_summary_files.results[4].content
+          - verify_host_json.wireguard_public_key == (verify_wg_public_key.stdout | trim)
+          - verify_host_json.ssh_host_key == verify_expected_ssh_key
+          - verify_host_json.ca_sha256 == (verify_ca_der_sha256.stdout | trim)
+          - verify_host_json.network == '10.73.7.0/24'
+          - verify_host_json.homeserver == 'matrix.alpha.porelo.internal'
+          - verify_host_json.address is match('^[0-9]{1,3}(\.[0-9]{1,3}){3}$')
+          - verify_host_json.address != '10.73.7.1'
+          - verify_host_json.address in verify_global_addresses
+          - verify_host_json.endpoint == (verify_host_json.address ~ ':51820')
+        fail_msg: >-
+          asked for one {"v":1,"state":"host","host":{...}} line matching /etc/porelo-host/host.json (root:root 0644)
+          and live wg key '{{ verify_wg_public_key.stdout | trim }}', ssh key '{{ verify_expected_ssh_key }}',
+          CA DER SHA-256 '{{ verify_ca_der_sha256.stdout | trim }}', network 10.73.7.0/24,
+          homeserver matrix.alpha.porelo.internal and endpoint <address>:51820;
+          got host lines {{ verify_host_lines }}, stat {{ verify_host_json_stat.stat }}, json {{ verify_host_json }},
+          global IPv4s {{ verify_global_addresses }}
+      vars:
+        verify_lines: >-
+          {{ (verify_summary_files.results[0].content | b64decode).splitlines() | select | map('from_json') | list }}
+        verify_host_lines: "{{ verify_lines | selectattr('state', 'equalto', 'host') | list }}"
+        verify_host_json: "{{ verify_summary_files.results[1].content | b64decode | from_json }}"
+        verify_expected_ssh_key: >-
+          {{ (verify_summary_files.results[2].content | b64decode | trim).split()[:2] | join(' ') }}
+        verify_global_addresses: >-
+          {{ verify_global_ipv4.stdout_lines | map('split') | map(attribute=3) | map('split', '/') | map('first')
+          | list }}
 
-    - name: Verify that a newer bundle at the same path is followed again
-      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/refollow.yml"
-
-    # Last, since it restarts the VPN the other checks reach the forge through.
-    - name: Verify the secrets given on the stop's standard input
-      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/secrets_stdin.yml"
-
-    - name: Verify that the host comes back from a reboot with its firewall and VPN
+    - name: Verify that the host comes back from a reboot with its firewall, VPN, homeserver and forge
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/reboot.yml"

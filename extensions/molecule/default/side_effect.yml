@@ -1,6 +1,7 @@
 ---
-# Runs `down` on the host itself, as `host down` does, after verify has read what `up` left, and reads what `down`
-# leaves: the VPN taken down, the vault cleared, nothing of the setup's files, keys or tokens left.
+# Runs `down` on the host itself with the same v2 inventory, after verify has read what `up` left, and checks that
+# `down` leaves no service account, linger file, process, VPN interface, host summary, /etc/hosts block, forge unit or
+# pool VM behind.
 - name: Side effect
   hosts: all
   gather_facts: false
@@ -8,178 +9,75 @@
   vars:
     side_effect_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
     side_effect_forge: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_FORGE', default='on') }}"
+    side_effect_expected_accounts: >-
+      {{ ['porelo-matrix'] + (['porelo-forge', 'porelo-runner'] if side_effect_forge == 'on' else []) }}
   tasks:
-    - name: Read the account's id before down
+    # Check that up placed what down is expected to remove, so teardown cannot pass vacuously.
+    - name: Read every account on the host before down
       ansible.builtin.getent:
         database: passwd
-        key: porelo-test
 
-    # Check installed trust before removal, so cleanup cannot pass when up left no trust to remove.
-    - name: Read both CA files before down
-      ansible.builtin.slurp:
-        src: "{{ ansible_facts['getent_passwd']['porelo-test'][4] }}/.config/porelo/{{ item }}"
-      loop: [ca-certificates.pem, task-ca-certificates.pem]
-      register: side_effect_ca_before
-      when: side_effect_forge == 'on'
+    - name: Keep the numeric UIDs of the host's service accounts before down deletes them
+      ansible.builtin.set_fact:
+        side_effect_service_uids: >-
+          {{ side_effect_expected_accounts
+          | map('extract', ansible_facts['getent_passwd']) | select('not none')
+          | map(attribute=1) | list }}
 
-    - name: Assert down has forge trust to remove and the person's certificate to keep
-      ansible.builtin.assert:
-        that:
-          - side_effect_ca_before.results[1].content | b64decode is search('-----BEGIN CERTIFICATE-----')
-          - side_effect_host_ca | regex_findall('(?m)^# BEGIN porelo-host forge CA$') | length == 1
-          - side_effect_host_ca | regex_findall('(?m)^# END porelo-host forge CA$') | length == 1
-          - side_effect_person_ca is search('-----BEGIN CERTIFICATE-----')
-        fail_msg: >-
-          asked for forge trust in both files and the person's certificate outside the marked block;
-          account {{ side_effect_host_ca }}, task {{ side_effect_ca_before.results[1].content | b64decode }}
-      vars:
-        side_effect_host_ca: "{{ side_effect_ca_before.results[0].content | b64decode }}"
-        side_effect_person_ca: >-
-          {{ side_effect_host_ca
-          | regex_replace('(?ms)^# BEGIN porelo-host forge CA\n.*?^# END porelo-host forge CA\n?', '') }}
-      when: side_effect_forge == 'on'
-
-    - name: Read whether verify left the task running
-      ansible.builtin.command:
-        cmd: porelo task status porelo-converge-converge-1 --json
-      become: true
-      become_user: porelo-test
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd']['porelo-test'][1] }}"
-      register: side_effect_before_task
-      changed_when: false
-
-    - name: Start the task by hand if verify left it stopped
-      ansible.builtin.command:
-        cmd: porelo task start converge-1 -p converge -r code --agent stub --detach --no-input
-      become: true
-      become_user: porelo-test
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd']['porelo-test'][1] }}"
-      when: not (side_effect_before_task.stdout | from_json).running
-      changed_when: true
-
-    - name: Read the task before down to check the shutdown guard has a running task
-      ansible.builtin.command:
-        cmd: porelo task status porelo-converge-converge-1 --json
-      become: true
-      become_user: porelo-test
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd']['porelo-test'][1] }}"
-      register: side_effect_running_task
-      changed_when: false
-
-    - name: Assert the task started by hand is running before down
-      ansible.builtin.assert:
-        that: (side_effect_running_task.stdout | from_json).running
-        fail_msg: "asked for a running task before down, got {{ side_effect_running_task.stdout }}"
-
-    # Checking both ends prevents a teardown test from passing when up never installed the proxy.
-    - name: Read the forge's HTTPS units before down
+    - name: Read host.json, the linger files and any forge HTTPS units before down
       ansible.builtin.stat:
         path: "{{ item }}"
-      loop:
-        - /etc/systemd/system/porelo-forge-https.socket
-        - /etc/systemd/system/porelo-forge-https.service
-      register: side_effect_forge_https_before
-      when: side_effect_forge == 'on'
+      loop: >-
+        {{ ['/etc/porelo-host/host.json', '/var/lib/systemd/linger/porelo-matrix']
+        + (['/var/lib/systemd/linger/porelo-forge', '/var/lib/systemd/linger/porelo-runner',
+            '/etc/systemd/system/porelo-forge-https.socket', '/etc/systemd/system/porelo-forge-https.service']
+           if side_effect_forge == 'on' else []) }}
+      register: side_effect_before_paths
 
-    # A token given at the stop for an up that then failed before the migration: down must take it.
-    - name: Give the central token on the stop's standard input, as before an up that does not get to migrate
-      ansible.builtin.shell:
-        cmd: >-
-          set -o pipefail && printf 'forge-central-token %s\n' "$(base64 -w0 < /root/forge-central.token)"
-          | porelo-host-stop --stdin forge-central-token
-        executable: /bin/bash
-      changed_when: true
-      no_log: true
-      when: side_effect_forge == 'on'
-
-    - name: Read the central token before down
-      ansible.builtin.stat:
-        path: /run/porelo-host/forge-central.token
-      register: side_effect_token_before
-      when: side_effect_forge == 'on'
-
-    - name: Assert the central token is there before down, so its removal is down's
-      ansible.builtin.assert:
-        that: side_effect_token_before.stat.exists
-        fail_msg: /run/porelo-host/forge-central.token is not there after the stop was given it
-      when: side_effect_forge == 'on'
-
-    - name: Read the room's token and the host's names before down
+    - name: Read /etc/hosts before down
       ansible.builtin.slurp:
         src: /etc/hosts
       register: side_effect_hosts_before
 
-    - name: Read whether the room's token is there before down
-      ansible.builtin.stat:
-        path: /home/porelo-test/.config/porelo/matrix/host-registration-token
-      register: side_effect_matrix_token_before
+    - name: Read whether wg-porelo exists before down
+      ansible.builtin.command:
+        argv: [ip, link, show, wg-porelo]
+      register: side_effect_vpn_before
+      changed_when: false
+      failed_when: false
 
-    - name: Assert the room's token and name are there before down, so their removal is down's
+    - name: Assert the service accounts, linger files, host.json, /etc/hosts blocks and wg-porelo exist before down
       ansible.builtin.assert:
         that:
-          - side_effect_matrix_token_before.stat.exists
-          - "'porelo-host room name' in (side_effect_hosts_before.content | b64decode)"
-        fail_msg: the room's token or its marked name is not there before down
+          - side_effect_service_uids | length == (side_effect_expected_accounts | length)
+          - side_effect_before_paths.results | rejectattr('stat.exists') | list | length == 0
+          - "'porelo-host matrix name' in side_effect_hosts_text"
+          - "'matrix.alpha.porelo.internal' in side_effect_hosts_text"
+          - side_effect_forge != 'on' or 'porelo-host forge name' in side_effect_hosts_text
+          - side_effect_forge != 'on' or 'forge.alpha.porelo.internal' in side_effect_hosts_text
+          - side_effect_vpn_before.rc == 0
+        fail_msg: >-
+          asked for accounts {{ side_effect_expected_accounts }}, paths, /etc/hosts blocks and wg-porelo before down;
+          got uids {{ side_effect_service_uids }}, missing paths
+          {{ side_effect_before_paths.results | rejectattr('stat.exists') | map(attribute='item') | list }},
+          wg rc {{ side_effect_vpn_before.rc }}, hosts {{ side_effect_hosts_text }}
+      vars:
+        side_effect_hosts_text: "{{ side_effect_hosts_before.content | b64decode }}"
 
-    # As in the guide, where the person's homeserver leaves the VPN before the give-back: the room's transport then
-    # cannot clear what it keeps with the vault and answers 75, and down still gives the host back. The account's own
-    # transports directory comes before the packaged one, so this stand-in answers clear and hands on everything else.
-    - name: Make the account's own transports directory
-      ansible.builtin.file:
-        path: /home/porelo-test/.local/share/porelo/transports
-        state: directory
-        owner: porelo-test
-        group: porelo-test
-        mode: "0755"
-
-    - name: Put a room's transport in the account's own directory that cannot reach its homeserver at clear
-      ansible.builtin.copy:
-        dest: /home/porelo-test/.local/share/porelo/transports/porelo-message-transport-matrix
-        content: |
-          #!/bin/sh
-          if [ "${1-}" = clear ]; then
-              echo "porelo-message-transport-matrix clear: the homeserver is not reachable" >&2
-              exit 75
-          fi
-          exec /usr/libexec/porelo/transports/porelo-message-transport-matrix "$@"
-        owner: porelo-test
-        group: porelo-test
-        mode: "0755"
-
-    - name: Run down on the host itself, as host down does, its steps as JSON lines
+    - name: Run down on the host itself with the v2 inventory, its steps as JSON lines
       # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.
       ansible.builtin.shell:
         cmd: >-
           set -o pipefail && ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.down
-          | tee >(while IFS= read -r l; do printf '%(%s)T %s\n' -1 "$l"; done > /root/timed-4-down.lines)
+          | tee >(while IFS= read -r l; do printf '%(%s)T %s\n' -1 "$l"; done > /root/timed-3-down.lines)
         executable: /bin/bash
       environment:
         ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
         LC_ALL: C.UTF-8
       register: side_effect_down
-      failed_when: false
       changed_when: >-
         side_effect_down.stdout is search('"state": "changed"')
-
-    - name: Read every running container of the account after down
-      ansible.builtin.command:
-        argv: [podman, ps, --format, "{% raw %}{{.Names}}{% endraw %}"]
-      become: true
-      become_user: porelo-test
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd']['porelo-test'][1] }}"
-      register: side_effect_containers_after_down
-      changed_when: false
-
-    - name: Assert down stopped every container of the account
-      ansible.builtin.assert:
-        that: side_effect_containers_after_down.stdout_lines | length == 0
-        fail_msg: >-
-          asked for no running container after down, got {{ side_effect_containers_after_down.stdout_lines }};
-          down rc {{ side_effect_down.rc }}: {{ side_effect_down.stdout }}
+      failed_when: false
 
     # The steps' durations as this run measured them, from each step's start to the next line after its last; read by
     # hand into the playbooks' porelo_host_step blocks, nothing asserted.
@@ -214,262 +112,106 @@
       ansible.builtin.debug:
         var: side_effect_durations.stdout_lines
 
-    - name: Read every running container of the account after down
-      ansible.builtin.command:
-        argv: [podman, ps, --format, "{% raw %}{{.Names}}{% endraw %}"]
-      become: true
-      become_user: porelo-test
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd']['porelo-test'][1] }}"
-      register: side_effect_running_containers
-      changed_when: false
-
-    - name: Assert down left no running container of the account
+    - name: Assert down succeeded with rc 0 and no failed or waiting line
       ansible.builtin.assert:
-        that: side_effect_running_containers.stdout_lines | length == 0
-        fail_msg: >-
-          asked for no running container after down, got {{ side_effect_running_containers.stdout_lines }};
-          down rc {{ side_effect_down.rc }}: {{ side_effect_down.stdout }}
-
-    - name: Assert down succeeded
-      ansible.builtin.assert:
-        that: side_effect_down.rc == 0
-        fail_msg: "asked for down rc 0, got {{ side_effect_down.rc }}: {{ side_effect_down.stdout }}"
-
-    - name: Take the stand-in transport off the account, so the checks after down read the packaged one
-      ansible.builtin.file:
-        path: /home/porelo-test/.local/share/porelo/transports
-        state: absent
-
-    - name: Assert down cleared the vault past the room's transport that could not clear
-      ansible.builtin.assert:
-        that: >-
-          side_effect_down_lines | selectattr('state', 'equalto', 'changed') | map(attribute='task')
-          | select('search', 'Clear the vault') | list | length >= 1
-        fail_msg: "asked for the vault cleared past the transport, got: {{ side_effect_down.stdout }}"
+        that:
+          - side_effect_down.rc == 0
+          - side_effect_down_lines | selectattr('state', 'in', ['failed', 'waiting']) | list | length == 0
+        fail_msg: "asked for down rc 0 with no failed or waiting line, got rc {{ side_effect_down.rc }}:
+          {{ side_effect_down.stdout }}"
       vars:
         side_effect_down_lines: "{{ side_effect_down.stdout_lines | select | map('from_json') | list }}"
 
-    - name: Read whether the task's CA file is left after down
-      ansible.builtin.stat:
-        path: "{{ ansible_facts['getent_passwd']['porelo-test'][4] }}/.config/porelo/task-ca-certificates.pem"
-      register: side_effect_task_ca
-      when: side_effect_forge == 'on'
+    - name: Ask getent passwd whether porelo-forge, porelo-runner or porelo-matrix still exists after down
+      ansible.builtin.command:
+        argv: [getent, passwd, "{{ item }}"]
+      loop: [porelo-forge, porelo-runner, porelo-matrix]
+      register: side_effect_accounts_after
+      changed_when: false
+      failed_when: side_effect_accounts_after.rc not in [0, 2]
 
-    - name: Read the person's CA bundle after down
-      ansible.builtin.slurp:
-        src: "{{ ansible_facts['getent_passwd']['porelo-test'][4] }}/.config/porelo/ca-certificates.pem"
-      register: side_effect_ca_after
-      when: side_effect_forge == 'on'
-
-    - name: Assert down removed task trust and only the forge's marked block from the person's bundle
+    - name: Assert down removed porelo-forge, porelo-runner and porelo-matrix
       ansible.builtin.assert:
-        that:
-          - not side_effect_task_ca.stat.exists
-          - "'porelo-host forge CA' not in (side_effect_ca_after.content | b64decode)"
-          - side_effect_ca_after.content | b64decode == side_effect_person_ca
+        that: side_effect_accounts_after.results | map(attribute='rc') | list == [2, 2, 2]
         fail_msg: >-
-          asked for no task CA and only the person's certificates left;
-          task file {{ side_effect_task_ca.stat }}, account {{ side_effect_ca_after.content | b64decode }},
-          expected {{ side_effect_person_ca }}
-      vars:
-        side_effect_person_ca: >-
-          {{ side_effect_ca_before.results[0].content | b64decode
-          | regex_replace('(?ms)^# BEGIN porelo-host forge CA\n.*?^# END porelo-host forge CA\n?', '') }}
-      when: side_effect_forge == 'on'
+          asked for no account porelo-forge, porelo-runner or porelo-matrix after down;
+          got {{ side_effect_accounts_after.results | selectattr('rc', 'equalto', 0) | map(attribute='stdout') | list }}
 
-    - name: Read the host's name mappings after down
+    - name: Ask pgrep whether any process still runs under the service accounts' former UIDs
+      ansible.builtin.command:
+        argv: [pgrep, -a, -u, "{{ side_effect_service_uids | join(',') }}"]
+      register: side_effect_processes_after
+      changed_when: false
+      failed_when: false
+
+    - name: Assert down left no process running under the removed service accounts' UIDs
+      ansible.builtin.assert:
+        that: side_effect_processes_after.rc == 1
+        fail_msg: >-
+          asked pgrep for no process under UIDs {{ side_effect_service_uids }} (rc 1);
+          got rc {{ side_effect_processes_after.rc }}: {{ side_effect_processes_after.stdout_lines }}
+
+    - name: Read whether any home, linger file, host.json, VPN file or forge file remains after down
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /home/porelo-forge
+        - /home/porelo-runner
+        - /home/porelo-matrix
+        - /var/lib/systemd/linger/porelo-forge
+        - /var/lib/systemd/linger/porelo-runner
+        - /var/lib/systemd/linger/porelo-matrix
+        - /etc/porelo-host/host.json
+        - /etc/wireguard/wg-porelo.conf
+        - /etc/wireguard/porelo-host.key
+        - /etc/porelo-host/vpn.conf
+        - /etc/porelo-host/forge
+        - /etc/porelo-host/forge.conf
+        - /usr/local/sbin/porelo-host-forge-password
+        - /usr/local/sbin/porelo-host-push
+        - /run/porelo-host/forge-central.token
+        - /etc/systemd/system/porelo-forge-https.socket
+        - /etc/systemd/system/porelo-forge-https.service
+      register: side_effect_paths_after
+
+    - name: Assert down removed every home, linger file, host.json, VPN file and forge file
+      ansible.builtin.assert:
+        that: side_effect_paths_after.results | selectattr('stat.exists') | list | length == 0
+        fail_msg: >-
+          asked for no service home, linger file, host.json, VPN file or forge file after down;
+          left {{ side_effect_paths_after.results | selectattr('stat.exists') | map(attribute='item') | list }}
+
+    - name: Read whether the VPN interface wg-porelo still exists after down
+      ansible.builtin.command:
+        argv: [ip, link, show, wg-porelo]
+      register: side_effect_vpn_after
+      changed_when: false
+      failed_when: false
+
+    - name: Assert down took the VPN interface wg-porelo down
+      ansible.builtin.assert:
+        that: side_effect_vpn_after.rc != 0
+        fail_msg: >-
+          asked for wg-porelo to be absent after down;
+          got rc {{ side_effect_vpn_after.rc }}: {{ side_effect_vpn_after.stdout }}
+
+    - name: Read /etc/hosts after down
       ansible.builtin.slurp:
         src: /etc/hosts
       register: side_effect_hosts_after
 
-    - name: Assert down removed the room's marked name
+    - name: Assert down removed the forge.alpha and matrix.alpha blocks and names from /etc/hosts
       ansible.builtin.assert:
         that:
-          - "'porelo-host room name' not in (side_effect_hosts_after.content | b64decode)"
-          - "'matrix.porelo.internal' not in (side_effect_hosts_after.content | b64decode)"
-        fail_msg: asked for no room name block after down, got {{ side_effect_hosts_after.content | b64decode }}
-
-    - name: Read whether the room's registration token outlived down
-      ansible.builtin.stat:
-        path: /home/porelo-test/.config/porelo/matrix/host-registration-token
-      register: side_effect_matrix_token
-
-    - name: Assert down removed the room's registration token
-      ansible.builtin.assert:
-        that: not side_effect_matrix_token.stat.exists
-        fail_msg: asked for no host-registration-token after down, found one
-
-    - name: Assert down removed the forge's marked name mapping
-      ansible.builtin.assert:
-        that: "'porelo-host forge name' not in (side_effect_hosts_after.content | b64decode)"
+          - "'porelo-host forge name' not in side_effect_hosts_text"
+          - "'porelo-host matrix name' not in side_effect_hosts_text"
+          - "'forge.alpha' not in side_effect_hosts_text"
+          - "'matrix.alpha' not in side_effect_hosts_text"
         fail_msg: >-
-          asked for no forge name block after down, got {{ side_effect_hosts_after.content | b64decode }}
-      when: side_effect_forge == 'on'
-
-    - name: Read whether the account's containers are still kept from the host's names after down
-      ansible.builtin.stat:
-        path: "{{ ansible_facts['getent_passwd']['porelo-test'][4]
-          }}/.config/containers/containers.conf.d/porelo-host-hosts.conf"
-      register: side_effect_hosts_dropin
-
-    - name: Assert down removed the account's Podman setting for the host's names
-      ansible.builtin.assert:
-        that: not side_effect_hosts_dropin.stat.exists
-        fail_msg: asked for no porelo-host-hosts.conf in porelo-test's Podman configuration after down, got one
-
-    - name: Read whether the gathered push and its settings are left after down
-      ansible.builtin.stat:
-        path: "{{ item }}"
-      loop: [/usr/local/sbin/porelo-host-push, /etc/porelo-host/forge/push.conf]
-      register: side_effect_gathered
-      when: side_effect_forge == 'on'
-
-    - name: Assert down took the gathered push and its settings
-      ansible.builtin.assert:
-        that: side_effect_gathered.results | selectattr('stat.exists') | list | length == 0
-        fail_msg: >-
-          asked for neither the gathered push nor its settings after down; left
-          {{ side_effect_gathered.results | selectattr('stat.exists') | map(attribute='item') | list }}
-      when: side_effect_forge == 'on'
-
-    - name: Read whether the VPN's interface is still there
-      ansible.builtin.command:
-        cmd: ip link show wg-porelo
-      register: side_effect_vpn
-      changed_when: false
-      failed_when: false
-
-    - name: Read whether the VPN's file is still there
-      ansible.builtin.stat:
-        path: /etc/wireguard/wg-porelo.conf
-      register: side_effect_vpn_conf
-
-    - name: Read whether the host's key, the central token and what the person's stop reads are still there
-      ansible.builtin.stat:
-        path: "{{ item }}"
-      loop:
-        - /etc/wireguard/porelo-host.key
-        - /run/porelo-host/forge-central.token
-        - /etc/porelo-host/stop.conf
-        - /etc/porelo-host/vpn.conf
-        - /etc/porelo-host/setup
-      register: side_effect_stop_files
-
-    - name: Assert down took the VPN's interface and its file
-      ansible.builtin.assert:
-        that:
-          - side_effect_vpn.rc != 0
-          - not side_effect_vpn_conf.stat.exists
-        fail_msg: "after down: interface rc {{ side_effect_vpn.rc }}, file {{ side_effect_vpn_conf.stat.exists }}"
-
-    - name: Assert down took the host's key, the central token and what the person's stop reads
-      ansible.builtin.assert:
-        that: side_effect_stop_files.results | selectattr('stat.exists') | list | length == 0
-        fail_msg: >-
-          after down these are still there:
-          {{ side_effect_stop_files.results | selectattr('stat.exists') | map(attribute='item') | list }}
-
-    - name: Ask Porelo whether the account still has a vault
-      ansible.builtin.command:
-        cmd: porelo vault status
-      become: true
-      become_user: porelo-test
-      environment:
-        XDG_RUNTIME_DIR: /run/user/1001
-      register: side_effect_vault
-      changed_when: false
-      failed_when: false
-
-    - name: Assert down cleared the vault
-      ansible.builtin.assert:
-        that: side_effect_vault.rc == 4
-        fail_msg: "after down, porelo vault status gave {{ side_effect_vault.rc }}: {{ side_effect_vault.stdout }}"
-
-    - name: Ask Porelo whether the task started by hand still runs
-      ansible.builtin.command:
-        cmd: porelo task status porelo-converge-converge-1 --json
-      become: true
-      become_user: porelo-test
-      environment:
-        XDG_RUNTIME_DIR: /run/user/1001
-      register: side_effect_task
-      changed_when: false
-
-    - name: Assert down stopped the task and kept it
-      ansible.builtin.assert:
-        that:
-          - not (side_effect_task.stdout | from_json).running
-          - (side_effect_task.stdout | from_json).state != 'absent'
-        fail_msg: "after down, porelo task status gave {{ side_effect_task.stdout }}"
-
-    - name: Ask systemd whether the homeserver unit is still active after down
-      ansible.builtin.command:
-        argv: [systemctl, --user, is-active, porelo-matrix-homeserver]
-      become: true
-      become_user: porelo-test
-      environment:
-        XDG_RUNTIME_DIR: /run/user/1001
-      register: side_effect_homeserver
-      changed_when: false
-      failed_when: false
-
-    - name: Assert down left the homeserver unit not active
-      ansible.builtin.assert:
-        that: side_effect_homeserver.stdout != 'active'
-        fail_msg: >-
-          asked for porelo-matrix-homeserver not to be active after down,
-          got '{{ side_effect_homeserver.stdout }}' (rc {{ side_effect_homeserver.rc }})
-
-    - name: Try the person's key as the account after down
-      ansible.builtin.command:
-        argv: [ssh, -o, BatchMode=yes, -o, IdentitiesOnly=yes, -o, StrictHostKeyChecking=accept-new,
-               -o, UserKnownHostsFile=/root/person-known-hosts, -i, /root/person-ssh, porelo-test@127.0.0.1, "true"]
-      register: side_effect_person_ssh
-      changed_when: false
-      failed_when: false
-
-    - name: Assert down took the person's key off the account
-      ansible.builtin.assert:
-        that: side_effect_person_ssh.rc == 255 and side_effect_person_ssh.stderr is search('Permission denied')
-        fail_msg: >-
-          after down, ssh as porelo-test: rc {{ side_effect_person_ssh.rc }}, {{ side_effect_person_ssh.stderr }}
-
-    # The forge role's down: nothing of the forge runs or would start again, and none of its secrets stays behind.
-    - name: Search the forge's accounts for the person's token, outside the images' layers
-      ansible.builtin.command:
-        argv: [grep, -rFl, --exclude-dir=overlay, --exclude-dir=overlay-layers, --exclude-dir=overlay-images,
-               -f, /root/forge-central.token, /home/porelo-forge, /home/porelo-runner]
-      register: side_effect_forge_token
-      changed_when: false
-      failed_when: false
-      no_log: true
-      when: side_effect_forge == 'on'
-
-    - name: Ask which processes the forge's accounts still run
-      ansible.builtin.command:
-        cmd: pgrep -a -u porelo-forge,porelo-runner
-      register: side_effect_forge_processes
-      changed_when: false
-      failed_when: false
-      when: side_effect_forge == 'on'
-
-    - name: Read what of the forge's units and secrets is left
-      ansible.builtin.stat:
-        path: "{{ item }}"
-      loop:
-        - /home/porelo-forge/.config/containers/systemd/forgejo.container
-        - /home/porelo-runner/.config/containers/systemd/forgejo-runner.container
-        - /home/porelo-forge/.config/porelo-forge/api.token
-        - /home/porelo-runner/runner/.runner
-        - /etc/porelo-host/forge/ca.key
-        - /etc/porelo-host/forge/agents
-        - /etc/porelo-host/forge/person.password
-        - /etc/systemd/system/porelo-forge-https.socket
-        - /etc/systemd/system/porelo-forge-https.service
-      register: side_effect_forge_left
-      when: side_effect_forge == 'on'
-      no_log: true
+          asked /etc/hosts to hold no forge.alpha or matrix.alpha block after down;
+          got {{ side_effect_hosts_text }}
+      vars:
+        side_effect_hosts_text: "{{ side_effect_hosts_after.content | b64decode }}"
 
     - name: Ask systemd whether either forge HTTPS unit is still loaded after down
       ansible.builtin.command:
@@ -479,15 +221,12 @@
       failed_when: false
       when: side_effect_forge == 'on'
 
-    - name: Assert down removed both HTTPS units that up installed
+    - name: Assert neither forge HTTPS unit remains loaded after down
       ansible.builtin.assert:
-        that:
-          - side_effect_forge_https_before['results'] | selectattr('stat.exists') | list | length == 2
-          - side_effect_forge_https_loaded['stdout_lines'] | select | list == ['not-found', 'not-found']
+        that: side_effect_forge_https_loaded['stdout_lines'] | select | list == ['not-found', 'not-found']
         fail_msg: >-
-          asked for both forge HTTPS units before down and neither loaded afterward;
-          before {{ side_effect_forge_https_before['results'] | selectattr('stat.exists')
-          | map(attribute='item') | list }}, after rc {{ side_effect_forge_https_loaded['rc'] }}:
+          asked for neither forge HTTPS unit loaded after down;
+          got rc {{ side_effect_forge_https_loaded['rc'] }}:
           {{ side_effect_forge_https_loaded['stdout'] }} {{ side_effect_forge_https_loaded['stderr'] }}
       when: side_effect_forge == 'on'
 
@@ -509,30 +248,10 @@
       changed_when: false
       when: side_effect_vm_pool == 'on'
 
-    - name: >-
-        Assert down deleted the run key's Actions secret from the forge and left no pool VM, no pool volume, none of
-        the pool's keys and no revert unit
+    - name: Assert down left no pool VM, no pool volume, none of the pool's keys and no revert unit
       ansible.builtin.assert:
-        that:
-          - side_effect_pool_secret | map(attribute='state') | list == ['changed']
-          - side_effect_pool_left.stdout | trim == ''
-        fail_msg: "after down: secret {{ side_effect_pool_secret }}; left {{ side_effect_pool_left.stdout_lines }}"
-      vars:
-        side_effect_pool_secret: >-
-          {{ side_effect_down.stdout_lines | select | map('from_json')
-          | selectattr('task', 'defined')
-          | selectattr('task', 'search', "down \\| Delete the run key's Actions secret from the forge")
-          | rejectattr('state', 'equalto', 'started') | list }}
-      when: side_effect_vm_pool == 'on'
-
-    - name: Assert down left none of the forge's secrets, nothing of it running, and no unit to start it again
-      ansible.builtin.assert:
-        that:
-          - side_effect_forge_token.rc == 1
-          - side_effect_forge_processes.rc == 1
-          - side_effect_forge_left.results | selectattr('stat.exists') | list | length == 0
+        that: side_effect_pool_left.stdout | trim == ''
         fail_msg: >-
-          after down, the person's token is in {{ side_effect_forge_token.stdout_lines }};
-          running: {{ side_effect_forge_processes.stdout_lines }};
-          left: {{ side_effect_forge_left.results | selectattr('stat.exists') | map(attribute='item') | list }}
-      when: side_effect_forge == 'on'
+          asked for no pool VM, volume, key, /etc/porelo-host/pool or porelo-pool-revert.service after down;
+          left {{ side_effect_pool_left.stdout_lines }}
+      when: side_effect_vm_pool == 'on'

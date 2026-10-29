@@ -3,7 +3,7 @@
 # network stage after networkd's wait-online and before sysinit.target. A firewall unit after sysinit.target and before
 # network-pre.target closes a cycle with it (networkd starts after network-pre.target); systemd then drops a job to
 # break it, which on Scaleway left the boot hanging, and here at least says so in the journal.
-# Afterwards the host is as down expects it: the vault open again and the forge answering.
+# Afterwards the host is as down expects it: the homeserver and the forge answering again under linger.
 - name: Reboot the host with Scaleway's ordering, and always take that ordering back
   block:
     - name: Make the drop-in directory of cloud-init's network stage
@@ -66,22 +66,59 @@
       ansible.builtin.systemd_service:
         daemon_reload: true
 
-# A reboot shuts the vault and stops the task, which down's checks start again from an open vault.
-- name: Open the vault again after the reboot, as the desktop does
-  ansible.builtin.shell:
-    cmd: |
-      set -euo pipefail
-      printf 'vault %s\n' "$(base64 -w0 < /root/secrets/vault-passphrase)" | porelo-host-stop --stdin vault
-    executable: /bin/bash
-  changed_when: true
-  no_log: true
-
-- name: Wait until the forge answers again after the reboot
-  ansible.builtin.uri:
-    url: https://10.73.0.1:3000/api/v1/version
-    ca_path: /etc/porelo-host/forge/ca.pem
-  register: verify_reboot_forge
-  until: verify_reboot_forge.status == 200
+- name: Wait until the Matrix homeserver answers again on the VPN address after the reboot
+  ansible.builtin.command:  # noqa: command-instead-of-module
+    cmd: >-
+      curl -fsS --max-time 10 --noproxy '*' --cacert /etc/porelo-host/forge/ca.pem
+      --resolve matrix.alpha.porelo.internal:8448:10.73.7.1 -o /dev/null -w '%{http_code}'
+      https://matrix.alpha.porelo.internal:8448/_matrix/client/versions
+  register: verify_reboot_homeserver
+  until: verify_reboot_homeserver.rc == 0 and verify_reboot_homeserver.stdout == '200'
   retries: 30
   delay: 2
+  changed_when: false
+  failed_when: false
+
+- name: Read whether the homeserver's user unit is active under porelo-matrix after the reboot
+  ansible.builtin.shell:
+    cmd: XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user is-active porelo-matrix-homeserver.service
+  become: true
+  become_user: porelo-matrix
+  register: verify_reboot_homeserver_unit
+  changed_when: false
+  failed_when: false
+
+- name: Assert the Matrix homeserver survived the reboot under linger and answers 200
+  ansible.builtin.assert:
+    that:
+      - verify_reboot_homeserver_unit.stdout == 'active'
+      - verify_reboot_homeserver.rc == 0
+      - verify_reboot_homeserver.stdout == '200'
+    fail_msg: >-
+      after the reboot, porelo-matrix-homeserver.service is '{{ verify_reboot_homeserver_unit.stdout }}'
+      ({{ verify_reboot_homeserver_unit.stderr }}) and curl gave rc {{ verify_reboot_homeserver.rc }}:
+      {{ verify_reboot_homeserver.stdout }} {{ verify_reboot_homeserver.stderr }}
+
+- name: Wait until the forge answers again on the VPN address after the reboot
+  ansible.builtin.command:  # noqa: command-instead-of-module
+    cmd: >-
+      curl -fsS --max-time 10 --noproxy '*' --cacert /etc/porelo-host/forge/ca.pem
+      --resolve forge.alpha.porelo.internal:3000:10.73.7.1 -o /dev/null -w '%{http_code}'
+      https://forge.alpha.porelo.internal:3000/api/v1/version
+  register: verify_reboot_forge
+  until: verify_reboot_forge.rc == 0 and verify_reboot_forge.stdout == '200'
+  retries: 30
+  delay: 2
+  changed_when: false
+  failed_when: false
+  when: verify_forge == 'on'
+
+- name: Assert the forge survived the reboot under linger and answers 200
+  ansible.builtin.assert:
+    that:
+      - verify_reboot_forge.rc == 0
+      - verify_reboot_forge.stdout == '200'
+    fail_msg: >-
+      after the reboot, forge curl gave rc {{ verify_reboot_forge.rc }}:
+      {{ verify_reboot_forge.stdout }} {{ verify_reboot_forge.stderr }}
   when: verify_forge == 'on'

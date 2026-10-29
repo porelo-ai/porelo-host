@@ -15,6 +15,23 @@
     fail_msg: >-
       found {{ verify_person_files.results | selectattr('stat.exists') | map(attribute='item') | list }} on the host
 
+- name: Read the password script's owner and mode
+  ansible.builtin.stat:
+    path: /usr/local/sbin/porelo-host-forge-password
+  register: verify_person_script
+
+- name: Assert the password script is root's executable alone
+  ansible.builtin.assert:
+    that:
+      - verify_person_script.stat.exists
+      - verify_person_script.stat.isreg | default(false)
+      - verify_person_script.stat.uid | default(-1) == 0
+      - verify_person_script.stat.gid | default(-1) == 0
+      - verify_person_script.stat.mode | default('') == '0700'
+    fail_msg: >-
+      asked for /usr/local/sbin/porelo-host-forge-password as root:root regular file mode 0700,
+      got {{ verify_person_script.stat }}
+
 - name: Ask Forgejo which users it has for the person's sign-in
   ansible.builtin.shell:
     cmd: >-
@@ -30,61 +47,62 @@
     that: "'operator' in (verify_person_users.stdout_lines[1:] | map('split') | map(attribute=1) | list)"
     fail_msg: asked for operator in Forgejo's user list, got no such user
 
-- name: Read the person's membership in the organization's Owners team
-  ansible.builtin.shell:
-    cmd: |
-      set -euo pipefail
-      api() { curl -sS --max-time 10 --cacert /etc/porelo-host/forge/ca.pem \
-          -H @<(sed 's/^/Authorization: token /' /home/porelo-forge/.config/porelo-forge/api.token) "$@"; }
-      base=https://10.73.0.1:3000/api/v1
-      answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
-      code=$(api -o "$answer" -w '%{http_code}' "$base/orgs/porelo/teams/search?q=Owners")
-      [ "$code" = 200 ] || { echo "asked for Owners with HTTP 200, got HTTP $code" >&2; exit 1; }
-      team=$(python3 -I -c 'import json,sys; print(next((int(t["id"]) \
-          for t in json.load(open(sys.argv[1]))["data"] if t["name"] == "Owners"), ""))' "$answer")
-      [ -n "$team" ] || { echo "asked for porelo's Owners team, got no team" >&2; exit 1; }
-      code=$(api -o /dev/null -w '%{http_code}' "$base/teams/$team/members/operator")
-      [ "$code" = 200 ] || { echo "asked for operator in Owners with HTTP 200, got HTTP $code" >&2; exit 1; }
-      echo member
-    executable: /bin/bash
-  register: verify_person_owner
-  changed_when: false
-  failed_when: false
-  no_log: true
-
-- name: Assert the person owns the organization
-  ansible.builtin.assert:
-    that: verify_person_owner.rc == 0 and verify_person_owner.stdout == 'member'
-    fail_msg: "asked for operator in Owners, got rc {{ verify_person_owner.rc }}: {{ verify_person_owner.stderr }}"
-
-- name: Sign in with the lasting password on standard input, and reach the dashboard with no change asked
+- name: Set a throwaway password on standard input, sign in to the dashboard and check no output or journal leaks it
   ansible.builtin.shell:
     cmd: |
       set -euo pipefail
       umask 077
       work=$(mktemp -d)
       trap 'rm -rf "$work"' EXIT
+      head -c 24 /dev/urandom | base64 > "$work/password"
+      [ -s "$work/password" ] && [ "$(wc -l < "$work/password")" = 1 ] \
+          || { echo "asked for one nonempty password line, got another form" >&2; exit 1; }
+      /usr/local/sbin/porelo-host-forge-password < "$work/password" > "$work/script" 2>&1
       request() { curl -sS --max-time 10 --noproxy '*' --cacert /etc/porelo-host/forge/ca.pem \
-          --resolve forge.porelo.internal:443:127.0.0.1 --cookie "$work/cookies" --cookie-jar "$work/cookies" \
+          --resolve forge.alpha.porelo.internal:443:127.0.0.1 --cookie "$work/cookies" --cookie-jar "$work/cookies" \
           -o "$work/page" -w '%{http_code}' "$@"; }
-      base=https://forge.porelo.internal
+      base=https://forge.alpha.porelo.internal
       # Forgejo 17's sign-in form carries no CSRF token (measured).
-      code=$(tr -d '\r\n' < /root/secrets/forge-person-password \
+      code=$(tr -d '\r\n' < "$work/password" \
           | request "$base/user/login" --data-urlencode user_name=operator --data-urlencode password@-)
       [ "$code" = 303 ] || { echo "asked for a redirect after sign-in, got HTTP $code" >&2; exit 1; }
       # A user who must change the password is sent on from / instead (measured), so 200 says no change is asked.
       code=$(request "$base/")
       [ "$code" = 200 ] || { echo "asked for the dashboard with HTTP 200, got HTTP $code" >&2; exit 1; }
       echo 'signed in'
+      journalctl -o cat --no-pager > "$work/journal"
+      search() {
+          local rc=0
+          [ -s "$1" ] || { echo "asked for nonempty search input, got none" >&2; return 2; }
+          grep -F -f "$work/password" -- "$1" > /dev/null || rc=$?
+          case $rc in
+              0) echo "the password appears in search input" >&2; return 1 ;;
+              1) return 0 ;;
+              *) echo "password search ended $rc" >&2; return 2 ;;
+          esac
+      }
+      cat "$work/password" > "$work/planted"
+      rc=0
+      search "$work/planted" > "$work/probe" 2>&1 || rc=$?
+      [ "$rc" = 1 ] || { echo "asked to refuse a planted password, got rc $rc" >&2; exit 1; }
+      echo 'planted password: refused'
+      search "$work/script"
+      echo 'script: clean'
+      search "$work/journal"
+      echo 'journal: clean'
     executable: /bin/bash
   register: verify_person_login
   changed_when: false
   failed_when: false
   no_log: true
 
-- name: Assert the lasting password signs in with no change asked
+- name: Assert the password set by the script signs in with no change asked and leaks nowhere
   ansible.builtin.assert:
-    that: verify_person_login.rc == 0 and verify_person_login.stdout == 'signed in'
+    that:
+      - verify_person_login.rc == 0
+      - >-
+        verify_person_login.stdout_lines
+        == ['signed in', 'planted password: refused', 'script: clean', 'journal: clean']
     fail_msg: >-
-      asked for operator's lasting password to sign in, got rc {{ verify_person_login.rc }}:
-      {{ verify_person_login.stderr }}
+      asked for operator's password to sign in at forge.alpha.porelo.internal without leaking to script output or the
+      journal, got rc {{ verify_person_login.rc }}: {{ verify_person_login.stderr }}

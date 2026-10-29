@@ -1,17 +1,12 @@
 ---
-# Does inside the VM what `host up` does on a host: Ubuntu's own ansible-core, the collection from its tarball, and
-# `up` run on the machine itself.
+# Does inside the VM what `host up` does on a host for the host admin's act: Ubuntu's own ansible-core, the collection
+# from its tarball, and `up` run on the machine itself with no project and no person.
 - name: Converge
   hosts: all
   gather_facts: false
   become: true
   vars:
     converge_tarball: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_TARBALL') }}"
-    converge_account: porelo-test
-    converge_setup_script: "{{ (lookup('ansible.builtin.file', playbook_dir
-      ~ '/../../../roles/porelo/defaults/main.yml') | from_yaml).porelo_setup_script }}"
-    converge_repository_url: "{{ (lookup('ansible.builtin.file', playbook_dir
-      ~ '/../../../roles/porelo/defaults/main.yml') | from_yaml).porelo_repository_url }}"
     converge_packages: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_PACKAGES') }}"
     converge_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
     converge_forge: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_FORGE', default='on') }}"
@@ -61,25 +56,11 @@
     - name: Install the collection before up runs
       ansible.builtin.meta: flush_handlers
 
-    # Stands in for the part of Porelo's setup script up runs too, since the run's project below is made in the
-    # account's home before the first up: the script then finds the account and must leave it as it is.
-    - name: Make the account as Porelo's setup script makes it
-      ansible.builtin.user:
-        name: "{{ converge_account }}"
-        create_home: true
-        shell: /bin/bash
-
-    - name: Give the account its linger, as Porelo's setup script does
-      ansible.builtin.command:
-        cmd: loginctl enable-linger {{ converge_account }}
-        creates: /var/lib/systemd/linger/{{ converge_account }}
-
-    # Stands in for the person's secrets file: the host's VPN key, made for the run under /root, reaches the host only
-    # through the stop's --stdin; the test peer's is used by verify from a network namespace of its own.
-    # acl lets Ansible become the account before up's base role installs it.
-    - name: Install WireGuard's tools to make the run's keys, git for the run's project, and acl
+    # Stands in for the host admin's secrets file: the host's VPN key, made for the run under /root, reaches the host
+    # only through the stop's --stdin; the test peer's is used by verify from a network namespace of its own.
+    - name: Install WireGuard's tools to make the run's VPN keys
       ansible.builtin.apt:
-        name: [wireguard-tools, git, acl]
+        name: wireguard-tools
         state: present
 
     - name: Make the run's VPN keys, the host's and the test peer's
@@ -90,41 +71,35 @@
         creates: "{{ item }}.key"
       loop: [/root/vpn-host, /etc/wireguard/verify-peer]
 
-    # Stands in for the person's lasting CA on the desktop, made once there with the name constraint, its key never on
-    # the host; and for the person's lasting forge password in their secrets file.
-    - name: Make the desktop's CA, constrained to porelo.internal and the VPN's network, and the person's forge password
+    # Stands in for the host admin's lasting CA on the desktop, constrained critically to alpha.porelo.internal and
+    # 10.73.7.0/24 with its key never in /etc/porelo-host, plus a wider CA constrained only to porelo.internal that the
+    # stop must refuse.
+    - name: Make the stand-in host admin's constrained CA and a wider CA for refusal
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
           umask 077
-          mkdir -p /root/desktop-ca /root/secrets
-          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 3650 -subj "/CN=Porelo desktop" \
-              -addext basicConstraints=critical,CA:TRUE,pathlen:0 -addext keyUsage=critical,keyCertSign,cRLSign \
-              -addext 'nameConstraints=critical,permitted;DNS:porelo.internal,permitted;IP:10.73.0.0/255.255.255.0' \
+          mkdir -p /root/desktop-ca
+          nc='nameConstraints=critical,permitted;DNS:alpha.porelo.internal,permitted;IP:10.73.7.0/255.255.255.0'
+          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 3650 \
+              -subj "/CN=Porelo host alpha" -addext basicConstraints=critical,CA:TRUE \
+              -addext keyUsage=critical,keyCertSign,cRLSign -addext "$nc" \
               -keyout /root/desktop-ca/ca.key -out /root/desktop-ca/ca.pem 2> /dev/null
-          head -c 24 /dev/urandom | base64 > /root/secrets/forge-person-password
-        creates: /root/desktop-ca/ca.pem
+          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 3650 \
+              -subj "/CN=Porelo wide" -addext basicConstraints=critical,CA:TRUE \
+              -addext keyUsage=critical,keyCertSign,cRLSign \
+              -addext 'nameConstraints=critical,permitted;DNS:porelo.internal,permitted;IP:10.73.7.0/255.255.255.0' \
+              -keyout /root/desktop-ca/wide-ca.key -out /root/desktop-ca/wide-ca.pem 2> /dev/null
+        creates: /root/desktop-ca/wide-ca.pem
         executable: /bin/bash
       no_log: true
 
-    # Stands in for the person's ssh key, which porelo-host passes as porelo_host_authorized_key and logs in with as
-    # the account itself, for the vault's step at the host's terminal.
-    - name: Make the person's ssh key for the run
-      ansible.builtin.command:
-        cmd: ssh-keygen -q -t ed25519 -N "" -C person -f /root/person-ssh
-        creates: /root/person-ssh
-
-    - name: Read the person's public ssh key
-      ansible.builtin.slurp:
-        src: /root/person-ssh.pub
-      register: converge_person_public
-
-    - name: Read the test peer's public key
+    - name: Read the test peer's public WireGuard key
       ansible.builtin.slurp:
         src: /etc/wireguard/verify-peer.pub
       register: converge_peer_public
 
-    - name: Write the inventory host up writes
+    - name: Write the v2 inventory host up writes for host alpha on network 7
       ansible.builtin.copy:
         dest: /root/porelo-host-inventory.yml
         owner: root
@@ -135,15 +110,13 @@
             hosts:
               localhost:
             vars:
-              porelo_host_account: {{ converge_account }}
-              # porelo vault status is in porelo's snapshots only, until a release carries it.
+              porelo_host_inventory_version: 2
+              porelo_host_name: alpha
+              porelo_host_network: 7
               porelo_host_distribution: snapshots
               porelo_host_vpn_peer_public_key: {{ converge_peer_public.content | b64decode | trim }}
-              porelo_host_vpn_peer_address: 10.73.0.2/32
-              porelo_host_authorized_key: {{ converge_person_public.content | b64decode | trim }}
+              porelo_host_vpn_peer_address: 10.73.7.2/32
               porelo_host_forge: {{ (converge_forge == 'on') | lower }}
-              # The stand-in for the central forge is a repository on the host's own forge, at a private address.
-              forge_migrations_allow_local: true
               # Job bounds of the test VM's size: the runner's jobs and the pool share half of its 4 vCPUs and 6 GiB.
               # One job, not the default two, so the written capacity is the variable's.
               forge_runner_capacity: 1
@@ -156,68 +129,13 @@
               vm_pool_memory: 1024
           {% endif %}
 
-    # Stands in for the person's project and their machine file on the desktop: a project of its own in a local
-    # repository, its commit signed by a key made for the run, its bundle, and the machine file naming the bundle where
-    # the interface uploads it, that key's fingerprint and one key for the vault, whose value is in the secrets file.
-    - name: Make the run's project, signed, its bundle and the machine file, as the desktop holds them
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          ssh-keygen -q -t ed25519 -N "" -C converge-signer -f ~/.ssh/converge-signer
-          mkdir ~/converge-project && cd ~/converge-project && git init -q -b main
-          printf 'project:\n  name: "converge"\n  security_class: "offline"\nimage:\n  base_image: "ubuntu:24.04"\n' \
-              > project.yml
-          {% if converge_forge == 'on' %}
-          cat >> project.yml <<'PROJECT'
-            snippet: |
-              RUN apt-get update && apt-get install -y --no-install-recommends curl git ca-certificates \
-                  && rm -rf /var/lib/apt/lists/*
-          egress:
-            host_services: ["forge.porelo.internal"]
-          PROJECT
-          {% endif %}
-          printf 'repositories:\n  code:\n    description: "Kept on this machine alone"\n' >> project.yml
-          printf 'mail:\n  transports:\n    matrix: {}\n' >> project.yml
-          git add project.yml
-          git -c user.name=converge -c user.email=converge@example.invalid -c gpg.format=ssh \
-              -c user.signingkey="$HOME/.ssh/converge-signer.pub" commit -q -S -m "The run's project"
-          desktop=~/converge-desktop
-          mkdir -p "$desktop"
-          git bundle create -q "$desktop/converge.bundle" --all
-          signer=$(ssh-keygen -lf ~/.ssh/converge-signer.pub | cut -d' ' -f2)
-          {
-              echo 'project:'
-              echo '  name: converge'
-              echo '  url: "/etc/porelo-host/setup/converge.bundle"'
-              echo "  signed_by: \"$signer\""
-              echo 'keys:'
-              echo '  - { name: converge-key, path: keys/converge-key }'
-          } > "$desktop/machine.yml"
-        creates: /home/{{ converge_account }}/converge-desktop/machine.yml
-        executable: /bin/bash
-      become: true
-      become_user: "{{ converge_account }}"
-
-    # As the interface's copy step uploads them over ssh before up: the directory and each file root's alone.
-    - name: Upload the machine file and the bundle into the host's setup directory, as the interface does
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          install -d -m 0700 -o root -g root /etc/porelo-host/setup
-          for f in machine.yml converge.bundle; do
-              install -m 0600 -o root -g root /home/{{ converge_account }}/converge-desktop/$f /etc/porelo-host/setup/$f
-          done
-        creates: /etc/porelo-host/setup/converge.bundle
-        executable: /bin/bash
-
-    # Once, before the person's step: no vault and no VPN key yet, so up stops for them.
+    # Once, before the host admin's root stop: neither VPN key nor signed certificates are on the host yet.
     - name: Read whether the first up ran
       ansible.builtin.stat:
         path: /root/porelo-host-first-up.lines
       register: converge_first_seen
 
-    - name: Run up before the person's login, as the first host up does
-      when: not converge_first_seen.stat.exists
+    - name: Run the first up before the root stop supplies the VPN key and certificates
       # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.
       ansible.builtin.shell:
         cmd: >-
@@ -230,16 +148,18 @@
       register: converge_first_up
       changed_when: true
       failed_when: false
+      when: not converge_first_seen.stat.exists
 
-    - name: Assert the first up stopped for the new vault with its keys and the VPN's key alone, with rc 2
+    - name: Assert the first up stopped with rc 2 waiting for wireguard and forge-certificate alone
       ansible.builtin.assert:
         that:
           - converge_first_up.rc == 2
           - converge_first_waiting | length == 1
-          - converge_first_waiting[0].needs == ['vault-new', 'keys', 'wireguard']
-            + (['forge-certificate'] if converge_forge == 'on' else [])
+          - converge_first_waiting[0].needs == ['wireguard', 'forge-certificate']
           - converge_first_failed | length == 0
-        fail_msg: "the first up gave rc {{ converge_first_up.rc }} and these lines: {{ converge_first_up.stdout }}"
+        fail_msg: >-
+          asked the first up for rc 2 and waiting needs ['wireguard', 'forge-certificate'] with no failed step;
+          got rc {{ converge_first_up.rc }} and lines {{ converge_first_up.stdout }}
       vars:
         converge_first_lines: "{{ converge_first_up.stdout_lines | select | map('from_json') | list }}"
         converge_first_waiting: "{{ converge_first_lines | selectattr('state', 'equalto', 'waiting') | list }}"
@@ -256,7 +176,7 @@
       when: not converge_first_seen.stat.exists
 
     # Porelo's packages from a build not yet published, when build/molecule.sh was given them: installed over the
-    # published ones once the first up has installed those, and the account's daemon started again on them.
+    # published ones once the first up has configured apt, before the second up starts the homeserver.
     - name: Copy Porelo's handed-over packages onto the host
       ansible.builtin.copy:
         src: "{{ converge_packages }}/"
@@ -265,134 +185,157 @@
         group: root
         mode: "0600"
       when: converge_packages | length > 0
-      notify: Install Porelo's handed-over packages and start the account's daemon on them
+      notify: Install Porelo's handed-over packages
 
     - name: Install the handed-over packages before the next up
       ansible.builtin.meta: flush_handlers
 
-    # Stands in for the person's secrets file on the desktop: the vault's passphrase and the machine's key, root's.
-    - name: Make the run's secrets, the vault's passphrase and the machine's key
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          umask 077
-          mkdir -p /root/secrets
-          printf '%s' converge-passphrase > /root/secrets/vault-passphrase
-          head -c 20 /dev/urandom | base64 > /root/secrets/converge-key
-          head -c 24 /dev/urandom | base64 > /root/secrets/matrix-token
-        creates: /root/secrets/converge-key
-        executable: /bin/bash
-      no_log: true
-
-    - name: Read whether the account has a vault yet
+    - name: Read whether the root stop has already placed the host's CA
       ansible.builtin.stat:
-        path: /home/{{ converge_account }}/.local/share/porelo/vault.bin
-      register: converge_vault_file
+        path: /etc/porelo-host/forge/ca.pem
+      register: converge_ca_placed
 
-    # Each refusal must come before any line is used: the vault stays missing after all three.
-    - name: Give the stop a line of an unknown need, a value that is no base64, and drive
-      ansible.builtin.shell:
-        cmd: |
-          set -uo pipefail
-          b64() { printf '%s' "$1" | base64 -w0; }
-          printf 'vault-new %s\nbogus %s\n' "$(b64 x)" "$(b64 y)" | porelo-host-stop --stdin vault-new
-          echo "unknown=$?"
-          printf 'vault-new %s\nwireguard not*base64\n' "$(b64 x)" | porelo-host-stop --stdin vault-new wireguard
-          echo "base64=$?"
-          porelo-host-stop --stdin drive < /dev/null
-          echo "drive=$?"
-          rc=0
-          runuser -u {{ converge_account }} -- env XDG_RUNTIME_DIR=/run/user/$(id -u {{ converge_account }}) \
-              porelo vault status > /dev/null 2>&1 || rc=$?
-          echo "vault=$rc"
-        executable: /bin/bash
-      register: converge_refused
-      changed_when: false
-      when: not converge_vault_file.stat.exists
-
-    - name: Assert the stop refused all three with 64 before the vault was made
-      ansible.builtin.assert:
-        that:
-          - converge_refused.stdout_lines == ['unknown=64', 'base64=64', 'drive=64', 'vault=4']
-          - converge_refused.stderr is search('line 2 gives an unknown need')
-          - converge_refused.stderr is search('line 2 holds no base64 value')
-          - converge_refused.stderr is search('drive is no need of the host any more')
-        fail_msg: "the refusals gave {{ converge_refused.stdout_lines }}: {{ converge_refused.stderr }}"
-      when: not converge_vault_file.stat.exists
-
-    # As the desktop signs the waiting request, every extension set there: the host's address and name, a server's
-    # certificate, a year. Signed for another name or key too, which the stop must refuse before writing anything.
-    - name: Sign the forge's waiting request with the desktop's CA, and two certificates the stop must refuse
+    # porelo-host-stop --request prints two PEM requests, the forge's then the homeserver's; sign both valid leaves and
+    # the invalid certificate bundles the stop must refuse before writing anything.
+    - name: Split the two requests from porelo-host-stop --request and sign the valid and refused certificates
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
           umask 077
           d=/root/desktop-ca
-          porelo-host-stop --request > "$d/forge.csr"
+          porelo-host-stop --request > "$d/requests.pem"
+          awk -v out="$d" '
+              /^-----BEGIN CERTIFICATE REQUEST-----$/ { n++; inside = 1 }
+              inside { print > (out "/" (n == 1 ? "forge.csr" : n == 2 ? "matrix.csr" : "extra.csr")) }
+              /^-----END CERTIFICATE REQUEST-----$/ { inside = 0 }
+              END { if (n != 2) { printf "asked --request for 2 CSRs, got %d\n", n > "/dev/stderr"; exit 1 } }
+          ' "$d/requests.pem"
+          [ "$(openssl req -noout -subject -nameopt RFC2253 -in "$d/forge.csr")" \
+              = 'subject=CN=forge.alpha.porelo.internal' ]
+          [ "$(openssl req -noout -subject -nameopt RFC2253 -in "$d/matrix.csr")" \
+              = 'subject=CN=matrix.alpha.porelo.internal' ]
           sign() {
-              printf 'subjectAltName=%s\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\n' "$2" \
-                  > "$d/ext"
-              openssl x509 -req -in "$1" -CA "$d/ca.pem" -CAkey "$d/ca.key" -CAcreateserial -days 365 \
-                  -extfile "$d/ext" -out "$3" 2> /dev/null
+              local csr=$1 ca=$2 cakey=$3 dns=$4 out=$5
+              {
+                  printf 'subjectAltName=DNS:%s,IP:10.73.7.1\n' "$dns"
+                  printf 'basicConstraints=critical,CA:FALSE\n'
+                  printf 'keyUsage=critical,digitalSignature\n'
+                  printf 'extendedKeyUsage=serverAuth\n'
+              } > "$d/ext"
+              openssl x509 -req -in "$csr" -CA "$ca" -CAkey "$cakey" -CAcreateserial -days 365 \
+                  -extfile "$d/ext" -out "$out" 2> /dev/null
           }
-          sign "$d/forge.csr" IP:10.73.0.1,DNS:forge.porelo.internal "$d/forge.pem"
-          sign "$d/forge.csr" IP:10.73.0.1,DNS:example.org "$d/elsewhere.pem"
-          sign "$d/forge.csr" IP:10.73.0.10,DNS:forge.porelo.internal.porelo.internal "$d/nearby.pem"
-          openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj /CN=other -keyout "$d/other.key" \
-              -out "$d/other.csr" 2> /dev/null
-          sign "$d/other.csr" IP:10.73.0.1,DNS:forge.porelo.internal "$d/other.pem"
-          for wrong in elsewhere nearby other; do
-              printf 'forge-certificate %s\n' "$(cat "$d/$wrong.pem" "$d/ca.pem" | base64 -w0)" \
-                  | porelo-host-stop --stdin forge-certificate 2>&1 | sed "s/^/$wrong: /" || true
-          done
-          test ! -e /etc/porelo-host/forge/forge.pem && echo 'nothing written'
-        creates: /root/desktop-ca/forge.pem
+          sign "$d/forge.csr" "$d/ca.pem" "$d/ca.key" forge.alpha.porelo.internal "$d/forge.pem"
+          sign "$d/matrix.csr" "$d/ca.pem" "$d/ca.key" matrix.alpha.porelo.internal "$d/matrix.pem"
+          sign "$d/forge.csr" "$d/wide-ca.pem" "$d/wide-ca.key" forge.alpha.porelo.internal "$d/wide-forge.pem"
+          sign "$d/matrix.csr" "$d/wide-ca.pem" "$d/wide-ca.key" matrix.alpha.porelo.internal "$d/wide-matrix.pem"
+          sign "$d/matrix.csr" "$d/ca.pem" "$d/ca.key" forge.alpha.porelo.internal "$d/matrix-as-forge.pem"
+          cat "$d/forge.pem" "$d/matrix.pem" "$d/ca.pem" > "$d/bundle-good.pem"
+          cat "$d/wide-forge.pem" "$d/wide-matrix.pem" "$d/wide-ca.pem" > "$d/bundle-wide.pem"
+          cat "$d/forge.pem" "$d/ca.pem" > "$d/bundle-two.pem"
+          cat "$d/forge.pem" "$d/matrix-as-forge.pem" "$d/ca.pem" > "$d/bundle-wrong-name.pem"
         executable: /bin/bash
-      register: converge_signed
-      when: converge_forge == 'on'
+      changed_when: true
+      no_log: true
+      when: not converge_ca_placed.stat.exists
 
-    - name: Assert the stop refused the other name and the other key, and wrote nothing
+    - name: Ask porelo-host-stop to refuse the wide CA, two certificates and a misnamed homeserver certificate
+      ansible.builtin.shell:
+        cmd: |
+          set -uo pipefail
+          rc=0
+          printf 'forge-certificate %s\n' "$(base64 -w0 < {{ item.bundle | quote }})" \
+              | porelo-host-stop --stdin forge-certificate || rc=$?
+          written=none
+          for f in /etc/porelo-host/forge/ca.pem /etc/porelo-host/forge/forge.pem /etc/porelo-host/forge/matrix.pem; do
+              if [ -e "$f" ] || [ -L "$f" ]; then written=$f; break; fi
+          done
+          printf 'rc=%s written=%s\n' "$rc" "$written"
+        executable: /bin/bash
+      loop:
+        - label: wide CA
+          bundle: /root/desktop-ca/bundle-wide.pem
+          expected: is not held to alpha.porelo.internal
+        - label: two certificates
+          bundle: /root/desktop-ca/bundle-two.pem
+          expected: three certificates
+        - label: homeserver certificate for the forge's name
+          bundle: /root/desktop-ca/bundle-wrong-name.pem
+          expected: does not name exactly
+      loop_control:
+        label: "{{ item.label }}"
+      register: converge_cert_refusals
+      changed_when: false
+      when: not converge_ca_placed.stat.exists
+
+    - name: Assert each invalid certificate bundle was refused with rc 64 and wrote nothing to /etc/porelo-host/forge
       ansible.builtin.assert:
         that:
-          - converge_signed.stdout is search('elsewhere. .*the certificate does not verify under the CA given')
-          - converge_signed.stdout is search('nearby. .*the certificate does not name 10.73.0.1 and forge.porelo.int')
-          - converge_signed.stdout is search('other. .*the certificate is for another key')
-          - converge_signed.stdout is search('nothing written')
-        fail_msg: "signing and refusals gave {{ converge_signed.stdout_lines }}"
-      when: converge_forge == 'on' and converge_signed is changed
+          - item.stdout_lines == ['rc=64 written=none']
+          - item.stderr is search(item.item.expected)
+        fail_msg: >-
+          asked porelo-host-stop to refuse {{ item.item.label }} with rc 64, '{{ item.item.expected }}' and nothing
+          written to /etc/porelo-host/forge/{ca,forge,matrix}.pem; got {{ item.stdout_lines }} and '{{ item.stderr }}'
+      loop: "{{ converge_cert_refusals.results }}"
+      loop_control:
+        label: "{{ item.item.label }}"
+      when: not converge_ca_placed.stat.exists
 
-    # The pipeline the desktop's terminal runs from the secrets file, as root, every value base64 on its own line.
-    - name: Give the new vault, its key and the VPN's key on the stop's standard input, as the desktop does
+    - name: Ask porelo-host-stop --stdin to refuse every person need removed from the root act
+      ansible.builtin.shell:
+        cmd: |
+          set -uo pipefail
+          rc=0
+          porelo-host-stop --stdin {{ item | quote }} < /dev/null || rc=$?
+          written=none
+          for f in /etc/porelo-host/forge/ca.pem /etc/porelo-host/forge/forge.pem /etc/porelo-host/forge/matrix.pem; do
+              if [ -e "$f" ] || [ -L "$f" ]; then written=$f; break; fi
+          done
+          printf 'rc=%s written=%s\n' "$rc" "$written"
+        executable: /bin/bash
+      loop: [vault-new, vault, keys, matrix-token, forge-central-token]
+      register: converge_need_refusals
+      changed_when: false
+      when: not converge_ca_placed.stat.exists
+
+    - name: Assert porelo-host-stop --stdin refused each person need with rc 64 and wrote nothing
+      ansible.builtin.assert:
+        that:
+          - item.stdout_lines == ['rc=64 written=none']
+          - item.stderr is search("no need of the host's root act")
+        fail_msg: >-
+          asked porelo-host-stop --stdin {{ item.item }} for rc 64, "no need of the host's root act" and nothing
+          written to /etc/porelo-host/forge/{ca,forge,matrix}.pem; got {{ item.stdout_lines }} and '{{ item.stderr }}'
+      loop: "{{ converge_need_refusals.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: not converge_ca_placed.stat.exists
+
+    # The pipeline the host admin's interface runs as root: the VPN key and the three certificates, base64 on two lines.
+    - name: Give the host's VPN key and the three certificates on porelo-host-stop --stdin
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
-          b64() { base64 -w0 < "$1"; }
-          needs='vault-new keys wireguard'
           {
-              printf 'vault-new %s\n' "$(b64 /root/secrets/vault-passphrase)"
-              printf 'key converge-key %s\n' "$(b64 /root/secrets/converge-key)"
-              printf 'wireguard %s\n' "$(b64 /root/vpn-host.key)"
-              if [ -f /root/desktop-ca/forge.pem ]; then
-                  printf 'forge-certificate %s\n' \
-                      "$(cat /root/desktop-ca/forge.pem /root/desktop-ca/ca.pem | base64 -w0)"
-              fi
-          } | porelo-host-stop --stdin $needs {{ 'forge-certificate' if converge_forge == 'on' else '' }}
-        creates: /home/{{ converge_account }}/.local/share/porelo/vault.bin
+              printf 'wireguard %s\n' "$(base64 -w0 < /root/vpn-host.key)"
+              printf 'forge-certificate %s\n' "$(base64 -w0 < /root/desktop-ca/bundle-good.pem)"
+          } | porelo-host-stop --stdin wireguard forge-certificate
         executable: /bin/bash
+      register: converge_good_stop
+      changed_when: true
+      failed_when: false
       no_log: true
+      when: not converge_ca_placed.stat.exists
 
-    # The room's registration token comes on a stop of its own, as the desktop gives it once up refuses for it.
-    - name: Give the room's registration token on the stop's standard input
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          printf 'matrix-token %s\n' "$(base64 -w0 < /root/secrets/matrix-token)" \
-              | porelo-host-stop --stdin matrix-token
-        creates: /home/{{ converge_account }}/.config/porelo/matrix/host-registration-token
-        executable: /bin/bash
-      no_log: true
+    - name: Assert porelo-host-stop accepted wireguard and forge-certificate with rc 0
+      ansible.builtin.assert:
+        that: converge_good_stop.rc == 0
+        fail_msg: >-
+          asked porelo-host-stop --stdin wireguard forge-certificate for rc 0,
+          got rc {{ converge_good_stop.rc }}: {{ converge_good_stop.stderr }}
+      when: not converge_ca_placed.stat.exists
 
-    - name: Run up on the host itself, as host up does, its steps as JSON lines
+    - name: Run up on the host itself after the stop, its steps as JSON lines
       # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.
       ansible.builtin.shell:
         cmd: >-
@@ -406,101 +349,6 @@
       changed_when: >-
         converge_up.stdout is search('"state": "changed"')
 
-    - name: Read every container of the account after up
-      ansible.builtin.shell:
-        cmd: XDG_RUNTIME_DIR=/run/user/$(id -u) podman ps --all --format {% raw %}'{{.Names}}'{% endraw %}
-      become: true
-      become_user: "{{ converge_account }}"
-      register: converge_containers_after_up
-      changed_when: false
-
-    - name: Assert no task was started after up
-      ansible.builtin.assert:
-        that: converge_containers_after_up.stdout_lines | length == 0
-        fail_msg: "containers are there after up: {{ converge_containers_after_up.stdout_lines }}"
-
-    - name: Read the offered packages after up
-      ansible.builtin.command:
-        argv: [sh, "{{ converge_setup_script }}", --user, "{{ converge_account }}",
-               --distribution, snapshots, --list, --json]
-      register: converge_offered
-      changed_when: false
-
-    - name: Ask dpkg whether every offered agent is installed
-      ansible.builtin.command:
-        argv: "{{ ['dpkg-query', '-W', '-f', '${Package} ${db:Status-Status}\n'] + converge_agent_names }}"
-      register: converge_agents_installed
-      changed_when: false
-      failed_when: converge_agents_installed.rc not in [0, 1]
-      vars:
-        converge_agent_names: "{{ (converge_offered.stdout | from_json).packages
-          | selectattr('kind', 'equalto', 'agent') | map(attribute='name') | list }}"
-      when: converge_agent_names | length > 0
-
-    - name: Assert every offered agent is installed and the catalogue has agents
-      ansible.builtin.assert:
-        that:
-          - converge_agents | length > 0
-          - converge_agents_installed.stdout_lines | default([]) | sort
-            == converge_agents | map('regex_replace', '$', ' installed') | sort
-        fail_msg: >-
-          asked for a nonempty list of installed agents {{ converge_agents }},
-          got {{ converge_agents_installed.stdout_lines | default([]) }}
-      vars:
-        converge_agents: "{{ (converge_offered.stdout | from_json).packages
-          | selectattr('kind', 'equalto', 'agent') | map(attribute='name') | list }}"
-
-    - name: Read every provider of porelo-agent from apt's reverse provides
-      ansible.builtin.command:
-        argv: [apt-cache, showpkg, porelo-agent]
-      environment:
-        LC_ALL: C
-      register: converge_agent_providers
-      changed_when: false
-
-    - name: Assert the offered agents are exactly apt's reverse providers
-      ansible.builtin.assert:
-        that:
-          - converge_providers | length > 0
-          - converge_providers | reject('match', '^[a-z0-9][a-z0-9+.-]+$') | list | length == 0
-          - converge_providers | sort == (converge_offered.stdout | from_json).packages
-            | selectattr('kind', 'equalto', 'agent') | map(attribute='name') | unique | sort
-        fail_msg: >-
-          asked for the catalogue's agents to equal apt's reverse providers;
-          got apt {{ converge_agent_providers.stdout }}, catalogue {{ converge_offered.stdout }}
-      vars:
-        converge_providers: "{{ converge_agent_providers.stdout.split('Reverse Provides:')[-1].splitlines()
-          | map('trim') | select | map('split') | map('first') | unique | list }}"
-
-    # A foreign provider would be installed as root, so check the source of its candidate version too.
-    - name: Read each agent provider's candidate origin
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          apt-cache policy {{ item | quote }} | awk '
-              $1 == "Candidate:" { candidate=$2 }
-              $1 == "***" { selected=($2 == candidate); next }
-              NF == 2 && $2 ~ /^[0-9]+$/ { selected=($1 == candidate); next }
-              selected && $1 ~ /^[0-9]+$/ && NF >= 3 { print $2 }
-          '
-        executable: /bin/bash
-      loop: "{{ converge_agent_providers.stdout.split('Reverse Provides:')[-1].splitlines()
-        | map('trim') | select | map('split') | map('first') | unique | list }}"
-      environment:
-        LC_ALL: C
-      register: converge_agent_origins
-      changed_when: false
-
-    - name: Assert each agent candidate comes only from Porelo's source
-      ansible.builtin.assert:
-        that: item.stdout_lines | unique | list == [converge_repository_url]
-        fail_msg: >-
-          asked for {{ item.item }} candidate origin {{ converge_repository_url }},
-          got {{ item.stdout_lines | default([]) }} ({{ item.stderr }})
-      loop: "{{ converge_agent_origins.results }}"
-      loop_control:
-        label: "{{ item.item }}"
-
     - name: Print the installation time measured around the complete successful up
       ansible.builtin.debug:
         msg: >-
@@ -508,392 +356,10 @@
           {{ converge_up.delta }} ({{ converge_up.start }} to {{ converge_up.end }})
         verbosity: 0
 
-    - name: Ask dpkg whether the Matrix transport and homeserver packages are installed after up
-      ansible.builtin.command:
-        argv:
-          - dpkg-query
-          - -W
-          - -f=${Package} ${Status}\n
-          - porelo-message-transport-matrix
-          - porelo-matrix-homeserver
-      become: true
-      become_user: "{{ converge_account }}"
-      register: converge_matrix_packages
-      changed_when: false
-      failed_when: false
-
-    - name: Ask systemd whether the homeserver unit is enabled or active after up
-      ansible.builtin.shell:
-        cmd: >-
-          XDG_RUNTIME_DIR=/run/user/$(id -u)
-          systemctl --user {{ item }} porelo-matrix-homeserver
-      loop: [is-enabled, is-active]
-      become: true
-      become_user: "{{ converge_account }}"
-      register: converge_homeserver_after_up
-      changed_when: false
-      failed_when: false
-
-    - name: >-
-        Assert both Matrix packages are installed and the homeserver unit is disabled and inactive after up
-      ansible.builtin.assert:
-        that:
-          - converge_matrix_packages.rc == 0
-          - converge_matrix_packages.stdout_lines | sort == [
-              'porelo-matrix-homeserver install ok installed',
-              'porelo-message-transport-matrix install ok installed',
-            ]
-          - converge_homeserver_after_up.results[0].stdout == 'disabled'
-          - converge_homeserver_after_up.results[1].stdout == 'inactive'
-        fail_msg: >-
-          asked dpkg for porelo-message-transport-matrix and porelo-matrix-homeserver 'install ok installed'
-          and systemctl --user for disabled and inactive, got dpkg rc {{ converge_matrix_packages.rc }}
-          {{ converge_matrix_packages.stdout_lines }} ({{ converge_matrix_packages.stderr }}),
-          is-enabled '{{ converge_homeserver_after_up.results[0].stdout }}'
-          ({{ converge_homeserver_after_up.results[0].stderr }}),
-          is-active '{{ converge_homeserver_after_up.results[1].stdout }}'
-          ({{ converge_homeserver_after_up.results[1].stderr }})
-
-    # The person's login and its password script come with the forge itself: checked after the up with no repositories,
-    # before any inventory names one.
-    - name: Ask the forge which users it has on a forge with no repositories
-      ansible.builtin.shell:
-        cmd: XDG_RUNTIME_DIR=/run/user/$(id -u) podman exec forgejo forgejo admin user list
-      become: true
-      become_user: porelo-forge
-      register: converge_users_before_migration
-      changed_when: false
-      when: converge_forge == 'on'
-
-    - name: Read whether the password script is there on a forge with no repositories
-      ansible.builtin.stat:
-        path: /usr/local/sbin/porelo-host-forge-password
-      register: converge_password_script_early
-      when: converge_forge == 'on'
-
-    - name: Assert the person's login and the password script are there on a forge with no repositories
-      ansible.builtin.assert:
-        that:
-          - "'operator' in (converge_users_before_migration.stdout_lines[1:] | map('split') | map(attribute=1) | list)"
-          - converge_password_script_early.stat.exists
-        fail_msg: >-
-          asked for operator and porelo-host-forge-password with the forge alone, got users
-          {{ converge_users_before_migration.stdout_lines[1:] | map('split') | map(attribute=1) | list }} and the script
-          {{ 'there' if converge_password_script_early.stat.exists else 'missing' }}
-      when: converge_forge == 'on'
-
-    # The central forge's stand-in needs the host's forge to be up first.
-    - name: Make the stand-in for the central forge, its repository and the person's token for it
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          # The forge's account cannot enter the directory Molecule runs this from.
-          cd /
-          uid=$(id -u porelo-forge)
-          as_forge() { runuser -u porelo-forge -- env XDG_RUNTIME_DIR=/run/user/$uid "$@"; }
-          as_forge podman exec forgejo forgejo admin user create --username central \
-              --email central@example.invalid --random-password --must-change-password=false > /dev/null
-          token=/root/forge-central.token
-          (umask 077 && as_forge podman exec forgejo forgejo admin user generate-access-token --username central \
-              --token-name stand-in --scopes all --raw > "$token")
-          curl -fsS -o /dev/null --cacert /etc/porelo-host/forge/ca.pem \
-              -H @<(printf 'Authorization: token %s\n' "$(cat "$token")") -H 'Content-Type: application/json' \
-              -X POST https://10.73.0.1:3000/api/v1/user/repos -d '{"name": "stand-in", "auto_init": true}'
-          touch /root/porelo-host-forge-stand-in
-        creates: /root/porelo-host-forge-stand-in
-        executable: /bin/bash
-      when: converge_forge == 'on'
-      no_log: true
-
-    - name: Write the inventory's forge repositories, as host up writes them
-      ansible.builtin.copy:
-        dest: /root/porelo-host-forge.yml
-        owner: root
-        group: root
-        mode: "0600"
-        content: |
-          all:
-            vars:
-              porelo_host_forge_repositories:
-                - name: stand-in
-                  url: https://10.73.0.1:3000/central/stand-in.git
-              porelo_host_forge_agents: [probe]
-              # The stand-in central forge is the host's own, so its authority is the host's.
-              porelo_host_forge_central_ca: /etc/porelo-host/forge/ca.pem
-      when: converge_forge == 'on'
-
-    - name: Read whether the up with repositories was refused for the central token once
-      ansible.builtin.stat:
-        path: /root/porelo-host-forge-token-given
-      register: converge_token_given
-
-    - name: Run up with the forge's repositories before the central token is given
-      ansible.builtin.command:
-        cmd: >-
-          ansible-playbook -c local -i /root/porelo-host-inventory.yml -i /root/porelo-host-forge.yml porelo.host.up
-      environment:
-        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
-        LC_ALL: C.UTF-8
-      register: converge_up_no_token
-      changed_when: true
-      failed_when: false
-      when: converge_forge == 'on' and not converge_token_given.stat.exists
-
-    - name: Assert up refused naming forge-central-token and the repository still to migrate
-      ansible.builtin.assert:
-        that:
-          - converge_up_no_token.rc == 2
-          - converge_no_token_failed | length == 1
-          - >-
-            converge_no_token_failed[0].msg is search('forge-central-token: stand-in still to migrate')
-        fail_msg: >-
-          up without the central token gave rc {{ converge_up_no_token.rc }}: {{ converge_up_no_token.stdout }}
-      vars:
-        converge_no_token_failed: "{{ converge_up_no_token.stdout_lines | select | map('from_json')
-          | selectattr('state', 'equalto', 'failed') | list }}"
-      when: converge_forge == 'on' and not converge_token_given.stat.exists
-
-    - name: Give the central token on the stop's standard input, as the desktop does after that refusal
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          printf 'forge-central-token %s\n' "$(base64 -w0 < /root/forge-central.token)" \
-              | porelo-host-stop --stdin forge-central-token
-          touch /root/porelo-host-forge-token-given
-        creates: /root/porelo-host-forge-token-given
-        executable: /bin/bash
-      when: converge_forge == 'on'
-      no_log: true
-
-    - name: Run up with the forge's repositories, its steps as JSON lines
-      # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.
-      ansible.builtin.shell:
-        cmd: >-
-          set -o pipefail && ansible-playbook -c local -i /root/porelo-host-inventory.yml
-          -i /root/porelo-host-forge.yml porelo.host.up
-          | tee >(while IFS= read -r l; do printf '%(%s)T %s\n' -1 "$l"; done > /root/timed-3-up-forge.lines)
-        executable: /bin/bash
-      environment:
-        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
-        LC_ALL: C.UTF-8
-      register: converge_up_forge
-      changed_when: >-
-        converge_up_forge.stdout is search('"state": "changed"')
-      when: converge_forge == 'on'
-
-    # Names in the log the steps a second run would count against idempotence.
-    - name: Name the steps of the forge's up that changed
-      ansible.builtin.debug:
-        msg: "{{ converge_up_forge.stdout_lines | select('search', '\"state\": \"changed\"') | list }}"
-      when: converge_forge == 'on'
-
-    - name: Read whether the central token is left on the host after the migration
-      ansible.builtin.stat:
-        path: /run/porelo-host/forge-central.token
-      register: converge_token_left
-      when: converge_forge == 'on'
-
-    - name: Assert the migration took the central token off the host
-      ansible.builtin.assert:
-        that: not converge_token_left.stat.exists
-        fail_msg: /run/porelo-host/forge-central.token is still there after up migrated the repositories
-      when: converge_forge == 'on'
-
-    # As the desktop's terminal does once up has ended: the person's lasting password from the secrets file, piped over
-    # ssh into the root script, which sets it on the forge. The person's account comes with the forge itself.
-    - name: Set the person's lasting forge password on standard input, as the desktop does
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          porelo-host-forge-password < /root/secrets/forge-person-password
-          touch /root/porelo-host-person-password-set
-        creates: /root/porelo-host-person-password-set
-        executable: /bin/bash
-      register: converge_person_password
-      failed_when: false
-      when: converge_forge == 'on'
-      no_log: true
-
-    # The script's own words name no password, so they are shown when it fails.
-    - name: Assert the script set the person's password
-      ansible.builtin.assert:
-        that: converge_person_password.rc == 0
-        fail_msg: >-
-          porelo-host-forge-password gave rc {{ converge_person_password.rc }}: {{ converge_person_password.stderr }}
-      when: converge_forge == 'on' and converge_person_password is changed
-
-    # A digest kept before idempotence catches an up that replaces a working credential.
-    - name: Keep the agent's first token file digest before the second up
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          umask 077
-          sha256sum /etc/porelo-host/forge/agents/probe.token > /root/porelo-host-agent-probe.sha256.new
-          mv /root/porelo-host-agent-probe.sha256.new /root/porelo-host-agent-probe.sha256
-        creates: /root/porelo-host-agent-probe.sha256
-        executable: /bin/bash
-      when: converge_forge == 'on'
-      no_log: true
-
-    # An unreviewed branch must still publish snapshots and run a GitHub workflow without enabling release publishing.
-    - name: Commit to an unreviewed branch a workflow whose job reaches the forge and publishes into its registry
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          {% raw %}
-          workflow=$(base64 -w0 <<'WORKFLOW'
-          on: [push]
-          jobs:
-            probe:
-              runs-on: porelo-host
-              steps:
-                - run: curl -fsS https://10.73.0.1:3000/api/v1/version
-                - name: The job stays within its CPU, memory and process bounds
-                  run: |
-                    cores=${OMP_NUM_THREADS:-unset}
-                    pids=$(cat /sys/fs/cgroup/pids.max)
-                    memory=$(cat /sys/fs/cgroup/memory.max)
-                    cpu=$(cat /sys/fs/cgroup/cpu.max)
-                    echo "OMP_NUM_THREADS=$cores pids.max=$pids memory.max=$memory cpu.max=$cpu"
-                    test "$cores" = 1
-                    test "$pids" = 2048
-                    test "$memory" = 805306368
-                    set -- $cpu
-                    test "$1" != max && test "$1" -eq "$2"
-                - name: The run's own token may not publish
-                  env:
-                    RUN_TOKEN: ${{ github.token }}
-                  run: |
-                    code=$(printf 'header = "Authorization: token %s"\n' "$RUN_TOKEN" | curl -sS -K - -o /dev/null \
-                        -w '%{http_code}' --upload-file /etc/hostname \
-                        https://10.73.0.1:3000/api/packages/porelo/generic/refused/${{ github.run_number }}/hostname)
-                    echo "the run's own token: $code"
-                    test "$code" = 401
-                - name: The publisher's secret publishes the digest of itself
-                  env:
-                    PUBLISHER_TOKEN: ${{ secrets.PORELO_PUBLISHER_TOKEN }}
-                  run: |
-                    printf '%s' "$PUBLISHER_TOKEN" | sha256sum | cut -d' ' -f1 > digest
-                    printf 'user = "porelo-publisher:%s"\n' "$PUBLISHER_TOKEN" | curl -fsS -K - --upload-file digest \
-                        https://10.73.0.1:3000/api/packages/porelo/generic/probe/${{ github.run_number }}/digest
-          {% endraw %}
-          {% if converge_vm_pool == 'on' %}
-          {% raw %}
-                - name: The VM pool's file holds no key and the run key comes as an Actions secret
-                  env:
-                    PORELO_POOL_SSH: ${{ secrets.PORELO_POOL_SSH }}
-                    PUBLISHER_TOKEN: ${{ secrets.PORELO_PUBLISHER_TOKEN }}
-                  run: |
-                    grep -q '"porelo-machines-pool/1"' /etc/porelo-host/pool/pool.json
-                    ! grep -q runKey /etc/porelo-host/pool/pool.json
-                    ! grep -rq 'PRIVATE KEY' /etc/porelo-host/pool
-                    test -n "$PORELO_POOL_SSH"
-                    printf '%s' "$(printf '%s' "$PORELO_POOL_SSH")" | sha256sum | cut -d' ' -f1 > pool-key-digest
-                    probe=https://10.73.0.1:3000/api/packages/porelo/generic/probe/${{ github.run_number }}
-                    printf 'user = "porelo-publisher:%s"\n' "$PUBLISHER_TOKEN" | curl -fsS -K - \
-                        --upload-file pool-key-digest "$probe/pool-key-digest"
-          {% endraw %}
-          {% endif %}
-          {% raw %}
-            github-shape:
-              runs-on: ubuntu-26.04
-              steps:
-                - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-                  with:
-                    persist-credentials: false
-                - run: |
-                    test "${{ vars.PORELO_PUBLISH }}" = false
-                    test "${{ vars.PORELO_DEPLOY_PROFILE }}" = forge-release
-                    test -f README.md
-                    node --version
-                # The runner's JDK must reach the registry without disabling certificate checks.
-                - name: A JVM trusts the host's CA and refuses the registry without it
-                  env:
-                    PUBLISHER_TOKEN: ${{ secrets.PORELO_PUBLISHER_TOKEN }}
-                    SNAPSHOTS: ${{ vars.MAVEN_SNAPSHOTS_URL }}
-                    RUN: ${{ github.run_number }}
-                    ARTIFACT: org/fuin/porelo/probe/${{ github.run_number }}/probe-${{ github.run_number }}.pom
-                  run: |
-                    set -eu
-                    "$JAVA_HOME_25_X64/bin/java" -version > java-version.out 2>&1
-                    cat java-version.out
-                    grep -Eq '^openjdk version "25[.]0[.]5"' java-version.out || {
-                        echo "asked Java for 25.0.5; got $(cat java-version.out)" >&2; exit 1;
-                    }
-                    # Published first, so the JVM must read an existing artifact of the private organization.
-                    # The registry reads the POM's coordinates, so they must match its path.
-                    printf '<project><modelVersion>4.0.0</modelVersion><groupId>org.fuin.porelo</groupId>%s\n' \
-                        "<artifactId>probe</artifactId><version>$RUN</version></project>" > probe.pom
-                    printf 'user = "porelo-publisher:%s"\n' "$PUBLISHER_TOKEN" \
-                        | curl -fsS -K - --upload-file probe.pom "$SNAPSHOTS/$ARTIFACT"
-                    test -n "$PUBLISHER_TOKEN"
-                    test -r "$JAVA_HOME_25_X64/lib/security/cacerts"
-                    cat > Get.java <<'JAVA'
-                    import java.net.URI;
-                    import java.net.http.HttpClient;
-                    import java.net.http.HttpRequest;
-                    import java.net.http.HttpResponse;
-                    import java.nio.charset.StandardCharsets;
-                    import java.time.Duration;
-                    import java.util.Base64;
-
-                    class Get {
-                        /** Prints the registry's status after checking its TLS certificate. */
-                        public static void main(String[] args) throws Exception {
-                            String credentials = "porelo-publisher:" + System.getenv("PUBLISHER_TOKEN");
-                            String basic = Base64.getEncoder().encodeToString(
-                                credentials.getBytes(StandardCharsets.UTF_8));
-                            try (var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(30)).build()) {
-                                var request = HttpRequest.newBuilder(
-                                    URI.create(System.getenv("SNAPSHOTS") + "/" + System.getenv("ARTIFACT")))
-                                    .timeout(Duration.ofSeconds(30)).header("Authorization", "Basic " + basic).build();
-                                System.out.println(client.send(request, HttpResponse.BodyHandlers.discarding())
-                                    .statusCode());
-                            }
-                        }
-                    }
-                    JAVA
-                    if ! "$JAVA_HOME_25_X64/bin/java" Get.java > java-trusted.out 2> java-trusted.err; then
-                        cat java-trusted.err >&2
-                        echo 'asked Java for an HTTP status with the host trust store; got a failure' >&2
-                        exit 1
-                    fi
-                    cat java-trusted.out
-                    grep -qx 200 java-trusted.out || {
-                        echo "asked Java for 200 reading the published POM; got $(cat java-trusted.out)" >&2; exit 1;
-                    }
-                    # One public root keeps the host's CA out of the negative control.
-                    "$JAVA_HOME_25_X64/bin/keytool" -importcert -noprompt -alias public \
-                        -storetype PKCS12 -storepass public \
-                        -file /usr/share/ca-certificates/mozilla/ISRG_Root_X1.crt -keystore public.p12 > /dev/null
-                    if "$JAVA_HOME_25_X64/bin/java" -Djavax.net.ssl.trustStore=public.p12 \
-                        -Djavax.net.ssl.trustStorePassword=public Get.java \
-                        > java-untrusted.out 2> java-untrusted.err; then
-                        echo "asked Java without the host CA for a TLS failure; got $(cat java-untrusted.out)" >&2
-                        exit 1
-                    fi
-                    grep -Eq 'SSLHandshakeException|PKIX' java-untrusted.err || {
-                        cat java-untrusted.err >&2
-                        echo 'asked Java without the host CA for SSLHandshakeException or PKIX; got another failure' >&2
-                        exit 1
-                    }
-          {% endraw %}
-          WORKFLOW
-          )
-          curl -fsS -o /dev/null --cacert /etc/porelo-host/forge/ca.pem -H 'Content-Type: application/json' \
-              -H @<(printf 'Authorization: token %s\n' "$(cat /home/porelo-forge/.config/porelo-forge/api.token)") \
-              -X POST https://10.73.0.1:3000/api/v1/repos/porelo/stand-in/contents/.forgejo/workflows/probe.yml \
-              -d "{\"content\": \"$workflow\", \"message\": \"Reach the forge\", \"new_branch\": \"task-probe\"}"
-          touch /root/porelo-host-forge-workflow
-        creates: /root/porelo-host-forge-workflow
-        executable: /bin/bash
-      when: converge_forge == 'on'
-      no_log: true
-
     - name: Keep the lines of the last up for verify
       ansible.builtin.copy:
         dest: /root/porelo-host-up.lines
-        content: "{{ converge_up_forge.stdout if converge_forge == 'on' else converge_up.stdout }}\n"
+        content: "{{ converge_up.stdout }}\n"
         owner: root
         group: root
         mode: "0600"
@@ -901,12 +367,9 @@
 
   handlers:
     # apt's module takes one .deb at a time, and these must go in together, since they depend on each other.
-    - name: Install Porelo's handed-over packages and start the account's daemon on them
+    - name: Install Porelo's handed-over packages
       ansible.builtin.shell:  # noqa: command-instead-of-module
-        cmd: >-
-          apt-get install -y -qq --allow-downgrades /root/porelo-packages/*.deb
-          && runuser -u {{ converge_account }} -- env XDG_RUNTIME_DIR=/run/user/$(id -u {{ converge_account }})
-          systemctl --user restart porelod
+        cmd: apt-get install -y -qq --allow-downgrades /root/porelo-packages/*.deb
       changed_when: true
 
     - name: Install the collection from that tarball
