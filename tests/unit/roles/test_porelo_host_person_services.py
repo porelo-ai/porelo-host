@@ -35,6 +35,7 @@ REAL_HTTPS = urllib.request.HTTPSHandler
 
 class Services:
     def __init__(self, host):
+        self.scopes = {}
         self.host = host
         self.calls = []
         self.inputs = []
@@ -92,6 +93,7 @@ class Services:
                         answer = ADMIN_TOKEN + "\n"
                     else:
                         self.tokens.setdefault(user, []).append(len(self.tokens.get(user, [])) + 1)
+                        self.scopes[user] = args[args.index("--scopes") + 1]
                         answer = PERSON_TOKEN + "\n"
             return subprocess.CompletedProcess(args, 0, answer, "")
         if "/usr/libexec/porelo/transports/porelo-message-transport-matrix" in args:
@@ -797,3 +799,12 @@ def test_forge_lock_over_local_tls_checks_the_ca_and_revokes_tokens(services, tm
             thread.join(timeout=5)
     finally:
         server.server_close()
+
+
+def test_the_persons_login_may_run_the_bring_and_the_gate_only_its_branches(services):
+    """The bring makes teams and Actions variables in the admin's organization and asks their standing there."""
+    hook(services, "forge_admit", "alice", [])
+    assert services.recorder.scopes == {
+        "alice": "write:repository,write:organization,read:user",
+        "porelo-alice": "write:repository,read:organization",
+    }

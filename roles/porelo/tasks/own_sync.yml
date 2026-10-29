@@ -74,15 +74,15 @@
   failed_when: false
   check_mode: false
 
-# Porelo hands the transport its secrets from the admin's vault; its daemon then keeps the room's machines to the
-# applied developer list, so sync needs no call of its own.
+# Porelo hands the transport its secrets from the admin's vault and keeps the room's machines to the applied developer
+# list, at once and after each applied commit, so sync needs no call of its own (porelo's B314).
 - name: own_sync | Make the project's room as the admin's machine
   ansible.builtin.command:
     argv: [porelo, talk, room, "{{ porelo_project }}"]
     stdin: ""
   environment: "{{ __porelo_user_environment }}"
-  register: __porelo_room
-  changed_when: __porelo_room.stdout is search('created_room|made', ignorecase=True)
+  # talk room answers a person, not whether it made anything; run again it takes the room its machine made.
+  changed_when: false
   when: __porelo_room_help.rc == 0
 
 - name: own_sync | Say the room waits for porelo's B314

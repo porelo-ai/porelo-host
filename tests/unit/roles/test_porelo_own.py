@@ -136,7 +136,10 @@ def test_a_bring_from_the_persons_own_setup_verifies_both_bundles_and_follows_th
     assert f"--repository {setup}/project.bundle" in verify
     assert f"--access-repository {setup}/access.bundle" in verify
     assert f"--project {PROJECT}" in verify and f"--signed-by {KEY}" in verify
-    assert f"project follow {PROJECT} {setup}/project.bundle --signed-by={KEY}" in calls
+    assert (
+        f"project follow {PROJECT} {setup}/project.bundle --signed-by={KEY} --access-repository={setup}/access.bundle"
+        in calls
+    )
     assert not any("--unverified" in c for c in calls)
 
 

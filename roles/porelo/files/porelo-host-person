@@ -584,9 +584,11 @@ class Host:
                 ["create", "--username", identity, "--email", identity + "@" + domain,
                  "--random-password", "--must-change-password=false"],
             )
-            scopes = "write:repository,read:organization"
-            if identity not in (user, "porelo-" + user):
-                scopes += ",read:package"
+            # The person's login brings their projects: teams, Actions variables and their standing in the
+            # organization; the gate pushes task branches alone.
+            scopes = "write:repository,write:organization,read:user" if identity == user else (
+                "write:repository,read:organization"
+            )
             tokens.append(identity + " " + self.forge_token(account, identity, scopes) + "\n")
         if tokens:
             entry = self.account(user)

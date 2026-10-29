@@ -183,7 +183,7 @@
   check_mode: false
 
 # Porelo's own rules decide which keys and commits count, on both bundles, from the commits in force where the project
-# is followed already. follow does not take the access bundle yet (porelo's B331), so verify checks it here.
+# is followed already; verify names the newest commits that hold, which say whether to follow again.
 - name: own | Ask Porelo to verify the project and its access file from the uploaded bundles
   ansible.builtin.command:
     argv: "{{ [
@@ -220,15 +220,17 @@
   changed_when: false
   check_mode: false
 
-# Followed again only where the address or the pinned key differs, or the followed commit is none of the bundle's heads;
-# never --unverified.
-- name: own | Follow the project, checked against the keys in force
+# Followed with the access bundle, its url never fetched (porelo's B331); again only where the address differs, the
+# followed commit is none of the bundle's heads or the access commit is not the one verify names; never --unverified.
+- name: own | Follow the project and its access file, checked against the keys in force
   ansible.builtin.command:
     argv: "{{ ['porelo', 'project', 'follow', porelo_project, __porelo_host.porelo_project.url]
-      + (__porelo_own_signers | map('regex_replace', '^', '--signed-by=') | list) }}"
+      + (__porelo_own_signers | map('regex_replace', '^', '--signed-by=') | list)
+      + ['--access-repository=' ~ __porelo_own_setup ~ '/access.bundle'] }}"
   when: >-
     __porelo_followed | length == 0
     or __porelo_followed[0].url != __porelo_host.porelo_project.url
     or __porelo_followed[0].commit not in (__porelo_bundle_heads.stdout_lines | map('split') | map('first') | list)
+    or __porelo_followed[0].access_commit | default('') != (__porelo_verified.stdout | from_json).access_commit
   environment: "{{ __porelo_user_environment }}"
   changed_when: true
