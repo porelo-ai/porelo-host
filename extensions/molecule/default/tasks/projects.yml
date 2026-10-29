@@ -268,76 +268,85 @@
                 except urllib.error.HTTPError as err:
                     err.close()
                     return err.code, b""
-            pkg_name, pkg_token = mint("porelo-publisher-alpha-one", "verify-pkg", "write:package")
-            pkg_basic = "Basic " + base64.b64encode(
-                f"porelo-publisher-alpha-one:{pkg_token}".encode("utf-8")
-            ).decode("ascii")
-            admin_name, admin_token = mint("porelo-admin", "verify-pkg-cleanup", "write:admin,read:package")
-            admin_auth = "token " + admin_token
-            pkg_deleted = False
-            admin_deleted = False
+            # Only the step and the error's class leave a failure; its words may carry what the command was given.
             try:
-                put_one, _ = request(
-                    "PUT",
-                    "/api/packages/alpha-one/generic/probe/1.0.0/probe.txt",
-                    pkg_basic,
-                    b"alpha-one package\n",
+                stage = "mint the package token"
+                pkg_name, pkg_token = mint("porelo-publisher-alpha-one", "verify-pkg", "write:package")
+                pkg_basic = "Basic " + base64.b64encode(
+                    f"porelo-publisher-alpha-one:{pkg_token}".encode("utf-8")
+                ).decode("ascii")
+                stage = "mint the cleanup token"
+                admin_name, admin_token = mint("porelo-admin", "verify-pkg-cleanup", "write:admin,read:package")
+                admin_auth = "token " + admin_token
+                pkg_deleted = False
+                admin_deleted = False
+                stage = "put the packages"
+                try:
+                    put_one, _ = request(
+                        "PUT",
+                        "/api/packages/alpha-one/generic/probe/1.0.0/probe.txt",
+                        pkg_basic,
+                        b"alpha-one package\n",
+                    )
+                    put_two, _ = request(
+                        "PUT",
+                        "/api/packages/alpha-two/generic/probe/1.0.0/probe.txt",
+                        pkg_basic,
+                        b"alpha-two package\n",
+                    )
+                    list_status, list_raw = request(
+                        "GET",
+                        "/api/v1/packages/alpha-two?limit=50&page=1",
+                        admin_auth,
+                        content_type="application/json",
+                    )
+                    alpha_two_count = len(json.loads(list_raw)) if list_status == 200 else -1
+                finally:
+                    stage = "delete the temporary tokens"
+                    _, pub_raw = request(
+                        "GET",
+                        "/api/v1/admin/users/porelo-publisher-alpha-one/tokens?limit=50&page=1",
+                        admin_auth,
+                        content_type="application/json",
+                    )
+                    for row in json.loads(pub_raw):
+                        if row.get("name") == pkg_name:
+                            del_code, _ = request(
+                                "DELETE",
+                                f"/api/v1/admin/users/porelo-publisher-alpha-one/tokens/{row['id']}",
+                                admin_auth,
+                                content_type="application/json",
+                            )
+                            pkg_deleted = del_code == 204
+                    _, adm_raw = request(
+                        "GET",
+                        "/api/v1/admin/users/porelo-admin/tokens?limit=50&page=1",
+                        admin_auth,
+                        content_type="application/json",
+                    )
+                    for row in json.loads(adm_raw):
+                        if row.get("name") == admin_name:
+                            del_code, _ = request(
+                                "DELETE",
+                                f"/api/v1/admin/users/porelo-admin/tokens/{row['id']}",
+                                admin_auth,
+                                content_type="application/json",
+                            )
+                            admin_deleted = del_code == 204
+                print(
+                    json.dumps(
+                        {
+                            "alpha_one_put": put_one,
+                            "alpha_two_put": put_two,
+                            "alpha_two_packages": alpha_two_count,
+                            "pkg_deleted": pkg_deleted,
+                            "admin_deleted": admin_deleted,
+                        }
+                    )
                 )
-                put_two, _ = request(
-                    "PUT",
-                    "/api/packages/alpha-two/generic/probe/1.0.0/probe.txt",
-                    pkg_basic,
-                    b"alpha-two package\n",
-                )
-                list_status, list_raw = request(
-                    "GET",
-                    "/api/v1/packages/alpha-two?limit=50&page=1",
-                    admin_auth,
-                    content_type="application/json",
-                )
-                alpha_two_count = len(json.loads(list_raw)) if list_status == 200 else -1
-            finally:
-                _, pub_raw = request(
-                    "GET",
-                    "/api/v1/admin/users/porelo-publisher-alpha-one/tokens?limit=50&page=1",
-                    admin_auth,
-                    content_type="application/json",
-                )
-                for row in json.loads(pub_raw):
-                    if row.get("name") == pkg_name:
-                        del_code, _ = request(
-                            "DELETE",
-                            f"/api/v1/admin/users/porelo-publisher-alpha-one/tokens/{row['id']}",
-                            admin_auth,
-                            content_type="application/json",
-                        )
-                        pkg_deleted = del_code == 204
-                _, adm_raw = request(
-                    "GET",
-                    "/api/v1/admin/users/porelo-admin/tokens?limit=50&page=1",
-                    admin_auth,
-                    content_type="application/json",
-                )
-                for row in json.loads(adm_raw):
-                    if row.get("name") == admin_name:
-                        del_code, _ = request(
-                            "DELETE",
-                            f"/api/v1/admin/users/porelo-admin/tokens/{row['id']}",
-                            admin_auth,
-                            content_type="application/json",
-                        )
-                        admin_deleted = del_code == 204
-            print(
-                json.dumps(
-                    {
-                        "alpha_one_put": put_one,
-                        "alpha_two_put": put_two,
-                        "alpha_two_packages": alpha_two_count,
-                        "pkg_deleted": pkg_deleted,
-                        "admin_deleted": admin_deleted,
-                    }
-                )
-            )
+            except Exception as error:
+                print(json.dumps({"failed_at": stage, "error": type(error).__name__,
+                                  "returncode": getattr(error, "returncode", None)}))
       register: verify_projects_isolation
       changed_when: true
       no_log: true
@@ -345,6 +354,7 @@
     - name: Assert porelo-publisher-alpha-one publishes 201 to alpha-one, is refused on alpha-two, and its token is gone
       ansible.builtin.assert:
         that:
+          - "'failed_at' not in verify_projects_pkg"
           - verify_projects_pkg.alpha_one_put == 201
           - verify_projects_pkg.alpha_two_put in [401, 403, 404]
           - verify_projects_pkg.alpha_two_put < 200 or verify_projects_pkg.alpha_two_put >= 300
