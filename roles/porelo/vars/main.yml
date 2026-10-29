@@ -64,5 +64,5 @@ __porelo_own_place_wrong: >-
   {{ wrong }}
 __porelo_own_forge: "{{ (__porelo_own_machine.content | b64decode | from_yaml).forge | default(none) }}"
 __porelo_own_access: "{{ (__porelo_own_machine.content | b64decode | from_yaml).access | default(none) }}"
-# The machine file's key: following names its pinned keys only by fingerprint, which a check refuses.
+# The machine file's key, pinned at registration: following names its pinned keys only by print, which a check refuses.
 __porelo_own_signers: "{{ [__porelo_host.porelo_project.signed_by] }}"

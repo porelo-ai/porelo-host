@@ -182,18 +182,17 @@
   changed_when: false
   check_mode: false
 
-# Porelo's own rules decide which keys and commits count, on both bundles, from the commits in force where the project
-# is followed already; verify names the newest commits that hold, which say whether to follow again.
+# Porelo's own rules decide which keys and commits count, on both bundles, from the keys pinned at registration and
+# along each handover since; verify names the newest commits that hold, which say whether to follow again. No --since:
+# after a handover it would need the keys in force, which following names only by print (porelo's B332); the follow
+# below refuses a commit that does not descend from the one in force.
 - name: own | Ask Porelo to verify the project and its access file from the uploaded bundles
   ansible.builtin.command:
     argv: "{{ [
       'porelo', 'project', 'verify', '--json', '--project', porelo_project,
       '--repository', __porelo_own_setup ~ '/project.bundle',
       '--access-repository', __porelo_own_setup ~ '/access.bundle']
-      + (['--signed-by'] | product(__porelo_own_signers) | flatten)
-      + (['--since', __porelo_followed[0].commit] if __porelo_followed | length > 0 else [])
-      + (['--access-since', __porelo_followed[0].access_commit]
-         if __porelo_followed | length > 0 and __porelo_followed[0].access_commit | default('') != '' else []) }}"
+      + (['--signed-by'] | product(__porelo_own_signers) | flatten) }}"
   environment: "{{ __porelo_user_environment }}"
   register: __porelo_verified
   changed_when: false
