@@ -98,7 +98,7 @@
           else 'the project admin brings it and sync makes the person a developer first' }}
         quiet: true
 
-    - name: own | Give the organization its repositories, main's protection, the teams and the Actions variables
+    - name: own | Give the organization its repositories, the teams, main's protection and the Actions variables
       when: porelo_own_act == 'bring'
       block:
         - name: own | Migrate the project's repositories with the person's central token
@@ -109,11 +109,12 @@
             __forge_secret_owner: "{{ porelo_account }}"
             __forge_secret_rerun: bring
 
-        - name: own | Protect each repository's main
-          ansible.builtin.include_tasks: "{{ role_path }}/tasks/protection.yml"
-
+        # Before main's protection, which names the developers team as one allowed to approve and merge.
         - name: own | Make the project's teams
           ansible.builtin.include_tasks: "{{ role_path }}/tasks/teams.yml"
+
+        - name: own | Protect each repository's main
+          ansible.builtin.include_tasks: "{{ role_path }}/tasks/protection.yml"
 
         - name: own | Set the organization's Actions variables and placeholder secrets
           ansible.builtin.include_tasks: "{{ role_path }}/tasks/variables.yml"
