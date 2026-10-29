@@ -11,7 +11,15 @@
     group: root
     mode: "0755"
 
-# The stop checks both certificates against these; none of them is a secret.
+- name: request | Check each agent's name before it reaches the host's settings
+  ansible.builtin.assert:
+    that: forge_agents is sequence and forge_agents is not string
+      and forge_agents | select('match', '^[a-z][a-z0-9-]{0,30}\Z') | unique | list | length == forge_agents | length
+    fail_msg: "asked for a list of unique lower case agent names, got {{ forge_agents }}"
+    quiet: true
+
+# The stop checks both certificates against these; none of them is a secret. Only a host whose forge is on names its
+# account and agents, which is how porelo-host-person tells whether people get forge identities.
 - name: request | Name the host, the forge and the homeserver to the stop
   ansible.builtin.copy:
     dest: /etc/porelo-host/forge.conf
@@ -22,7 +30,10 @@
       matrix_name={{ forge_matrix_name }}
       port={{ forge_http_port }}
       person={{ forge_person }}
+      {% if porelo_host_forge | default(false) | bool %}
       account={{ forge_account }}
+      agents={{ forge_agents | join(',') }}
+      {% endif %}
     owner: root
     group: root
     mode: "0644"
