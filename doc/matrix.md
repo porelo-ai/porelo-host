@@ -11,12 +11,12 @@ identified as its person's connection. The collection adds no mount for this soc
 
 The homeserver's listener is `$XDG_RUNTIME_DIR/porelo-matrix-gate/homeserver.sock`, mode `0600`, in a `0700`
 directory owned by `porelo-matrix`. The role writes `PORELO_MATRIX_GATE=1` into its private `homeserver.conf`, in
-which the transport's unit starts Tuwunel there, with nothing behind its loopback port, removes TCP and TLS settings, and runs
-`gate --prepare` after package installation and before starting the homeserver. Successful preparation is recorded in a private `gate.prepared` file. The user unit's
-runtime-directory setting recreates the private directory at boot. Gate services receive the service account's
-`XDG_RUNTIME_DIR` explicitly.
+which the transport's unit starts Tuwunel there, with nothing behind its loopback port, and makes the directory at each
+start. It removes the TLS settings and runs `gate --prepare` after package installation and before starting the
+homeserver; successful preparation is recorded in a private `gate.prepared` file. Gate services receive the service
+account's `XDG_RUNTIME_DIR` explicitly and start after its user manager.
 
-`porelo-host-person sync <project>` takes the required `admins` list of logins from `porelo project verify --json`
+`porelo-host-person sync <project>` takes the `admins` list of logins from `porelo project verify --json`
 after verification of the project's access bundle. Invalid or duplicate logins are refused before access changes.
 It writes `/etc/porelo-host/matrix/<project>.admins`, one login per line, using a temporary file beside the target,
 flush, fsync and rename. The directory is root:porelo-matrix `0750`; files are root:porelo-matrix `0640`. An unchanged

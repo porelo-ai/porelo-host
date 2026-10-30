@@ -4,6 +4,7 @@ strict: true
 nav:
     - Overview: index.md
     - The local forge: local-forge.md
+    - SSH access: ssh.md
     - Matrix access: matrix.md
     - What a program reads: lines.md
     - Testing: testing.md

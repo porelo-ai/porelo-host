@@ -62,6 +62,8 @@
   environment: "{{ __matrix_environment }}"
   register: __matrix_old_units
   changed_when: false
+  # systemd answers 1 where no unit file matches, as on a fresh host.
+  failed_when: __matrix_old_units.rc not in [0, 1]
   check_mode: false
 
 - name: Stop and disable the homeserver's old TCP socket and proxy
@@ -144,19 +146,13 @@
     - "{{ __matrix_home }}/.config/porelo"
     - "{{ __matrix_dir }}"
 
-- name: Make the homeserver's private socket directory
-  ansible.builtin.file:
-    path: "{{ __matrix_socket_dir }}"
-    state: directory
-    owner: "{{ matrix_account }}"
-    group: "{{ matrix_account }}"
-    mode: "0700"
-
 - name: Remove the homeserver's TCP and TLS settings
   ansible.builtin.lineinfile:
     path: "{{ __matrix_conf }}"
-    regexp: '^(PORELO_MATRIX_(PORT|PUBLISH)|port|address|tls_.*)\s*='
+    regexp: '^(PORELO_MATRIX_PUBLISH|port|address|tls_.*)\s*='
     state: absent
+  become: true
+  become_user: "{{ matrix_account }}"
   notify: Restart the Matrix homeserver
 
 # In gate mode the transport starts Tuwunel on its own socket and drops the TCP port; the host sets the mode alone.
@@ -174,16 +170,24 @@
     - {key: PORELO_MATRIX_SERVER_NAME, value: "{{ matrix_name }}"}
   loop_control:
     label: "{{ item.key }}"
+  become: true
+  become_user: "{{ matrix_account }}"
   notify: Restart the Matrix homeserver
 
-- name: Remove the homeserver's old TLS files and host admin token
+- name: Remove the homeserver's old TLS files
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
+  become: true
+  become_user: "{{ matrix_account }}"
   loop:
     - "{{ __matrix_dir }}/tls"
     - "{{ __matrix_dir }}/ca.crt"
-    - /etc/porelo-host/matrix-admin.token
+
+- name: Remove the host admin's old Matrix token
+  ansible.builtin.file:
+    path: /etc/porelo-host/matrix-admin.token
+    state: absent
 
 - name: Prepare the Matrix gate once after the homeserver unit is installed
   ansible.builtin.command:
@@ -202,28 +206,9 @@
     owner: "{{ matrix_account }}"
     group: "{{ matrix_account }}"
     mode: "0600"
+  become: true
+  become_user: "{{ matrix_account }}"
   when: __matrix_prepare is changed  # noqa: no-handler
-
-- name: Keep the homeserver's private runtime directory across starts
-  ansible.builtin.file:
-    path: "{{ __matrix_home }}/.config/systemd/user/porelo-matrix-homeserver.service.d"
-    state: directory
-    owner: "{{ matrix_account }}"
-    group: "{{ matrix_account }}"
-    mode: "0700"
-
-- name: Recreate the homeserver's private socket directory at boot
-  ansible.builtin.copy:
-    dest: "{{ __matrix_home }}/.config/systemd/user/porelo-matrix-homeserver.service.d/socket.conf"
-    content: |
-      [Service]
-      RuntimeDirectory=porelo-matrix-gate
-      RuntimeDirectoryMode=0700
-      RuntimeDirectoryPreserve=yes
-    owner: "{{ matrix_account }}"
-    group: "{{ matrix_account }}"
-    mode: "0600"
-  notify: Restart the Matrix homeserver
 
 - name: Enable and start the Matrix homeserver
   ansible.builtin.systemd_service:

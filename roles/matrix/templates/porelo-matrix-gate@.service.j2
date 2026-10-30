@@ -1,6 +1,9 @@
 [Unit]
 Description=Porelo Matrix client gate
 PartOf=porelo-matrix-gate.socket
+# The gate reaches the homeserver in the account's runtime directory, which its user manager holds.
+Requires=user@{{ __matrix_uid }}.service
+After=user@{{ __matrix_uid }}.service
 
 [Service]
 User={{ matrix_account }}

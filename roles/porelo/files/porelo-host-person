@@ -1340,6 +1340,13 @@ class Host:
 
     def matrix_admins(self, path, admins, group):
         """Publish only changed verified authorization, keeping every reader from seeing a partial list."""
+        if admins is None:
+            # Porelo's verify names no admins yet: no project admin gets a room alias, and no old list stays.
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                refuse(f"cannot remove {path}", 73)
+            return
         text = "".join(user + "\n" for user in sorted(admins))
         self.directories(path.parent)
         os.chown(path.parent, self.owner, group)
@@ -1369,7 +1376,7 @@ class Host:
         verified, commit, access_commit, next_signers = self.verify_bundles(project, admin, project_record)
         self.check_host_block(verified.get("host"), network)
         admins = verified.get("admins")
-        if (
+        if admins is not None and (
             not isinstance(admins, list)
             or any(not isinstance(user, str) or not re.fullmatch(USER, user) for user in admins)
             or len(set(admins)) != len(admins)

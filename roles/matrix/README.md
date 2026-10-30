@@ -12,9 +12,9 @@ Task containers must never receive this socket: its peer credentials would ident
 
 `~/.config/porelo/matrix/homeserver.conf` is private (`0600` inside `0700` directories). The role sets
 `PORELO_MATRIX_GATE=1`, in which the transport's unit starts Tuwunel on
-`$XDG_RUNTIME_DIR/porelo-matrix-gate/homeserver.sock` (mode `600`), with nothing behind its loopback port, removes TCP and TLS settings, and
-keeps `PORELO_MATRIX_SERVER_NAME` equal to `matrix_name`. A user-unit drop-in recreates the private `0700` runtime
-directory on each boot. After installing the homeserver package, the role runs
+`$XDG_RUNTIME_DIR/porelo-matrix-gate/homeserver.sock` (mode `600`), with nothing behind its loopback port, removes
+the TLS settings, and keeps `PORELO_MATRIX_SERVER_NAME` equal to `matrix_name`. The transport's unit makes the
+private `0700` socket directory at each start. After installing the homeserver package, the role runs
 `matrix_transport_command gate --prepare` as `matrix_account` before starting the homeserver. A private
 `gate.prepared` marker records successful preparation, so later runs do not repeat it.
 

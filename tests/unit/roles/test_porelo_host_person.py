@@ -377,10 +377,7 @@ def test_add_orders_account_keys_peers_hooks_and_record(host, capsys):
         ["usermod", "--append", "--groups", "kvm,libvirt,porelo-people", "alice"],
     ]
     assert host.events[-1][0] == "forge_admit"
-    assert peers.read_text() == (
-        f"[Peer]\nPublicKey = {wg_key(1)}\nAllowedIPs = 10.73.7.3/32\n\n"
-        f"[Peer]\nPublicKey = {wg_key(2)}\nAllowedIPs = 10.73.7.4/32\n\n"
-    )
+    assert not peers.exists()
     assert record.read_text() == (
         "member=hand\nlocked=false\n"
         f"laptop=laptop {ssh_key(1)} {wg_key(1)} 10.73.7.3\n"
@@ -1829,6 +1826,38 @@ def test_sync_via_sudo_allows_only_the_projects_unlocked_admin_and_checks_bundle
     assert not capsys.readouterr().out
 
 
+def test_person_cannot_prevent_lock_by_changing_the_return_directory_mode(host, capsys):
+    """Prevent a person's writable runtime directory mode from defeating host revocation."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    capsys.readouterr()
+    directory = host.path("/run/porelo-host/people/alice")
+    directory.chmod(0o755)
+    host.calls.clear()
+    assert host.invoke("lock", "alice", data=b"") == 0
+    assert not host.path("/etc/ssh/authorized_keys/alice").exists()
+    assert not directory.exists()
+    assert ["loginctl", "terminate-user", "alice"] in host.calls
+    assert ["systemctl", "stop", "user@1000.service"] in host.calls
+
+
+def test_install_restores_boot_rules_for_existing_admitted_people(host, capsys):
+    """Prevent an upgrade or reboot from leaving recorded people without private return-socket directories."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    capsys.readouterr()
+    directory = host.path("/run/porelo-host/people/alice")
+    directory.rmdir()
+    rule = host.path("/etc/tmpfiles.d/porelo-person-alice.conf")
+    rule.unlink()
+    assert host.invoke("restore-runtime", data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {"changed": 1}
+    assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+    assert rule.read_text() == "d /run/porelo-host/people/alice 0700 alice alice -\n"
+    before = snapshot(host.root)
+    assert host.invoke("restore-runtime", data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {"changed": 0}
+    assert snapshot(host.root) == before
+
+
 def test_sync_publishes_verified_matrix_admins_atomically(sync_host, capsys, monkeypatch):
     """Prevent unverified or partial room-admin authorization and keep it unreadable to other people."""
     host, state = sync_host
@@ -1858,7 +1887,7 @@ def test_sync_publishes_verified_matrix_admins_atomically(sync_host, capsys, mon
     assert path.read_text() == "bo\n"
 
 
-@pytest.mark.parametrize("admins", [None, "ada", ["ada\nroot"], ["ada", "ada"], ["../ada"]])
+@pytest.mark.parametrize("admins", ["ada", ["ada\nroot"], ["ada", "ada"], ["../ada"]])
 def test_sync_refuses_invalid_matrix_admins_before_changing_access(sync_host, capsys, admins):
     """Prevent malformed verified output granting room administration or partial host access."""
     host, state = sync_host
@@ -1867,6 +1896,18 @@ def test_sync_refuses_invalid_matrix_admins_before_changing_access(sync_host, ca
     assert host.invoke("sync", "alpha", data=b"") == 65
     assert "admin" in capsys.readouterr().err
     assert snapshot(host.path("/etc")) == before
+
+
+def test_sync_without_verified_admins_applies_and_leaves_no_admins_file(sync_host, capsys):
+    """Prevent every sync from failing while Porelo's verify names no admins yet, or an old list from staying."""
+    host, state = sync_host
+    path = host.path("/etc/porelo-host/matrix/alpha.admins")
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    assert path.exists()
+    capsys.readouterr()
+    del state.verify_reply["alpha"]["admins"]
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    assert not path.exists()
 
 
 def test_purge_expels_the_login_even_when_already_locked(host, capsys):

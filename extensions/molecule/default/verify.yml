@@ -362,7 +362,8 @@
     - name: Assert the homeserver has no old TCP listener
       ansible.builtin.assert:
         that:
-          - verify_homeserver_tcp.stdout == ''
+          # The transport's unit keeps its port published on loopback, with nothing behind it.
+          - verify_homeserver_tcp.stdout_lines | reject('search', '\\s127\\.0\\.0\\.1:') | list == []
         fail_msg: >-
           asked for no listener on the homeserver's old TCP ports 8448 and 6167;
           got {{ verify_homeserver_tcp.stdout_lines }}

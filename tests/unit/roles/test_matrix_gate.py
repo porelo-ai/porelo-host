@@ -75,9 +75,7 @@ def test_homeserver_configuration_has_only_a_private_unix_listener():
     values = {v["key"]: v["value"] for v in settings["loop"]}
     assert values["PORELO_MATRIX_GATE"] == 1
     assert not {"port", "address", "PORELO_MATRIX_PORT", "PORELO_MATRIX_PUBLISH"} & values.keys()
-    private = next(t for t in entries if t.get("ansible.builtin.file", {}).get("path") == "{{ __matrix_socket_dir }}")
-    assert private["ansible.builtin.file"]["mode"] == "0700"
-    assert private["ansible.builtin.file"]["owner"] == "{{ matrix_account }}"
+    assert all(t.get("become_user") == "{{ matrix_account }}" for t in entries if "ansible.builtin.lineinfile" in t)
     assert not any("publish" in t.get("ansible.builtin.command", {}).get("argv", []) for t in entries)
     assert not any("ansible.builtin.shell" in t for t in entries)
 
