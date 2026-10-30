@@ -14,11 +14,13 @@ admin's Porelo brings it, never from the central forge itself.
 - The host admin's Porelo uploads a bundle of the registry repository through the tunnel into their account's setup
   directory, as a project's access bundle goes today. Root's sync verifies it in its isolated unit with Porelo's
   registry verify and applies the answer; the host parses no signature itself.
-- The anchor: at setup the host pins the key that signed its host card. Porelo's verify accepts `hosts/<host>/…` only
-  when signed by that key or its named successor, as the project's decision and `owners.yml` rule; registry owners'
-  rotation and backup keys are Porelo's to check.
-- A project admin registers a project only where `hosts/<host>/access.yml` names them for it. A project dropped there is
-  refused at its next sync and named in the sync's answer for the host admin; the host never removes it on its own.
+- The anchor: the host anchors on its pinned host admin alone, with no forge and no `owners.yml`: at setup it pins the
+  key that signed its host card, and Porelo's verify accepts `hosts/<host>/…` only when signed by that key or its named
+  successor. `access.yml` names each project admin with their key's fingerprint, so a project admin is known by key, not
+  by login alone.
+- A project admin registers a project only where `hosts/<host>/access.yml` names them, by login and key fingerprint, for
+  it. A project dropped there is refused at its next sync and named in the sync's answer for the host admin; the host
+  never removes it on its own.
 - A sync that meets a bad entry names it and keeps applying the rest, so a refused login never holds up a lock or a
   revocation in the same run.
 

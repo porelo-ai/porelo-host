@@ -18,8 +18,11 @@ Git on the central forge, every service on the host behind a Unix socket.
   caller's login from `SO_PEERCRED` on a request with no `Authorization` header; and `git.sock`, for Git over HTTP and
   the API, where it sets no user header and passes only token requests. On both it removes every `X-WEBAUTH-*` header a
   caller sends.
-- Porelo gives a task only `git.sock` in its container, never `web.sock`, so a task under the person's uid never gets
-  the person's web session (to be agreed with Core).
+- A task's container gets neither socket nor a token: the host's task gate passes the task's branch on to `git.sock`
+  with the task's own token ([HO71](README.md#ho71)), as Porelo's reach rules say, so nothing that runs as the person's
+  uid gets their forge rights. The person's own Git takes the token the sync writes for them, through Porelo's
+  credential helper. The host card's services name `forge: {web_port, git_port}`, the local ports Porelo forwards to
+  `web.sock` and `git.sock`.
 - Forgejo: `ENABLE_REVERSE_PROXY_AUTHENTICATION=true` for the web interface,
   `ENABLE_REVERSE_PROXY_AUTHENTICATION_API=false`, `ENABLE_REVERSE_PROXY_AUTO_REGISTRATION=false`; its SSH server off.
 - `ROOT_URL` is exactly `http://<host>.localhost:<forge web port>/`, the port from the host card's services, so the
