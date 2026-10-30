@@ -1,6 +1,6 @@
 # HO75 — The Persons Taken From Their Cards
 
-**Status:** Accepted (operator, 2026-10-30, with the project's one-click joining).
+**Status:** Implementing.
 **Size:** M - laptops out of `porelo-host-person`, persons, keys, signers and per-project locks from the verify answers,
 with unit tests and a VM run; measured M median 63 min, from three M builds (47, 63, 75).
 **Blocked by:** [HO68](README.md#ho68), [HO70](README.md#ho70), [HO71](README.md#ho71); Porelo's verify answering

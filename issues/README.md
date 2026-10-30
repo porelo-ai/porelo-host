@@ -31,6 +31,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho75"></a>[HO75](HO75-The-Persons-Taken-From-Their-Cards.md) | M | [HO68](#ho68), [HO70](#ho70), [HO71](#ho71); Porelo's verify answering persons by key | Persons, keys, signers and per-project locks come from the cards and access files, with no laptop anywhere. |
 | <a id="ho72"></a>[HO72](HO72-The-Central-Forge-Reached-Only-On-A-Persons-Word.md) | M | - | No token for the central forge lies on the host: migration, push and pull take the starting person's own on stdin, once. |
 | <a id="ho73"></a>[HO73](HO73-The-Homeserver-Reached-Through-Its-Gate.md) | M | porelo-message-matrix's gate | The homeserver is reached only through the Matrix transport's gate on its socket, and Tuwunel listens on no TCP port. |
 | <a id="ho70"></a>[HO70](HO70-The-Hosts-State-Taken-From-The-Registry.md) | M | Porelo's registry verify | The host takes its project admins and projects from the signed registry state the host admin brings, verified by Porelo. |
@@ -57,7 +58,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho75"></a>[HO75](HO75-The-Persons-Taken-From-Their-Cards.md) | M | [HO68](#ho68), [HO70](#ho70), [HO71](#ho71); Porelo's verify answering persons by key | Persons, keys, signers and per-project locks come from the cards and access files, with no laptop anywhere. |
 | <a id="ho76"></a>[HO76](HO76-Each-Push-Judged-When-It-Arrives.md) | M | [HO71](#ho71), [HO75](#ho75); Porelo's commit verify against signers and KRL | The first accepted push of a commit to the host's forge judges it against the signers and KRL in force, and records the verdict. |
 | <a id="ho74"></a>[HO74](HO74-Every-Role-Tested-Without-The-VPN.md) | M | [HO63](#ho63), [HO68](#ho68), [HO69](#ho69), [HO70](#ho70), [HO71](#ho71), [HO72](#ho72), [HO73](#ho73), [HO75](#ho75), [HO76](#ho76) | Molecule shows every role over SSH alone, and the guide's checks pass on a rented host. |
 | <a id="ho59"></a>[HO59](HO59-An-Interrupted-Bring-Replaced-Safely.md) | M | - | A bring leaves `bring.state` in its setup directory, so an interrupted one is recognized and replaced by a new upload instead of refused. |
