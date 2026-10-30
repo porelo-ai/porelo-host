@@ -642,6 +642,12 @@ def remove(forge, project, record, publisher, affected):
     trusted_directory(os.path.dirname(admins), missing=True)
     if os.path.lexists(admins):
         trusted(admins)
+    publications = [os.path.join(ETC, "projects", project + ".people.json")]
+    publications.extend(os.path.join(ETC, "signers", project + suffix) for suffix in (".json", ".allowed"))
+    for path in publications:
+        trusted_directory(os.path.dirname(path), missing=True)
+        if os.path.lexists(path):
+            trusted(path)
     staged = []
     try:
         for user, person_path, content in affected:
@@ -661,6 +667,10 @@ def remove(forge, project, record, publisher, affected):
         with writing(admins):
             if os.path.lexists(admins):
                 os.unlink(admins)
+        for path in publications:
+            with writing(path):
+                if os.path.lexists(path):
+                    os.unlink(path)
         with writing(record):
             os.unlink(record)
     finally:

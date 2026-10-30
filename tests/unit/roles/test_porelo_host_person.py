@@ -1025,7 +1025,7 @@ def test_purge_can_finish_after_userdel_succeeded_in_an_interrupted_run(host, ca
     del host.accounts["alice"]
     host.calls.clear()
     assert host.invoke("purge", "alice", data=b"") == 0
-    assert host.calls == []
+    assert host.calls == [["gpasswd", "--delete", "alice", "porelo-people"]]
     assert not host.path("/etc/porelo-host/people/alice.conf").exists()
 
 
@@ -1087,7 +1087,8 @@ def test_purge_keeps_the_locked_account_when_matrix_expulsion_fails(host, capsys
     assert "expulsion unavailable" in capsys.readouterr().err
     assert "alice" in host.accounts
     assert host.path("/etc/porelo-host/people/alice.conf").exists()
-    assert host.calls == []
+    assert not any(call[0] == "userdel" for call in host.calls)
+    assert ["usermod", "--lock", "--expiredate", "1", "alice"] in host.calls
 
 
 @pytest.mark.parametrize("verb", ["lock", "purge"])
@@ -1128,6 +1129,10 @@ def test_project_lock_removes_person_gate_and_agent_only_from_its_teams(sync_hos
         "locked": False,
     }
     state.verify_reply["alpha"]["persons"] = [person]
+    applied = host.path("/etc/porelo-host/registry/applied.json")
+    registry = json.loads(applied.read_text())
+    registry["persons"].append(dict(registry_person("alice", ssh_key(2)), expires=None))
+    applied.write_text(json.dumps(registry))
     assert host.invoke("sync", "alpha", data=b"") == 0
     capsys.readouterr()
     developers = state.teams["alpha"][1]["members"]
@@ -1441,6 +1446,10 @@ def test_sync_admits_a_new_card_without_inventing_legacy_agent_accounts(sync_hos
             "locked": False,
         }
     ]
+    applied = host.path("/etc/porelo-host/registry/applied.json")
+    registry = json.loads(applied.read_text())
+    registry["persons"].append(dict(registry_person("eve", ssh_key(4)), expires="2027-01-02"))
+    applied.write_text(json.dumps(registry))
     assert host.invoke("sync", "alpha", data=b"") == 0
     assert set(state.teams["alpha"][1]["members"]) == {"eve", "porelo-eve"}
     assert host.path("/etc/ssh/authorized_keys/eve").read_text() == (f'expiry-time="20270102000000Z" {ssh_key(4)}\n')
@@ -1471,3 +1480,49 @@ def test_registry_passes_the_signer_it_saved_with_its_commit_after_an_interrupte
     assert verify[verify.index("--pinned") + 1] == fingerprint(SIGNER_TWO)
     assert verify[verify.index("--since") + 1] == "a" * 40
     assert pin.read_text() == f"admin=bo\nkey={SIGNER_TWO}\n"
+
+
+def test_revocation_keeps_the_previous_registry_key_when_the_card_changes(registry_host, capsys):
+    """Prevent replacing a revoked card from leaving its last registry key usable."""
+    host, state = registry_host
+    state.registry_reply["persons"].append(registry_person("carol", ssh_key(7)))
+    assert host.invoke("registry", data=b"") == 0
+    capsys.readouterr()
+    state.registry_reply["commit"] = "b" * 40
+    state.registry_reply["persons"][-1] = registry_person("carol", ssh_key(8), revoked=True)
+    assert host.invoke("registry", data=b"") == 0
+    capsys.readouterr()
+    for number in (7, 8):
+        key = host.write("/etc/ssh/query-key", ssh_key(number) + "\n")
+        result = subprocess.run(
+            ["ssh-keygen", "-Q", "-f", str(host.path("/etc/ssh/porelo-revoked.krl")), str(key)],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 1, f"revoked key {number} must remain in the KRL: {result.stdout}"
+
+
+def test_failed_krl_publication_keeps_previous_registry_keys_for_retry(registry_host, capsys):
+    """Prevent failed revocation publication from forgetting a replaced key on the next intake."""
+    host, state = registry_host
+    state.registry_reply["persons"].append(registry_person("carol", ssh_key(7)))
+    assert host.invoke("registry", data=b"") == 0
+    capsys.readouterr()
+    state.registry_reply["commit"] = "b" * 40
+    state.registry_reply["persons"][-1] = registry_person("carol", ssh_key(8), revoked=True)
+    host.fail = ["ssh-keygen", "-q", "-k"]
+    assert host.invoke("registry", data=b"") == 69
+    capsys.readouterr()
+    host.fail = None
+    assert host.invoke("registry", data=b"") == 0
+    capsys.readouterr()
+    for number in (7, 8):
+        key = host.write("/etc/ssh/query-key", ssh_key(number) + "\n")
+        result = subprocess.run(
+            ["ssh-keygen", "-Q", "-f", str(host.path("/etc/ssh/porelo-revoked.krl")), str(key)],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 1, f"revoked key {number} must survive retry: {result.stdout}"

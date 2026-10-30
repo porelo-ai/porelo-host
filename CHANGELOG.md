@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Gathered push refuses sudo callers of the root-only check, bounds caller configuration reads and isolates token
   helpers from credential stdin. Namespace forwarding preserves early gate responses on socket errors, times out
   idle sockets and stops Git descendants and removes temporary clones when the helper receives a signal.
+- Project sync requires each person's key and expiry to match the applied host registry. SSH revocations remain
+  cumulative, project removal clears membership and signer publications, and person locks preserve verified Matrix
+  admins while attempting each service revocation independently. Forgejo team sessions include organization scopes,
+  unlock skips absent identities, and lock and purge recover when a locked person's Linux account is gone.
 
 ### Changed
 

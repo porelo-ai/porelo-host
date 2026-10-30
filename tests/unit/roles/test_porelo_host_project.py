@@ -1224,3 +1224,21 @@ def test_add_registers_no_project_for_an_admin_the_hosts_registry_revoked(
     assert_refused(project_host, result, diagnostic, 65)
     assert not project_host["forge"].calls
     assert not (project_host["etc"] / "projects/alpha.conf").exists()
+
+
+def test_remove_deletes_only_its_membership_and_signer_publications(memory_host, monkeypatch, capsys):
+    """Prevent stale project authority from surviving removal or breaking later person revocations."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    paths = []
+    for name in ("alpha", "beta"):
+        for relative in (f"projects/{name}.people.json", f"signers/{name}.json", f"signers/{name}.allowed"):
+            path = host["etc"] / relative
+            path.parent.mkdir(exist_ok=True, mode=0o755 if "signers" in relative else 0o700)
+            path.write_text("fixture\n")
+            path.chmod(0o644 if relative.endswith(".allowed") else 0o600)
+            paths.append(path)
+    code, _, err = project(host, monkeypatch, capsys, "remove", "alpha")
+    assert code == 0, err
+    for path in paths:
+        assert path.exists() == path.name.startswith("beta")

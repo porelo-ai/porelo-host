@@ -85,6 +85,14 @@ def person(login, number, role="developer", **values):
     }
 
 
+def registry_card(cards, entry):
+    path = cards.host.path("/etc/porelo-host/registry/applied.json")
+    registry = json.loads(path.read_text())
+    registry["persons"] = [item for item in registry["persons"] if item["login"] != entry["login"]]
+    registry["persons"].append({key: entry[key] for key in ("login", "ssh", "expires", "revoked")})
+    path.write_text(json.dumps(registry))
+
+
 def sync(cards):
     host = cards.host
     return host.sync("alpha", host.records(), host.accounts)
@@ -117,6 +125,7 @@ def test_signers_are_project_local_and_rotation_preserves_only_history(cards):
     assert 'task:* cert-authority,namespaces="git"' in text
     assert stat.S_IMODE(path.stat().st_mode) == 0o644
     cards.reply["persons"][1]["ssh"] = ssh_key(4)
+    registry_card(cards, cards.reply["persons"][1])
     sync(cards)
     lines = path.read_text().splitlines()
     assert any(ssh_key(2) in line and "valid-before=" in line for line in lines)
@@ -163,6 +172,7 @@ def test_purged_login_is_refused_without_blocking_another_lock(cards):
 def test_card_expiry_replaces_authorized_key_and_records_have_no_laptops(cards):
     """Prevent stale device credentials from surviving card reconciliation."""
     cards.reply["persons"][1]["expires"] = "2027-01-02"
+    registry_card(cards, cards.reply["persons"][1])
     sync(cards)
     path = cards.host.path("/etc/ssh/authorized_keys/alice")
     assert path.read_text() == f'expiry-time="20270102000000Z" {ssh_key(2)}\n'
@@ -310,9 +320,11 @@ def test_failed_service_lock_cannot_be_undone_by_project_sync(cards):
 def test_rotated_history_never_extends_the_previous_cards_expiry(cards):
     """Prevent replacement from extending the period in which an expired old key can sign."""
     cards.reply["persons"][1]["expires"] = "2026-11-01"
+    registry_card(cards, cards.reply["persons"][1])
     sync(cards)
     cards.host.now = lambda: datetime.datetime(2026, 11, 2, tzinfo=datetime.timezone.utc)
     cards.reply["persons"][1] = person("alice", 4)
+    registry_card(cards, cards.reply["persons"][1])
     sync(cards)
     text = cards.host.path("/etc/porelo-host/signers/alpha.allowed").read_text()
     old = [line for line in text.splitlines() if ssh_key(2) in line]
@@ -334,8 +346,8 @@ def test_key_revocation_does_not_weaken_an_existing_host_lock(cards):
 def test_a_key_cannot_be_shared_with_a_person_of_another_project(cards):
     """Prevent a card from authenticating as an unrelated already admitted login."""
     cards.reply["persons"].append(person("eve", 3))
-    with pytest.raises(cards.scope["Refusal"], match="another person"):
-        sync(cards)
+    answer = sync(cards)
+    assert any("eve" in reason for reason in answer["refused"])
     assert "eve" not in cards.host.records()
 
 
@@ -346,3 +358,262 @@ def test_installed_add_refuses_device_input_instead_of_ignoring_it(cards, monkey
     monkeypatch.setattr(cards.scope["sys"], "stdin", io.TextIOWrapper(io.BytesIO(b"l1 old device input\n")))
     with pytest.raises(cards.scope["Refusal"], match="no credential input"):
         cards.host.execute(["add", "ada", "--role", "project-admin"], None)
+
+
+@pytest.mark.parametrize("change", ["absent", "key", "expiry", "revoked", "project-revoked", "old-revoked-key"])
+def test_sync_refuses_cards_outside_the_applied_registry_and_applies_the_rest(cards, change):
+    """Prevent project bundles from creating host identities or replacing host-wide credentials."""
+    host = cards.host
+    entry = cards.reply["persons"][1]
+    if change == "absent":
+        path = host.path("/etc/porelo-host/registry/applied.json")
+        registry = json.loads(path.read_text())
+        registry["persons"] = [item for item in registry["persons"] if item["login"] != "alice"]
+        path.write_text(json.dumps(registry))
+    elif change in ("key", "old-revoked-key"):
+        entry["ssh"] = ssh_key(7)
+        if change == "old-revoked-key":
+            host.key_revoked = lambda key: key == ssh_key(7)
+    elif change == "expiry":
+        entry["expires"] = "2027-01-01"
+    elif change == "project-revoked":
+        entry["revoked"] = True
+    else:
+        path = host.path("/etc/porelo-host/registry/applied.json")
+        registry = json.loads(path.read_text())
+        registry["persons"][1]["revoked"] = True
+        path.write_text(json.dumps(registry))
+    answer = sync(cards)
+    assert any(entry["login"] in reason for reason in answer["refused"])
+    assert "alpha project-admin" in host.records()["ada"]["members"]
+    assert entry["login"] not in json.loads(host.path("/etc/porelo-host/projects/alpha.people.json").read_text())
+    assert host.records()["alice"]["ssh"] == ssh_key(2)
+    assert host.records()["alice"]["expires"] is None
+
+
+def test_krl_updates_keep_all_previously_revoked_keys(cards):
+    """Prevent registry refresh or key rotation from reviving an already revoked key."""
+    host = cards.host
+    host.commands.add("ssh-keygen")
+    host.runner = lambda args, input=None: subprocess.run(args, input=input, text=True, capture_output=True)
+    host.key_revoked = cards.scope["Host"].key_revoked.__get__(host)
+    host.write_krl([ssh_key(8)])
+    host.write_krl([ssh_key(7)])
+    host.write_krl([])
+    assert host.key_revoked(ssh_key(8))
+    assert host.key_revoked(ssh_key(7))
+    assert not host.key_revoked(ssh_key(2))
+
+
+def test_lock_skips_membership_files_of_unregistered_projects(cards):
+    """Prevent orphaned project state from permanently blocking host lock and purge."""
+    sync(cards)
+    cards.host.path("/etc/porelo-host/projects/alpha.conf").unlink()
+    cards.host.execute(["lock", "alice"], None)
+    assert cards.host.records()["alice"]["locked"]
+    cards.host.accounts.pop("alice")
+    cards.host.execute(["purge", "alice"], None)
+    assert "alice" not in cards.host.records()
+
+
+@pytest.mark.parametrize("failed", [None, "forge", "rooms"])
+def test_lock_preserves_verified_admins_and_attempts_each_service(cards, failed):
+    """Prevent role escalation and one service failure from retaining another service's authority."""
+    cards.reply["persons"][1]["role"] = "project-admin"
+    cards.reply["admins"] = ["alice"]
+    sync(cards)
+    attempts = []
+
+    def service(name):
+        def apply(*args):
+            attempts.append(name)
+            if name == failed:
+                raise cards.scope["Refusal"](f"{name} unavailable", 69)
+
+        return apply
+
+    cards.host.forge_project_apply = service("forge")
+    cards.host.matrix_members = service("rooms")
+    if failed:
+        with pytest.raises(cards.scope["Refusal"], match=f"{failed} unavailable"):
+            cards.host.execute(["lock", "alice"], None)
+    else:
+        cards.host.execute(["lock", "alice"], None)
+    assert attempts == ["forge", "rooms"]
+    assert cards.host.path("/etc/porelo-host/matrix/alpha.admins").read_text() == ""
+
+
+def test_sync_updates_admins_even_when_other_services_fail(cards):
+    """Prevent a Forgejo failure from retaining revoked Matrix room administration."""
+    sync(cards)
+    cards.reply["admins"] = []
+
+    def unavailable(*args):
+        raise cards.scope["Refusal"]("forge unavailable", 69)
+
+    cards.host.forge_project_apply = unavailable
+    with pytest.raises(cards.scope["Refusal"]):
+        sync(cards)
+    assert cards.host.path("/etc/porelo-host/matrix/alpha.admins").read_text() == ""
+
+
+@pytest.mark.parametrize("target", ["admins", "matrix-directory", "authorized", "people", "allowed"])
+def test_root_publications_and_lock_refuse_symlinks(cards, target, tmp_path):
+    """Prevent root publication or revocation from following or removing an untrusted link."""
+    host = cards.host
+    sync(cards)
+    paths = {
+        "admins": "/etc/porelo-host/matrix/alpha.admins",
+        "matrix-directory": "/etc/porelo-host/matrix",
+        "authorized": "/etc/ssh/authorized_keys/alice",
+        "people": "/etc/porelo-host/projects/alpha.people.json",
+        "allowed": "/etc/porelo-host/signers/alpha.allowed",
+    }
+    path = host.path(paths[target])
+    outside = tmp_path / "outside"
+    if target == "matrix-directory":
+        path.rename(outside)
+        outside.chmod(0o700)
+    else:
+        path.unlink()
+    path.symlink_to(outside)
+    with pytest.raises(cards.scope["Refusal"]):
+        if target == "authorized":
+            host.lock("alice", host.records()["alice"], False)
+        else:
+            sync(cards)
+    assert path.is_symlink()
+    if target == "matrix-directory":
+        assert stat.S_IMODE(outside.stat().st_mode) == 0o700
+
+
+@pytest.mark.parametrize("verb", ["lock", "purge"])
+def test_locked_record_without_linux_account_can_be_locked_or_purged(cards, verb):
+    """Prevent a missing Linux account from crashing recovery of a recorded lock."""
+    host = cards.host
+    record = host.records()["alice"]
+    record["locked"] = True
+    host.record("alice", record)
+    host.accounts.pop("alice")
+    authorized = host.path("/etc/ssh/authorized_keys/alice")
+    host.write(authorized, ssh_key(2) + "\n", 0o644)
+    host.execute([verb, "alice"], None)
+    assert not authorized.exists()
+    assert (verb == "purge") == ("alice" not in host.records())
+    assert not any(isinstance(args, list) and args[0] == "usermod" for args, _ in cards.calls)
+
+
+def test_revoked_login_with_a_refused_card_still_locks_its_recorded_key(cards):
+    """Prevent a malformed revocation from leaving a recorded account or key active."""
+    host = cards.host
+    refused = []
+    persons, revoked = host.registry_persons([person("alice", 2, ssh="invalid", revoked=True)], None, refused)
+    keys = []
+    host.write_krl = lambda values: keys.extend(values)
+    host.apply_registry_cards(persons, revoked, host.records())
+    assert refused
+    assert host.records()["alice"]["locked"]
+    assert ssh_key(2) in keys
+
+
+def test_purged_revocation_still_enters_the_krl(cards):
+    """Prevent a purged person's newly supplied revoked key from remaining usable elsewhere."""
+    host = cards.host
+    host.write(host.path("/etc/porelo-host/people/purged"), "carol\n", 0o600)
+    persons, revoked = host.registry_persons([person("carol", 7, revoked=True)], None, [])
+    keys = []
+    host.write_krl = lambda values: keys.extend(values)
+    host.apply_registry_cards(persons, revoked, host.records())
+    assert ssh_key(7) in keys
+
+
+@pytest.mark.parametrize("other", ["entry", "record"])
+def test_registry_refuses_keys_owned_by_another_login(cards, other):
+    """Prevent shared credentials from granting access as a different person."""
+    entries = [person("carol", 7), person("dan", 7)] if other == "entry" else [person("carol", 2)]
+    refused = []
+    persons, _ = cards.host.registry_persons(entries, None, refused)
+    assert refused
+    assert len(persons) == (1 if other == "entry" else 0)
+
+
+def test_project_revocation_reports_all_service_failures(cards):
+    """Prevent an earlier dependency failure from hiding failed revocations in other services."""
+    sync(cards)
+    attempts = []
+
+    def failure(name):
+        def apply(*args):
+            attempts.append(name)
+            raise cards.scope["Refusal"](name + " unavailable", 69)
+
+        return apply
+
+    cards.host.forge_project_apply = failure("forge")
+    cards.host.matrix_members = failure("rooms")
+    cards.host.matrix_admins = failure("admins")
+    with pytest.raises(cards.scope["Refusal"]) as error:
+        cards.host.revoke_project_access("alice")
+    assert attempts == ["forge", "rooms", "admins"]
+    assert all(name + " unavailable" in str(error.value) for name in attempts)
+
+
+def test_sync_does_not_restore_a_locked_person_without_an_account(cards):
+    """Prevent a stale record from causing Linux commands or runtime admission for a missing account."""
+    host = cards.host
+    record = host.records()["alice"]
+    record.update(locked=True, reason="membership")
+    host.record("alice", record)
+    host.accounts.pop("alice")
+    sync(cards)
+    assert host.records()["alice"]["locked"]
+    assert not any(isinstance(args, list) and args[0] == "usermod" and args[-1] == "alice" for args, _ in cards.calls)
+
+
+def test_lock_removes_local_and_forge_access_before_project_cleanup(cards):
+    """Prevent slow project dependencies from prolonging gate access or Forgejo token validity."""
+    sync(cards)
+    cards.calls.clear()
+    cards.host.execute(["lock", "alice"], None)
+    teams = next(index for index, call in enumerate(cards.calls) if call[0] == "teams")
+    gate = next(
+        index for index, call in enumerate(cards.calls) if call[0] == ["gpasswd", "--delete", "alice", "porelo-people"]
+    )
+    forge = next(index for index, call in enumerate(cards.calls) if call[0] == "forge_lock")
+    assert gate < teams and forge < teams
+
+
+def test_malformed_membership_cards_refuse_without_crashing(cards):
+    """Prevent corrupt project state from crashing host revocation with an uncaught exception."""
+    sync(cards)
+    cards.host.path("/etc/porelo-host/projects/alpha.people.json").write_text('{"alice": {}, "ada": null}')
+    with pytest.raises(cards.scope["Refusal"], match="malformed"):
+        cards.host.revoke_project_access("alice")
+
+
+@pytest.mark.parametrize("verb", ["lock", "purge"])
+def test_missing_passwd_account_does_not_crash_locked_record_recovery(cards, monkeypatch, verb):
+    """Prevent production passwd lookup from crashing recovery when no injected account map exists."""
+    host = cards.host
+    record = host.records()["alice"]
+    record["locked"] = True
+    host.record("alice", record)
+    host.accounts = None
+    authorized = host.path("/etc/ssh/authorized_keys/alice")
+    host.write(authorized, ssh_key(2) + "\n", 0o644)
+    lookup = cards.scope["pwd"].getpwnam
+
+    def passwd(user):
+        if user == "alice":
+            raise KeyError(user)
+        return lookup(user)
+
+    monkeypatch.setattr(cards.scope["pwd"], "getpwnam", passwd)
+    if verb == "lock":
+        host.lock("alice", record, True)
+    else:
+        host.purge("alice", record, True, False)
+    assert not authorized.exists()
+    assert not any(
+        isinstance(args, list) and args[0] in ("usermod", "loginctl", "systemctl", "runuser") for args, _ in cards.calls
+    )

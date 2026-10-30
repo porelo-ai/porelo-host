@@ -457,3 +457,38 @@ def test_failed_runtime_cleanup_still_revokes_forge_access_and_reports_the_lefto
     assert error.value.code == 73
     assert services.recorder.users == dict.fromkeys(IDENTITIES, True)
     assert token_file(services).parent.exists()
+
+
+def test_project_team_session_has_organization_scopes(services, monkeypatch):
+    """Prevent Forgejo scope refusal from leaving project team access unreconciled."""
+    scopes = []
+    host = services.host
+    monkeypatch.setattr(host, "forge_token", lambda account, user, scope, name: scopes.append(scope) or ADMIN_TOKEN)
+    monkeypatch.setattr(host, "forge_drop_named", lambda *args: None)
+    monkeypatch.setattr(host, "forge_pages", lambda *args: [])
+    with pytest.raises(services.scope["Refusal"], match="Owners and developers"):
+        host.forge_project_apply("alpha", "alice", {})
+    assert set(scopes[0].split(",")) == {"write:admin", "write:organization", "read:user"}
+
+
+def test_forge_unlock_patches_only_existing_identities(services, monkeypatch):
+    """Prevent absent legacy agent accounts from interrupting membership restoration."""
+    services.recorder.users = dict.fromkeys(OWN, True)
+    patched = []
+
+    def api(opener, base, token, method, identity, expected, data):
+        assert identity in services.recorder.users
+        patched.append(identity)
+
+    monkeypatch.setattr(services.host, "forge_api", api)
+    monkeypatch.setattr(services.host, "forge_drop_named", lambda *args: None)
+    services.host.forge_unlock("alice")
+    assert set(patched) == set(OWN)
+
+
+def test_forge_team_pages_accept_existing_forge_login_characters(services, monkeypatch):
+    """Prevent an unrelated valid Forgejo identity from blocking project access revocation."""
+    rows = [{"login": "Alice_Q.dev"}]
+    replies = iter([rows, []])
+    monkeypatch.setattr(services.host, "forge_api", lambda *args: next(replies))
+    assert services.host.forge_pages(None, "", ADMIN_TOKEN, "teams/1/members", "login") == rows
