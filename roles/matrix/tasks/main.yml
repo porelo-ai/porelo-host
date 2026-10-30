@@ -202,18 +202,6 @@
   environment: "{{ __matrix_environment }}"
   register: __matrix_prepare
 
-# Here, not in a handler: a play that fails later must still find the prepare done, and the homeserver starts below.
-- name: Record the completed Matrix gate preparation
-  ansible.builtin.copy:
-    dest: "{{ __matrix_dir }}/gate.prepared"
-    content: "prepared\n"
-    owner: "{{ matrix_account }}"
-    group: "{{ matrix_account }}"
-    mode: "0600"
-  become: true
-  become_user: "{{ matrix_account }}"
-  when: __matrix_prepare is changed  # noqa: no-handler
-
 - name: Enable and start the Matrix homeserver
   ansible.builtin.systemd_service:
     name: porelo-matrix-homeserver.service
@@ -227,6 +215,34 @@
 
 - name: Restart the Matrix homeserver now if its settings changed
   ansible.builtin.meta: flush_handlers
+
+# The first prepare runs before the homeserver, which only then can make the gate's administrator: until the gate has
+# its admin token, it refuses every sign-in and registration.
+- name: Prepare the Matrix gate again for its administrator once the homeserver answers
+  ansible.builtin.command:
+    argv: ["{{ matrix_transport_command }}", gate, --prepare]
+    creates: "{{ __matrix_dir }}/gate/admin-token"
+  become: true
+  become_user: "{{ matrix_account }}"
+  environment: "{{ __matrix_environment }}"
+  register: __matrix_administrator
+  until: >-
+    __matrix_administrator is skipped
+    or (__matrix_administrator.rc == 0 and (__matrix_administrator.stdout | from_json).administrator | default(false))
+  retries: 20
+  delay: 3
+
+# Here, not in a handler: a play that fails later must still find the prepare done.
+- name: Record the completed Matrix gate preparation
+  ansible.builtin.copy:
+    dest: "{{ __matrix_dir }}/gate.prepared"
+    content: "prepared\n"
+    owner: "{{ matrix_account }}"
+    group: "{{ matrix_account }}"
+    mode: "0600"
+  become: true
+  become_user: "{{ matrix_account }}"
+  when: __matrix_prepare is changed  # noqa: no-handler
 
 - name: Make the Matrix gate's socket group
   ansible.builtin.group:

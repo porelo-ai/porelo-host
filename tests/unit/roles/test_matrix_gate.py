@@ -123,3 +123,18 @@ def test_the_transport_is_called_where_its_package_installs_it():
     assert defaults["matrix_transport_command"] == shipped
     for path in [ROOT / "roles/porelo/files/porelo-host-person", *ROLE.glob("templates/*.j2")]:
         assert "/usr/bin/porelo-message-transport-matrix" not in path.read_text(), path
+
+
+def test_gate_gets_its_administrator_once_the_homeserver_answers():
+    """Prevent a gate prepared before the homeserver ran from refusing every sign-in for want of its admin token."""
+    entries = tasks()
+    names = [t.get("name", "") for t in entries]
+    started = names.index("Restart the Matrix homeserver now if its settings changed")
+    admin = next(i for i, t in enumerate(entries) if "admin-token" in str(t.get("ansible.builtin.command", {})))
+    assert admin > started
+    task = entries[admin]
+    assert task["ansible.builtin.command"]["argv"][1:] == ["gate", "--prepare"]
+    assert task["ansible.builtin.command"]["creates"] == "{{ __matrix_dir }}/gate/admin-token"
+    assert "administrator" in task["until"] and task["retries"] >= 10
+    recorded = names.index("Record the completed Matrix gate preparation")
+    assert recorded > admin

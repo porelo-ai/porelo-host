@@ -13,8 +13,9 @@ The homeserver's listener is `$XDG_RUNTIME_DIR/porelo-matrix-gate/homeserver.soc
 directory owned by `porelo-matrix`. The role writes `PORELO_MATRIX_GATE=1` into its private `homeserver.conf`, in
 which the transport's unit starts Tuwunel there, with nothing behind its loopback port, and makes the directory at each
 start. It removes the TLS settings and runs `gate --prepare` after package installation and before starting the
-homeserver; successful preparation is recorded in a private `gate.prepared` file. Gate services receive the service
-account's `XDG_RUNTIME_DIR` explicitly and start after its user manager.
+homeserver, and once more after it answers, until `gate --prepare` reports `"administrator": true` and the gate holds
+its admin token; only then is the preparation recorded in a private `gate.prepared` file. Gate services receive the
+service account's `XDG_RUNTIME_DIR` explicitly and start after its user manager.
 
 `porelo-host-person sync <project>` takes the `admins` list of logins from `porelo project verify --json`
 after verification of the project's access bundle. Invalid or duplicate logins are refused before access changes.
