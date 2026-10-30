@@ -1,7 +1,7 @@
 ---
 # The bring's last steps, in the project admin's own account: root's sync keeps the host's developers to the signed
-# access file (HO46), now and from the admin's own timer after each bundle the interface uploads; then the project's
-# room, made by the admin's own Porelo as their machine (porelo's B314). An unchanged sync changes nothing.
+# access file, now and from the admin's own timer after each bundle the interface uploads; then the project's
+# room, made by the admin's own Porelo as their machine with `porelo talk room`. An unchanged sync changes nothing.
 - name: own_sync | Keep the host's developers to the signed access file, through root's sync
   ansible.builtin.command:
     argv: [sudo, -n, /usr/local/sbin/porelo-host-person, sync, "{{ porelo_project }}"]
@@ -75,7 +75,7 @@
   check_mode: false
 
 # Porelo hands the transport its secrets from the admin's vault and keeps the room's machines to the applied developer
-# list, at once and after each applied commit, so sync needs no call of its own (porelo's B314).
+# list, at once and after each applied commit, so sync needs no call of its own.
 - name: own_sync | Make the project's room as the admin's machine
   ansible.builtin.command:
     argv: [porelo, talk, room, "{{ porelo_project }}"]
@@ -85,9 +85,9 @@
   changed_when: false
   when: __porelo_room_help.rc == 0
 
-- name: own_sync | Say the room waits for porelo's B314
+- name: own_sync | Say the room waits for porelo's talk room
   ansible.builtin.debug:
     msg: >-
-      the project's room is not made: this porelo has no 'talk room' (porelo's B314); run the bring again once it is
+      the project's room is not made: this porelo has no 'talk room'; run the bring again once it is
       installed
   when: __porelo_room_help.rc != 0

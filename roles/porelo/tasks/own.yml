@@ -144,7 +144,7 @@
       ~ (__porelo_own_forge | to_json) }}
     quiet: true
 
-# Porelo's inventory verified the access bundle the machine file names (porelo's B320); it must be the setup's own.
+# Porelo's inventory verifies the access bundle the machine file names; it must be the setup's own.
 - name: own | Stop where the machine file names another access bundle than the setup's own
   ansible.builtin.assert:
     that: >-
@@ -184,7 +184,7 @@
 
 # Porelo's own rules decide which keys and commits count, on both bundles, from the keys pinned at registration and
 # along each handover since; verify names the newest commits that hold, which say whether to follow again. No --since:
-# after a handover it would need the keys in force, which following names only by print (porelo's B332); the follow
+# after a handover it would need the keys in force, which following names only by print; the follow
 # below refuses a commit that does not descend from the one in force.
 - name: own | Ask Porelo to verify the project and its access file from the uploaded bundles
   ansible.builtin.command:
@@ -219,7 +219,7 @@
   changed_when: false
   check_mode: false
 
-# Followed with the access bundle, its url never fetched (porelo's B331); again only where the address differs, the
+# Followed with the access bundle, its url never fetched; again only where the address differs, the
 # followed commit is none of the bundle's heads or the access commit is not the one verify names; never --unverified.
 - name: own | Follow the project and its access file, checked against the keys in force
   ansible.builtin.command:

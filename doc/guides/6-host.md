@@ -38,7 +38,7 @@ which of theirs follows it.
 
 **Not run:**
 
-- The developer's VPN on laptop B: laptop B's interface brings it up (F216); this guide checks only the host's peer.
+- The developer's VPN on laptop B: laptop B's interface brings it up; this guide checks only the host's peer.
 - `down` after the pass: nothing below checks it.
 
 **About 20 minutes** for the host's checks, beside the walk.
@@ -104,7 +104,7 @@ Expected, each line with `ok:`:
 - **host-prepare.3** `ok: 200`: the homeserver answers at `https://matrix.walk6.porelo.internal:8448`, trusted by your
   CA;
 - **host-prepare.4** `ok: 200`: the forge answers at `https://forge.walk6.porelo.internal:3000`, trusted by your CA;
-- **host-prepare.5** `ok: ` with nothing after it: the forge has no user named `operator` (HO53);
+- **host-prepare.5** `ok: ` with nothing after it: the forge has no user named `operator`, each person's login is their own;
 - **host-prepare.6** `ok: present|present|1`: `porelo-host-person` with its `sync`, `porelo-host-push`, and the rule
   that lets a project's admin run `sync` with sudo.
 
@@ -210,7 +210,7 @@ Then `host-bring passed: <repositories>`.
 
 Then:
 
-- Agent Core's **B314-1** to **B314-3** (`porelo-checks-room.sh`), once: the room the bring made;
+- Agent Core's **B314-1** to **B314-3** (`porelo-checks-room.sh`), once: the room the bring made; <!-- not-a-citation: Agent Core's step names -->
 - Agent Matrix's **matrix-room 1**;
 - Agent Matrix's **matrix-person-admit** for `walkdev`, since the sync admitted the developer.
 
@@ -239,7 +239,7 @@ Then `host-join passed`.
 
 Then:
 
-- Agent Core's **B331-1**, **B331-2**, **B310-1**, **B310-2** and **B311-1** to **B311-3**;
+- Agent Core's **B331-1**, **B331-2**, **B310-1**, **B310-2** and **B311-1** to **B311-3**; <!-- not-a-citation: Agent Core's step names -->
 - Agent Matrix's **matrix-room 2**, once walkdev's Porelo has set up its messages.
 
 <a id="host-push"></a>
@@ -247,7 +247,7 @@ Then:
 ## host-push: both pushes reached GitHub
 
 After the walk's steps where you on laptop A and walkdev on laptop B each push through the host. Each push is the
-gathered push (HO47) in the person's own account.
+gathered push in the person's own account.
 
 **host-push 1.** Run:
 
@@ -297,7 +297,7 @@ Expected: as for two, with l1 alone in steps 2 to 4. Then `host-sync one passed`
 
 Expected:
 
-- **host-sync.2** `ok: locked=true…`: walkdev has no membership left, so the host locked them (HO55);
+- **host-sync.2** `ok: locked=true…`: walkdev has no membership left, so the host locked them;
 - **host-sync.3** `ok: absent`: no ssh key of walkdev is left;
 - **host-sync.4** `ok: ` with nothing after it: no VPN peer of walkdev is left;
 - **host-sync.5** `ok: ` with nothing after it: the developers team is empty;
@@ -313,7 +313,7 @@ Then Agent Matrix's **matrix-room 3**, with its **matrix-person-lock** for `walk
 
 After the walk's step that takes walk6-demo off the host. `remove` first runs the gathered push's check for every
 repository, reading each one's GitHub address from the forge. It refuses while a repository holds commits GitHub does
-not have (HO47).
+not have.
 
 **host-project-remove 1.** Run:
 

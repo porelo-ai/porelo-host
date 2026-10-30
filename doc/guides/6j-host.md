@@ -21,7 +21,7 @@ naming the step, on the state before it. They have not run against a rented host
 
 **Not run:** that Porelo in the admin's account registers on the homeserver as `walk6j-walkadmin`. A person's Porelo
 registers only when it first sets up a project's messages, after `project follow`, which comes with the bring
-(HO45); a 6j host follows no project.
+(the project brought in its admin's own account); a 6j host follows no project.
 
 **About 10 minutes** for the six checks, beside the walk.
 

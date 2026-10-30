@@ -34,7 +34,7 @@ organization (registered first by `porelo-host-project add`) with the central to
 `main` (fast-forward only, one approval from `Owners` or `developers`), makes the teams `developers`, `gates` and
 `agents`, and sets the Actions variables. Both write `~/.config/porelo-host/push/<project>.conf` from the repositories
 the forge lists with their `original_url`. The bring ends with `sudo -n porelo-host-person sync <project>`, a user
-timer that runs it again for each upload, and the project's room through `porelo talk room` once Porelo has it (B314).
+timer that runs it again for each upload, and the project's room through `porelo talk room` once Porelo has that command.
 
 The [local forge](local-forge.md) connects task branches and independent builds to the person's merge and gathered-push
 decisions.
