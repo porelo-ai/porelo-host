@@ -1,6 +1,6 @@
 # HO70 — The Host's State Taken From The Registry
 
-**Status:** Accepted (operator, 2026-10-30, with the project's one-click joining).
+**Status:** Implementing.
 **Size:** M - the registry's intake in root's sync and admit and register checked against it, with unit tests and a VM
 run; measured M median 63 min, from three M builds (47, 63, 75).
 **Blocked by:** Porelo's registry verify.
