@@ -13,22 +13,30 @@ written by the stop, and its key never reaches the host. `tasks_from: request`, 
 does not hold for 30 days more with the host's VPN address and its DNS name, and adds `forge-certificate` to
 `porelo_host_needs`. `tls` moves the forge's signed certificate and its key into the forge account's `tls/`, never
 copying them, and refuses naming `forge-certificate` where none holds. `/etc/porelo-host/forge.conf` names the host's
-VPN address, host label, forge name, homeserver name, port, person and account to the stop and the password script; it
-holds no secret.
+VPN address, host label, forge name, homeserver name, port, account and configured agents to the stop and the host's
+helpers; it holds no secret.
 
-With every forge, `forge_person` (default `operator`, matching `^[a-z][a-z0-9-]{0,30}$`) is the person's web login,
-made only when absent, its generated password discarded.
-`/usr/local/sbin/porelo-host-forge-password`, root's alone, takes the person's lasting password on standard input and
-sets it through the admin API with a token it makes for the call and keeps in memory; see the
+`up` creates no default forge user, and deletes an unrecorded `operator` forge user left outside
+`/etc/porelo-host/people/`. Each person gets their forge login when admitted by `porelo-host-person`.
+`/usr/local/sbin/porelo-host-forge-password`, root's alone and run through `sudo` as an admitted person, takes their
+lasting password on standard input and sets it on their own login through the admin API with a token it makes for the
+call and keeps in memory; direct root calls without `SUDO_USER` refuse with `64`; see the
 [local forge guide](../../doc/local-forge.md#credentials-belong-to-their-destination). Down removes the script and
 `forge.conf`.
 
-`up` prepares the forge without repositories (`forge_repositories` stays empty on the host); the repository migration,
-owner, gate, branch protection, publisher, agent token and gathered push task files remain on disk uncalled by `up`.
+`up` prepares the forge without repositories (`forge_repositories` stays empty on the host) and installs
+`/usr/local/sbin/porelo-host-push` (`0755`, run by any project developer in their own account from
+`~/.config/porelo-host/push/<project>.conf` with `<forge_name>.person` from their vault, and as root with `--check` by
+`porelo-host-project remove` against Forgejo's `original_url`) together with `/etc/porelo-host/forge/central-ca.conf`
+(`0644`, holding `forge_central_ca`). `porelo.host.bring` and `porelo.host.join` write each person's
+`~/.config/porelo-host/push/<project>.conf` from the repositories they reach on the forge.
 
-`/usr/local/sbin/porelo-host-project`, root's alone, registers an organization with its recorded admin, signing
-key in Porelo's canonical `ssh-ed25519 <base64>` signer format and package-only publisher, or checks its commits
-against the central forge before removal. Its credentials stay in memory and Forgejo;
+`/usr/local/sbin/porelo-host-project`, root's alone, registers an organization with an unlocked member in
+`/etc/porelo-host/people/` (recording `member=<project> project-admin`), a signing key in Porelo's canonical
+`ssh-ed25519 <base64>` signer format and a package-only publisher, or checks its commits against the central forge
+before removing the project (including any `commit=`, `access_commit=` and `signer=` lines recorded by
+`porelo-host-person sync`), dropping its memberships from `/etc/porelo-host/people/` and locking each person left with
+none through `/usr/local/sbin/porelo-host-person lock`. Its credentials stay in memory and Forgejo;
 [project registration](../../doc/local-forge.md#registering-a-project)
 describes the records, refusal checks and failure behavior. Down removes the helper and project records.
 

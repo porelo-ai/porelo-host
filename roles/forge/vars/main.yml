@@ -10,6 +10,11 @@ __forge_image: >-
 # The person's token for migration from the central forge, where porelo-host-stop --stdin forge-central-token writes
 # it, root's alone on the tmpfs; only the shell reads it into the request, and the migration removes it.
 __forge_central_token: /run/porelo-host/forge-central.token
+# Whose alone the central token and the API token must be, and what to run again once it is given; bring names the
+# project admin and itself.
+__forge_secret_uid: 0
+__forge_secret_owner: root
+__forge_secret_rerun: up
 __forge_to_migrate: "{{ __forge_repositories_state.results | selectattr('stdout', 'equalto', 'missing')
   | map(attribute='item.name') | list }}"
 
@@ -43,3 +48,30 @@ __forge_runner_jdk:
   sha256: 68982529869257d0ee6b824ec5aa270ff8b118bb438670da0b97ebdab178d7fb
 __forge_runner_jdk_dir: "/opt/porelo-host/jdk-{{ __forge_runner_jdk.version }}"
 __forge_runner_jdk_job_dir: /opt/porelo-jdk-25
+
+# The project's teams the bring makes in its organization, with no members: sync puts people into developers, and each
+# task's gate and agent identity into gates and agents. Each writes every repository of the organization and creates
+# none; Forgejo 17 reads the access from units_map alone.
+__forge_teams:
+  - name: developers
+    includes_all_repositories: true
+    can_create_org_repo: false
+    units_map: {repo.code: write, repo.pulls: write, repo.issues: write, repo.actions: read, repo.packages: read}
+  - name: gates
+    includes_all_repositories: true
+    can_create_org_repo: false
+    units_map: {repo.code: write, repo.pulls: write, repo.actions: read}
+  - name: agents
+    includes_all_repositories: true
+    can_create_org_repo: false
+    units_map: {repo.code: write, repo.pulls: write, repo.issues: write, repo.actions: read, repo.packages: read}
+
+# bring and join: the host's forge as /etc/porelo-host/forge.conf names it, and the person's runtime directory, where
+# their stop leaves the central token and the play keeps their own forge token while it runs. Both role's vars, so the
+# play's own settings never move a token's path.
+__forge_own_settings: "{{ dict(__forge_own_conf.content | b64decode | split('\n') | select('match', '^[a-z_]+=')
+  | map('split', '=', 1) | list) }}"
+__forge_own_uid: "{{ ansible_facts['getent_passwd'][porelo_account][1] | int }}"
+__forge_own_dir: "/run/user/{{ __forge_own_uid }}/porelo-host"
+__forge_own_environment:
+  XDG_RUNTIME_DIR: "/run/user/{{ __forge_own_uid }}"

@@ -1,0 +1,121 @@
+---
+# The organization's Actions variables and placeholder secrets, by whichever token __forge_token names: the forge
+# admin's for publisher, the project admin's own for bring.
+- name: variables | Check the organization's variable names and values before they reach the API
+  ansible.builtin.assert:
+    that:
+      - item.key is match('^[A-Z_][A-Z0-9_]*$')
+      - item.value is string
+      - item.value | length > 0
+    fail_msg: "asked for an uppercase variable name and a nonempty string value, got {{ item }}"
+    quiet: true
+  loop: "{{ forge_variables | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: variables | Set each organization Actions variable only when absent or different
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      api() { curl -sS --max-time 10 --cacert {{ __forge_ca_dir }}/ca.pem \
+          -H @<(printf 'Authorization: token %s\n' "$(cat {{ __forge_token }})") \
+          -H 'Content-Type: application/json' "$@"; }
+      base=https://{{ forge_address }}:{{ forge_http_port }}/api/v1/orgs/{{ forge_owner }}/actions/variables
+      variable=$base/{{ item.key }}
+      body={{ {'value': item.value} | to_json | quote }}
+      answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
+      code=$(api -o "$answer" -w '%{http_code}' "$variable")
+      method=POST
+      if [ "$code" = 200 ]; then
+          same=$(python3 -I -c 'import json,sys; actual=json.load(open(sys.argv[1])); wanted=json.loads(sys.argv[2]);
+      print("yes" if actual["data"] == wanted["value"] else "no")' "$answer" "$body")
+          [ "$same" != yes ] || { echo unchanged; exit 0; }
+          method=PUT
+      elif [ "$code" != 404 ]; then
+          echo "asked for variable {{ item.key }} or 404, got HTTP $code" >&2; exit 1
+      fi
+      code=$(api -o /dev/null -w '%{http_code}' -X "$method" "$variable" --data "$body")
+      [ "$code" = 204 ] \
+          || { echo "asked for $method of variable {{ item.key }} to return 204, got HTTP $code" >&2; exit 1; }
+      code=$(api -o "$answer" -w '%{http_code}' "$variable")
+      [ "$code" = 200 ] \
+          || { echo "asked to read variable {{ item.key }} after $method, got HTTP $code" >&2; exit 1; }
+      python3 -I -c 'import json,sys; actual=json.load(open(sys.argv[1])); wanted=json.loads(sys.argv[2])["value"];
+      if actual["data"] != wanted:
+          sys.exit("asked for variable {{ item.key }}=" + repr(wanted) + ", got " + repr(actual["data"]))' \
+          "$answer" "$body"
+      echo yes
+    executable: /bin/bash
+  loop: "{{ forge_variables | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: __forge_variables_set
+  changed_when: __forge_variables_set.stdout | default('') == 'yes'
+  failed_when: false
+  no_log: true
+
+- name: variables | Stop when Forgejo would not take a variable, with its answer
+  ansible.builtin.assert:
+    that: __forge_variables_set.results | rejectattr('rc', 'equalto', 0) | list | length == 0
+    fail_msg: >-
+      {{ __forge_variables_set.results | rejectattr('rc', 'equalto', 0) | map(attribute='stderr') | join('; ') }}
+    quiet: true
+
+- name: variables | Check the placeholder secret names before they reach the API
+  ansible.builtin.assert:
+    that: item is match('^[A-Z_][A-Z0-9_]*$')
+    fail_msg: "asked for an uppercase placeholder secret name, got {{ item }}"
+    quiet: true
+  loop: "{{ forge_placeholder_secrets }}"
+
+# The Actions secrets API requires nonempty data, so missing names get a fixed nonsecret value.
+- name: variables | Create each placeholder secret only when its name is absent
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      api() { curl -sS --max-time 10 --cacert {{ __forge_ca_dir }}/ca.pem \
+          -H @<(printf 'Authorization: token %s\n' "$(cat {{ __forge_token }})") \
+          -H 'Content-Type: application/json' "$@"; }
+      base=https://{{ forge_address }}:{{ forge_http_port }}/api/v1/orgs/{{ forge_owner }}/actions/secrets
+      answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
+      has_secret() {
+          local page code state previous= digest
+          for page in $(seq 1 100); do
+              code=$(api -o "$answer" -w '%{http_code}' "$base?limit=50&page=$page") || return 2
+              [ "$code" = 200 ] \
+                  || { echo "asked for secret names on page $page, got HTTP $code" >&2; return 2; }
+              state=$(python3 -I -c 'import json,sys; names=[s["name"] for s in json.load(open(sys.argv[1]))];
+      print("found" if sys.argv[2] in names else "next" if names else "absent")' \
+                  "$answer" {{ item | quote }}) || return 2
+              case "$state" in found) return 0 ;; absent) return 1 ;; esac
+              digest=$(sha256sum "$answer" | cut -d' ' -f1) || return 2
+              [ "$digest" != "$previous" ] \
+                  || { echo "asked for the next page of secret names, got the same page again" >&2; return 2; }
+              previous=$digest
+          done
+          echo "asked to finish listing secret names within 100 pages, got more pages" >&2; return 2
+      }
+      rc=0
+      has_secret || rc=$?
+      [ "$rc" != 0 ] || { echo unchanged; exit 0; }
+      [ "$rc" = 1 ] || exit 1
+      code=$(printf '%s\n' '{"data":"porelo-host-placeholder"}' \
+          | api -o /dev/null -w '%{http_code}' -X PUT "$base/{{ item }}" --data @-)
+      [ "$code" = 201 ] \
+          || { echo "asked to create secret {{ item }} with HTTP 201, got HTTP $code" >&2; exit 1; }
+      has_secret || { echo "asked for secret {{ item }} after creation, got no confirmed name" >&2; exit 1; }
+      echo yes
+    executable: /bin/bash
+  loop: "{{ forge_placeholder_secrets }}"
+  register: __forge_placeholder_secrets_set
+  changed_when: __forge_placeholder_secrets_set.stdout | default('') == 'yes'
+  failed_when: false
+  no_log: true
+
+- name: variables | Stop when Forgejo would not take a placeholder secret, with its answer
+  ansible.builtin.assert:
+    that: __forge_placeholder_secrets_set.results | rejectattr('rc', 'equalto', 0) | list | length == 0
+    fail_msg: >-
+      {{ __forge_placeholder_secrets_set.results | rejectattr('rc', 'equalto', 0)
+      | map(attribute='stderr') | join('; ') }}
+    quiet: true

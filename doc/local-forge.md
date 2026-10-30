@@ -94,7 +94,8 @@ both forges let workflows select their destinations without editing the workflow
 With the forge running, root registers a project through
 `porelo-host-project add <project> <admin> --signed-by 'ssh-ed25519 <base64>'`.
 The project name is 1 to 40 lowercase letters or digits, with hyphens allowed inside. The admin's user name must have
-a plain root-only record `/etc/porelo-host/people/<admin>.conf` and an existing forge login. The signing key is the
+an unlocked plain root-only record `/etc/porelo-host/people/<admin>.conf` holding at least one membership, and an
+existing forge login. The signing key is the
 project's SSH Ed25519 public key, in the form Porelo's `project.yml` uses in `signers`: one argument containing
 `ssh-ed25519 <base64>`, with one space and no comment. Its canonical base64 decodes to the 51-byte SSH wire format:
 the `ssh-ed25519` string header and a 32-byte public key. The bytes re-encode to exactly the supplied base64.
@@ -106,19 +107,27 @@ access or repository creation. Its `write:package` token becomes the organizatio
 `PORELO_PUBLISHER_TOKEN`. The generated password is discarded; no credential reaches stdout or a record.
 
 `/etc/porelo-host/projects/<project>.conf`, root's with mode `0600`, holds `admin`, `signed_by` and `publisher` as
-`key=value` lines. Both record directories are root's with mode `0700`. An existing record, organization, user or
-publisher name is refused before registration changes the forge. Success prints one compact JSON line, in this
-field order: `{"project":"<project>","admin":"<admin>","organization":"<project>","publisher":"porelo-publisher-<project>"}`.
+`key=value` lines (and, once `porelo-host-person sync` has run, `commit`, `access_commit` and one `signer` line per
+verified project signing key), and registration adds `member=<project> project-admin` in fixed order to
+`/etc/porelo-host/people/<admin>.conf`. Both record directories are root's with mode `0700`. An existing record,
+organization, user or publisher name is refused before registration changes the forge. Success prints one compact JSON
+line, in this field order:
+`{"project":"<project>","admin":"<admin>","organization":"<project>","publisher":"porelo-publisher-<project>"}`.
 The helper accepts no environment overrides for its paths or authority.
 
 `porelo-host-project remove <project>` first lists every repository and package version. For repositories, it calls
 the gathered push's read-only `--check <project> <repositories...>` mode, asking for the central token with hidden
-input. Every repository must have a central address in `/etc/porelo-host/forge/push.conf`. Every commit reachable
-from a local ref, including task branches and tags, must be reachable from a central ref. Missing settings, an
-unreachable forge or unpushed commits refuse removal before any deletion; the comparison pushes nothing.
+input. `--check` reads each repository's central `https://` `original_url` kept by Forgejo from its migration through
+the admin API and trusts the central forge by `/etc/porelo-host/forge/central-ca.conf` (the system CA bundle
+`/etc/ssl/certs/ca-certificates.crt` unless `porelo_host_forge_central_ca` names another); a repository without an
+`original_url` is refused by name. Every commit reachable from a local ref, including task branches and tags, must be
+reachable from a central ref. Missing settings, an unreachable forge or unpushed commits refuse removal before any
+deletion; the comparison pushes nothing.
 
 Once the check passes, removal deletes the repositories and package versions, then the organization and publisher,
-and finally its record. Success prints `{"project":"<project>","removed":true}`. Registration attempts cleanup of
+drops `member=<project> …` from every person record in `/etc/porelo-host/people/` and removes the project record, and
+locks each unlocked person left with no membership through `porelo-host-person lock`. Success prints
+`{"project":"<project>","removed":true,"locked":[<users>]}`. Registration attempts cleanup of
 its own new identities if an API operation fails. Deletion spans separate API operations; a failure after deletion
 starts can leave part of the project removed, with its record retained and a nonzero exit. Keep the project idle
 while removing it so a concurrent push cannot add work after the check. `down` removes the helper and project records
@@ -133,11 +142,52 @@ Every refusal goes to stderr as `porelo-host-project: <words>`, with no success 
 | `69` | A needed dependency or setting is missing, unavailable or not root's, including a caller who is not root |
 | `73` | A directory, record, temporary file or command output cannot be written or removed |
 
+## Keeping a project's developers in step
+
+`/usr/local/sbin/porelo-host-person` manages host people under the exclusive flock on `/etc/porelo-host/forge.conf`,
+with the same refusal prefix (`porelo-host-person: <words>` on stderr) and exit codes (`64`, `65`, `69`, `73`). Root
+calls `add <user> --role project-admin` (recording `member=hand`), `lock <user>` and `purge <user>`. Either root or the
+project's unlocked recorded admin (`sudo -n /usr/local/sbin/porelo-host-person sync <project>`, permitted to
+`%porelo-people` in `/etc/sudoers.d/porelo-host-person` and checked by the helper against `SUDO_USER` and `admin=` in
+`/etc/porelo-host/projects/<project>.conf`) calls `sync <project>`.
+
+`porelo-host-person sync <project>` reconciles the project's developers with its signed bundles:
+
+1. Root traverses `<admin home>/.local/share/porelo-host/setup/<project>/` without following symlinks, requires
+   `project.bundle` and `access.bundle` to be plain files owned by the admin and not writable by group or others, and
+   copies both into a fresh `0700` root-only directory under `/run/porelo-host/sync/`, removed before `sync` exits.
+2. Root runs `porelo project verify --json` through `systemd-run --pipe --wait --quiet --collect` in transient unit
+   `porelo-host-sync-<project>` with `DynamicUser=yes`, `PrivateNetwork=yes`, `ProtectHome=yes` and `LoadCredential=`
+   for both copied bundles. Verification pins `signed_by=` from the project record on the first run and the recorded
+   `signer=` keys thereafter, passing `--since` and `--access-since` once commits are recorded. A nonzero exit refuses
+   with `65` and Porelo's stderr words.
+3. `access.yml`'s `host:` block must match this host's VPN `network`, live `wg-porelo` `wireguard_public_key` and
+   `ca_sha256` (the 64-digit lowercase hex SHA-256 of the DER certificate in `/etc/porelo-host/forge/ca.pem`), or
+   `sync` refuses (`65`) naming every differing field.
+4. When both verified commit IDs equal the project record's `commit=` and `access_commit=`, `sync` changes nothing and
+   answers with `"unchanged":true`. Otherwise it checks the entire diff against `/etc/porelo-host/people/`, host
+   accounts and groups before changing anything: an invalid user name, a system or unrecorded account, an existing
+   group name for a new user, a locked person listed again (who must be purged first), or an SSH key, WireGuard key or
+   VPN address outside the network, reserved or held by another person refuses the whole run (`65`) naming every
+   offending entry. `forge_login` in the verified JSON is ignored; the person's host login is their local forge login.
+5. Unchanged laptops keep their recorded names; newly added laptops receive the lowest free `l1`, `l2`, … name on that
+   person's record. A listed developer with no record is admitted with `member=<project> developer` (host account,
+   VPN-restricted SSH keys, WireGuard peers, local forge identities and Matrix machine token). An existing unlocked
+   person receives `member=<project> developer` without a second account, with added laptops admitted and dropped
+   laptops removed individually from `/etc/ssh/authorized_keys/<user>` and WireGuard. A person no longer listed loses
+   `member=<project> developer` and is locked only when no membership remains; `member=hand` and
+   `member=<project> project-admin` are never changed by `sync`.
+6. The organization's `developers` team on the local forge is brought to the listed developers' host logins; if that
+   team is missing, `sync` refuses (`65`) naming `developers` and `"run bring first"` before changing people or records.
+7. `/etc/porelo-host/projects/<project>.conf` is updated atomically with `commit=`, `access_commit=` and the verified
+   `signer=` lines, and stdout prints one compact JSON line:
+   `{"project":"<project>","commit":"<commit>","access_commit":"<access_commit>","added":[...],"dropped":[...],"laptops_added":["<user>/<laptop>",...],"laptops_dropped":["<user>/<laptop>",...],"unchanged":false}`.
+
 ## The person's two decisions
 
 **First, accept the work by merging `porelo/<task>` into local `main`.** The person reads the pull request and its local
-build before merging in Forgejo. On every configured repository, `up` protects local `main`: direct pushes are disabled,
-one approval is required, and only the person's account (`forge_person`, default `operator`) can supply the counted
+build before merging in Forgejo. On every configured repository, local `main` is protected: direct pushes are disabled,
+one approval is required, and only members of `Owners` or `developers` can supply the counted
 approval and merge the pull request. Administrator merge overrides are disabled. The pull request reaches `main` by
 fast-forward only, so its own commits arrive unchanged and the forge adds no commit of its own. Status checks are not
 required; the
@@ -153,17 +203,25 @@ lifecycle steps are not built:
 - End the task after the person merges its pull request: not built yet.
 
 **Second, start a gathered push of accepted local `main` to the central forge.** This is a separate decision about
-sending the merged work outward. The person starts it on the host over SSH, naming the repositories in their order:
+sending the merged work outward. Any developer or admin of the project runs it in their own account on the host over
+SSH, never as root and never through `sudo` (root is refused with `77`), naming the project and optionally the
+repositories in their order:
 
-    sudo porelo-host-push porelo-message-sluice
+    porelo-host-push porelo
+    porelo-host-push porelo porelo-message-sluice
 
-It asks once for the central forge's token, without showing it, and keeps it only for the run. For each repository it
-reads local `main` with the forge admin's token and pushes it to the repository's migration source with a plain
-`git push` without force, the next only once the one before was taken. A repository the forge does not hold is refused
-before anything is read. `/etc/porelo-host/forge/push.conf`, root's, names the repositories, their central
-addresses and the authority the central forge is trusted by, `porelo_host_forge_central_ca`, the system's CA bundle by
-default; the host's own CA is never trusted for it. `up` writes the file where repositories are configured, and
-`down` removes it with the command.
+Without repository names it pushes every repository `~/.config/porelo-host/push/<project>.conf` names, in the config's
+order; with names, those, refusing an unknown or duplicate name before asking for credentials. The config is read only
+from the caller's `getent passwd` home (never `$HOME`): a plain file of theirs, not a link, mode `0600`, in a `0700`
+directory of theirs, written by `porelo.host.bring` and `porelo.host.join` from the repositories the person reaches on
+the forge and their `original_url`; anything else is refused naming what was found. It reads local `main` with the
+person's own local forge token `<forge_name>.person` from their vault (a missing entry refuses with `69`, naming the
+entry and `porelo-host-stop --stdin identities`), asks once on the terminal for their central forge write token without
+showing it (`Token for the central forge (not shown): `) and keeps it only for the run, and pushes local `main` to each
+repository's central address with a plain `git push` without force, the next only once the one before was taken. The
+config's `central-ca` names the authority the central forge is trusted by (`porelo_host_forge_central_ca`, the system's
+CA bundle by default), never the host's own CA unless configured so. `up` installs `/usr/local/sbin/porelo-host-push`
+(`0755`) and `/etc/porelo-host/forge/central-ca.conf` (`0644`), and `down` removes both.
 
 When central `main` holds commits local `main` lacks, the push is refused and nothing is lost on either forge. The
 command names those commits and brings central `main` to the local forge as the branch `central/main`. A task joins
@@ -184,20 +242,21 @@ An agent's push starts the workflows' `push` and `pull_request` runs, but the fo
 (`403`), since the team only reads Actions. Its token also reads no job's log (`404` through the API), no push mirror
 (`403`) and not its own user (`403`, no `read:user` scope).
 
-The person's web login is `operator` (`forge_person`), made with every forge, whether repositories are migrated into it
-or not. With repositories configured it belongs to the organization's `Owners` team, so the person can read private
-repositories, build runs and packages and merge pull requests. The
-interface's VPN step resolves `forge.porelo.internal` (`forge_name`) to the host's VPN address (`forge_address`), and
-the person's computer trusts their own lasting CA, made once on the desktop with a name constraint that holds it to
-`porelo.internal` and the VPN's network; its key stays in the person's secrets file and never reaches a host. Each
+Each admitted person's web login is their own account name, created by `porelo-host-person` rather than pre-created as
+`operator` by `up`. In a project they own or join they belong to its `Owners` or `developers` team, so they can read
+private repositories, build runs and packages and merge pull requests. The
+interface's VPN step resolves `forge.<host>.porelo.internal` (`forge_name`) to the host's VPN address (`forge_address`), and
+the person's computer trusts the host's lasting CA, made once on the desktop with a name constraint that holds it to
+`porelo.internal` and the VPN's network; its key stays in the secrets file and never reaches a host. Each
 host's forge certificate is signed by that CA at the stop: the host makes a key and a request, the stop's `--request`
 prints the request, and the desktop's answer comes back as `forge-certificate` on the stop's standard input, checked
 before it is written (the [line contract](lines.md)).
 
-The person's password is lasting too, kept in the secrets file: once `up` has ended, the desktop pipes it over ssh into
-`porelo-host-forge-password`, a root script on the host, which sets it on the new forge with no change asked at the
-next sign-in. The password lives only in that script's memory and the request to the forge's admin API; no host file
-holds it, and Forgejo's own generated first password goes nowhere.
+Each person's password is lasting too, kept in their secrets file: over their own SSH session, the desktop pipes it
+into `sudo /usr/local/sbin/porelo-host-forge-password`, which sets it on their own forge login with no change asked at
+the next sign-in and refuses direct root calls without `SUDO_USER` (`64`). The password lives only in that script's
+memory and the request to the forge's admin API; no host file holds it, and Forgejo's own generated first password goes
+nowhere.
 
 The registry publisher is a separate account. Its package token stays with Forgejo and runner jobs as
 `PORELO_PUBLISHER_TOKEN`; it is not handed to tasks. The host build reader's credential and a task's declared service

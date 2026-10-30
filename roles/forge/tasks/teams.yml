@@ -1,0 +1,64 @@
+---
+# The project's teams, each made where missing and set back where it differs, read back after; members are sync's.
+# Only fixed status words leave this credential-bearing task.
+- name: teams | Make each of the project's teams, or set it back to its access
+  ansible.builtin.shell:
+    cmd: |
+      set -Eeuo pipefail
+      exec 2> /dev/null
+      trap 'echo failed; exit 0' ERR
+      refuse() { echo "$1"; exit 0; }
+      umask 077
+      api() { curl -sS --max-time 10 --cacert {{ __forge_ca_dir }}/ca.pem \
+          -H @<(sed 's/^/Authorization: token /' {{ __forge_token }}) \
+          -H 'Content-Type: application/json' "$@"; }
+      base=https://{{ forge_address }}:{{ forge_http_port }}/api/v1
+      answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
+      desired={{ item | combine({'units': item.units_map.keys() | list}) | to_json | quote }}
+      # The list, not the search: a search finds only the teams its caller belongs to unless a site admin asks.
+      code=$(api -o "$answer" -w '%{http_code}' "$base/orgs/{{ forge_owner }}/teams?limit=50")
+      [ "$code" = 200 ] || refuse "team-list-http-$code"
+      team=$(python3 -I -c 'import json,sys; teams=json.load(open(sys.argv[1])); assert len(teams) < 50
+      print(next((int(t["id"]) for t in teams if t["name"] == sys.argv[2]), ""))' "$answer" {{ item.name }})
+      changed=unchanged
+      if [ -z "$team" ]; then
+          code=$(api -o "$answer" -w '%{http_code}' -X POST "$base/orgs/{{ forge_owner }}/teams" -d "$desired")
+          [ "$code" = 201 ] || refuse "team-create-http-$code"
+          team=$(python3 -I -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["id"]))' "$answer")
+          changed=made
+      fi
+      matches() { python3 -I -c 'import json,sys
+      actual=json.load(open(sys.argv[1])); desired=json.loads(sys.argv[2])
+      sys.exit(0 if all(actual.get(k) == v for k,v in desired.items() if k != "units") else 1)' "$answer" "$desired"; }
+      code=$(api -o "$answer" -w '%{http_code}' "$base/teams/$team")
+      [ "$code" = 200 ] || refuse "team-read-http-$code"
+      if ! matches; then
+          code=$(api -o "$answer" -w '%{http_code}' -X PATCH "$base/teams/$team" -d "$desired")
+          [ "$code" = 200 ] || refuse "team-update-http-$code"
+          code=$(api -o "$answer" -w '%{http_code}' "$base/teams/$team")
+          [ "$code" = 200 ] && matches || refuse team-settings-differ
+          changed=made
+      fi
+      echo "$changed"
+    executable: /bin/bash
+  loop: "{{ __forge_teams }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: __forge_teams_made
+  changed_when: __forge_teams_made.stdout | default('') == 'made'
+  failed_when: false
+  no_log: true
+
+- name: teams | Stop when a team cannot be made or set back to its access
+  ansible.builtin.assert:
+    that: item.rc == 0 and item.stdout in ['made', 'unchanged']
+    fail_msg: >-
+      asked for {{ forge_owner }}'s team {{ item.item.name }} with {{ item.item.units_map | to_json }} on every
+      repository and no repository creation; got
+      {{ item.stdout | regex_search('^[a-z0-9-]{1,80}$') | default('no status', true) }}
+      (HTTP statuses name the refused operation; team-settings-differ: readback differs; failed: command or response
+      failed)
+    quiet: true
+  loop: "{{ __forge_teams_made.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"

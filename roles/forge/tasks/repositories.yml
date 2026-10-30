@@ -75,10 +75,12 @@
     that: >-
       __forge_to_migrate | length == 0
       or (__forge_central_token_file.stat.isreg | default(false) and __forge_central_token_file.stat.size > 0
-          and __forge_central_token_file.stat.uid == 0 and __forge_central_token_file.stat.mode == '0600')
+          and __forge_central_token_file.stat.uid == __forge_secret_uid | int
+          and __forge_central_token_file.stat.mode == '0600')
     fail_msg: >-
       forge-central-token: {{ __forge_to_migrate | join(', ') }} still to migrate, and no token for the central forge
-      of root's alone is given; give it with porelo-host-stop --stdin forge-central-token and run up again
+      of {{ __forge_secret_owner }}'s alone is given; give it with porelo-host-stop --stdin forge-central-token and
+      run {{ __forge_secret_rerun }} again
     quiet: true
 
 # The token goes after the migration, and also where it was given with nothing left to migrate.

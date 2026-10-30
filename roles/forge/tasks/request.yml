@@ -19,7 +19,7 @@
     quiet: true
 
 # The stop checks both certificates against these; none of them is a secret. Only a host whose forge is on names its
-# account and agents, which is how porelo-host-person tells whether people get forge identities.
+# account, which is how porelo-host-person tells whether people get forge identities: their login and gate alone.
 - name: request | Name the host, the forge and the homeserver to the stop
   ansible.builtin.copy:
     dest: /etc/porelo-host/forge.conf
@@ -29,10 +29,8 @@
       name={{ forge_name }}
       matrix_name={{ forge_matrix_name }}
       port={{ forge_http_port }}
-      person={{ forge_person }}
       {% if porelo_host_forge | default(false) | bool %}
       account={{ forge_account }}
-      agents={{ forge_agents | join(',') }}
       {% endif %}
     owner: root
     group: root

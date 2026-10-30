@@ -1,10 +1,12 @@
-"""Exercise the gathered push against local repositories standing in for both forges."""
+"""Exercise the gathered push as an unprivileged developer and its root check against local repositories."""
 
 import base64
+import json
 import os
 import shutil
 import signal
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -13,8 +15,14 @@ import pytest
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "roles/forge/files/porelo-host-push"
 ADMIN_TOKEN = "admin-token-4f1c9e"
+PERSON_TOKEN = "person-token-9a3e1d"
 CENTRAL_TOKEN = "central-token-7b2d5a"
+FORGE_NAME = "forge.alpha.porelo.internal"
+LOCAL_BASE = "https://127.0.0.1:3000"
+CENTRAL_BASE = "https://central.example"
+ELSEWHERE_BASE = "https://elsewhere.example"
 GIT = shutil.which("git")
+REAL_STAT = shutil.which("stat")
 IDENTITY = {
     "GIT_AUTHOR_NAME": "Fixture",
     "GIT_AUTHOR_EMAIL": "fixture@example.org",
@@ -57,9 +65,10 @@ def bare(path, source=None):
     return path
 
 
-def moved(script, fixed, replacement):
-    assert script.count(fixed) == 1, f"the command names {fixed!r} once"
-    return script.replace(fixed, replacement)
+def moved_if_present(script, fixed, replacement):
+    count = script.count(fixed)
+    assert count <= 1, f"the command names {fixed!r} {count} times"
+    return script.replace(fixed, replacement) if count == 1 else script
 
 
 @pytest.fixture
@@ -68,45 +77,234 @@ def host(tmp_path):
 
     The command starts again with an empty environment, so each stub has its paths written into it.
     """
+    person_uid = os.getuid() if os.getuid() != 0 else 1000
     etc = tmp_path / "etc"
-    etc.mkdir()
-    (etc / "api.token").write_text(ADMIN_TOKEN + "\n")
-    for ca in ("ca.pem", "central-ca.pem"):
-        (etc / ca).write_text("")
-        (etc / ca).chmod(0o644)
+    forge_etc = etc / "forge"
+    forge_etc.mkdir(parents=True, mode=0o755)
+    for ca in (forge_etc / "ca.pem", forge_etc / "central-ca.pem", etc / "system-ca.pem"):
+        ca.write_text("")
+        ca.chmod(0o644)
+    (etc / "forge.conf").write_text(
+        f"address=127.0.0.1\nhost=alpha\nname={FORGE_NAME}\n"
+        "matrix_name=matrix.alpha.porelo.internal\nport=3000\naccount=porelo-forge\n"
+    )
+    (etc / "forge.conf").chmod(0o644)
+
+    forge_home = tmp_path / "forge-home"
+    (forge_home / ".config" / "porelo-forge").mkdir(parents=True, mode=0o700)
+    api_token = forge_home / ".config" / "porelo-forge" / "api.token"
+    api_token.write_text(ADMIN_TOKEN + "\n")
+    api_token.chmod(0o600)
+
+    alice_home = tmp_path / "home" / "alice"
+    alice_push = alice_home / ".config" / "porelo-host" / "push"
+    alice_push.mkdir(parents=True, mode=0o700)
+    for parent in (alice_home, alice_home / ".config", alice_home / ".config" / "porelo-host"):
+        parent.chmod(0o750)
+
+    bob_home = tmp_path / "home" / "bob"
+    bob_push = bob_home / ".config" / "porelo-host" / "push"
+    bob_push.mkdir(parents=True, mode=0o700)
+
+    decoy_home = tmp_path / "decoy-home"
+    (decoy_home / ".config" / "porelo-host" / "push").mkdir(parents=True, mode=0o700)
+    decoy_conf = decoy_home / ".config" / "porelo-host" / "push" / "porelo.conf"
+    decoy_conf.write_text(
+        f"local {ELSEWHERE_BASE}\nowner porelo\ncentral-ca {forge_etc / 'central-ca.pem'}\n"
+        f"repository stand-in {ELSEWHERE_BASE}/stand-in.git\n"
+    )
+    decoy_conf.chmod(0o600)
+
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     temporary = tmp_path / "temporary"
     temporary.mkdir()
     calls = tmp_path / "calls"
+    vault_calls = tmp_path / "vault-calls"
 
     script = SCRIPT.read_text()
-    script = moved(script, "/etc/porelo-host/forge/push.conf", str(etc / "push.conf"))
-    script = moved(script, "/home/porelo-forge/.config/porelo-forge/api.token", str(etc / "api.token"))
-    script = moved(script, "/etc/porelo-host/forge/ca.pem", str(etc / "ca.pem"))
-    script = moved(script, "PATH=/usr/sbin:/usr/bin:/sbin:/bin", f"PATH={bin_dir}:/usr/sbin:/usr/bin:/sbin:/bin")
-    script = moved(script, "work=$(mktemp -d)", f"work=$(mktemp -d -p {temporary})")
-    script = moved(script, "ca_owner=0", f"ca_owner={os.getuid()}")
+    script = moved_if_present(script, "/etc/porelo-host/forge/push.conf", str(forge_etc / "push.conf"))
+    script = moved_if_present(script, "/home/porelo-forge/.config/porelo-forge/api.token", str(api_token))
+    script = moved_if_present(script, "/etc/porelo-host/forge.conf", str(etc / "forge.conf"))
+    script = moved_if_present(script, "/etc/porelo-host/forge/ca.pem", str(forge_etc / "ca.pem"))
+    script = moved_if_present(script, "/etc/porelo-host/forge/central-ca.conf", str(forge_etc / "central-ca.conf"))
+    script = moved_if_present(script, "/etc/ssl/certs/ca-certificates.crt", str(etc / "system-ca.pem"))
+    script = moved_if_present(
+        script, "PATH=/usr/sbin:/usr/bin:/sbin:/bin", f"PATH={bin_dir}:/usr/sbin:/usr/bin:/sbin:/bin"
+    )
+    script = moved_if_present(script, "work=$(mktemp -d)", f"work=$(mktemp -d -p {temporary})")
+    script = moved_if_present(script, "ca_owner=0", f"ca_owner={os.getuid()}")
     command = tmp_path / "porelo-host-push"
     command.write_text(script)
     command.chmod(0o755)
 
     (bin_dir / "id").write_text(f"#!/bin/sh\ncat {tmp_path / 'uid'}\n")
-    (tmp_path / "uid").write_text("0\n")
-    # Run as the forge's account: here the same account, as long as the token file is readable to it.
-    (bin_dir / "runuser").write_text('#!/bin/sh\nwhile [ "$1" != -- ]; do shift; done\nshift\nexec "$@"\n')
-    (bin_dir / "git").write_text(
-        "#!/bin/sh\n"
-        f'printf \'%s|%s=%s|%s\\n\' "${{GIT_SSL_CAINFO:-}}" "${{GIT_CONFIG_KEY_1:-}}" "${{GIT_CONFIG_VALUE_1:-}}" "$*"'
-        f" >> {calls}\n"
-        'case " $* " in *" push "*)\n'
-        f"    : > {tmp_path / 'pushing'}\n"
-        f"    if [ -e {tmp_path / 'push-waits'} ]; then sleep 5; fi\n"
-        f'    if [ -e {tmp_path / "push-says-header"} ]; then printf \'%s\\n\' "$GIT_CONFIG_VALUE_0" >&2; exit 128; fi\n'
-        ";; esac\n"
-        f'exec {GIT} "$@"\n'
+    (tmp_path / "uid").write_text(f"{person_uid}\n")
+
+    (bin_dir / "getent").write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "db, key = sys.argv[1], sys.argv[2]\n"
+        "assert db == 'passwd', db\n"
+        "entries = {\n"
+        f"    '{person_uid}': 'alice:x:{person_uid}:{person_uid}::{alice_home}:/bin/bash',\n"
+        f"    'alice': 'alice:x:{person_uid}:{person_uid}::{alice_home}:/bin/bash',\n"
+        f"    '9999': 'bob:x:9999:9999::{bob_home}:/bin/bash',\n"
+        f"    'bob': 'bob:x:9999:9999::{bob_home}:/bin/bash',\n"
+        f"    'porelo-forge': 'porelo-forge:x:1234:1234::{forge_home}:/usr/sbin/nologin',\n"
+        "}\n"
+        "if key not in entries:\n"
+        "    sys.exit(2)\n"
+        "print(entries[key])\n"
     )
-    for stub in ("id", "runuser", "git"):
+
+    foreign_marker = tmp_path / "foreign-path"
+    (bin_dir / "stat").write_text(
+        f"#!{sys.executable}\n"
+        "import os, pathlib, subprocess, sys\n"
+        f"marker = pathlib.Path({str(foreign_marker)!r})\n"
+        f"real = subprocess.run([{REAL_STAT!r}, *sys.argv[1:]], capture_output=True, text=True)\n"
+        "out = real.stdout\n"
+        "if real.returncode == 0 and marker.exists():\n"
+        "    target = marker.read_text().strip()\n"
+        "    if sys.argv[-1] == target:\n"
+        f"        parts = out.strip().split(' ')\n"
+        f"        if parts and parts[0] == str({os.getuid()}):\n"
+        "            parts[0] = '9999'\n"
+        "            out = ' '.join(parts) + '\\n'\n"
+        "sys.stdout.write(out)\n"
+        "sys.stderr.write(real.stderr)\n"
+        "sys.exit(real.returncode)\n"
+    )
+
+    (bin_dir / "runuser").write_text('#!/bin/sh\nwhile [ "$1" != -- ]; do shift; done\nshift\nexec "$@"\n')
+
+    (bin_dir / "porelo").write_text(
+        f"#!{sys.executable}\n"
+        "import os, pathlib, sys\n"
+        f"calls = pathlib.Path({str(calls)!r})\n"
+        f"vault_calls = pathlib.Path({str(vault_calls)!r})\n"
+        "with calls.open('a') as handle:\n"
+        "    handle.write('porelo|' + ' '.join(sys.argv[1:]) + '\\n')\n"
+        "stdin = sys.stdin.read()\n"
+        "with vault_calls.open('a') as handle:\n"
+        "    handle.write(\n"
+        "        f\"{os.environ.get('HOME', '')}|{os.environ.get('XDG_RUNTIME_DIR', '')}|\"\n"
+        "        f\"{' '.join(sys.argv[1:])}|{stdin.replace(chr(10), ',')}\\n\"\n"
+        "    )\n"
+        f"if pathlib.Path({str(tmp_path / 'vault-missing')!r}).exists():\n"
+        "    sys.exit(1)\n"
+        f"expected = ['vault', 'credential', '--entry={FORGE_NAME}.person', 'get']\n"
+        "if sys.argv[1:] != expected:\n"
+        "    sys.exit(2)\n"
+        f"if 'protocol=https\\nhost={FORGE_NAME}\\n' not in stdin:\n"
+        "    sys.exit(3)\n"
+        f"print('username=alice\\npassword={PERSON_TOKEN}')\n"
+    )
+
+    repos_json = tmp_path / "forge-repos.json"
+    (bin_dir / "curl").write_text(
+        f"#!{sys.executable}\n"
+        "import json, pathlib, ssl, sys, urllib.error, urllib.parse, urllib.request\n"
+        f"calls = pathlib.Path({str(calls)!r})\n"
+        "with calls.open('a') as handle:\n"
+        "    handle.write('curl|' + ' '.join(sys.argv[1:]) + '\\n')\n"
+        "args = sys.argv[1:]\n"
+        "out_file = ca_file = header_arg = url = None\n"
+        "write_code = False\n"
+        "i = 0\n"
+        "while i < len(args):\n"
+        "    arg = args[i]\n"
+        "    if arg == '-o':\n"
+        "        out_file = args[i + 1]; i += 2; continue\n"
+        "    if arg == '--cacert':\n"
+        "        ca_file = args[i + 1]; i += 2; continue\n"
+        "    if arg == '-H':\n"
+        "        header_arg = args[i + 1]; i += 2; continue\n"
+        "    if arg == '-w':\n"
+        "        write_code = True; i += 2; continue\n"
+        "    if arg in ('--max-time', '--noproxy'):\n"
+        "        i += 2; continue\n"
+        "    if arg.startswith('https://') or arg.startswith('http://'):\n"
+        "        url = arg\n"
+        "    i += 1\n"
+        "header_line = ''\n"
+        "if header_arg and header_arg.startswith('@'):\n"
+        "    header_line = pathlib.Path(header_arg[1:]).read_text().strip()\n"
+        "elif header_arg:\n"
+        "    header_line = header_arg\n"
+        f"fixture = pathlib.Path({str(repos_json)!r})\n"
+        "if fixture.exists():\n"
+        "    data = json.loads(fixture.read_text())\n"
+        "    expected_token = data.get('token', '')\n"
+        "    if expected_token and header_line != f'Authorization: token {expected_token}':\n"
+        "        if out_file:\n"
+        "            pathlib.Path(out_file).write_text('{}')\n"
+        "        if write_code:\n"
+        "            sys.stdout.write('401')\n"
+        "        sys.exit(0)\n"
+        "    status = data.get('status', 200)\n"
+        "    pages = data.get('pages', [])\n"
+        "    query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)\n"
+        "    page = int(query.get('page', ['1'])[0])\n"
+        "    body = pages[page - 1] if 1 <= page <= len(pages) else []\n"
+        "    if out_file:\n"
+        "        pathlib.Path(out_file).write_text(json.dumps(body))\n"
+        "    if write_code:\n"
+        "        sys.stdout.write(str(status))\n"
+        "    sys.exit(0)\n"
+        "class NoRedirect(urllib.request.HTTPRedirectHandler):\n"
+        "    def redirect_request(self, *_a):\n"
+        "        return None\n"
+        "ctx = ssl.create_default_context(cafile=ca_file)\n"
+        "opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=ctx), NoRedirect())\n"
+        "headers = {}\n"
+        "if ':' in header_line:\n"
+        "    k, v = header_line.split(':', 1)\n"
+        "    headers[k.strip()] = v.strip()\n"
+        "req = urllib.request.Request(url, headers=headers, method='GET')\n"
+        "try:\n"
+        "    with opener.open(req, timeout=30) as resp:\n"
+        "        status, raw = resp.status, resp.read()\n"
+        "except urllib.error.HTTPError as err:\n"
+        "    status, raw = err.code, err.read()\n"
+        "if out_file:\n"
+        "    pathlib.Path(out_file).write_bytes(raw)\n"
+        "if write_code:\n"
+        "    sys.stdout.write(str(status))\n"
+    )
+
+    (bin_dir / "git").write_text(
+        f"#!{sys.executable}\n"
+        "import os, pathlib, re, subprocess, sys, time\n"
+        f"calls = pathlib.Path({str(calls)!r})\n"
+        "args = sys.argv[1:]\n"
+        "with calls.open('a') as handle:\n"
+        "    handle.write(\n"
+        "        f\"{os.environ.get('GIT_SSL_CAINFO', '')}|\"\n"
+        "        f\"{os.environ.get('GIT_CONFIG_KEY_1', '')}={os.environ.get('GIT_CONFIG_VALUE_1', '')}|\"\n"
+        "        f\"{' '.join(args)}\\n\"\n"
+        "    )\n"
+        "if 'clone' in args and "
+        f"pathlib.Path({str(tmp_path / 'clone-says-header')!r}).exists():\n"
+        "    sys.stderr.write(os.environ.get('GIT_CONFIG_VALUE_0', '') + '\\n')\n"
+        "    sys.exit(128)\n"
+        "if 'push' in args:\n"
+        f"    pathlib.Path({str(tmp_path / 'pushing')!r}).touch()\n"
+        f"    if pathlib.Path({str(tmp_path / 'push-waits')!r}).exists():\n"
+        "        time.sleep(5)\n"
+        f"    if pathlib.Path({str(tmp_path / 'push-says-header')!r}).exists():\n"
+        "        sys.stderr.write(os.environ.get('GIT_CONFIG_VALUE_0', '') + '\\n')\n"
+        "        sys.exit(128)\n"
+        "mapped = []\n"
+        "for arg in args:\n"
+        f"    arg = re.sub(r'^https://127\\.0\\.0\\.1:[0-9]+/', 'file://{tmp_path / 'local'}/', arg)\n"
+        f"    arg = arg.replace('{CENTRAL_BASE}/', 'file://{tmp_path / 'central'}/')\n"
+        f"    arg = arg.replace('{ELSEWHERE_BASE}/', 'file://{tmp_path / 'elsewhere'}/')\n"
+        "    mapped.append(arg)\n"
+        f"os.execv({GIT!r}, [{GIT!r}, *mapped])\n"
+    )
+    for stub in ("id", "getent", "stat", "runuser", "porelo", "curl", "git"):
         (bin_dir / stub).chmod(0o755)
 
     central = bare(tmp_path / "central" / "stand-in.git")
@@ -114,25 +312,66 @@ def host(tmp_path):
     local = bare(tmp_path / "local" / "porelo" / "stand-in.git", source=central)
     central_two = bare(tmp_path / "central" / "second.git")
     commit(central_two, tmp_path / "seed", "README")
-    bare(tmp_path / "local" / "porelo" / "second.git", source=central_two)
-    (etc / "push.conf").write_text(
-        "# written by the role\n"
-        f"local file://{tmp_path / 'local'}\n"
+    local_two = bare(tmp_path / "local" / "porelo" / "second.git", source=central_two)
+
+    person_conf = alice_push / "porelo.conf"
+    person_conf.write_text(
+        "# Written by porelo.host.bring; read by porelo-host-push.\n"
+        f"local {LOCAL_BASE}\n"
         "owner porelo\n"
-        f"central-ca {etc / 'central-ca.pem'}\n"
-        f"repository stand-in file://{central}\n"
-        f"repository second file://{central_two}\n"
+        f"central-ca {forge_etc / 'central-ca.pem'}\n"
+        f"repository stand-in {CENTRAL_BASE}/stand-in.git\n"
+        f"repository second {CENTRAL_BASE}/second.git\n"
     )
-    return {"root": tmp_path, "command": command, "temporary": temporary, "calls": calls, "local": local}
+    person_conf.chmod(0o600)
+
+    bob_conf = bob_push / "porelo.conf"
+    bob_conf.write_text(person_conf.read_text())
+    bob_conf.chmod(0o600)
+
+    repos_json.write_text(
+        json.dumps(
+            {
+                "token": ADMIN_TOKEN,
+                "pages": [
+                    [{"name": "stand-in", "original_url": f"{CENTRAL_BASE}/stand-in.git"}],
+                    [{"name": "second", "original_url": f"{CENTRAL_BASE}/second.git"}],
+                    [],
+                ],
+            }
+        )
+    )
+
+    return {
+        "root": tmp_path,
+        "etc": etc,
+        "forge_etc": forge_etc,
+        "api_token": api_token,
+        "alice_home": alice_home,
+        "alice_push": alice_push,
+        "person_conf": person_conf,
+        "bob_push": bob_push,
+        "bob_conf": bob_conf,
+        "decoy_home": decoy_home,
+        "person_uid": person_uid,
+        "foreign_marker": foreign_marker,
+        "repos_json": repos_json,
+        "vault_calls": vault_calls,
+        "command": command,
+        "temporary": temporary,
+        "calls": calls,
+        "local": local,
+        "local_two": local_two,
+    }
 
 
-def push(host, *repositories, token=CENTRAL_TOKEN, environment=None, interrupt=False):
+def push(host, *arguments, token=CENTRAL_TOKEN, environment=None, interrupt=False):
     process = subprocess.Popen(
-        [str(host["command"]), *repositories],
+        [str(host["command"]), *arguments],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        env={"PATH": "/usr/bin:/bin", **(environment or {})},
+        env={"PATH": "/usr/bin:/bin", "HOME": str(host["decoy_home"]), **(environment or {})},
         text=True,
         start_new_session=True,
     )
@@ -156,27 +395,52 @@ def head(repository, branch="main"):
     return git("--git-dir", str(repository), "rev-parse", f"refs/heads/{branch}")
 
 
-def assert_no_token_anywhere(host, output):
+def assert_no_token_anywhere(host, output, extra_tokens=()):
     calls = host["calls"].read_text() if host["calls"].exists() else ""
-    for token in (ADMIN_TOKEN, CENTRAL_TOKEN):
+    for token in (ADMIN_TOKEN, PERSON_TOKEN, CENTRAL_TOKEN, *extra_tokens):
         basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
         for form in (token, basic):
             assert form not in output, f"a token was printed: {output}"
             assert form not in calls, f"a token reached a command line: {calls}"
 
 
-def test_a_push_with_nothing_new_on_central_is_taken(host):
-    """Prevents approved work from staying on the host when the central forge has not moved."""
+def test_a_persons_push_reads_their_own_config_and_vault_token_ignoring_home(host):
+    """Prevents pushing with another account's config or $HOME override instead of the caller's own passwd home and vault."""
     central = host["root"] / "central" / "stand-in.git"
+    elsewhere = bare(host["root"] / "elsewhere" / "stand-in.git")
     approved = commit(host["local"], host["root"] / "work", "B")
 
-    code, output = push(host, "stand-in")
+    code, output = push(host, "porelo", "stand-in")
 
     assert code == 0, f"the push was refused with {code}: {output}"
     assert head(central) == approved, f"asked for central main {approved}, got {head(central)}"
+    assert not git("--git-dir", str(elsewhere), "for-each-ref"), "$HOME redirected the push config"
     assert "stand-in: taken" in output, output
+    vault_log = host["vault_calls"].read_text() if host["vault_calls"].exists() else ""
+    assert (
+        f"{host['alice_home']}|/run/user/{host['person_uid']}|"
+        f"vault credential --entry={FORGE_NAME}.person get|"
+        f"protocol=https,host={FORGE_NAME}"
+    ) in vault_log, f"unexpected vault call: {vault_log}"
     assert_no_token_anywhere(host, output)
     assert list(host["temporary"].iterdir()) == [], "the temporary clone was left behind"
+
+
+def test_without_repository_names_every_configured_repository_is_pushed_in_config_order(host):
+    """Prevents an unnamed push from skipping configured repositories or reordering them arbitrarily."""
+    central_one = host["root"] / "central" / "stand-in.git"
+    central_two = host["root"] / "central" / "second.git"
+    approved_one = commit(host["local"], host["root"] / "work-one", "B")
+    approved_two = commit(host["local_two"], host["root"] / "work-two", "D")
+
+    code, output = push(host, "porelo")
+
+    assert code == 0, f"the push was refused with {code}: {output}"
+    assert head(central_one) == approved_one
+    assert head(central_two) == approved_two
+    assert output.index("stand-in: taken") < output.index("second: taken"), output
+    assert "pushed: stand-in second" in output, output
+    assert_no_token_anywhere(host, output)
 
 
 def test_a_moved_central_forge_refuses_keeps_both_and_brings_its_commits_back(host):
@@ -185,7 +449,7 @@ def test_a_moved_central_forge_refuses_keeps_both_and_brings_its_commits_back(ho
     central_work = commit(central, host["root"] / "central-work", "A")
     local_main = commit(host["local"], host["root"] / "work", "C")
 
-    code, output = push(host, "stand-in", "second")
+    code, output = push(host, "porelo", "stand-in", "second")
 
     assert code != 0, f"a push over a moved central forge was taken: {output}"
     assert head(central) == central_work, f"central main lost {central_work}, holds {head(central)}"
@@ -199,97 +463,132 @@ def test_a_moved_central_forge_refuses_keeps_both_and_brings_its_commits_back(ho
     assert list(host["temporary"].iterdir()) == [], "the temporary clone was left behind"
 
 
-def test_what_git_says_is_shown_without_a_token(host):
-    """Prevents a token from reaching the terminal or its scrollback when git repeats a header."""
+@pytest.mark.parametrize(
+    "defect, expected",
+    [
+        ("symlink-file", "link"),
+        ("foreign-owner", "9999"),
+        ("mode-0644", "0644"),
+        ("dir-mode-0755", "0755"),
+        ("symlink-dir", "link"),
+        ("missing", "porelo.conf"),
+    ],
+)
+def test_another_persons_or_untrusted_push_config_is_refused(host, defect, expected):
+    """Prevents a developer from reading or following a symlinked, foreign-owned, or non-private push config."""
+    conf = host["person_conf"]
+    push_dir = host["alice_push"]
+    if defect == "symlink-file":
+        conf.unlink()
+        conf.symlink_to(host["bob_conf"])
+    elif defect == "foreign-owner":
+        host["foreign_marker"].write_text(str(conf) + "\n")
+    elif defect == "mode-0644":
+        conf.chmod(0o644)
+    elif defect == "dir-mode-0755":
+        push_dir.chmod(0o755)
+    elif defect == "symlink-dir":
+        shutil.rmtree(push_dir)
+        push_dir.symlink_to(host["bob_push"])
+    else:
+        conf.unlink()
+
+    code, output = push(host, "porelo", "stand-in")
+
+    assert code == 66, f"asked for 66 on {defect}, got {code}: {output}"
+    assert expected in output, f"refusal on {defect} did not report {expected!r}: {output}"
+    assert "Token" not in output, f"asked for central token on {defect}: {output}"
+    assert not host["calls"].exists(), f"ran external commands on {defect}"
+
+
+def test_root_running_the_persons_push_is_refused(host):
+    """Prevents running the developer push as root or under sudo instead of the person's own account."""
+    (host["root"] / "uid").write_text("0\n")
+
+    code, output = push(host, "porelo", "stand-in")
+
+    assert code == 77, f"asked for 77 when run as root, got {code}: {output}"
+    assert "root" in output, output
+    assert "Token" not in output, output
+    assert not host["calls"].exists(), "commands ran when root invoked the person push"
+
+
+def test_a_missing_vault_entry_is_refused_naming_the_entry_and_identities_stop(host):
+    """Prevents an unauthenticated clone or opaque failure when the person's forge token is absent from their vault."""
+    (host["root"] / "vault-missing").touch()
+
+    code, output = push(host, "porelo", "stand-in")
+
+    assert code == 69, f"asked for 69 on missing vault entry, got {code}: {output}"
+    assert f"{FORGE_NAME}.person" in output, output
+    assert "porelo-host-stop --stdin identities" in output, output
+    assert "Token" not in output, f"asked for central token despite missing local vault entry: {output}"
+    git_calls = [
+        line
+        for line in (host["calls"].read_text().splitlines() if host["calls"].exists() else [])
+        if not line.startswith("porelo|")
+    ]
+    assert not git_calls, f"git ran without the person's vault token: {git_calls}"
+
+
+@pytest.mark.parametrize("stage", ["clone", "push"])
+def test_what_git_says_is_shown_without_any_token(host, stage):
+    """Prevents either the person's local token or central token from reaching the terminal when git repeats a header."""
     commit(host["local"], host["root"] / "work", "B")
-    (host["root"] / "push-says-header").touch()
+    (host["root"] / f"{stage}-says-header").touch()
 
-    code, output = push(host, "stand-in")
+    code, output = push(host, "porelo", "stand-in")
 
-    assert code != 0, f"a push that git failed was taken: {output}"
-    assert "<redacted>" in output, f"git's own words were not shown: {output}"
+    assert code != 0, f"a push that git failed at {stage} was taken: {output}"
+    assert "<redacted>" in output, f"git's header was not redacted at {stage}: {output}"
     assert_no_token_anywhere(host, output)
 
 
 def test_the_callers_git_settings_cannot_send_the_push_elsewhere(host):
-    """Prevents root's push from following a destination its caller planted in the environment."""
+    """Prevents the push from following a destination planted in the caller's environment or ~/.gitconfig."""
     elsewhere = bare(host["root"] / "elsewhere" / "stand-in.git")
     central = host["root"] / "central" / "stand-in.git"
     approved = commit(host["local"], host["root"] / "work", "B")
+    (host["alice_home"] / ".gitconfig").write_text(f'[url "file://{elsewhere}"]\n\tpushInsteadOf = file://{central}\n')
     planted = f"'url.file://{elsewhere}.pushInsteadOf'='file://{central}'"
 
-    code, output = push(host, "stand-in", environment={"GIT_CONFIG_PARAMETERS": planted})
+    code, output = push(host, "porelo", "stand-in", environment={"GIT_CONFIG_PARAMETERS": planted})
 
     assert code == 0, f"the push was refused with {code}: {output}"
     assert head(central) == approved, f"asked for central main {approved}, got {head(central)}"
-    assert not git("--git-dir", str(elsewhere), "for-each-ref"), "the push went where the caller said"
+    assert not git("--git-dir", str(elsewhere), "for-each-ref"), "the push went where the caller's git config said"
 
 
 def test_each_forge_is_trusted_by_its_own_authority_and_no_redirect_is_followed(host):
     """Prevents the host's CA from vouching for the central forge, and a token sent on to a redirect's host."""
     commit(host["local"], host["root"] / "work", "B")
-    etc = host["root"] / "etc"
+    forge_etc = host["forge_etc"]
 
-    code, output = push(host, "stand-in")
+    code, output = push(host, "porelo", "stand-in")
 
     assert code == 0, f"the push was refused with {code}: {output}"
-    calls = [line.split("|", 2) for line in host["calls"].read_text().splitlines()]
-    remote = [call for call in calls if any(f" {verb} " in f" {call[2]} " for verb in ("clone", "push", "fetch"))]
-    assert remote, f"no call reached a forge: {calls}"
+    lines = [
+        line.split("|", 2)
+        for line in host["calls"].read_text().splitlines()
+        if not line.startswith(("porelo|", "curl|"))
+    ]
+    remote = [call for call in lines if any(f" {verb} " in f" {call[2]} " for verb in ("clone", "push", "fetch"))]
+    assert remote, f"no call reached a forge: {lines}"
     for ca, redirects, line in remote:
         assert redirects == "http.followRedirects=false", f"a forge call follows redirects: {line}"
-        want = etc / ("ca.pem" if line.startswith("clone") else "central-ca.pem")
+        want = forge_etc / ("ca.pem" if line.startswith("clone") else "central-ca.pem")
         assert ca == str(want), f"asked for {want} for {line!r}, got {ca!r}"
 
 
-def test_a_token_file_put_in_place_of_standard_input_never_reads_the_central_token(host):
-    """Prevents the forge's account from reading the person's central token through its own token file."""
-    token_file = host["root"] / "etc" / "api.token"
-    token_file.unlink()
-    token_file.symlink_to("/dev/stdin")
+def test_unknown_or_duplicate_repositories_are_refused_before_tokens_are_asked(host):
+    """Prevents a half-done push or credential prompt when repository names are unknown or repeated."""
+    code, output = push(host, "porelo", "stand-in", "elsewhere")
+    assert code == 64 and "elsewhere" in output and "Token" not in output, (code, output)
+    assert not host["calls"].exists()
 
-    code, output = push(host, "stand-in")
-
-    assert code == 66, f"asked for 66 on a token file read from standard input, got {code}: {output}"
-    assert not host["calls"].exists(), "git ran with a token read from standard input"
-
-
-def test_a_repository_the_forge_does_not_hold_is_refused_before_anything_is_read(host):
-    """Prevents a push to a place the host's settings do not name."""
-    code, output = push(host, "stand-in", "elsewhere")
-
-    assert code == 64, f"asked for 64 on an unknown repository, got {code}: {output}"
-    assert "elsewhere" in output, output
-    assert "Token" not in output, f"the token was asked for before the names were checked: {output}"
-    assert not host["calls"].exists(), "git ran before the names were checked"
-
-
-def test_a_repository_named_twice_is_refused_before_anything_is_pushed(host):
-    """Prevents a half-done run that pushed the first and failed on its second naming."""
-    code, output = push(host, "stand-in", "stand-in")
-
-    assert code == 64, f"asked for 64 on a repository named twice, got {code}: {output}"
-    assert not host["calls"].exists(), "git ran before the names were checked"
-
-
-def test_it_runs_only_as_root(host):
-    """Prevents a run that would fail halfway on files only root reads."""
-    (host["root"] / "uid").write_text("1000\n")
-
-    code, output = push(host, "stand-in")
-
-    assert code == 77, f"asked for 77 when not root, got {code}: {output}"
-    assert not host["calls"].exists(), "git ran for an account that is not root"
-
-
-def test_a_token_file_that_cannot_be_read_stops_the_push(host):
-    """Prevents a push with no token of the forge's; that root reads it as the forge's account is Molecule's to show."""
-    (host["root"] / "etc" / "api.token").chmod(0o000)
-
-    code, output = push(host, "stand-in")
-
-    assert code == 66, f"asked for 66 on an unreadable token, got {code}: {output}"
-    assert not host["calls"].exists(), "git ran without the forge's token"
+    code, output = push(host, "porelo", "stand-in", "stand-in")
+    assert code == 64 and "Token" not in output, (code, output)
+    assert not host["calls"].exists()
 
 
 def test_an_interrupted_push_leaves_no_clone_behind_and_pushes_nothing(host):
@@ -299,8 +598,99 @@ def test_an_interrupted_push_leaves_no_clone_behind_and_pushes_nothing(host):
     commit(host["local"], host["root"] / "work", "B")
     (host["root"] / "push-waits").touch()
 
-    code, output = push(host, "stand-in", interrupt=True)
+    code, output = push(host, "porelo", "stand-in", interrupt=True)
 
     assert code == 130, f"asked for 130 after an interrupt, got {code}: {output}"
     assert head(central) == before, "the push went on after the interrupt"
     assert list(host["temporary"].iterdir()) == [], "the interrupted push left its clone behind"
+
+
+def test_check_reads_original_url_as_root_and_refuses_unpushed_or_missing_url(host):
+    """Prevents project removal from reading push.conf, running non-root, or deleting unpushed or unmigrated work."""
+    # Non-root cannot run --check.
+    code, output = push(host, "--check", "porelo", "stand-in")
+    assert code == 77, f"asked for 77 when non-root runs --check, got {code}: {output}"
+
+    (host["root"] / "uid").write_text("0\n")
+    # Deleting the person's config and ensuring no root push.conf exists proves --check reads neither.
+    host["person_conf"].unlink()
+    assert not (host["forge_etc"] / "push.conf").exists()
+
+    # Unpushed work on a branch is refused with 65.
+    pending = commit(host["local"], host["root"] / "work", "pending")
+    code, output = push(host, "--check", "porelo", "stand-in", "second")
+    assert code == 65 and "stand-in" in output and "unpushed" in output, (code, output)
+    assert_no_token_anywhere(host, output)
+
+    # Once central holds that commit, --check exits 0 using default system CA, or central-ca.conf when present.
+    central = host["root"] / "central" / "stand-in.git"
+    git("--git-dir", str(host["local"]), "push", str(central), f"{pending}:refs/heads/main")
+    host["calls"].unlink(missing_ok=True)
+    code, output = push(host, "--check", "porelo", "stand-in", "second")
+    assert code == 0, f"expected clean --check to pass, got {code}: {output}"
+    fetch_cas = [
+        line.split("|", 2)[0]
+        for line in host["calls"].read_text().splitlines()
+        if not line.startswith(("porelo|", "curl|")) and " fetch " in f" {line.split('|', 2)[2]} "
+    ]
+    assert fetch_cas == [str(host["etc"] / "system-ca.pem"), str(host["etc"] / "system-ca.pem")], fetch_cas
+    assert_no_token_anywhere(host, output)
+
+    custom_ca = host["forge_etc"] / "central-ca.pem"
+    (host["forge_etc"] / "central-ca.conf").write_text(str(custom_ca) + "\n")
+    (host["forge_etc"] / "central-ca.conf").chmod(0o644)
+    host["calls"].unlink(missing_ok=True)
+    code, output = push(host, "--check", "porelo", "stand-in")
+    assert code == 0, (code, output)
+    fetch_cas = [
+        line.split("|", 2)[0]
+        for line in host["calls"].read_text().splitlines()
+        if not line.startswith(("porelo|", "curl|")) and " fetch " in f" {line.split('|', 2)[2]} "
+    ]
+    assert fetch_cas == [str(custom_ca)], fetch_cas
+
+    # A repository without an original_url in Forgejo is refused by name.
+    host["repos_json"].write_text(
+        json.dumps(
+            {
+                "token": ADMIN_TOKEN,
+                "pages": [
+                    [{"name": "stand-in", "original_url": f"{CENTRAL_BASE}/stand-in.git"}],
+                    [{"name": "second", "original_url": ""}],
+                    [],
+                ],
+            }
+        )
+    )
+    code, output = push(host, "--check", "porelo", "stand-in", "second")
+    assert code == 69 and "second" in output, f"asked for 69 naming second without original_url, got {code}: {output}"
+    assert_no_token_anywhere(host, output)
+
+
+@pytest.mark.parametrize("token_defect", ["stdin-symlink", "unreadable"])
+def test_check_admin_token_file_defects_stop_before_git(host, token_defect):
+    """Prevents --check from reading stdin through a symlinked admin token file or proceeding without the admin token."""
+    (host["root"] / "uid").write_text("0\n")
+    if token_defect == "stdin-symlink":
+        host["api_token"].unlink()
+        host["api_token"].symlink_to("/dev/stdin")
+    else:
+        host["api_token"].chmod(0o000)
+
+    code, output = push(host, "--check", "porelo", "stand-in")
+
+    assert code == 66, f"asked for 66 on {token_defect}, got {code}: {output}"
+    assert "api.token" in output, f"refusal did not name api.token on {token_defect}: {output}"
+    assert not host["calls"].exists(), f"commands ran despite {token_defect}"
+
+
+def test_nothing_reads_or_writes_roots_push_conf():
+    """Prevents reintroducing root's shared push.conf or omitting porelo-host-push installation from up."""
+    searched = [*sorted((ROOT / "roles").rglob("*")), *sorted((ROOT / "playbooks").rglob("*"))]
+    files = [path for path in searched if path.is_file() and path.suffix != ".md"]
+    known = [path for path in files if "/usr/local/sbin/porelo-host-push" in path.read_text(encoding="utf-8")]
+    assert known, "verified search scope did not match /usr/local/sbin/porelo-host-push"
+    offenders = [path for path in files if "push.conf" in path.read_text(encoding="utf-8")]
+    assert not offenders, f"root's push.conf is still named in: {offenders}"
+    main_tasks = (ROOT / "roles/forge/tasks/main.yml").read_text(encoding="utf-8")
+    assert "tasks/push.yml" in main_tasks, "roles/forge/tasks/main.yml does not include tasks/push.yml"

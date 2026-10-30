@@ -1,0 +1,10 @@
+---
+- name: Run porelo's own side of a bring or a join
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Run it as the account running the test
+        ansible.builtin.include_role:
+            name: porelo.host.porelo
+            tasks_from: own

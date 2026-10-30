@@ -19,6 +19,23 @@ agents part (every offered agent and the project's transport packages installed,
 sign-in). A second `up` runs both plays from the top and changes only what differs, read from the commands' own exit
 codes and `--json` output, so resuming is idempotence, with no marker file of the playbook's own.
 
+**`porelo.host.bring` and `porelo.host.join`, in the person's own account.** The project admin runs
+`ansible-playbook -c local porelo.host.bring -e porelo_project=<project>` on the host as themselves, with no `sudo` but
+sync's; a developer runs `porelo.host.join` the same way. Both read the setup the interface uploaded into
+`~/.local/share/porelo-host/setup/<project>/`: `machine.yml`, `project.bundle` and `access.bundle`, the directory the
+person's own of mode `0700` below directories nobody else can write, each file their own plain file of mode `0600`;
+a link, a missing file or another owner or mode is refused, naming what was found. The machine file names the project
+at `project.bundle` and `access: {bundle: access.bundle}`. Then `porelo setup`, the vault the person's stop opened
+(`porelo-host-stop --stdin`, run without `sudo`), Porelo's inventory, each key in the vault, `porelo project verify` on
+both bundles from the commits in force, and `project follow --signed-by` with the keys pinned. The bring's machine file
+also names `forge: {repositories: [{name, url}, ...]}`, which a join's must not. With the person's own forge token, taken
+from their vault into their runtime directory for the run alone, the bring migrates each repository into the project's
+organization (registered first by `porelo-host-project add`) with the central token the stop left there, protects
+`main` (fast-forward only, one approval from `Owners` or `developers`), makes the teams `developers`, `gates` and
+`agents`, and sets the Actions variables. Both write `~/.config/porelo-host/push/<project>.conf` from the repositories
+the forge lists with their `original_url`. The bring ends with `sudo -n porelo-host-person sync <project>`, a user
+timer that runs it again for each upload, and the project's room through `porelo talk room` once Porelo has it (B314).
+
 The [local forge](local-forge.md) connects task branches and independent builds to the person's merge and gathered-push
 decisions.
 
@@ -38,8 +55,8 @@ half of `MemTotal`, naming both sides.
 it also refuses a pool whose memory (systems × accounts per system × memory per VM) exceeds half of `MemTotal`,
 naming the pool's memory and the host's total memory.
 
-**`porelo.host.down`, the other way round.** Takes the VM pool and the forge off the host, stops every running task of
-the account with `porelo task stop --all` and clears the vault (`porelo vault clear --yes`, also where only a
-transport could not clear what it keeps), stops the VPN, and takes
-the person's ssh key off the account last. Every step takes down only what is there, so `down` after a failed `up` works
+**`porelo.host.down`, the other way round.** Refuses first, before stopping anything, while any person record in
+`/etc/porelo-host/people/` still holds a membership, naming each person and their memberships with `"Take the project
+off"` and `"Purge"`. Once no membership remains, it takes the homeserver, the VM pool and the forge off the host and
+closes the VPN last. Every step takes down only what is there, so `down` after a failed `up` works
 too.

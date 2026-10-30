@@ -18,7 +18,7 @@ def password_host(tmp_path, monkeypatch):
     namespace = runpy.run_path(str(SCRIPT), run_name="password_tests")
     scope = namespace["main"].__globals__
     conf = tmp_path / "forge.conf"
-    conf.write_text("address=192.0.2.1\nport=3000\nperson=bob\naccount=porelo-forge\n")
+    conf.write_text("address=192.0.2.1\nport=3000\naccount=porelo-forge\n")
     conf.chmod(0o644)
     people = tmp_path / "people"
     people.mkdir()
@@ -92,19 +92,40 @@ def test_a_call_without_root_is_something_missing(password_host, capsys):
 
 
 def test_sudo_does_not_require_the_configured_person(password_host):
-    """Prevent the legacy single-person setting from deciding a sudo caller's identity."""
-    password_host.conf.write_text(password_host.conf.read_text().replace("person=bob\n", "person=invalid/ignored\n"))
+    """Prevent a leftover single-person setting from deciding a sudo caller's identity or breaking forge.conf."""
+    password_host.conf.write_text("address=192.0.2.1\nport=3000\nperson=invalid/ignored\naccount=porelo-forge\n")
     password_host.scope["main"]()
     assert password_host.changes[0][2] == "alice"
 
 
 @pytest.mark.parametrize("sudo", [False, True])
-def test_direct_root_keeps_the_configured_login(password_host, sudo):
-    """Keep the administrative password change available without a people record."""
+def test_direct_root_without_sudo_user_is_refused(password_host, capsys, sudo):
+    """Prevent a direct root call without a sudo person from changing any forge account's password."""
+    password_host.conf.write_text("address=192.0.2.1\nport=3000\nperson=bob\naccount=porelo-forge\n")
     if sudo:
         password_host.scope["os"].environ.update(SUDO_USER="root", SUDO_UID="0")
     else:
         password_host.scope["os"].environ.clear()
-    password_host.record.unlink()
-    password_host.scope["main"]()
-    assert password_host.changes[0][2] == "bob"
+    with pytest.raises(SystemExit) as error:
+        password_host.scope["main"]()
+    err = capsys.readouterr().err
+    assert error.value.code == 64
+    assert "sudo" in err and "person" in err
+    assert "fixture-password" not in err
+    assert password_host.changes == []
+
+
+@pytest.mark.parametrize("locked", [False, True], ids=["unlocked", "locked"])
+def test_sudo_accepts_membership_records_and_refuses_locked_ones(password_host, capsys, locked):
+    """Prevent replacing role= and projects= with member= lines from breaking or unlocking a password change."""
+    state = "true" if locked else "false"
+    password_host.record.write_text(f"member=hand\nmember=alpha project-admin\nlocked={state}\nlaptop=fixture\n")
+    if locked:
+        with pytest.raises(SystemExit) as error:
+            password_host.scope["main"]()
+        assert error.value.code == 65
+        assert password_host.changes == []
+        assert "fixture-password" not in capsys.readouterr().err
+    else:
+        password_host.scope["main"]()
+        assert password_host.changes[0][2] == "alice"

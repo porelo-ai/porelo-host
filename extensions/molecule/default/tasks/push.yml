@@ -1,0 +1,535 @@
+---
+# The gathered push run by any developer of a project in their own account, never as root: up installs
+# /usr/local/sbin/porelo-host-push (root:root 0755) and /etc/porelo-host/forge/central-ca.conf (root:root 0644) without
+# root's push.conf; root running the person push is refused with 77; a missing vault entry is refused with 69 naming it;
+# another person cannot read or link to a member's ~/.config/porelo-host/push/<project>.conf; both the project admin and
+# a developer push local main to the central stand-in with their own local vault token and their own central write
+# token; and no token appears in any output or the journal.
+- name: Read the gathered push command, central-ca.conf and absent root push.conf
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - /usr/local/sbin/porelo-host-push
+    - /etc/porelo-host/forge/central-ca.conf
+    - /etc/porelo-host/forge/push.conf
+  register: verify_push_installed
+
+- name: Assert up installed porelo-host-push (0755) and central-ca.conf (0644) and wrote no root push.conf
+  ansible.builtin.assert:
+    that:
+      - verify_push_installed.results[0].stat.exists
+      - verify_push_installed.results[0].stat.isreg | default(false)
+      - verify_push_installed.results[0].stat.uid | default(-1) == 0
+      - verify_push_installed.results[0].stat.gid | default(-1) == 0
+      - verify_push_installed.results[0].stat.mode | default('') == '0755'
+      - verify_push_installed.results[1].stat.exists
+      - verify_push_installed.results[1].stat.isreg | default(false)
+      - verify_push_installed.results[1].stat.uid | default(-1) == 0
+      - verify_push_installed.results[1].stat.gid | default(-1) == 0
+      - verify_push_installed.results[1].stat.mode | default('') == '0644'
+      - not verify_push_installed.results[2].stat.exists
+    fail_msg: >-
+      asked for /usr/local/sbin/porelo-host-push (root:root 0755), /etc/porelo-host/forge/central-ca.conf
+      (root:root 0644) and no /etc/porelo-host/forge/push.conf;
+      got {{ verify_push_installed.results | map(attribute='stat') | list }}
+
+- name: Verify project admin and developer each push with their own token while another account cannot read their config
+  block:
+    - name: Create temporary keys for project admin pa, developer pd, outsider po and project push-alpha
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          umask 077
+          d=/root/verify-push
+          rm -rf "$d"
+          mkdir -p "$d"
+          for who in pa pd po; do
+              ssh-keygen -q -t ed25519 -N "" -C "" -f "$d/$who.ssh"
+              awk '{print $1, $2}' "$d/$who.ssh.pub" > "$d/$who.ssh.line"
+              wg genkey > "$d/$who.wg"
+              wg pubkey < "$d/$who.wg" | tr -d '\r\n' > "$d/$who.wg.line"
+              printf '%s-laptop %s %s\n' "$who" "$(cat "$d/$who.ssh.line")" "$(cat "$d/$who.wg.line")" > "$d/$who.in"
+          done
+          ssh-keygen -q -t ed25519 -N "" -C "" -f "$d/signer"
+          awk '{print $1, $2}' "$d/signer.pub" > "$d/signer.line"
+        executable: /bin/bash
+      changed_when: true
+      no_log: true
+
+    - name: Read push-alpha's canonical signing key
+      ansible.builtin.slurp:
+        src: /root/verify-push/signer.line
+      register: verify_push_signer
+
+    - name: Admit pa, pd and po on the host
+      ansible.builtin.shell:
+        cmd: >-
+          set -euo pipefail
+          && /usr/local/sbin/porelo-host-person add {{ item }} --role project-admin < /root/verify-push/{{ item }}.in
+        executable: /bin/bash
+      loop: [pa, pd, po]
+      register: verify_push_admitted
+      changed_when: true
+
+    - name: Register project push-alpha for pa
+      ansible.builtin.command:
+        argv:
+          - /usr/local/sbin/porelo-host-project
+          - add
+          - push-alpha
+          - pa
+          - --signed-by
+          - "{{ verify_push_signer.content | b64decode | trim }}"
+      register: verify_push_registered
+      changed_when: true
+
+    - name: Exercise admin and developer pushes, config privacy, refusals and secret-leak checks
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import base64, json, os, pathlib, pwd, secrets, ssl, subprocess, urllib.request
+            import sys, traceback
+
+            # A failure leaves only its lines, its class and an HTTP code; never its words.
+            def failed(kind, error, tb):
+                lines = [f.lineno for f in traceback.extract_tb(tb) if f.filename == "<string>"]
+                print(json.dumps({"failed_at_line": lines[-1] if lines else None, "lines": lines,
+                                  "error": kind.__name__, "code": getattr(error, "code", None)}), flush=True)
+                os._exit(0)
+
+            sys.excepthook = failed
+
+            work = pathlib.Path("/root/verify-push")
+            admin_token = pathlib.Path("/home/porelo-forge/.config/porelo-forge/api.token").read_text(
+                encoding="utf-8"
+            ).strip()
+            forge_uid = pwd.getpwnam("porelo-forge").pw_uid
+            ctx = ssl.create_default_context(cafile="/etc/porelo-host/forge/ca.pem")
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}),
+                urllib.request.HTTPSHandler(context=ctx),
+            )
+            base = "https://10.73.7.1:3000/api/v1"
+
+            def api(method, path, body=None, bearer=admin_token):
+                req = urllib.request.Request(
+                    base + path,
+                    data=json.dumps(body).encode("utf-8") if body is not None else None,
+                    method=method,
+                    headers={"Authorization": "token " + bearer, "Content-Type": "application/json"},
+                )
+                with opener.open(req, timeout=30) as resp:
+                    raw = resp.read()
+                    return resp.status, (json.loads(raw) if raw else None)
+
+            def forge_cli(*args):
+                return subprocess.check_output(
+                    [
+                        "/usr/sbin/runuser", "-u", "porelo-forge", "--",
+                        "/usr/bin/env", f"XDG_RUNTIME_DIR=/run/user/{forge_uid}",
+                        "/usr/bin/podman", "exec", "forgejo", "forgejo", "admin", "user", *args,
+                    ],
+                    text=True,
+                    cwd="/",
+                ).strip()
+
+            def as_person(user, argv, stdin_text=""):
+                pw = pwd.getpwnam(user)
+                return subprocess.run(
+                    [
+                        "/usr/sbin/runuser", "-u", user, "--",
+                        "/usr/bin/env", f"HOME={pw.pw_dir}", f"XDG_RUNTIME_DIR=/run/user/{pw.pw_uid}",
+                        *argv,
+                    ],
+                    input=stdin_text,
+                    capture_output=True,
+                    text=True,
+                    cwd="/",
+                )
+
+            all_secrets = [admin_token]
+            person_forge_token = {}
+            for who in ("pa", "pd"):
+                tfile = pathlib.Path(f"/run/porelo-host/people/{who}/identities.tokens")
+                for line in tfile.read_text(encoding="utf-8").splitlines():
+                    ident, tok = line.split(" ", 1)
+                    all_secrets.append(tok)
+                    if ident == who:
+                        person_forge_token[who] = tok
+
+            # Stand-in central organization and two distinct central write accounts on Forgejo.
+            api("POST", "/orgs", {"username": "push-central", "visibility": "private"})
+            api(
+                "POST",
+                "/orgs/push-central/repos",
+                {"name": "code", "private": True, "auto_init": True, "default_branch": "main"},
+            )
+            _, central_team = api(
+                "POST",
+                "/orgs/push-central/teams",
+                {
+                    "name": "writers",
+                    "permission": "write",
+                    "units": ["repo.code"],
+                    "units_map": {"repo.code": "write"},
+                    "includes_all_repositories": True,
+                    "can_create_org_repo": False,
+                },
+            )
+            central_token = {}
+            for who in ("pa", "pd"):
+                cname = f"central-{who}"
+                forge_cli(
+                    "create", "--username", cname, "--email", f"{cname}@porelo.invalid",
+                    "--random-password", "--must-change-password=false",
+                )
+                api("PUT", f"/teams/{central_team['id']}/members/{cname}")
+                tok = forge_cli(
+                    "generate-access-token", "--username", cname,
+                    "--token-name", "verify-" + secrets.token_hex(8),
+                    "--scopes", "write:repository", "--raw",
+                )
+                central_token[who] = tok
+                all_secrets.append(tok)
+
+            # Seed push-alpha/code with push-central/code's initial commit and grant pd developer write access.
+            api("POST", "/orgs/push-alpha/repos", {"name": "code", "private": True, "auto_init": False})
+            seed_dir = work / "seed-clone"
+            auth_b64 = base64.b64encode(f"x-access-token:{admin_token}".encode("utf-8")).decode("ascii")
+            git_env = {
+                "PATH": "/usr/bin:/bin",
+                "GIT_CONFIG_GLOBAL": "/dev/null",
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_TERMINAL_PROMPT": "0",
+                "GIT_SSL_CAINFO": "/etc/porelo-host/forge/ca.pem",
+                "GIT_CONFIG_COUNT": "1",
+                "GIT_CONFIG_KEY_0": "http.extraHeader",
+                "GIT_CONFIG_VALUE_0": f"Authorization: Basic {auth_b64}",
+            }
+            subprocess.run(
+                [
+                    "/usr/bin/git", "clone", "--quiet", "--bare",
+                    "https://10.73.7.1:3000/push-central/code.git", str(seed_dir),
+                ],
+                env=git_env,
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "/usr/bin/git", "--git-dir", str(seed_dir), "push", "--quiet",
+                    "https://10.73.7.1:3000/push-alpha/code.git", "refs/heads/main:refs/heads/main",
+                ],
+                env=git_env,
+                check=True,
+            )
+            _, dev_team = api(
+                "POST",
+                "/orgs/push-alpha/teams",
+                {
+                    "name": "developers",
+                    "permission": "write",
+                    "units": ["repo.code"],
+                    "units_map": {"repo.code": "write"},
+                    "includes_all_repositories": True,
+                    "can_create_org_repo": False,
+                },
+            )
+            api("PUT", f"/teams/{dev_team['id']}/members/pd")
+
+            config_body = (
+                "# Written by porelo.host.bring; read by porelo-host-push.\n"
+                "local https://10.73.7.1:3000\n"
+                "owner push-alpha\n"
+                "central-ca /etc/porelo-host/forge/ca.pem\n"
+                "repository code https://forge.alpha.porelo.internal/push-central/code.git\n"
+            )
+            for who in ("pa", "pd"):
+                pw = pwd.getpwnam(who)
+                for rel, mode in (
+                    (".config", 0o700),
+                    (".config/porelo-host", 0o700),
+                    (".config/porelo-host/push", 0o700),
+                ):
+                    dpath = pathlib.Path(pw.pw_dir) / rel
+                    dpath.mkdir(exist_ok=True)
+                    os.chown(dpath, pw.pw_uid, pw.pw_gid)
+                    os.chmod(dpath, mode)
+                cpath = pathlib.Path(pw.pw_dir) / ".config/porelo-host/push/push-alpha.conf"
+                cpath.write_text(config_body, encoding="utf-8")
+                os.chown(cpath, pw.pw_uid, pw.pw_gid)
+                os.chmod(cpath, 0o600)
+
+            captured = []
+
+            # 1. Root running the person push is refused with 77.
+            root_run = subprocess.run(
+                ["/usr/local/sbin/porelo-host-push", "push-alpha"],
+                input=central_token["pa"] + "\n",
+                capture_output=True,
+                text=True,
+                cwd="/",
+            )
+            captured.extend([root_run.stdout, root_run.stderr])
+
+            # 2. Before vault import, missing <forge>.person is refused with 69 naming it and identities stop.
+            for who in ("pa", "pd", "po"):
+                uid = pwd.getpwnam(who).pw_uid
+                subprocess.run(["/usr/bin/systemctl", "start", f"user@{uid}.service"], check=True)
+            as_person("pa", ["/usr/bin/porelo", "setup"])
+            missing_vault = as_person(
+                "pa", ["/usr/local/sbin/porelo-host-push", "push-alpha"], central_token["pa"] + "\n"
+            )
+            captured.extend([missing_vault.stdout, missing_vault.stderr])
+
+            # 3. Initialize pa's and pd's own vaults and import their waiting forge identities.
+            for who in ("pa", "pd"):
+                if who != "pa":
+                    as_person(who, ["/usr/bin/porelo", "setup"])
+                passphrase = f"vault-pass-{who}-" + secrets.token_hex(16)
+                all_secrets.append(passphrase)
+                encoded = base64.b64encode(passphrase.encode("utf-8")).decode("ascii")
+                stop_res = as_person(
+                    who,
+                    ["/usr/local/bin/porelo-host-stop", "--stdin", "vault-new", "identities"],
+                    f"vault-new {encoded}\n",
+                )
+                captured.extend([stop_res.stdout, stop_res.stderr])
+                if stop_res.returncode != 0:
+                    raise RuntimeError(f"stop failed for {who}: rc={stop_res.returncode}")
+
+            # 4. Another person cannot read or symlink a member's push config.
+            pd_reads_pa = as_person("pd", ["/usr/bin/cat", "/home/pa/.config/porelo-host/push/push-alpha.conf"])
+            po_reads_pa = as_person("po", ["/usr/bin/cat", "/home/pa/.config/porelo-host/push/push-alpha.conf"])
+            po_reads_pd = as_person("po", ["/usr/bin/cat", "/home/pd/.config/porelo-host/push/push-alpha.conf"])
+            po_pw = pwd.getpwnam("po")
+            for rel in (".config", ".config/porelo-host", ".config/porelo-host/push"):
+                dpath = pathlib.Path(po_pw.pw_dir) / rel
+                dpath.mkdir(exist_ok=True)
+                os.chown(dpath, po_pw.pw_uid, po_pw.pw_gid)
+                os.chmod(dpath, 0o700)
+            os.symlink(
+                "/home/pa/.config/porelo-host/push/push-alpha.conf",
+                f"{po_pw.pw_dir}/.config/porelo-host/push/push-alpha.conf",
+            )
+            os.lchown(
+                f"{po_pw.pw_dir}/.config/porelo-host/push/push-alpha.conf", po_pw.pw_uid, po_pw.pw_gid
+            )
+            po_link_run = as_person(
+                "po", ["/usr/local/sbin/porelo-host-push", "push-alpha"], central_token["pa"] + "\n"
+            )
+            captured.extend([
+                pd_reads_pa.stdout, pd_reads_pa.stderr,
+                po_reads_pa.stdout, po_reads_pa.stderr,
+                po_reads_pd.stdout, po_reads_pd.stderr,
+                po_link_run.stdout, po_link_run.stderr,
+            ])
+
+            # 5. Project admin pa commits on local main and pushes with pa's own tokens.
+            _, pa_commit = api(
+                "POST",
+                "/repos/push-alpha/code/contents/admin.txt",
+                {
+                    "content": base64.b64encode(b"admin\n").decode("ascii"),
+                    "message": "Add admin work",
+                    "branch": "main",
+                },
+                bearer=person_forge_token["pa"],
+            )
+            pa_sha = pa_commit["commit"]["sha"]
+            pa_push = as_person(
+                "pa", ["/usr/local/sbin/porelo-host-push", "push-alpha"], central_token["pa"] + "\n"
+            )
+            captured.extend([pa_push.stdout, pa_push.stderr])
+            _, central_after_pa = api("GET", "/repos/push-central/code/branches/main")
+
+            # 6. Developer pd commits on local main and pushes with pd's own tokens.
+            _, pd_commit = api(
+                "POST",
+                "/repos/push-alpha/code/contents/developer.txt",
+                {
+                    "content": base64.b64encode(b"developer\n").decode("ascii"),
+                    "message": "Add developer work",
+                    "branch": "main",
+                },
+                bearer=person_forge_token["pd"],
+            )
+            pd_sha = pd_commit["commit"]["sha"]
+            pd_push = as_person(
+                "pd", ["/usr/local/sbin/porelo-host-push", "push-alpha"], central_token["pd"] + "\n"
+            )
+            captured.extend([pd_push.stdout, pd_push.stderr])
+            _, central_after_pd = api("GET", "/repos/push-central/code/branches/main")
+
+            # 7. Search every output and the boot journal for every raw and Basic-encoded credential, with a control.
+            patterns = set()
+            for item in all_secrets:
+                patterns.add(item)
+                patterns.add(base64.b64encode(f"x-access-token:{item}".encode("utf-8")).decode("ascii"))
+            planted = "before " + central_token["pd"] + " after"
+            control_matched = any(pat in planted for pat in patterns)
+            journal = subprocess.check_output(["/usr/bin/journalctl", "-b", "-o", "cat", "--no-pager"], text=True)
+            combined_out = "\n".join(captured)
+            leaked_output = any(pat in combined_out for pat in patterns)
+            leaked_journal = any(pat in journal for pat in patterns)
+
+            def scrub(text):
+                for pat in patterns:
+                    text = text.replace(pat, "<redacted>")
+                return text
+
+            print(
+                json.dumps(
+                    {
+                        "root_rc": root_run.returncode,
+                        "root_has_word": "root" in root_run.stderr,
+                        "missing_vault_rc": missing_vault.returncode,
+                        "missing_vault_err": scrub(missing_vault.stderr),
+                        "pd_reads_pa_rc": pd_reads_pa.returncode,
+                        "po_reads_pa_rc": po_reads_pa.returncode,
+                        "po_reads_pd_rc": po_reads_pd.returncode,
+                        "po_link_rc": po_link_run.returncode,
+                        "po_link_err": scrub(po_link_run.stderr),
+                        "pa_push_rc": pa_push.returncode,
+                        "pa_push_out": scrub(pa_push.stdout),
+                        "pa_push_err": scrub(pa_push.stderr),
+                        "pa_sha": pa_sha,
+                        "central_after_pa": central_after_pa["commit"]["id"],
+                        "pd_push_rc": pd_push.returncode,
+                        "pd_push_out": scrub(pd_push.stdout),
+                        "pd_push_err": scrub(pd_push.stderr),
+                        "pd_sha": pd_sha,
+                        "central_after_pd": central_after_pd["commit"]["id"],
+                        "control_matched": control_matched,
+                        "leaked_output": leaked_output,
+                        "leaked_journal": leaked_journal,
+                    }
+                )
+            )
+      register: verify_push_act
+      changed_when: true
+      no_log: true
+
+    - name: Assert admin and developer each pushed with their own tokens, configs stayed private, and no secret leaked
+      ansible.builtin.assert:
+        that:
+          - "'failed_at_line' not in verify_push_result"
+          - verify_push_result.root_rc == 77
+          - verify_push_result.root_has_word
+          - verify_push_result.missing_vault_rc == 69
+          - "'forge.alpha.porelo.internal.person' in verify_push_result.missing_vault_err"
+          - "'porelo-host-stop --stdin identities' in verify_push_result.missing_vault_err"
+          - verify_push_result.pd_reads_pa_rc != 0
+          - verify_push_result.po_reads_pa_rc != 0
+          - verify_push_result.po_reads_pd_rc != 0
+          - verify_push_result.po_link_rc == 66
+          - "'symbolic link' in verify_push_result.po_link_err"
+          - verify_push_result.pa_push_rc == 0
+          - "'code: taken' in verify_push_result.pa_push_out"
+          - verify_push_result.central_after_pa == verify_push_result.pa_sha
+          - verify_push_result.pd_push_rc == 0
+          - "'code: taken' in verify_push_result.pd_push_out"
+          - verify_push_result.central_after_pd == verify_push_result.pd_sha
+          - verify_push_result.pa_sha != verify_push_result.pd_sha
+          - verify_push_result.control_matched
+          - not verify_push_result.leaked_output
+          - not verify_push_result.leaked_journal
+        fail_msg: >-
+          asked for root refusal 77, missing vault refusal 69, unreadable cross-account configs, symlink refusal 66,
+          both pa and pd pushing their commits to push-central/code, and zero secret leaks in output or journal;
+          got {{ verify_push_result }}
+      vars:
+        verify_push_result: "{{ verify_push_act.stdout_lines | last | from_json }}"
+  always:
+    - name: Remove push-alpha, push-central, central write accounts, admitted push test people and scratch files
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, os, pathlib, pwd, shutil, ssl, subprocess, sys, traceback, urllib.error, urllib.request
+
+            # A failure leaves only its lines, its class and an HTTP code; never its words,
+            # except the host tools' own refusal line, which names no secret.
+            def failed(kind, error, tb):
+                lines = [f.lineno for f in traceback.extract_tb(tb) if f.filename == "<string>"]
+                said = None
+                if isinstance(error, subprocess.CalledProcessError) and str(error.cmd[0]).startswith(
+                    "/usr/local/sbin/porelo-host-"
+                ):
+                    said = ((error.stderr or "").strip().splitlines() or [""])[-1][:300]
+                print(json.dumps({"failed_at_line": lines[-1] if lines else None, "lines": lines,
+                                  "error": kind.__name__, "code": getattr(error, "code", None),
+                                  "returncode": getattr(error, "returncode", None), "said": said}), flush=True)
+                os._exit(0)
+
+            sys.excepthook = failed
+            token_path = pathlib.Path("/home/porelo-forge/.config/porelo-forge/api.token")
+            if token_path.exists():
+                token = token_path.read_text(encoding="utf-8").strip()
+                ctx = ssl.create_default_context(cafile="/etc/porelo-host/forge/ca.pem")
+                opener = urllib.request.build_opener(
+                    urllib.request.ProxyHandler({}),
+                    urllib.request.HTTPSHandler(context=ctx),
+                )
+                base = "https://10.73.7.1:3000/api/v1"
+                for path in (
+                    "/repos/push-alpha/code",
+                    "/repos/push-central/code",
+                    "/orgs/push-central",
+                ):
+                    req = urllib.request.Request(
+                        base + path, method="DELETE", headers={"Authorization": "token " + token}
+                    )
+                    try:
+                        with opener.open(req, timeout=30):
+                            pass
+                    except urllib.error.HTTPError as err:
+                        if err.code != 404:
+                            raise
+            # The role's token administers no users; Forgejo's own command deletes the central write accounts.
+            forge_uid = pwd.getpwnam("porelo-forge").pw_uid
+            for cname in ("central-pa", "central-pd"):
+                subprocess.run(
+                    [
+                        "/usr/sbin/runuser", "-u", "porelo-forge", "--",
+                        "/usr/bin/env", f"XDG_RUNTIME_DIR=/run/user/{forge_uid}",
+                        "/usr/bin/podman", "exec", "forgejo", "forgejo", "admin", "user", "delete",
+                        "--username", cname,
+                    ],
+                    capture_output=True,
+                    cwd="/",
+                )
+            if pathlib.Path("/etc/porelo-host/projects/push-alpha.conf").exists():
+                subprocess.run(
+                    ["/usr/local/sbin/porelo-host-project", "remove", "push-alpha"],
+                    input="",
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+            for who in ("pa", "pd", "po"):
+                if pathlib.Path(f"/etc/porelo-host/people/{who}.conf").exists():
+                    subprocess.run(
+                        ["/usr/local/sbin/porelo-host-person", "purge", who],
+                        input="",
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+            shutil.rmtree("/root/verify-push", ignore_errors=True)
+            print(json.dumps({"cleaned": True}))
+      register: verify_push_cleanup
+      changed_when: true
+      failed_when: false
+      no_log: true
+
+    - name: Assert the push test's cleanup ran to its end
+      ansible.builtin.assert:
+        that:
+          - verify_push_cleanup.rc == 0
+          - (verify_push_cleanup.stdout_lines | last | from_json).cleaned | default(false)
+        fail_msg: >-
+          asked the push test's cleanup to run to its end; got rc {{ verify_push_cleanup.rc }} and
+          {{ verify_push_cleanup.stdout_lines | last | default('no answer') }}

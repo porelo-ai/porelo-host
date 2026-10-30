@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `porelo-host-person sync <project>`, callable by root or `sudo -n` by the project's unlocked recorded admin through
+  the `porelo-people` sudoers rule, copies the admin's plain private `project.bundle` and `access.bundle` into a
+  root-only `/run/porelo-host/sync/` directory and verifies them through `porelo project verify --json` in a
+  `DynamicUser` transient unit without home or network against the project's pinned signing keys and last applied
+  commits. It checks `access.yml`'s `host:` block against the host's VPN network, live WireGuard public key and CA
+  certificate digest, validates the whole developer diff before changing anything, reconciles `<project> developer`
+  memberships, per-laptop SSH keys and WireGuard peers (preserving `hand` and `project-admin` memberships and locking a
+  dropped developer only when no membership remains), updates the organization's `developers` team on the local forge,
+  and records `commit=`, `access_commit=` and `signer=` lines in `/etc/porelo-host/projects/<project>.conf`.
 - `porelo-host-project` registers a project for a recorded person, with its pinned SSH Ed25519 signing key, forge
   organization and package-only publisher. Removal checks every repository's commits against the central forge
   before deleting its repositories, packages, organization, publisher and root-only record.
@@ -19,8 +28,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deletes their tokens, expels Matrix accounts and revokes registration in one operation, and removes delivered
   credentials and their runtime directory. A separate install task provides the helper, SSH key lookup and a
   no-argument forge-password sudo rule.
+- `porelo.host.bring` and `porelo.host.join` run in the person's own account with no `sudo` but sync's: the setup's
+  files in `~/.local/share/porelo-host/setup/<project>/` checked, Porelo's verify on the project and access bundles
+  and the project followed; the bring migrates the project's repositories with the admin's own forge token, protects
+  `main`, makes the teams `developers`, `gates` and `agents`, sets the Actions variables, runs `sync` with a user
+  timer and makes the room once Porelo can; both write the person's push config. `porelo-host-stop --stdin`, run
+  without `sudo`, gives the caller's own `vault-new`, `vault`, `keys`, `forge-central-token` and `identities`.
 - `up` installs every agent package the repository publishes, read from the packages providing `porelo-agent`, and
   Porelo's message filter with rootless networking; a repository publishing no agent stops `up`.
+
+### Changed
+
+- `porelo-host-push <project> [<repository>...]` runs in any project developer's own account (refusing root and `sudo`
+  with `77`), reading `~/.config/porelo-host/push/<project>.conf` (`0600` plain file in a `0700` directory of the
+  caller's `getent passwd` home, never `$HOME`) and the caller's `<forge_name>.person` token from their vault (refusing
+  a missing entry with `69`, naming it and `porelo-host-stop --stdin identities`) while prompting hidden on the terminal
+  for their central forge token; without repository names it pushes every repository in the config's order. `up`
+  installs `/usr/local/sbin/porelo-host-push` (`0755`) and `/etc/porelo-host/forge/central-ca.conf` (`0644`), and
+  `porelo-host-project remove`'s `--check` reads each repository's central address from Forgejo's `original_url`
+  instead of `/etc/porelo-host/forge/push.conf`, refusing any repository without one by name.
+- Person records in `/etc/porelo-host/people/` store ordered `member=hand` and `member=<project> project-admin|developer`
+  memberships in place of `role=` and `projects=`; an existing `role=project-admin` record with no `member=` line is
+  read as `member=hand` and rewritten on its next write. `porelo-host-person add` records `member=hand`, `lock` keeps
+  memberships, `porelo-host-project add` records `member=<project> project-admin` for any unlocked member, and
+  `porelo-host-project remove` drops the project's memberships, locks anyone left with none, and reports `"locked"` in
+  its JSON answer. `porelo.host.down` checks `/etc/porelo-host/people/` first and refuses before stopping anything
+  while any record holds a membership, naming each person and their memberships with `"Take the project off"` and
+  `"Purge"`.
+
+### Removed
+
+- `/etc/porelo-host/forge/push.conf`: `up` no longer writes root's shared push configuration, and nothing reads it.
+- Admission makes no `<agent>-<user>` forge identity, and `up` no longer writes `agents=` into
+  `/etc/porelo-host/forge.conf`: Porelo lends agents no forge identity of their own. Lock still revokes those a 6j
+  host made.
+- The default `operator` forge login, `forge_person`, `person=` in `/etc/porelo-host/forge.conf`, and direct-root calls
+  to `porelo-host-forge-password` (now refused with `64` unless run through `sudo` as an admitted person). On an
+  existing host, `up` deletes a forge user `operator` that has no record in `/etc/porelo-host/people/` and rewrites
+  `forge.conf` without `person=`, so a person named `operator` can be admitted like anyone else.
 
 ### Fixed
 
@@ -29,7 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   project. A forge failing in itself is reported as something missing (69). SSH reads the people's keys as soon as
   `up` has written its drop-in.
 - A sudo call to the forge-password helper changes only the caller's own login and requires their unlocked,
-  root-owned person record. Direct root calls retain the configured login.
+  root-owned person record.
 - SSH for the `porelo-people` group reads only root's VPN-restricted authorized keys, so a person cannot add an
   unrestricted key in their home. Other accounts retain their existing key lookup.
 - `down` gives the host back when only a room's transport could not clear what it keeps with the vault, such as a

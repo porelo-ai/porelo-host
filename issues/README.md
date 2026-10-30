@@ -20,16 +20,16 @@ it is left out.
 | <a id="ho43"></a>[HO43](HO43-A-Project-Admin-Admitted-By-The-Host-Admin.md) | L | [HO42](#ho42) | `porelo-host-person`: a person admitted from their public keys (account, laptops' ssh keys and VPN peers, forge login and identities, Matrix token), locked and purged. |
 | <a id="ho12"></a>[HO12](HO12-The-VM-Pool.md) | L | - | Role `vm_pool`: VMs with run accounts `porelo-machines` rents from, made by the same code as the test VM, deleted by name at `down`. |
 | <a id="ho49"></a>[HO49](HO49-The-Persons-Forge-Login-Without-Repositories.md) | S | - | Wherever the host runs its own forge, the person's login and the password script are there, repositories or none. |
-
-## Implementing
-
-| # | Size | Blocked by | What it covers |
-|---|---|---|---|
 | <a id="ho45"></a>[HO45](HO45-The-Project-Brought-And-Joined-In-The-Persons-Own-Account.md) | L | [HO43](#ho43), [HO44](#ho44) | `bring.yml` and `join.yml` in the person's own account, with the stop's own-account mode and two bundles. |
 | <a id="ho53"></a>[HO53](HO53-No-Forge-User-Operator.md) | S | [HO42](#ho42) | `up` makes no forge user `operator` and removes it from a host set up before, once a search shows nothing reads it; each person's login is their own. |
 | <a id="ho55"></a>[HO55](HO55-A-Person-Leaves-When-No-Membership-Is-Left.md) | M | [HO43](#ho43), [HO44](#ho44) | Each person holds memberships, per project and by hand; removing a project locks whoever has none left, and `down` refuses while anyone holds one, naming each. |
 | <a id="ho46"></a>[HO46](HO46-The-Developers-Kept-In-Step-With-The-Signed-Access-File.md) | L | [HO45](#ho45) | `sync`: the developers on the host kept to the signed `access.yml`, verified by Porelo's own check as a throwaway user, added or locked. |
 | <a id="ho47"></a>[HO47](HO47-The-Gathered-Push-Run-By-Any-Developer.md) | S | [HO45](#ho45) | `porelo-host-push` as a user tool with the person's own config and token. |
+
+## Implementing
+
+| # | Size | Blocked by | What it covers |
+|---|---|---|---|
 
 ## Backlog
 

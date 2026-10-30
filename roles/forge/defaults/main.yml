@@ -47,9 +47,6 @@ forge_owner: "{{ porelo_host_forge_owner | default('porelo') }}"
 # The authority the gathered push trusts for the central forge: the system's own, never the host's.
 forge_central_ca: "{{ porelo_host_forge_central_ca | default('/etc/ssl/certs/ca-certificates.crt') }}"
 
-# The person's web login, whose lasting password porelo-host-forge-password sets from the person's secrets file.
-forge_person: operator
-
 # The gate and build reader share a token held only in this Porelo account's vault when gate.yml is called directly.
 forge_porelo_account: ""
 

@@ -1,0 +1,235 @@
+---
+# The person's own side of bring and join, run in their own account with no sudo: the setup's files the interface
+# uploaded into their home checked, Porelo's setup, the vault their stop opened, the project and its access file
+# verified by Porelo and the project followed. Every answer is Porelo's own (porelo's doc/hosts.md).
+- name: own | Check the project's name before it reaches a path or a command
+  ansible.builtin.assert:
+    that: porelo_project is string and porelo_project is match('^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?\Z')
+    fail_msg: "asked for a project name of lower case letters, digits and inner hyphens, got {{ porelo_project }}"
+    quiet: true
+
+- name: own | Ask which account runs the play
+  ansible.builtin.command:
+    cmd: id -un
+  register: __porelo_own_user
+  changed_when: false
+  check_mode: false
+
+- name: own | Read the account's home and id
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ __porelo_own_user.stdout }}"
+
+- name: own | Name the account the rest of the play acts for
+  ansible.builtin.set_fact:
+    porelo_account: "{{ __porelo_own_user.stdout }}"
+
+- name: own | Name the machine file in the account's setup directory
+  ansible.builtin.set_fact:
+    porelo_machine_file: "{{ __porelo_own_setup }}/machine.yml"
+
+# machine.yml pins the project's signing key, so a file another account could write, or a link it could turn, would let
+# it choose what is followed; every directory below the home is checked, the setup's own and its files most closely.
+- name: own | Read the setup's directories and files
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+    get_checksum: false
+    get_mime: false
+  loop: "{{ __porelo_own_ancestors + [__porelo_own_setup] + __porelo_own_files }}"
+  register: __porelo_own_place
+
+- name: own | Stop where a setup file is missing, a link, or not the person's alone, naming what was found
+  ansible.builtin.assert:
+    that: __porelo_own_place_wrong | length == 0
+    fail_msg: >-
+      {{ __porelo_own_setup }} must be the person's own directory of mode 0700, below directories of theirs nobody else
+      can write, holding machine.yml, project.bundle and access.bundle, each their own plain file of mode 0600; found
+      {{ __porelo_own_place_wrong | join('; ') }}
+    quiet: true
+
+# porelo setup is safe to run again and skips the vault with no terminal; it writes its hooks on every run, so only
+# its daemon line says whether anything changed.
+- name: own | Run porelo setup
+  ansible.builtin.command:
+    cmd: porelo setup
+    stdin: ""
+  environment: "{{ __porelo_user_environment }}"
+  register: __porelo_setup
+  changed_when: __porelo_setup.stdout is search('^daemon +started', multiline=True)
+
+# porelo vault status: 0 open, 3 shut, 4 no vault, 70 for a file that is not a vault.
+- name: own | Ask Porelo whether the vault is open
+  ansible.builtin.command:
+    cmd: porelo vault status
+  environment: "{{ __porelo_user_environment }}"
+  register: __porelo_vault
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: own | Stop unless the vault is open, naming the stop that opens it
+  ansible.builtin.assert:
+    that: __porelo_vault.rc == 0
+    fail_msg: >-
+      {{ {3: 'the vault is shut; open it with porelo-host-stop --stdin vault',
+          4: 'there is no vault; make it with porelo-host-stop --stdin vault-new keys'}[__porelo_vault.rc]
+      | default('porelo vault status answered ' ~ __porelo_vault.rc ~ ': ' ~ __porelo_vault.stderr) }}, then run
+      {{ porelo_own_act }} again
+    quiet: true
+
+- name: own | Ask Porelo for the project's inventory from the machine file
+  ansible.builtin.command:
+    argv: [porelo, project, inventory, --machine-file, "{{ porelo_machine_file }}"]
+  environment: "{{ __porelo_user_environment }}"
+  register: __porelo_inventory
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: own | Stop on Porelo's refusal of the machine file, with its own words
+  ansible.builtin.assert:
+    that: __porelo_inventory.rc == 0
+    fail_msg: >-
+      porelo project inventory refused {{ porelo_machine_file }} with {{ __porelo_inventory.rc }}
+      ({{ 'no such file' if __porelo_inventory.rc == 66 else 'its project part is wrong' }}):
+      {{ __porelo_inventory.stderr }}
+    quiet: true
+
+- name: own | Stop on an inventory of a version this role does not know
+  ansible.builtin.assert:
+    that: __porelo_second.all.vars.porelo_inventory_version == 2
+    fail_msg: >-
+      Porelo wrote inventory version {{ __porelo_second.all.vars.porelo_inventory_version }}, this role reads 2
+    quiet: true
+
+# The bundle the machine file names is the one checked above, so nothing else can be handed as the project's origin.
+- name: own | Stop where the machine file names another project or another bundle than the setup's own
+  ansible.builtin.assert:
+    that:
+      - __porelo_host.porelo_project.name == porelo_project
+      - __porelo_host.porelo_project.url == __porelo_own_setup ~ '/project.bundle'
+    fail_msg: >-
+      the machine file must name the project {{ porelo_project }} at {{ __porelo_own_setup }}/project.bundle; it names
+      {{ __porelo_host.porelo_project.name }} at {{ __porelo_host.porelo_project.url }}
+    quiet: true
+
+# Porelo does not read the forge section; the interface writes it for a bring alone, from the signed project file.
+- name: own | Read the machine file's forge section
+  ansible.builtin.slurp:
+    src: "{{ porelo_machine_file }}"
+  register: __porelo_own_machine
+
+- name: own | Stop on a forge section a bring cannot use or a join must not carry, naming what was found
+  ansible.builtin.assert:
+    that: >-
+      (__porelo_own_forge is none) if porelo_own_act == 'join' else (
+        __porelo_own_forge is mapping and __porelo_own_forge.keys() | list == ['repositories']
+        and __porelo_own_forge.repositories is sequence and __porelo_own_forge.repositories is not string
+        and __porelo_own_forge.repositories | length > 0
+        and __porelo_own_forge.repositories | select('mapping') | list | length
+          == __porelo_own_forge.repositories | length
+        and __porelo_own_forge.repositories | map('list') | map('sort') | unique | list == [['name', 'url']]
+        and __porelo_own_forge.repositories | map(attribute='name') | select('string')
+          | select('match', '^[A-Za-z0-9._-]{1,100}\Z') | unique | list | length
+          == __porelo_own_forge.repositories | length
+        and __porelo_own_forge.repositories | map(attribute='url') | select('string')
+          | select('match', '^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?/[^\s?#@]+\Z') | list | length
+          == __porelo_own_forge.repositories | length)
+    fail_msg: >-
+      {{ 'a join reads no forge section, and the machine file has one'
+      if porelo_own_act == 'join' else
+      'forge: must hold repositories alone, a list of at least one, each with a unique name of letters, digits,
+      dots, underscores or hyphens and an https:// url with no user, query or fragment; found '
+      ~ (__porelo_own_forge | to_json) }}
+    quiet: true
+
+# Porelo's inventory verified the access bundle the machine file names (porelo's B320); it must be the setup's own.
+- name: own | Stop where the machine file names another access bundle than the setup's own
+  ansible.builtin.assert:
+    that: >-
+      __porelo_own_access in [{'bundle': 'access.bundle'}, {'bundle': __porelo_own_setup ~ '/access.bundle'}]
+    fail_msg: >-
+      access: the machine file must name the bundle access.bundle beside it; it names
+      {{ __porelo_own_access | to_json }}
+    quiet: true
+
+- name: own | Ask Porelo which entries the vault holds, by name
+  ansible.builtin.command:
+    cmd: porelo vault list
+  environment: "{{ __porelo_user_environment }}"
+  register: __porelo_vault_list
+  changed_when: false
+  check_mode: false
+
+# Only names pass here: each key reaches the vault on the stop's pipe, never through Ansible.
+- name: own | Stop on a key of the machine file the vault does not hold, naming it
+  ansible.builtin.assert:
+    that: __porelo_keys_missing | length == 0
+    fail_msg: >-
+      keys: the vault holds no {{ __porelo_keys_missing | join(', ') }}; give them with
+      porelo-host-stop --stdin keys and run {{ porelo_own_act }} again
+    quiet: true
+  vars:
+    __porelo_keys_missing: "{{ __porelo_host.porelo_vault_keys | default([]) | map(attribute='name')
+      | reject('in', __porelo_vault_list.stdout_lines | map('split') | map('first') | list) | list }}"
+
+- name: own | Ask Porelo which projects the account follows
+  ansible.builtin.command:
+    cmd: porelo project following --json
+  environment: "{{ __porelo_user_environment }}"
+  register: __porelo_following
+  changed_when: false
+  check_mode: false
+
+# Porelo's own rules decide which keys and commits count, on both bundles, from the keys pinned at registration and
+# along each handover since; verify names the newest commits that hold, which say whether to follow again. No --since:
+# after a handover it would need the keys in force, which following names only by print (porelo's B332); the follow
+# below refuses a commit that does not descend from the one in force.
+- name: own | Ask Porelo to verify the project and its access file from the uploaded bundles
+  ansible.builtin.command:
+    argv: "{{ [
+      'porelo', 'project', 'verify', '--json', '--project', porelo_project,
+      '--repository', __porelo_own_setup ~ '/project.bundle',
+      '--access-repository', __porelo_own_setup ~ '/access.bundle']
+      + (['--signed-by'] | product(__porelo_own_signers) | flatten) }}"
+  environment: "{{ __porelo_user_environment }}"
+  register: __porelo_verified
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: own | Stop on Porelo's refusal of either bundle, with its own words
+  ansible.builtin.assert:
+    that:
+      - __porelo_verified.rc == 0
+      - (__porelo_verified.stdout | from_json).access_commit != ''
+    fail_msg: >-
+      porelo project verify refused the bundles in {{ __porelo_own_setup }} with {{ __porelo_verified.rc }}:
+      {{ __porelo_verified.stderr if __porelo_verified.rc != 0 else 'the project names no access repository' }}
+    quiet: true
+
+# A bundle is read once when followed, so a newer one the interface uploads at the same path is only seen here.
+- name: own | Read the commits the project bundle's heads point at
+  ansible.builtin.command:
+    argv: [git, bundle, list-heads, "{{ __porelo_host.porelo_project.url }}"]
+    # Not the directory the person started in, which may be a repository of its own.
+    chdir: /
+  register: __porelo_bundle_heads
+  changed_when: false
+  check_mode: false
+
+# Followed with the access bundle, its url never fetched (porelo's B331); again only where the address differs, the
+# followed commit is none of the bundle's heads or the access commit is not the one verify names; never --unverified.
+- name: own | Follow the project and its access file, checked against the keys in force
+  ansible.builtin.command:
+    argv: "{{ ['porelo', 'project', 'follow', porelo_project, __porelo_host.porelo_project.url]
+      + (__porelo_own_signers | map('regex_replace', '^', '--signed-by=') | list)
+      + ['--access-repository=' ~ __porelo_own_setup ~ '/access.bundle'] }}"
+  when: >-
+    __porelo_followed | length == 0
+    or __porelo_followed[0].url != __porelo_host.porelo_project.url
+    or __porelo_followed[0].commit not in (__porelo_bundle_heads.stdout_lines | map('split') | map('first') | list)
+    or __porelo_followed[0].access_commit | default('') != (__porelo_verified.stdout | from_json).access_commit
+  environment: "{{ __porelo_user_environment }}"
+  changed_when: true

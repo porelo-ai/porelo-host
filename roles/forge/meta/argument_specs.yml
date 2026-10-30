@@ -127,13 +127,6 @@ argument_specs:
         description: >-
           The CA bundle the gathered push trusts for the central forge, from porelo_host_forge_central_ca; a root-owned
           file, the system's own by default.
-      forge_person:
-        type: str
-        default: operator
-        description: >-
-          The person's web login matching ^[a-z][a-z0-9-]{0,30}$, made with every forge; with repositories, in the
-          Owners team.
-          Its generated password goes nowhere; porelo-host-forge-password sets the person's lasting one.
       forge_variables:
         type: dict
         default:
@@ -189,11 +182,7 @@ argument_specs:
       forge_http_port:
         type: int
         default: 3000
-        description: The forge's HTTPS port, named to the password script.
-      forge_person:
-        type: str
-        default: operator
-        description: The person's web login, named to the password script.
+        description: The forge's HTTPS port, named to the host's helpers.
       forge_account:
         type: str
         default: porelo-forge

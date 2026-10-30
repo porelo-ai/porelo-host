@@ -1,0 +1,27 @@
+---
+# What the project admin runs on the host in their own account, with no sudo but sync's, once the interface uploaded
+# the setup's files into their home and their stop filled their vault:
+#   ansible-playbook -c local porelo.host.bring -e porelo_project=<project>
+# Porelo follows the project, and the project's organization on the host's forge gets its repositories, main's
+# protection, the teams and the Actions variables, by the admin's own forge token; then sync and the room.
+- name: Bring the project onto the host in the project admin's own account
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    porelo_own_act: bring
+  tasks:
+    - name: Check the setup's files, follow the project and check its access file
+      ansible.builtin.include_role:
+        name: porelo.host.porelo
+        tasks_from: own
+
+    - name: Give the project its parts on the host's forge, and write the push config
+      ansible.builtin.include_role:
+        name: porelo.host.forge
+        tasks_from: own
+
+    - name: Keep the developers to the access file and make the project's room
+      ansible.builtin.include_role:
+        name: porelo.host.porelo
+        tasks_from: own_sync

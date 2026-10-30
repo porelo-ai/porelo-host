@@ -245,6 +245,158 @@ stdin_stop() {
     exit 0
 }
 
+# --stdin run by a person, not root: their own needs into their own account, from the host admin's desktop or their own
+# act. Nothing here runs as anyone else, so the caller's search path stays; each line is still checked before any is
+# used, and no value is ever echoed.
+own_people_dir=/run/porelo-host/people
+
+own_write_file() {
+    local value=$1 target=$2 dir tmp
+    dir=$(dirname -- "$target")
+    if [ ! -e "$dir" ] && [ ! -L "$dir" ]; then
+        (umask 077 && mkdir -p -- "$dir") || stdin_refuse "cannot make $dir" 73
+    fi
+    [ -d "$dir" ] && [ ! -L "$dir" ] && [ -O "$dir" ] || stdin_refuse "$dir is no directory of this account's" 73
+    chmod 0700 -- "$dir" || stdin_refuse "cannot keep $dir private" 73
+    if [ -L "$target" ] || { [ -e "$target" ] && [ ! -f "$target" ]; }; then
+        stdin_refuse "$target is no plain file" 73
+    fi
+    tmp=$(umask 077 && mktemp -- "$dir/.porelo-host-stop.XXXXXX") || stdin_refuse "cannot write in $dir" 73
+    if ! stdin_decode "$value" > "$tmp" || ! mv -fT -- "$tmp" "$target"; then
+        rm -f -- "$tmp"
+        stdin_refuse "cannot write $target" 73
+    fi
+}
+
+# The vault names Porelo reads (Agent Core, room 2026-10-29): the gate's token by the forge's host as its push URL
+# names it, the git fallback of doc/credentials.md; the person's own login under a name only the host's acts read.
+own_identity_name() {
+    local identity=$1 user=$2 forge=$3
+    case "$identity" in
+        "porelo-$user") printf '%s' "git.token.$forge" ;;
+        "$user") printf '%s' "$forge.person" ;;
+        *) return 1 ;;
+    esac
+}
+
+own_stop() {
+    local -A named=() given=()
+    local -a key_names=()
+    local need line count=0 rest name value user forge tokens identity token
+    local -a identity_names=() identity_tokens=()
+    [ "$#" -gt 0 ] || stdin_refuse 'at least one need is required: vault-new, vault, keys, forge-central-token, identities'
+    for need in "$@"; do
+        case "$need" in
+            vault-new|vault|keys|forge-central-token|identities) ;;
+            wireguard|forge-certificate) stdin_refuse "$need is the host admin's root act; it runs by sudo as root" ;;
+            drive) stdin_refuse 'drive is no need of the host any more' ;;
+            matrix-token) stdin_refuse 'matrix-token is no need any more; admission leaves the token in your home' ;;
+            *) stdin_refuse "unknown need or option: $need" ;;
+        esac
+        [ -z "${named[$need]+x}" ] || stdin_refuse "need named twice: $need"
+        named[$need]=1
+    done
+    if [ -n "${named[vault-new]+x}" ] && [ -n "${named[vault]+x}" ]; then
+        stdin_refuse 'vault-new and vault exclude each other'
+    fi
+    [ ! -t 0 ] || stdin_refuse '--stdin reads its lines from a pipe, not a terminal'
+    export LC_ALL=C
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        count=$((count + 1))
+        [ "$count" -le "$stdin_max_lines" ] || stdin_refuse "more than $stdin_max_lines lines"
+        need=${line%% *}
+        rest=${line#* }
+        [ "$rest" != "$line" ] || stdin_refuse "line $count holds no value"
+        name=
+        case "$need" in
+            key)
+                [ -n "${named[keys]+x}" ] || stdin_refuse "line $count gives a key, but keys is not named"
+                name=${rest%% *}
+                value=${rest#* }
+                [ "$value" != "$rest" ] || stdin_refuse "line $count holds no value"
+                [[ $name =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || stdin_refuse "line $count names no valid key"
+                ;;
+            vault-new|vault|forge-central-token)
+                [ -n "${named[$need]+x}" ] || stdin_refuse "line $count gives $need, which is not named"
+                value=$rest
+                ;;
+            *) stdin_refuse "line $count gives $need, which is not named here" ;;
+        esac
+        if ! [[ $value =~ ^[A-Za-z0-9+/]+={0,2}$ ]] || [ $(( ${#value} % 4 )) != 0 ] \
+            || ! stdin_decode "$value" > /dev/null 2>&1; then
+            stdin_refuse "line $count holds no base64 value"
+        fi
+        [ -z "${given["$need $name"]+x}" ] || stdin_refuse "line $count gives ${name:-$need} a second time"
+        given["$need $name"]=$value
+        [ "$need" != key ] || key_names+=("$name")
+    done
+    for need in vault-new vault forge-central-token; do
+        if [ -n "${named[$need]+x}" ] && [ -z "${given["$need "]+x}" ]; then
+            stdin_refuse "no line gives $need"
+        fi
+    done
+    if [ -n "${named[keys]+x}" ] && [ -z "${named[vault-new]+x}" ] && [ "${#key_names[@]}" = 0 ]; then
+        stdin_refuse 'no line gives keys'
+    fi
+
+    if [ -n "${named[forge-central-token]+x}" ]; then
+        [ -n "${XDG_RUNTIME_DIR-}" ] || stdin_refuse 'XDG_RUNTIME_DIR is not set; log in to this account first' 69
+        [ -d "$XDG_RUNTIME_DIR" ] && [ -O "$XDG_RUNTIME_DIR" ] \
+            || stdin_refuse "$XDG_RUNTIME_DIR is no runtime directory of this account's" 69
+    fi
+    # The tokens admission left for this person, read whole and checked before the vault is touched.
+    if [ -n "${named[identities]+x}" ]; then
+        user=$(id -un) || stdin_refuse 'cannot read the account name' 69
+        tokens=$own_people_dir/$user/identities.tokens
+        [ -f "$tokens" ] && [ ! -L "$tokens" ] && [ -O "$tokens" ] \
+            || stdin_refuse "no identities wait in $tokens; they are given once, at admission" 69
+        forge=$(stdin_conf_value "$stdin_forge_conf" name '^forge\.[a-z0-9-]+\.porelo\.internal$') || exit $?
+        [ "$(stat -c '%a' -- "$tokens")" = 600 ] || stdin_refuse "$tokens is not private" 69
+        while IFS= read -r line || [ -n "$line" ]; do
+            identity=${line%% *}
+            token=${line#* }
+            [[ $token =~ ^[0-9a-f]{40}$ ]] || stdin_refuse "$tokens holds a line that is no identity and token" 65
+            name=$(own_identity_name "$identity" "$user" "$forge") \
+                || stdin_refuse "$tokens names an identity Porelo does not use: $identity" 65
+            identity_names+=("$name")
+            identity_tokens+=("$token")
+        done < "$tokens"
+        [ "${#identity_names[@]}" -gt 0 ] || stdin_refuse "$tokens holds no identity" 65
+    fi
+    if [ -n "${named[vault-new]+x}" ] || [ -n "${named[vault]+x}" ] || [ -n "${named[keys]+x}" ] \
+        || [ -n "${named[identities]+x}" ]; then
+        require_command porelo
+        export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$EUID}
+    fi
+
+    if [ -n "${named[vault-new]+x}" ]; then
+        stdin_decode "${given["vault-new "]}" | porelo vault init --passphrase-stdin \
+            || stdin_refuse 'porelo vault init refused vault-new' 65
+    fi
+    if [ -n "${named[vault]+x}" ]; then
+        stdin_decode "${given["vault "]}" | porelo vault unlock --passphrase-stdin \
+            || stdin_refuse 'porelo vault unlock refused vault' 65
+    fi
+    for name in "${key_names[@]}"; do
+        stdin_decode "${given["key $name"]}" | porelo vault put "$name" > /dev/null \
+            || stdin_refuse "porelo vault put refused the key $name" 65
+    done
+    for count in "${!identity_names[@]}"; do
+        printf '%s' "${identity_tokens[$count]}" | porelo vault put "${identity_names[$count]}" > /dev/null \
+            || stdin_refuse "porelo vault put refused ${identity_names[$count]}" 65
+    done
+    # Taken once: the file goes as soon as the vault holds every token, so no copy outlives it.
+    if [ -n "${named[identities]+x}" ]; then
+        rm -f -- "$tokens" || stdin_refuse "cannot remove $tokens" 73
+    fi
+    if [ -n "${named[forge-central-token]+x}" ]; then
+        own_write_file "${given["forge-central-token "]}" "$XDG_RUNTIME_DIR/porelo-host/forge-central-token"
+    fi
+    printf '%s\n' "Your stop is done."
+    exit 0
+}
+
 cancel() {
     printf '\n%s\n' 'Cancelled; the host waits at this stop. Running up again comes back here.'
     exit 75
@@ -270,7 +422,10 @@ try_again() {
 
 if [ "${1-}" = --stdin ]; then
     shift
-    stdin_stop "$@"
+    if [ "$EUID" = 0 ]; then
+        stdin_stop "$@"
+    fi
+    own_stop "$@"
 fi
 # The waiting requests of the forge and the homeserver, the forge's first, no secret, for the desktop to sign.
 if [ "${1-}" = --request ]; then

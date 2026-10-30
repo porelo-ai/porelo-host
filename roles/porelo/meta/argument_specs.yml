@@ -71,3 +71,10 @@ argument_specs:
         type: path
         default: /etc/porelo-host/setup/machine.yml
         description: The machine file, whose directory down removes.
+  person:
+    short_description: >-
+      The root helper /usr/local/sbin/porelo-host-person, its password and sync sudoers drop-in and SSH authorized_keys
+      drop-in.
+  people:
+    short_description: >-
+      Refuse at the start of down while any person record still holds a membership on the host.

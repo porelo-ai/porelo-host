@@ -1,0 +1,93 @@
+---
+# The bring's last steps, in the project admin's own account: root's sync keeps the host's developers to the signed
+# access file (HO46), now and from the admin's own timer after each bundle the interface uploads; then the project's
+# room, made by the admin's own Porelo as their machine (porelo's B314). An unchanged sync changes nothing.
+- name: own_sync | Keep the host's developers to the signed access file, through root's sync
+  ansible.builtin.command:
+    argv: [sudo, -n, /usr/local/sbin/porelo-host-person, sync, "{{ porelo_project }}"]
+    stdin: ""
+  register: __porelo_sync
+  changed_when: not (__porelo_sync.stdout | from_json).unchanged
+  failed_when: false
+
+- name: own_sync | Stop on sync's refusal, with its own words
+  ansible.builtin.assert:
+    that: __porelo_sync.rc == 0
+    fail_msg: "sync of {{ porelo_project }} refused with {{ __porelo_sync.rc }}: {{ __porelo_sync.stderr }}"
+    quiet: true
+
+- name: own_sync | Make the admin's user unit directory
+  ansible.builtin.file:
+    path: "{{ __porelo_own_home }}/.config/systemd/user"
+    state: directory
+    mode: "0700"
+
+# sync reads the bundles in the admin's setup directory, so the timer finds each upload; it acts only on new commits.
+- name: own_sync | Write the admin's sync service and timer for the project
+  ansible.builtin.copy:
+    dest: "{{ __porelo_own_home }}/.config/systemd/user/porelo-host-sync-{{ porelo_project }}.{{ item.kind }}"
+    mode: "0600"
+    content: "{{ item.content }}"
+  loop:
+    - kind: service
+      content: |
+        # Written by porelo.host.bring.
+        [Unit]
+        Description=Keep the host's developers of {{ porelo_project }} to its signed access file
+
+        [Service]
+        Type=oneshot
+        StandardInput=null
+        ExecStart=/usr/bin/sudo -n /usr/local/sbin/porelo-host-person sync {{ porelo_project }}
+    - kind: timer
+      content: |
+        # Written by porelo.host.bring.
+        [Unit]
+        Description=Sync {{ porelo_project }}'s developers after each upload of its bundles
+
+        [Timer]
+        OnActiveSec=1min
+        OnUnitInactiveSec={{ porelo_sync_interval }}
+        Persistent=false
+
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.kind }}"
+  register: __porelo_sync_units
+
+- name: own_sync | Start the admin's sync timer
+  ansible.builtin.systemd_service:
+    name: porelo-host-sync-{{ porelo_project }}.timer
+    scope: user
+    enabled: true
+    state: "{{ 'restarted' if __porelo_sync_units is changed else 'started' }}"
+    daemon_reload: "{{ __porelo_sync_units is changed }}"
+  environment: "{{ __porelo_user_environment }}"
+
+- name: own_sync | Ask Porelo whether it makes a project's room yet
+  ansible.builtin.command:
+    argv: [porelo, talk, room, --help]
+  environment: "{{ __porelo_user_environment }}"
+  register: __porelo_room_help
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# Porelo hands the transport its secrets from the admin's vault and keeps the room's machines to the applied developer
+# list, at once and after each applied commit, so sync needs no call of its own (porelo's B314).
+- name: own_sync | Make the project's room as the admin's machine
+  ansible.builtin.command:
+    argv: [porelo, talk, room, "{{ porelo_project }}"]
+    stdin: ""
+  environment: "{{ __porelo_user_environment }}"
+  # talk room answers a person, not whether it made anything; run again it takes the room its machine made.
+  changed_when: false
+  when: __porelo_room_help.rc == 0
+
+- name: own_sync | Say the room waits for porelo's B314
+  ansible.builtin.debug:
+    msg: >-
+      the project's room is not made: this porelo has no 'talk room' (porelo's B314); run the bring again once it is
+      installed
+  when: __porelo_room_help.rc != 0
