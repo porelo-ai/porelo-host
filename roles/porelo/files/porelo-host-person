@@ -36,14 +36,24 @@ registry/applied.json. sync refuses a project that answer does not name for its
 recorded, unrevoked admin; the host never removes such a project itself.
 
 With account= in forge.conf, admission creates the login and the porelo-<user>
-gate; lock also revokes each <agent>-<user> a 6j host's agents= names.
-Only new identities get tokens, atomically delivered as identity/token lines in
-the person's 0600 /run/porelo-host/people/<user>/identities.tokens, for import and
-removal. Its directory is the person's, 0700, in root's 0755 people directory;
-links and another account's directory are refused. Lock and purge remove the
-person's entire delivery directory without following links inside it.
-Lock prohibits all those logins and deletes all their tokens through the TLS
-admin API, trusting forge/ca.pem; its temporary admin token stays in memory.
+gate and no token, since Forgejo keeps only a token's hash; lock also revokes
+each <agent>-<user> a 6j host's agents= names. forge-token, by sudo alone, deletes
+every token of the caller's login and answers one new token alone on stdout,
+written to no file. Lock prohibits all those logins and deletes all their tokens
+through the TLS admin API, trusting forge/ca.pem; its temporary admin token stays
+in memory. registry deletes every token of each unlocked person it names revoked.
+
+task <task>, by sudo alone, reads one Ed25519 user certificate of at most 16 KiB
+on stdin from a private temporary file with ssh-keygen -L, which checks its
+signature. Its signing key must be the caller's key in registry/applied.json, not
+revoked; one principal must be task:<task>; it must hold now and end. Then root's
+0600 /var/lib/porelo-host/tasks/<user>/<task>.json records it, never replaced,
+and the gate's token porelo-task-<task> of porelo-<user> is made anew and answered
+alone on stdout. task --end <task> deletes that token; task --show <fingerprint>
+answers the record of that task key, read-only, to root or any unlocked person;
+sweep, root's alone from its daily timer, deletes every task token whose recorded
+certificate has ended. Task and forge-token calls delete their temporary admin
+token before reporting success.
 
 Matrix admission stores no token. The gate authenticates the socket's peer.
 Lock and purge run the transport's expel <login> as porelo-matrix, including a
@@ -65,6 +75,7 @@ or hook overrides from arguments, stdin or the environment.
 
 import base64
 import binascii
+import contextlib
 import datetime
 import fcntl
 import grp
@@ -97,6 +108,21 @@ COMMIT = r"[0-9a-f]{40}([0-9a-f]{24})?"
 FINGERPRINT = r"SHA256:[A-Za-z0-9+/]{43}"
 SHOWN = r"[!-~]{1,64}"
 MAX_INPUT = 262144
+TASK = r"[a-z0-9][a-z0-9._-]{0,63}"
+CERTIFICATE = "ssh-ed25519-cert-v01@openssh.com"
+MAX_CERTIFICATE = 16384
+TASKS = "/var/lib/porelo-host/tasks"
+ADMIN = "porelo-admin"
+TASK_TOKEN = "porelo-task-"
+# The bring makes teams and Actions variables with the person's token and reads their standing in the organization.
+PERSON_SCOPES = "write:repository,write:issue,write:organization,read:user"
+# Forgejo's scopes name kinds of API, never a repository: a task reaches what porelo-<user>'s teams give it.
+TASK_SCOPES = "write:repository"
+# ssh-keygen -L shows a certificate's validity in local time; it runs with TZ=UTC, so this reads it as UTC.
+TIME = "%Y-%m-%dT%H:%M:%S"
+HEADERS = (
+    "Type", "Public key", "Signing CA", "Key ID", "Serial", "Valid", "Principals", "Critical Options", "Extensions"
+)
 
 
 class Refusal(Exception):
@@ -157,6 +183,78 @@ def fingerprint(ssh):
 def shown(value, index):
     """A name from the registry fit for a diagnostic, or the entry's position where it is none."""
     return value if isinstance(value, str) and re.fullmatch(SHOWN, value) else f"#{index}"
+
+
+def certificate_line(data):
+    """One ssh-ed25519 certificate line from bounded stdin, its comment dropped; nothing else is read."""
+    if not data or len(data) > MAX_CERTIFICATE:
+        refuse(f"the task certificate is empty or longer than {MAX_CERTIFICATE} bytes", 64)
+    try:
+        text = data.decode("ascii").removesuffix("\n")
+    except UnicodeDecodeError:
+        refuse("the task certificate is not ASCII", 64)
+    fields = text.split(" ")
+    if not re.fullmatch(r"[ -~]+", text) or len(fields) not in (2, 3) or fields[0] != CERTIFICATE:
+        refuse(f"standard input holds no single {CERTIFICATE} line", 64)
+    try:
+        base64.b64decode(fields[1], validate=True)
+    except (ValueError, binascii.Error):
+        refuse(f"standard input holds no single {CERTIFICATE} line", 64)
+    return fields[0] + " " + fields[1]
+
+
+def certificate_time(value):
+    """A time ssh-keygen -L showed under TZ=UTC, or None."""
+    try:
+        return datetime.datetime.strptime(value, TIME).replace(tzinfo=datetime.timezone.utc)
+    except ValueError:
+        return None
+
+
+def read_certificate(text):
+    """The fields of ssh-keygen -L's answer, each header once and in its order, or None for any other shape.
+
+    A header repeated, missing or out of order is refused, so text inside a key ID or principal cannot pass for one.
+    """
+    fields, principals, current = {}, [], None
+    for line in text.splitlines()[1:]:
+        if line.startswith(" " * 16):
+            if current is None:
+                return None
+            if current == "Principals":
+                principals.append(line[16:])
+            continue
+        match = re.fullmatch(r" {8}([A-Za-z ]+): ?(.*)", line)
+        if match is None or match[1] in fields or match[1] not in HEADERS:
+            return None
+        fields[match[1]] = match[2]
+        current = match[1]
+    if tuple(fields) != HEADERS:
+        return None
+    public = re.fullmatch(r"ED25519-CERT (" + FINGERPRINT + ")", fields["Public key"])
+    signer = re.fullmatch(r"ED25519 (" + FINGERPRINT + r") \(using ssh-ed25519\)", fields["Signing CA"])
+    key_id = re.fullmatch(r'"(.*)"', fields["Key ID"])
+    span = re.fullmatch(r"(?:from (\S+) to|before) (\S+)", fields["Valid"])
+    if public is None or signer is None or key_id is None or span is None:
+        return None
+    after = certificate_time(span[1]) if span[1] is not None else None
+    before = certificate_time(span[2])
+    if before is None or (span[1] is not None and after is None):
+        return None
+    return {
+        "type": fields["Type"],
+        "fingerprint": public[1],
+        "signed_by": signer[1],
+        "key_id": key_id[1],
+        "principals": [] if fields["Principals"] == "(none)" else principals,
+        "valid_after": after,
+        "valid_before": before,
+    }
+
+
+def stamp(moment):
+    """A UTC time as the record keeps it."""
+    return None if moment is None else moment.strftime(TIME) + "Z"
 
 
 def valid_wg_key(wireguard):
@@ -323,8 +421,10 @@ class Host:
         self.accounts = None
         self.groups = None
         self.commands = None
+        self.now = lambda: datetime.datetime.now(datetime.timezone.utc)
         self.hooks = {
-            name: getattr(self, name) for name in ("forge_admit", "forge_lock", "matrix_expel_revoke")
+            name: getattr(self, name)
+            for name in ("forge_admit", "forge_lock", "matrix_expel_revoke", "forge_drop_tokens")
         }
 
     def path(self, name):
@@ -557,13 +657,13 @@ class Host:
         """Run Forgejo's admin command as its rootless container account."""
         return self.as_account(account, ["podman", "exec", "forgejo", "forgejo", "admin", "user", *arguments])
 
-    def forge_token(self, account, user, scopes):
+    def forge_token(self, account, user, scopes, name=None):
         """Capture a generated token in memory without ever relaying the command's output."""
         result = self.forge_command(
             account,
             [
                 "generate-access-token", "--username", user, "--token-name",
-                "porelo-host-person-" + uuid.uuid4().hex, "--scopes", scopes, "--raw",
+                name or "porelo-host-person-" + uuid.uuid4().hex, "--scopes", scopes, "--raw",
             ],
         )
         token = result.stdout.strip()
@@ -586,15 +686,6 @@ class Host:
         ):
             refuse("the forge token delivery directory is not a private directory of the person's", 73)
         return directory
-
-    def forge_tokens_path(self, user, private=True):
-        """Validate the person's delivery directory and any existing private token file."""
-        path = self.forge_tokens_directory(user, private) / "identities.tokens"
-        if private and (path.exists() or path.is_symlink()):
-            entry, status = self.account(user), path.lstat()
-            if not stat.S_ISREG(status.st_mode) or status.st_uid != entry.pw_uid or stat.S_IMODE(status.st_mode) != 0o600:
-                refuse("the person's forge token delivery file is not private and plain", 73)
-        return path
 
     def remove_forge_tokens(self, user):
         """Remove only this person's delivery directory, never following links in its writable contents."""
@@ -630,8 +721,6 @@ class Host:
         forge = "forge_admit" if verb == "add" else "forge_lock"
         if self.hooks[forge] == getattr(self, forge):
             config = self.forge_configuration(user)
-            if config is not None or verb != "add":
-                self.forge_tokens_path(user, private=verb == "add")
             if config is not None:
                 if verb == "add":
                     self.forge_domain()
@@ -642,13 +731,12 @@ class Host:
             self.require(["runuser", TRANSPORT])
 
     def forge_admit(self, user, laptops):
-        """Make only missing identities and deliver their credentials for the person's own vault import."""
+        """Make only missing identities, and no token: Forgejo keeps a token's hash alone, so forge-token makes it."""
         config = self.forge_configuration(user)
         if config is None:
             return
         # Porelo lends agents no forge identity of their own: the person's login and gate alone, whatever agents= names.
         account, identities = config[0], config[1][:2]
-        path = self.forge_tokens_path(user)
         domain = self.forge_domain()
         lines = self.forge_command(account, ["list"]).stdout.splitlines()
         if not lines or not re.match(r"ID\s+Username\s+Email\b", lines[0]):
@@ -659,7 +747,6 @@ class Host:
             if len(fields) < 3 or not fields[0].isdigit():
                 refuse("Forgejo answered no valid user list", 69)
             users.add(fields[1])
-        tokens = []
         for identity in identities:
             if identity in users:
                 continue
@@ -668,23 +755,63 @@ class Host:
                 ["create", "--username", identity, "--email", identity + "@" + domain,
                  "--random-password", "--must-change-password=false"],
             )
-            # The person's login brings their projects: teams, Actions variables and their standing in the
-            # organization; the gate pushes task branches alone.
-            scopes = "write:repository,write:organization,read:user" if identity == user else (
-                "write:repository,read:organization"
-            )
-            tokens.append(identity + " " + self.forge_token(account, identity, scopes) + "\n")
-        if tokens:
-            entry = self.account(user)
-            self.directories(path.parent.parent)
-            for directory in (path.parent.parent.parent, path.parent.parent):
-                self.check(directory, 73, required=True, directory=True)
-                directory.chmod(0o755)
-            if not path.parent.exists():
-                path.parent.mkdir(mode=0o700)
-                os.chown(path.parent, entry.pw_uid, entry.pw_gid)
-                path.parent.chmod(0o700)
-            self.write(path, "".join(tokens), 0o600, owner=entry.pw_uid, group=entry.pw_gid)
+
+    @contextlib.contextmanager
+    def forge_session(self, user):
+        """One admin token for this call alone, deleted when it ends, so none outlives what it was made for."""
+        account = self.forge_configuration(user)[0]
+        base, ca = self.forge_endpoint()
+        opener = self.forge_opener(ca)
+        name = "porelo-host-person-" + uuid.uuid4().hex
+        token = self.forge_token(account, ADMIN, "write:admin", name)
+        try:
+            yield account, opener, base, token
+        except BaseException:
+            with contextlib.suppress(Refusal):
+                self.forge_drop_named(opener, base, token, ADMIN, {name})
+            raise
+        self.forge_drop_named(opener, base, token, ADMIN, {name})
+
+    def forge_tokens_of(self, opener, base, token, identity):
+        """One login's complete token set, ID to name, read before any deletion shrinks a page."""
+        tokens, page = {}, 1
+        while True:
+            rows = self.forge_api(opener, base, token, "GET", identity + f"/tokens?limit=50&page={page}", 200)
+            if not isinstance(rows, list) or any(
+                not isinstance(row, dict) or type(row.get("id")) is not int or row["id"] < 1 for row in rows
+            ):
+                refuse("Forgejo answered no valid access-token list", 69)
+            if not rows:
+                return tokens
+            batch = {row["id"]: row.get("name") for row in rows}
+            if batch.keys() & tokens.keys():
+                refuse("Forgejo repeated a page of access tokens", 69)
+            tokens.update(batch)
+            page += 1
+
+    def forge_drop_named(self, opener, base, token, identity, names=None):
+        """Delete every token of one login, or those named in names; answer the names deleted."""
+        dropped = []
+        for identifier, name in sorted(self.forge_tokens_of(opener, base, token, identity).items()):
+            if names is None or name in names:
+                self.forge_api(opener, base, token, "DELETE", identity + f"/tokens/{identifier}", 204)
+                dropped.append(name)
+        return dropped
+
+    def forge_drop_tokens(self, user):
+        """Delete every token of every forge user of the person, made by the host or not; no login is prohibited."""
+        config = self.forge_configuration(user)
+        if config is None:
+            return
+        errors = []
+        with self.forge_session(user) as (_, opener, base, token):
+            for identity in config[1]:
+                try:
+                    self.forge_drop_named(opener, base, token, identity)
+                except Refusal as error:
+                    errors.append(error)
+        if errors:
+            refuse("; ".join(str(error) for error in errors), errors[0].code)
 
     def forge_api(self, opener, base, token, method, route, expected, body=None, not_found=None):
         """Refuse HTTP and socket failures without printing a header, credential or response body."""
@@ -782,7 +909,7 @@ class Host:
             self.forge_api(opener, api_base, token, "DELETE", f"teams/{team_id}/members/{user}", 204)
 
     def forge_lock(self, user):
-        """Prohibit all the person's logins and delete every token, including tokens outside delivery."""
+        """Prohibit all the person's logins and delete every token, the host's or not."""
         config = self.forge_configuration(user)
         self.forge_tokens_directory(user, private=False)
         errors = []
@@ -797,7 +924,7 @@ class Host:
         account, identities = config
         base, ca = self.forge_endpoint()
         opener = self.forge_opener(ca)
-        token = self.forge_token(account, "porelo-admin", "write:admin")
+        token = self.forge_token(account, ADMIN, "write:admin")
         for identity in identities:
             try:
                 self.forge_revoke_identity(opener, base, token, identity)
@@ -812,22 +939,7 @@ class Host:
             opener, base, token, "PATCH", identity, 200,
             {"login_name": identity, "source_id": 0, "prohibit_login": True},
         )
-        ids, page = set(), 1
-        while True:
-            rows = self.forge_api(opener, base, token, "GET", identity + f"/tokens?limit=50&page={page}", 200)
-            if not isinstance(rows, list) or any(
-                not isinstance(row, dict) or type(row.get("id")) is not int or row["id"] < 1 for row in rows
-            ):
-                refuse("Forgejo answered no valid access-token list", 69)
-            if not rows:
-                break
-            batch = {row["id"] for row in rows}
-            if batch & ids:
-                refuse("Forgejo repeated a page of access tokens", 69)
-            ids.update(batch)
-            page += 1
-        for identifier in sorted(ids):
-            self.forge_api(opener, base, token, "DELETE", identity + f"/tokens/{identifier}", 204)
+        self.forge_drop_named(opener, base, token, identity)
 
     def matrix_expel_revoke(self, user):
         """Deactivate the person's and tasks' accounts through the transport as its service account."""
@@ -954,7 +1066,7 @@ class Host:
         if directory.exists():
             return
         self.directories(directory.parent)
-        public = ("/etc/ssh/authorized_keys", "/run/porelo-host", "/run/porelo-host/people")
+        public = ("/etc/ssh/authorized_keys", "/run/porelo-host")
         mode = 0o755 if directory in map(self.path, public) else 0o700
         directory.mkdir(mode=mode)
         os.chown(directory, self.owner, self.group)
@@ -1542,6 +1654,7 @@ class Host:
         if projects_directory.exists():
             registered = sorted(path.stem for path in projects_directory.glob("*.conf"))
         recorded_admins = {project: self.project_record(project)[1]["admin"] for project in registered}
+        records = self.records()
         self.require(["systemd-run", "porelo"])
         pinned_fingerprint = fingerprint(pinned["key"])
         temp_dir = self.sync_directory("registry")
@@ -1606,6 +1719,7 @@ class Host:
             self.write(applied_path, json.dumps(applied, indent=1) + "\n", 0o600)
             if next_pin != pinned:
                 self.write(pin_path, f'admin={next_pin["admin"]}\nkey={next_pin["key"]}\n', 0o600)
+        self.drop_revoked_tokens(revoked, records)
         return {
             "commit": commit,
             "pinned": fingerprint(next_pin["key"]),
@@ -1615,6 +1729,27 @@ class Host:
             "refused": refused,
             "unchanged": unchanged,
         }
+
+    def drop_revoked_tokens(self, revoked, records):
+        """After the registry is recorded, every revoked person still unlocked here loses every forge token.
+
+        It runs at every intake, so a deletion that failed once is tried again by the next.
+        """
+        errors = []
+        for login in revoked:
+            record = records.get(login)
+            if record is None or record["locked"]:
+                continue
+            try:
+                self.hooks["forge_drop_tokens"](login)
+            except Refusal as error:
+                errors.append(f"{login}: {error}")
+        if errors:
+            refuse(
+                "the registry is applied, but a revoked person's forge tokens are not all deleted; bring it again: "
+                + "; ".join(errors),
+                69,
+            )
 
     def update_person_laptops(self, user, laptops, added_laptops, dropped_laptops):
         """Bring an existing person's SSH keys to the desired legacy laptop list."""
@@ -1843,6 +1978,232 @@ class Host:
             "unchanged": False,
         }
 
+    def person(self, user, records):
+        """The calling person, recorded, unlocked and holding a membership; anyone else is refused."""
+        record = records.get(user)
+        if record is None or record["locked"] or not record["members"]:
+            refuse(f"{user} is no unlocked person of this host", 65)
+        return record
+
+    def revoked(self, user):
+        """Whether the applied registry names the login revoked."""
+        _, applied = self.applied_registry()
+        return applied is not None and user in applied["revoked"]
+
+    def current_key(self, user):
+        """The person's one current key in the applied registry, refused where it is missing or revoked."""
+        _, applied = self.applied_registry()
+        entries = [item for item in applied["persons"] if item.get("login") == user] if applied else []
+        if (
+            len(entries) != 1
+            or entries[0].get("revoked") is not False
+            or user in applied["revoked"]
+            or not valid_ssh_key(entries[0].get("ssh"))
+        ):
+            refuse(f"the host's registry names no current, unrevoked key of {user}", 65)
+        return entries[0]["ssh"]
+
+    def certificate(self, line):
+        """Have ssh-keygen check a certificate from a private file; only its path reaches argv."""
+        with tempfile.TemporaryDirectory(prefix="porelo-host-task.") as directory:
+            path = Path(directory) / "task-cert.pub"
+            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(descriptor, "w", encoding="ascii") as stream:
+                stream.write(line + "\n")
+            result = self.command(["env", "TZ=UTC", "ssh-keygen", "-L", "-f", str(path)], accepted=(0, 1, 255))
+        if result.returncode != 0:
+            refuse("ssh-keygen refused the task certificate: its form or signature is bad", 65)
+        fields = read_certificate(result.stdout)
+        if fields is None:
+            refuse("ssh-keygen answered no certificate of the shape a task's takes, with a start and an end", 65)
+        return fields
+
+    def task_directory(self, user=None):
+        """Root's private directory of task records, or one person's within it."""
+        directory = self.path(TASKS if user is None else f"{TASKS}/{user}")
+        self.check(directory, 73, directory=True, mode=0o700)
+        return directory
+
+    def task_records(self, user=None):
+        """Every recorded task, or one person's, as (login, task, record); a record of another shape stops the call."""
+        root = self.task_directory()
+        if not root.exists():
+            return []
+        found = []
+        for directory in sorted(root.iterdir()) if user is None else [root / user]:
+            if not re.fullmatch(USER, directory.name):
+                refuse(f"{root} holds an unknown entry", 65)
+            self.check(directory, 73, directory=True, mode=0o700)
+            if not directory.exists():
+                continue
+            for path in sorted(directory.iterdir()):
+                task = path.name.removesuffix(".json")
+                if not path.name.endswith(".json") or not re.fullmatch(TASK, task):
+                    refuse(f"{directory} holds an unknown entry", 65)
+                found.append((directory.name, task, self.task_record(path, directory.name, task)))
+        return found
+
+    def task_record(self, path, user, task):
+        """One recorded task, checked to be root's, private and of its own name."""
+        self.check(path, 73, required=True, mode=0o600)
+        try:
+            entry = json.loads(self.read(path))
+        except ValueError:
+            entry = None
+        if (
+            not isinstance(entry, dict)
+            or entry.get("task") != task
+            or entry.get("login") != user
+            or not isinstance(entry.get("certificate"), str)
+            or not isinstance(entry.get("fingerprint"), str)
+            or certificate_time(str(entry.get("valid_before")).removesuffix("Z")) is None
+        ):
+            refuse(f"{path} holds no valid task record", 65)
+        return entry
+
+    def start_task(self, user, task, data, records):
+        """Check the certificate, record it once and answer the task's new gate token, or nothing with no forge."""
+        self.person(user, records)
+        line = certificate_line(sys.stdin.buffer.read(MAX_CERTIFICATE + 1) if data is None else data)
+        key = self.current_key(user)
+        self.require(["env", "ssh-keygen"])
+        fields = self.certificate(line)
+        now = self.now()
+        if fields["type"] != CERTIFICATE + " user certificate":
+            refuse("the task certificate is no user certificate", 65)
+        if fields["signed_by"] != fingerprint(key):
+            refuse(f"the task certificate is signed by {fields['signed_by']}, not by {user}'s current key", 65)
+        if "task:" + task not in fields["principals"]:
+            refuse(f"the task certificate names no principal task:{task}", 65)
+        if not (fields["valid_after"] is None or fields["valid_after"] <= now) or not now < fields["valid_before"]:
+            refuse("the task certificate does not hold now", 65)
+        entry = {
+            "task": task,
+            "login": user,
+            "fingerprint": fields["fingerprint"],
+            "signed_by": fields["signed_by"],
+            "key_id": fields["key_id"],
+            "principals": fields["principals"],
+            "valid_after": stamp(fields["valid_after"]),
+            "valid_before": stamp(fields["valid_before"]),
+            "certificate": line,
+        }
+        for login, other, recorded in self.task_records():
+            if recorded["fingerprint"] == entry["fingerprint"] and (login, other) != (user, task):
+                refuse(f"the task key {entry['fingerprint']} is recorded for another task", 65)
+        config = self.forge_configuration(user)
+        if config is not None:
+            self.forge_endpoint()
+        self.publish_task(user, task, entry)
+        if config is None:
+            return ""
+        with self.forge_session(user) as (account, opener, base, token):
+            self.forge_drop_named(opener, base, token, "porelo-" + user, {TASK_TOKEN + task})
+            return self.forge_token(account, "porelo-" + user, TASK_SCOPES, TASK_TOKEN + task)
+
+    def publish_task(self, user, task, entry):
+        """Record a task once with link(2), which fails on a name taken; the same certificate again is a retry."""
+        directory = self.path(f"{TASKS}/{user}")
+        self.directories(directory)
+        self.task_directory()
+        self.task_directory(user)
+        target = directory / f"{task}.json"
+        temporary = None
+        try:
+            fd, temporary = tempfile.mkstemp(prefix=".porelo-host-person.", dir=directory)
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                os.fchown(stream.fileno(), self.owner, self.group)
+                os.fchmod(stream.fileno(), 0o600)
+                stream.write(json.dumps(entry, indent=1) + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            try:
+                os.link(temporary, target)
+                return
+            except FileExistsError:
+                pass
+        except OSError:
+            refuse(f"cannot record task {task}", 73)
+        finally:
+            if temporary is not None:
+                Path(temporary).unlink(missing_ok=True)
+        if self.task_record(target, user, task)["certificate"] != entry["certificate"]:
+            refuse(f"task {task} is recorded already, with another certificate", 65)
+
+    def end_task(self, user, task, records):
+        """Delete the ended task's gate token; its record stays."""
+        self.person(user, records)
+        target = self.task_directory() / user / f"{task}.json"
+        self.task_directory(user)
+        if not target.exists() and not target.is_symlink():
+            refuse(f"task {task} is not recorded for {user}", 65)
+        self.task_record(target, user, task)
+        if self.forge_configuration(user) is not None:
+            with self.forge_session(user) as (_, opener, base, token):
+                self.forge_drop_named(opener, base, token, "porelo-" + user, {TASK_TOKEN + task})
+        return {"task": task, "ended": True}
+
+    def show_task(self, user, key, records):
+        """The record of a task key, read-only, so a plain-key signature is traced after the task key is gone."""
+        if user is not None:
+            self.person(user, records)
+        for _, _, entry in self.task_records():
+            if entry["fingerprint"] == key:
+                return entry
+        refuse(f"no task certificate is recorded for {key}", 65)
+
+    def sweep(self, records):
+        """Delete every task token whose recorded certificate has ended; one person's failure stops no other."""
+        if self.sudo_user is not None:
+            refuse("the sweep is root's alone, from its timer", 65)
+        now = self.now()
+        due = {}
+        for login, task, entry in self.task_records():
+            record = records.get(login)
+            ended = certificate_time(entry["valid_before"].removesuffix("Z")) <= now
+            if ended and record is not None and not record["locked"]:
+                due.setdefault(login, set()).add(TASK_TOKEN + task)
+        if not due or self.forge_configuration(min(due)) is None:
+            return {"swept": []}
+        swept, errors = [], []
+        with self.forge_session(min(due)) as (_, opener, base, token):
+            for login in sorted(due):
+                try:
+                    dropped = self.forge_drop_named(opener, base, token, "porelo-" + login, due[login])
+                    swept.extend(f"{login}/{name.removeprefix(TASK_TOKEN)}" for name in dropped)
+                except Refusal as error:
+                    errors.append(f"{login}: {error}")
+        if errors:
+            refuse(f"the sweep deleted {', '.join(sorted(swept)) or 'nothing'}; it failed for " + "; ".join(errors), 69)
+        return {"swept": sorted(swept)}
+
+    def person_forge_token(self, user, records):
+        """The person's one forge token, made anew in place of every other of their login, answered alone."""
+        self.person(user, records)
+        if self.revoked(user):
+            refuse(f"the host's registry names {user} revoked", 65)
+        config = self.forge_configuration(user)
+        if config is None:
+            refuse("the host runs no forge, so there is no forge token to make", 69)
+        with self.forge_session(user) as (account, opener, base, token):
+            self.forge_drop_named(opener, base, token, user)
+            return self.forge_token(account, user, PERSON_SCOPES)
+
+    def tasks_verb(self, verb, value, data):
+        """forge-token, task, task --end, task --show and sweep: they read the people records alone."""
+        records = self.records()
+        if verb == "sweep":
+            return self.sweep(records)
+        if verb == "show":
+            return self.show_task(self.sudo_user, value, records)
+        if not self.sudo_user:
+            refuse(f"{verb} runs through sudo, for the person who calls it", 64)
+        if verb == "forge-token":
+            return self.person_forge_token(self.sudo_user, records)
+        if verb == "end":
+            return self.end_task(self.sudo_user, value, records)
+        return self.start_task(self.sudo_user, value, data, records)
+
     def execute(self, arguments, data):
         """Validate the complete request under the configuration lock before applying it."""
         if self.euid != 0:
@@ -1872,10 +2233,17 @@ class Host:
             verb, project = arguments
             if not re.fullmatch(PROJECT, project):
                 refuse("the project name must match [a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?")
+        elif arguments in (["forge-token"], ["sweep"]):
+            verb, value = arguments[0], None
+        elif len(arguments) in (2, 3) and arguments[0] == "task" and arguments[1:-1] in ([], ["--end"], ["--show"]):
+            verb, value = {(): "task", ("--end",): "end", ("--show",): "show"}[tuple(arguments[1:-1])], arguments[-1]
+            if not re.fullmatch(FINGERPRINT if verb == "show" else TASK, value):
+                refuse("a task must match [a-z0-9][a-z0-9._-]{0,63}, a task key's fingerprint SHA256:<43 base64>")
         else:
             refuse(
-                "use add <user> --role project-admin, lock <user>, purge <user>, sync <project>, registry"
-                " or registry pin <user> <key>"
+                "use add <user> --role project-admin, lock <user>, purge <user>, sync <project>, registry,"
+                " registry pin <user> <key>, forge-token, task <task>, task --end <task>, task --show <fingerprint>"
+                " or sweep"
             )
         if user is not None and not re.fullmatch(USER, user):
             refuse("the person name must match [a-z][a-z0-9-]{0,30}")
@@ -1889,6 +2257,8 @@ class Host:
                 return self.pin(user, key)
             if verb == "registry":
                 return self.registry()
+            if verb in ("forge-token", "sweep", "task", "end", "show"):
+                return self.tasks_verb(verb, value, data)
             network, reserved = self.network()
             records = self.records()
             self.credentials(records, network, reserved)
@@ -1991,6 +2361,11 @@ def entry(host, arguments, data=None):
     except OSError:
         print("porelo-host-person: cannot read or change the host's files", file=sys.stderr)
         return 73
+    # A token is answered alone, no newline, for its caller's pipe; every other answer is one JSON line.
+    if isinstance(answer, str):
+        sys.stdout.write(answer)
+        sys.stdout.flush()
+        return 0
     print(json.dumps(answer, separators=(",", ":")))
     return 0
 

@@ -19,6 +19,11 @@ Matrix admission stores no machine or registration token. Sync atomically publis
 project removal deletes it. Lock and purge run `porelo-message-transport-matrix expel <login>` as `porelo-matrix`,
 including purge after a prior lock. See [Matrix access](../../doc/matrix.md) for the gate boundary.
 
+The helper also provides `forge-token`, `task <task>`, `task --end <task>`, `task --show <fingerprint>` and root's
+`sweep`. The person role installs their sudo rules and the daily persistent `porelo-host-task-sweep.timer`.
+Certificates stay in root's private task records; token answers leave through stdout alone. See the
+[task certificate contract](../../doc/task-certificates.md) for validation, token scopes and the pending gate migration.
+
 The account-bound entry points (`main`, `project`, `tasks`, `down`) remain on disk for an explicit `porelo_account`
 when called directly; `up` and `down` do not call them.
 

@@ -2,3 +2,5 @@
 # and registry, in its bare form alone, only the pinned host admin.
 %porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person sync *
 %porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person registry
+%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person forge-token ""
+%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person task *

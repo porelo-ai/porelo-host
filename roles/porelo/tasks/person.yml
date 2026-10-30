@@ -21,3 +21,22 @@
     argv: [/usr/local/sbin/porelo-host-person, restore-runtime]
   register: __porelo_restored_runtime
   changed_when: (__porelo_restored_runtime.stdout | from_json).changed > 0
+
+- name: person | Install the daily task token sweep
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - porelo-host-task-sweep.service
+    - porelo-host-task-sweep.timer
+  register: __porelo_task_sweep_units
+
+- name: person | Enable the daily task token sweep
+  ansible.builtin.systemd_service:
+    name: porelo-host-task-sweep.timer
+    daemon_reload: "{{ __porelo_task_sweep_units is changed }}"
+    enabled: true
+    state: started

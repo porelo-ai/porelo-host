@@ -181,32 +181,29 @@ def token_file(services):
     return services.host.path("/run/porelo-host/people/alice/identities.tokens")
 
 
-def test_forge_admits_each_identity_once_and_delivers_only_private_tokens(services, capsys):
-    """Prevent token rotation on retry and credentials reaching public output or other people."""
+def machine_file(services):
+    return services.host.home / ".config/porelo/matrix/host-registration-token"
+
+
+def test_forge_admits_each_identity_once_without_making_or_delivering_tokens(services, capsys):
+    """Prevent admission from leaving credentials on disk or rotating a person's existing token."""
     hook(services, "forge_admit", "alice", [])
     assert list(services.recorder.users) == OWN
-    path = token_file(services)
-    assert path.read_text().splitlines() == [f"{user} {PERSON_TOKEN}" for user in OWN]
-    assert (path.stat().st_uid, stat.S_IMODE(path.stat().st_mode)) == (os.getuid(), 0o600)
-    assert (path.parent.stat().st_uid, stat.S_IMODE(path.parent.stat().st_mode)) == (os.getuid(), 0o700)
-    assert stat.S_IMODE(path.parent.parent.stat().st_mode) == 0o755
-    assert os.access(path.parent, os.W_OK), "the person must be able to unlink their imported tokens"
-    before = path.stat().st_mtime_ns
+    assert not token_file(services).parent.exists()
+    assert not any("generate-access-token" in call for call in services.recorder.calls)
     services.recorder.calls.clear()
     hook(services, "forge_admit", "alice", [])
-    assert path.stat().st_mtime_ns == before
     assert not any("create" in call or "generate-access-token" in call for call in services.recorder.calls)
-    path.unlink()
-    hook(services, "forge_admit", "alice", [])
-    assert not path.exists()
     assert capsys.readouterr() == ("", "")
 
 
 def test_existing_forge_identities_receive_no_new_tokens(services):
-    """Prevent overwriting a person's existing vault credentials when only some accounts are new."""
+    """Prevent admission from replacing existing credentials when only some accounts are new."""
     services.recorder.users = {"alice": False, "codex-alice": False}
     hook(services, "forge_admit", "alice", [])
-    assert token_file(services).read_text().splitlines() == [f"porelo-alice {PERSON_TOKEN}"]
+    assert set(services.recorder.users) == {"alice", "codex-alice", "porelo-alice"}
+    assert not any("generate-access-token" in call for call in services.recorder.calls)
+    assert not token_file(services).exists()
 
 
 @pytest.mark.parametrize("config", [None, "host=host\nagents=\n", "account=\nhost=host\nagents=\n"])
@@ -226,16 +223,9 @@ def test_forge_lock_disables_every_identity_and_deletes_every_token(services):
     """Prevent any login or older personal token from surviving a lock."""
     services.recorder.users = dict.fromkeys(IDENTITIES, False)
     services.recorder.tokens = {user: [1, 2, 3] for user in IDENTITIES}
-    path = token_file(services)
-    path.parent.mkdir(parents=True, mode=0o700)
-    for directory in ("/run", "/run/porelo-host", "/run/porelo-host/people"):
-        services.host.path(directory).chmod(0o755)
-    path.write_text("fixture")
-    path.chmod(0o600)
     hook(services, "forge_lock", "alice")
     assert services.recorder.users == dict.fromkeys(IDENTITIES, True)
     assert services.recorder.tokens == dict.fromkeys(IDENTITIES, [])
-    assert not path.parent.exists()
     hook(services, "forge_lock", "alice")
 
 
@@ -248,29 +238,6 @@ def test_service_failure_never_repeats_captured_secrets(services, capsys):
     assert PERSON_TOKEN not in str(error.value)
     assert MATRIX_ADMIN not in str(error.value)
     assert capsys.readouterr() == ("", "")
-
-
-def test_forge_delivery_directory_is_traversable_with_a_private_root_umask(services):
-    """Prevent a restrictive root umask from making the person's own delivered tokens unreachable."""
-    previous = os.umask(0o077)
-    try:
-        hook(services, "forge_admit", "alice", [])
-    finally:
-        os.umask(previous)
-    assert stat.S_IMODE(token_file(services).parent.stat().st_mode) == 0o700
-    assert stat.S_IMODE(token_file(services).parent.parent.stat().st_mode) == 0o755
-
-
-def test_existing_private_runtime_directories_do_not_hide_the_persons_tokens(services):
-    """Prevent a previously created root-only runtime directory from making delivered credentials unreadable."""
-    path = token_file(services)
-    path.parent.mkdir(parents=True, mode=0o700)
-    for directory in (path.parent, path.parent.parent, path.parent.parent.parent, services.host.path("/run")):
-        directory.chmod(0o700 if directory != services.host.path("/run") else 0o755)
-    hook(services, "forge_admit", "alice", [])
-    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
-    assert stat.S_IMODE(path.parent.parent.stat().st_mode) == 0o755
-    assert stat.S_IMODE(path.parent.parent.parent.stat().st_mode) == 0o755
 
 
 @pytest.mark.parametrize("operation", ["forge_admit"])
@@ -314,96 +281,6 @@ def test_an_empty_agent_list_creates_only_the_person_and_gate(services):
     assert list(services.recorder.users) == ["alice", "porelo-alice"]
 
 
-def test_a_person_cannot_prevent_forge_lock_by_changing_their_token_file_mode(services):
-    """Prevent a person from blocking remote revocation by making their delivery file public."""
-    hook(services, "forge_admit", "alice", [])
-    token_file(services).chmod(0o644)
-    hook(services, "forge_lock", "alice")
-    assert services.recorder.users == dict.fromkeys(IDENTITIES, True)
-    assert not token_file(services).exists()
-
-
-@pytest.mark.parametrize("target", ["directory-link", "foreign-directory", "file-link"])
-def test_forge_delivery_refuses_links_and_another_accounts_directory(services, tmp_path, target):
-    """Prevent root from delivering credentials through a link or into another person's directory."""
-    path = token_file(services)
-    path.parent.parent.mkdir(parents=True, mode=0o755)
-    for directory in ("/run", "/run/porelo-host", "/run/porelo-host/people"):
-        services.host.path(directory).chmod(0o755)
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    sentinel = outside / "identities.tokens"
-    sentinel.write_text("untouched")
-    if target == "directory-link":
-        path.parent.symlink_to(outside)
-    else:
-        path.parent.mkdir(mode=0o700)
-        if target == "foreign-directory":
-            services.entries["alice"].pw_uid = os.getuid() + 1
-        else:
-            path.symlink_to(sentinel)
-    with pytest.raises(services.scope["Refusal"]) as error:
-        hook(services, "forge_admit", "alice", [])
-    assert error.value.code == 73
-    assert services.recorder.calls == []
-    assert sentinel.read_text() == "untouched"
-
-
-def test_forge_cleanup_does_not_follow_links_or_remove_another_persons_directory(services):
-    """Prevent root cleanup of a person's writable directory from deleting someone else's files."""
-    hook(services, "forge_admit", "alice", [])
-    path = token_file(services)
-    other = path.parent.parent / "bob"
-    other.mkdir(mode=0o700)
-    sentinel = other / "identities.tokens"
-    sentinel.write_text("untouched")
-    (path.parent / "link").symlink_to(other)
-    (path.parent / "extra").write_text("person's leftover file")
-    hook(services, "forge_lock", "alice")
-    assert not path.parent.exists()
-    assert sentinel.read_text() == "untouched"
-
-
-@pytest.mark.parametrize("target", ["directory-link", "foreign-directory"])
-def test_forge_cleanup_refuses_a_link_or_another_persons_directory(services, tmp_path, target):
-    """Prevent root cleanup from deleting a directory that is not the admitted person's own."""
-    directory = token_file(services).parent
-    directory.parent.mkdir(parents=True, mode=0o755)
-    for parent in (directory.parent, directory.parent.parent, services.host.path("/run")):
-        parent.chmod(0o755)
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    sentinel = outside / "identities.tokens"
-    sentinel.write_text("untouched")
-    if target == "directory-link":
-        directory.symlink_to(outside)
-    else:
-        directory.mkdir(mode=0o700)
-        (directory / "identities.tokens").write_text("untouched")
-        services.entries["alice"].pw_uid = os.getuid() + 1
-    with pytest.raises(services.scope["Refusal"]) as error:
-        services.host.remove_forge_tokens("alice")
-    assert error.value.code == 73
-    assert sentinel.read_text() == "untouched"
-    assert (directory / "identities.tokens").read_text() == "untouched"
-
-
-def test_failed_runtime_cleanup_still_revokes_forge_access_and_reports_the_leftover(services, monkeypatch):
-    """Prevent failed cleanup of a person's writable directory from keeping forge identities enabled."""
-    hook(services, "forge_admit", "alice", [])
-
-    def occupied(path):
-        raise OSError("directory still occupied")
-
-    monkeypatch.setattr(services.scope["shutil"], "rmtree", occupied)
-    occupied.avoids_symlink_attacks = True
-    with pytest.raises(services.scope["Refusal"]) as error:
-        hook(services, "forge_lock", "alice")
-    assert error.value.code == 73
-    assert services.recorder.users == dict.fromkeys(IDENTITIES, True)
-    assert token_file(services).parent.exists()
-
-
 def test_command_runner_delivers_stdin_without_inheriting_caller_configuration(services):
     """Prevent credentials on arguments or inherited settings from reaching commands run by root."""
     result = services.scope["run_command"](
@@ -419,35 +296,6 @@ def test_command_runner_delivers_stdin_without_inheriting_caller_configuration(s
     assert result.returncode == 0
     assert result.stdout == "fixture-secret\n"
     assert result.stderr == ""
-
-
-def test_forge_delivery_is_owned_by_the_person_before_publication(services, monkeypatch):
-    """Prevent an atomic delivery from leaving the credential readable only by root or by another account."""
-    services.entries["alice"].pw_uid = 2100
-    services.entries["alice"].pw_gid = 2101
-    changes = []
-    directory_changes = []
-    real_replace = os.replace
-
-    def ownership(fd, uid, gid):
-        changes.append((uid, gid))
-
-    def directory_ownership(path, uid, gid):
-        directory_changes.append((Path(path), uid, gid))
-
-    def publish(source, destination):
-        source = Path(source)
-        assert source.parent == destination.parent
-        assert stat.S_IMODE(source.stat().st_mode) == 0o600
-        assert (2100, 2101) in changes
-        assert (source.parent, 2100, 2101) in directory_changes
-        real_replace(source, destination)
-
-    monkeypatch.setattr(services.scope["os"], "fchown", ownership)
-    monkeypatch.setattr(services.scope["os"], "chown", directory_ownership)
-    monkeypatch.setattr(services.scope["os"], "replace", publish)
-    hook(services, "forge_admit", "alice", [])
-    assert token_file(services).read_text().splitlines() == [f"{user} {PERSON_TOKEN}" for user in OWN]
 
 
 def test_forge_revocation_attempts_the_other_identities_when_one_fails(services):
@@ -518,15 +366,6 @@ def test_forge_admin_transport_connects_only_to_the_private_socket(services, mon
     assert connected == ["/run/user/1200/porelo-forge/http.sock"]
 
 
-def test_the_persons_login_may_run_the_bring_and_the_gate_only_its_branches(services):
-    """The bring makes teams and Actions variables in the admin's organization and asks their standing there."""
-    hook(services, "forge_admit", "alice", [])
-    assert services.recorder.scopes == {
-        "alice": "write:repository,write:organization,read:user",
-        "porelo-alice": "write:repository,read:organization",
-    }
-
-
 def test_matrix_expels_the_login_as_the_service_account_without_credentials(services):
     """Prevent purge leaving person and task accounts active or issuing a reusable host credential."""
     hook(services, "matrix_expel_revoke", "alice")
@@ -553,3 +392,64 @@ def test_forge_admin_uses_only_the_private_socket_without_a_ca(services):
     base, endpoint = services.host.forge_endpoint()
     assert base == "http://localhost/api/v1/admin/users/"
     assert str(endpoint).endswith("/run/user/1200/porelo-forge/http.sock")
+
+    path = token_file(services)
+    path.parent.mkdir(parents=True, mode=0o700)
+    path.write_text("legacy fixture credential")
+    for directory in ("/run", "/run/porelo-host", "/run/porelo-host/people"):
+        services.host.path(directory).chmod(0o755)
+    path = token_file(services)
+    other = path.parent.parent / "bob"
+    other.mkdir(mode=0o700)
+    sentinel = other / "identities.tokens"
+    sentinel.write_text("untouched")
+    (path.parent / "link").symlink_to(other)
+    (path.parent / "extra").write_text("person's leftover file")
+    hook(services, "forge_lock", "alice")
+    assert not path.parent.exists()
+    assert sentinel.read_text() == "untouched"
+
+
+@pytest.mark.parametrize("target", ["directory-link", "foreign-directory"])
+def test_forge_cleanup_refuses_a_link_or_another_persons_directory(services, tmp_path, target):
+    """Prevent root cleanup from deleting a directory that is not the admitted person's own."""
+    directory = token_file(services).parent
+    directory.parent.mkdir(parents=True, mode=0o755)
+    for parent in (directory.parent, directory.parent.parent, services.host.path("/run")):
+        parent.chmod(0o755)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "identities.tokens"
+    sentinel.write_text("untouched")
+    if target == "directory-link":
+        directory.symlink_to(outside)
+    else:
+        directory.mkdir(mode=0o700)
+        (directory / "identities.tokens").write_text("untouched")
+        services.entries["alice"].pw_uid = os.getuid() + 1
+    with pytest.raises(services.scope["Refusal"]) as error:
+        services.host.remove_forge_tokens("alice")
+    assert error.value.code == 73
+    assert sentinel.read_text() == "untouched"
+    assert (directory / "identities.tokens").read_text() == "untouched"
+
+
+def test_failed_runtime_cleanup_still_revokes_forge_access_and_reports_the_leftover(services, monkeypatch):
+    """Prevent failed cleanup of a person's writable directory from keeping forge identities enabled."""
+    hook(services, "forge_admit", "alice", [])
+    path = token_file(services)
+    path.parent.mkdir(parents=True, mode=0o700)
+    path.write_text("legacy fixture credential")
+    for directory in ("/run", "/run/porelo-host", "/run/porelo-host/people"):
+        services.host.path(directory).chmod(0o755)
+
+    def occupied(path):
+        raise OSError("directory still occupied")
+
+    monkeypatch.setattr(services.scope["shutil"], "rmtree", occupied)
+    occupied.avoids_symlink_attacks = True
+    with pytest.raises(services.scope["Refusal"]) as error:
+        hook(services, "forge_lock", "alice")
+    assert error.value.code == 73
+    assert services.recorder.users == dict.fromkeys(IDENTITIES, True)
+    assert token_file(services).parent.exists()

@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Separate Unix socket gates for browser and token-authenticated Git/API access to Forgejo. Browser identity comes
   from the admitted host account; caller identity headers are removed and browser credential-setting routes refused.
   Forgejo uses a private Unix socket with no TLS or SSH listener; certificate requests and the password helper go.
+- Host task certificate recording, lookup by task key fingerprint, per-task forge token creation and deletion, and a
+  daily expiration sweep. Certificate validation uses OpenSSH and the person's current key in the applied registry;
+  records are private and append-only. The gate consumer migration remains pending.
+- On-demand person forge tokens answered directly on stdout, token-free admission, and all-token deletion on registry
+  revocation with retry after an API failure. Bring's earlier token-file consumer still requires migration.
 - `porelo-host-person registry`, run by root or `sudo -n` by the host admin pinned once at setup with `registry pin
   <login> <key>`, takes the host's projects and persons from the registry bundle the host admin uploads into
   `~/.local/share/porelo-host/setup/registry.bundle`: Porelo's `registry verify` checks it in the sync's isolated unit
@@ -47,10 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   organization and package-only publisher. Removal checks every repository's commits against the central forge
   before deleting its repositories, packages, organization, publisher and root-only record.
 - A root person helper admits project admins with root-owned SSH key files
-  and private records, and locks or purges their host accounts. Admission creates their forge login,
-  gate and configured agent identities, delivering new tokens in their own private runtime directory for vault import
-  and removal, and issues their Matrix machine token into their own account. Lock disables the forge identities and
-  deletes their tokens, expels Matrix accounts and revokes registration in one operation, and removes delivered
+  and private records, and locks or purges their host accounts. Admission creates their forge login and gate, and
+  makes no forge token. Lock disables the forge identities and deletes their tokens, expels Matrix accounts and revokes registration in one operation, and removes delivered
   credentials and their runtime directory. A separate install task provides the helper, SSH key lookup and a
   no-argument forge-password sudo rule.
 - `porelo.host.bring` and `porelo.host.join` run in the person's own account with no `sudo` but sync's: the setup's

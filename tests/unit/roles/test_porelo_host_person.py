@@ -105,7 +105,7 @@ class Host:
 
         hooks = {
             name: lambda *values, name=name: hook(name, values)
-            for name in ("forge_admit", "forge_lock", "matrix_expel_revoke")
+            for name in ("forge_admit", "forge_lock", "matrix_expel_revoke", "forge_drop_tokens")
         }
         extra = {} if sudo_user is None else {"sudo_user": sudo_user}
         return self.factory(
@@ -987,27 +987,6 @@ def test_failed_service_revocation_still_locks_the_host_account_for_retry(host, 
     ] in host.calls
     assert "locked=false" in host.path("/etc/porelo-host/people/alice.conf").read_text()
     assert not capsys.readouterr().out
-
-
-@pytest.mark.parametrize("verb", ["lock", "purge"])
-def test_teardown_removes_a_locked_persons_runtime_delivery_directory(host, capsys, monkeypatch, verb):
-    """Prevent a completed or retried teardown from leaving the person's delivered credentials behind."""
-    assert host.invoke("add", "alice", "--role", "project-admin") == 0
-    assert host.invoke("lock", "alice", data=b"") == 0
-    capsys.readouterr()
-    directory = host.path("/run/porelo-host/people/alice")
-    directory.mkdir(parents=True, mode=0o700)
-    for parent in (directory.parent, directory.parent.parent, host.path("/run")):
-        parent.chmod(0o755)
-    (directory / "identities.tokens").write_text("fixture credential")
-    monkeypatch.setattr(
-        host.factory.__globals__["pwd"],
-        "getpwnam",
-        lambda user: SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid(), pw_dir=str(host.root / "home/alice")),
-    )
-    assert host.invoke(verb, "alice", data=b"") == 0
-    assert not directory.exists()
-    assert ("alice" not in host.accounts) == (verb == "purge")
 
 
 def test_legacy_record_is_read_as_hand_and_rewritten_on_its_next_write(host, capsys):
@@ -2104,6 +2083,29 @@ def test_registry_applies_a_verified_bundle_against_the_pin_and_records_it_root_
     assert state.registry_calls[1][state.registry_calls[1].index("--since") + 1] == "a" * 40
 
 
+def test_registry_retries_token_revocation_after_recording_the_revoked_key(registry_host, capsys):
+    """Prevent a failed token deletion from losing the key revocation or skipping deletion on the next intake."""
+    host, state = registry_host
+    state.registry_reply["persons"][1]["revoked"] = True
+    attempts = []
+
+    def fail_once(name, values):
+        if name == "forge_drop_tokens":
+            assert "bo" in applied(host)["revoked"], "key revocation must precede remote token deletion"
+            attempts.append(values)
+            if len(attempts) == 1:
+                raise host.factory.__globals__["Refusal"]("fixture API failure", 69)
+
+    host.hook_inspect = fail_once
+    capsys.readouterr()
+    assert host.invoke("registry", data=b"") == 69
+    assert capsys.readouterr().out == ""
+    assert "bo" in applied(host)["revoked"]
+    assert host.invoke("registry", data=b"") == 0
+    assert json.loads(capsys.readouterr().out)["unchanged"] is True
+    assert attempts == [("bo",), ("bo",)]
+
+
 @pytest.mark.parametrize(
     "stderr",
     [
@@ -2287,6 +2289,8 @@ def test_sudoers_grants_persons_the_bare_registry_call_alone():
     assert person_rules == [
         "%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person sync *",
         "%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person registry",
+        '%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person forge-token ""',
+        "%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person task *",
     ]
 
 
@@ -2404,3 +2408,24 @@ def test_registry_pin_by_a_non_root_caller_is_refused(registry_host, capsys):
     host.euid = 1000
     refused(host, capsys, 69, "registry", "pin", "bo", SIGNER_TWO, data=b"")
     assert not pin.exists()
+
+
+@pytest.mark.parametrize("verb", ["lock", "purge"])
+def test_teardown_removes_a_locked_persons_runtime_delivery_directory(host, capsys, monkeypatch, verb):
+    """Prevent a completed or retried teardown from leaving the person's delivered credentials behind."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    assert host.invoke("lock", "alice", data=b"") == 0
+    capsys.readouterr()
+    directory = host.path("/run/porelo-host/people/alice")
+    directory.mkdir(parents=True, mode=0o700)
+    for parent in (directory.parent, directory.parent.parent, host.path("/run")):
+        parent.chmod(0o755)
+    (directory / "identities.tokens").write_text("fixture credential")
+    monkeypatch.setattr(
+        host.factory.__globals__["pwd"],
+        "getpwnam",
+        lambda user: SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid(), pw_dir=str(host.root / "home/alice")),
+    )
+    assert host.invoke(verb, "alice", data=b"") == 0
+    assert not directory.exists()
+    assert ("alice" not in host.accounts) == (verb == "purge")
