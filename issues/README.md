@@ -63,18 +63,13 @@ it is left out.
 | <a id="ho59"></a>[HO59](HO59-An-Interrupted-Bring-Replaced-Safely.md) | M | - | A bring leaves `bring.state` in its setup directory, so an interrupted one is recognized and replaced by a new upload instead of refused. |
 | <a id="ho56"></a>[HO56](HO56-Remove-Takes-The-Persons-Push-And-Sync-Away.md) | M | [HO46](#ho46), [HO47](#ho47) | Removing a project takes the push config and the sync timer out of each person's own account. |
 | <a id="ho57"></a>[HO57](HO57-The-Bring-Checks-With-The-Keys-In-Force-After-A-Handover.md) | S | - | A second bring verifies only what is new since the followed commit, with `following --json`'s `signed_by_keys`. |
-| <a id="ho22"></a>[HO22](HO22-Ssh-Reached-Only-Through-The-VPN-Once-It-Is-Up.md) | - | - | Once the VPN is up, the host's ssh answers only on the VPN's address, with a written, tried way back in when the VPN fails. |
 
 ## Idea
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho67"></a>[HO67](HO67-The-Walks-Host-Checks-Hold-On-A-Rented-Host.md) | - | - | The guide's host checks pass on a rented host without hand patches, and the host runs the porelo-host the walk names. |
-| <a id="ho66"></a>[HO66](HO66-The-Forges-Links-Reach-The-Laptop.md) | - | - | Every link the host's forge gives opens from a developer's laptop through the VPN. |
-| <a id="ho65"></a>[HO65](HO65-The-Hosts-Tunnel-Addresses-Answered.md) | - | - | A project admin's account asks the host, read-only, which tunnel addresses it uses, so the interface proposes a free one. |
 | <a id="ho64"></a>[HO64](HO64-The-Collection-Tested-Where-Up-Puts-It.md) | - | - | Once the interface installs the collection for every account, Molecule installs the collection as `up` does and shows a person's account finds it there; the README names the place. |
 | <a id="ho63"></a>[HO63](HO63-Podman-Reached-Through-The-Accounts-Session-Bus.md) | - | - | Every podman call as a service account reaches its user manager's bus, and a missing bus refuses by name. |
-| <a id="ho62"></a>[HO62](HO62-The-Forges-Own-Reason-For-A-Refused-Password.md) | - | - | A password the forge refuses is answered with Forgejo's own reason, never the password. |
 | <a id="ho58"></a>[HO58](HO58-The-Services-Podman-Kept-Small.md) | - | - | Once a day, and after a missed day, each service account's Podman loses the images and volumes no container used for a set time. |
 | <a id="ho54"></a>[HO54](HO54-The-Host-Helpers-Hardened.md) | - | - | The stop's certificate and path checks, the people's SSH drop-in read first, a project registration retried after a forge timeout, and the password helper held to the project helper's checks. |
 | <a id="ho51"></a>[HO51](HO51-Down-Names-What-A-Transport-Left.md) | - | - | Where `down` cleared the vault past a transport, its protocol names that transport and project in Porelo's words. |
@@ -130,4 +125,9 @@ it is left out.
 
 | # | Title | Why |
 |---|---|---|
+| <a id="ho22"></a>HO22 | Ssh Reached Only Through The VPN Once It Is Up | Rejected (operator, 2026-10-30): replaced by the one-key design; there is no VPN, and SSH on port 22 is the host's only way in, [HO68](#ho68). |
+| <a id="ho62"></a>HO62 | The Forge's Own Reason For A Refused Password | Rejected (operator, 2026-10-30): replaced by the one-key design; the forge has no password, [HO69](#ho69). |
+| <a id="ho65"></a>HO65 | The Host's Tunnel Addresses Answered | Rejected (operator, 2026-10-30): replaced by the one-key design; the host has no tunnel addresses, [HO68](#ho68). |
+| <a id="ho66"></a>HO66 | The Forge's Links Reach The Laptop | Rejected (operator, 2026-10-30): replaced by the one-key design; the forge's links follow `ROOT_URL` at `<host>.localhost`, [HO69](#ho69). |
+| <a id="ho67"></a>HO67 | The Walk's Host Checks Hold On A Rented Host | Rejected (operator, 2026-10-30): replaced by the one-key design; the walk's VPN and token checks go, and [HO74](#ho74) keeps the check on a rented host. |
 | <a id="ho16"></a>HO16 | The Person's Drive On OneDrive | The host has no drive any more; OneDrive as a user's own drive may come later as a new idea beside the interface's. |
