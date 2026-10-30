@@ -1758,12 +1758,13 @@ class Host:
                         records[user]["reason"] = "key"
                     self.lock(user, records[user], self.available("porelo"))
                 continue
+            # A project revocation names no key or expiry, so it is taken before the card is compared.
+            if entry.get("revoked") is True:
+                refused.append(f"{user}: project card is revoked")
+                continue
             if any(entry.get(field) != current.get(field) for field in ("login", "ssh", "expires")):
                 refused.append(f"{user}: card key or expiry does not match the host's applied registry")
                 deferred.add(user)
-                continue
-            if entry.get("revoked") is True:
-                refused.append(f"{user}: project card is revoked")
                 continue
             if (not valid_ssh_key(entry.get("ssh")) or entry["ssh"] in keys
                     or entry.get("role") not in ("project-admin", "developer")

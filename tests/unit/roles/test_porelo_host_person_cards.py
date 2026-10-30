@@ -705,6 +705,19 @@ def test_lagging_bundle_preserves_membership_and_signers_until_matching_card(car
         assert any(item["login"] == user and item["ssh"] == original["ssh"] for item in after["history"])
 
 
+def test_project_revoked_card_with_empty_key_drops_the_member(cards):
+    """Prevent a project revocation, whose card names no key or expiry, from reading as a lagging card."""
+    host = cards.host
+    sync(cards)
+    assert "alpha developer" in host.records()["alice"]["members"]
+    entry = next(p for p in cards.reply["persons"] if p["login"] == "alice")
+    entry.update(ssh="", expires="", revoked=True)
+    answer = sync(cards)
+    assert "alice" in answer["dropped"]
+    assert any("alice" in r and "project card is revoked" in r for r in answer["refused"])
+    assert not any("alice" in r and "does not match" in r for r in answer["refused"])
+
+
 @pytest.mark.parametrize("verb", ["lock", "purge", "direct-lock"])
 @pytest.mark.parametrize("program", ["gpasswd", "loginctl", "usermod", "systemctl"])
 def test_retried_lock_requires_every_executable_before_changes(cards, verb, program):
