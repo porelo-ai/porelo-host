@@ -22,7 +22,8 @@ Exec=-ec 'socat TCP-LISTEN:{{ forge_http_port }},bind=127.0.0.1,reuseaddr,fork \
 [Service]
 # A job left behind depends on this container, and podman would refuse to replace it.
 ExecStartPre=-/usr/bin/podman rm -v -f -i --depend forgejo-runner-proxy
-# Quadlet's own stop fails while such a job still holds the namespace.
+# Quadlet's own stop fails while such a job still holds the namespace; this one runs first and takes the jobs along.
+ExecStop=/usr/bin/podman rm -v -f -i --depend forgejo-runner-proxy
 ExecStopPost=-/usr/bin/podman rm -v -f -i --depend forgejo-runner-proxy
 Restart=always
 RestartSec=10

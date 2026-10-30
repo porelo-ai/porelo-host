@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Person revocation tolerates missing Linux accounts, rejects shared purged keys, preserves lagging project cards,
   and validates lock retry dependencies.
 - The runner comes back when its proxy restarts, a stopped proxy removes the jobs left in its namespace, and jobs get a
-  read-only name table of root's, so no job can take the forge's name for later jobs. The runner gate's Bearer
+  read-only name table of root's and the host name localhost, so no job can take the forge's name for later jobs. The runner gate's Bearer
   support and its refusal of artifact v4 transfers are documented.
 - Gathered push validates raw caller config bytes and opened descriptors, keeps Git helpers in its cleanup group,
   and handles early coprocess exits and NUL output safely.

@@ -73,7 +73,9 @@
       - (verify_runner_config.content | b64decode | from_yaml).runner.capacity == 1
       - verify_job_options | select('search', 'tls/|SSL_CERT_FILE|CURL_CA_BUNDLE|JAVA_TOOL_OPTIONS') | list == []
       - verify_job_configuration.network == 'container:forgejo-runner-proxy'
-      - "'--add-host=alpha.localhost:127.0.0.1' in verify_job_options"
+      - verify_job_options | select('match', '^--add-host') | list == []
+      - "'--volume=/opt/porelo-host/runner-job-hosts:/etc/hosts:ro' in verify_job_options"
+      - "'--hostname=localhost' in verify_job_options"
       - verify_job_options | select('match', '^--volume=/opt/porelo-host/jdk-') | list
         == ['--volume=' ~ verify_job_jdk_dir ~ ':/opt/porelo-jdk-25:ro']
       - verify_job_options | select('match', '^--env=JAVA_HOME_25_X64=') | list
@@ -81,10 +83,12 @@
       - verify_job_configuration.options.count('--env=JAVA_HOME_25_X64=') == 1
       - verify_job_configuration.valid_volumes | select('equalto', verify_job_jdk_dir) | list
         == [verify_job_jdk_dir]
+      - "'/opt/porelo-host/runner-job-hosts' in verify_job_configuration.valid_volumes"
     fail_msg: >-
       asked for capacity 1, --cpus=1 --memory=768m --pids-limit=2048 --env=OMP_NUM_THREADS=1 (the test VM's job bounds)
-      and the proxy's network with the forge name mapped to loopback, no forge trust overrides, and one read-only JDK
-      mount allowed in valid_volumes at /opt/porelo-jdk-25 with JAVA_HOME_25_X64 set to that path;
+      and the proxy's network with the forge name mapped to loopback in root's read-only name table, host name
+      localhost, no forge trust overrides, and one read-only JDK mount allowed in valid_volumes at /opt/porelo-jdk-25
+      with JAVA_HOME_25_X64 set to that path;
       got {{ verify_job_configuration }}
   vars:
     verify_job_configuration: "{{ (verify_runner_config.content | b64decode | from_yaml).container }}"

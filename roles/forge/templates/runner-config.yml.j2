@@ -17,14 +17,15 @@ container:
   # Jobs get no socket of the runner's podman, so a job cannot start containers beside itself.
   docker_host: "-"
   # Jobs share the proxy's namespace; its own /etc/hosts would be theirs to rewrite for the next job.
-  # Their own is root's file, which a job's root cannot write even through a volume of its own.
+  # Their own is root's file, which a job's root cannot write even through a volume of its own. Their host name is
+  # localhost, which it names, so a lookup of their own name stays on the host.
   # Where the host has a VM pool, its file is read-only: what porelo-machines --pool reads.
   options: >-
     --cpus={{ forge_job_cpus }} --memory={{ forge_job_memory }} --pids-limit={{ forge_job_pids_limit }}
     --env=OMP_NUM_THREADS={{ forge_job_omp_num_threads }}
     --volume={{ __forge_runner_jdk_dir }}:{{ __forge_runner_jdk_job_dir }}:ro
     --env=JAVA_HOME_25_X64={{ __forge_runner_jdk_job_dir }}
-    --volume={{ __forge_runner_job_hosts }}:/etc/hosts:ro
+    --volume={{ __forge_runner_job_hosts }}:/etc/hosts:ro --hostname=localhost
 {% if porelo_host_vm_pool is defined %}
     --volume=/etc/porelo-host/pool:/etc/porelo-host/pool:ro
 {% endif %}

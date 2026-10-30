@@ -130,3 +130,4 @@
     - /usr/local/sbin/porelo-host-project
     - /etc/porelo-host/forge.conf
     - /etc/porelo-host/projects
+    - /opt/porelo-host/runner-job-hosts

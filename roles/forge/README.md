@@ -82,8 +82,10 @@ Artifact v4 uploads and downloads are not passed by the runner gate. Their signe
 Authorization header. The gate returns `401` for those transfers; the `/api/actions/` exemption stays limited to
 the runner protocol. Bearer-authenticated artifact control calls can pass, but do not make the blob transfers work.
 
-Jobs get `/opt/porelo-host/runner-job-hosts`, owned by root, read-only as their `/etc/hosts`. It maps `<host>.localhost`
-to `127.0.0.1`, so Forgejo's canonical URL, checkout and package registry reach the token gate on loopback. Jobs receive no gate socket or forge CA trust
+Jobs get `/opt/porelo-host/runner-job-hosts`, owned by root, read-only as their `/etc/hosts`, and the host name
+`localhost`. It maps `<host>.localhost` to `127.0.0.1`, so Forgejo's canonical URL, checkout and package registry reach
+the token gate on loopback. Steps run as `uses: docker://…` get none of the runner's container options and see the
+proxy's own `/etc/hosts`; all containers share its `/etc/resolv.conf`. Jobs receive no gate socket or forge CA trust
 mounts. External HTTPS uses each image's own certificate authorities.
 
 Forgejo's `ROOT_URL` is `http://<host>.localhost:<forge_http_port>/`, with browser port `3000` by default.

@@ -177,7 +177,9 @@ def test_socket_replacement_refreshes_the_proxy_bind_mount():
 def test_jobs_get_a_name_table_of_roots_they_cannot_rewrite():
     """Prevent a job rewriting the shared namespace's /etc/hosts to take the forge's name for later jobs."""
     config = template("runner-config.yml")
-    assert "--volume={{ __forge_runner_job_hosts }}:/etc/hosts:ro" in config
+    assert "--volume={{ __forge_runner_job_hosts }}:/etc/hosts:ro --hostname=localhost" in config
+    removed = next(t for t in tasks("down") if "/opt/porelo-host/runner-job-hosts" in t.get("loop", []))
+    assert removed["ansible.builtin.file"]["state"] == "absent"
     task = next(t for t in tasks("runner") if "__forge_runner_job_hosts" in str(t.get("ansible.builtin.copy", {})))
     copy = task["ansible.builtin.copy"]
     assert (copy["owner"], copy["group"], copy["mode"]) == ("root", "root", "0644")
@@ -196,7 +198,10 @@ def test_proxy_stop_removes_dependent_jobs_even_after_execstop_fails():
     """Prevent orphaned jobs surviving the removal of their network namespace owner."""
     proxy = template("forgejo-runner-proxy.container")
     service = proxy.split("[Service]\n", 1)[1].split("[Install]\n", 1)[0]
-    assert "ExecStopPost=-/usr/bin/podman rm -v -f -i --depend forgejo-runner-proxy" in service.splitlines()
+    lines = service.splitlines()
+    assert "ExecStopPost=-/usr/bin/podman rm -v -f -i --depend forgejo-runner-proxy" in lines
+    # Quadlet's generated stop comes after this one and finds nothing left, so the unit does not end failed.
+    assert "ExecStop=/usr/bin/podman rm -v -f -i --depend forgejo-runner-proxy" in lines
 
 
 def test_every_runuser_reaches_the_accounts_own_user_manager():
