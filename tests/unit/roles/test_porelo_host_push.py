@@ -88,8 +88,7 @@ def host(tmp_path):
         ca.write_text("")
         ca.chmod(0o644)
     (etc / "forge.conf").write_text(
-        f"host=alpha\nname={FORGE_NAME}\n"
-        "git_port=3001\nport=3000\naccount=porelo-forge\n"
+        f"host=alpha\nname={FORGE_NAME}\n" "git_port=3001\nport=3000\naccount=porelo-forge\n"
     )
     (etc / "forge.conf").chmod(0o644)
 
@@ -131,9 +130,7 @@ def host(tmp_path):
     script = moved_if_present(script, "/etc/porelo-host/forge/ca.pem", str(forge_etc / "ca.pem"))
     script = moved_if_present(script, "/etc/porelo-host/forge/central-ca.conf", str(forge_etc / "central-ca.conf"))
     script = moved_if_present(script, "/etc/ssl/certs/ca-certificates.crt", str(etc / "system-ca.pem"))
-    script = moved_if_present(
-        script, "PATH=/usr/sbin:/usr/bin", f"PATH={bin_dir}:/usr/sbin:/usr/bin"
-    )
+    script = moved_if_present(script, "PATH=/usr/sbin:/usr/bin", f"PATH={bin_dir}:/usr/sbin:/usr/bin")
     script = moved_if_present(script, "work=$(mktemp -d)", f"work=$(mktemp -d -p {temporary})")
     script = moved_if_present(script, "/etc/porelo-host/people", str(etc / "people"))
     script = moved_if_present(script, "/usr/local/sbin/porelo-host-person", str(bin_dir / "porelo-host-person"))
@@ -194,14 +191,10 @@ def host(tmp_path):
     )
     (bin_dir / "sudo").write_text(
         '#!/bin/sh\n[ "$1" = -n ] || exit 1\nshift\n[ -n "$1" ] || exit 1\n'
-        f'exec {bin_dir}/porelo-host-person forge-token --for alice\n'
+        f"exec {bin_dir}/porelo-host-person forge-token --for alice\n"
     )
-    (bin_dir / "unshare").write_text(
-        '#!/bin/sh\n[ "$1" = --net ] || exit 1\nshift\nexport TEST_NETNS=yes\nexec "$@"\n'
-    )
-    (bin_dir / "ip").write_text(
-        '#!/bin/sh\n[ "$TEST_NETNS" = yes ] && [ "$*" = "link set lo up" ]\n'
-    )
+    (bin_dir / "unshare").write_text('#!/bin/sh\n[ "$1" = --net ] || exit 1\nshift\nexport TEST_NETNS=yes\nexec "$@"\n')
+    (bin_dir / "ip").write_text('#!/bin/sh\n[ "$TEST_NETNS" = yes ] && [ "$*" = "link set lo up" ]\n')
     # The namespace is stubbed: refuse every real TCP bind, and exercise the wrapper without host listeners.
     (bin_dir / "python3").write_text(
         f"#!{sys.executable}\n"
@@ -334,7 +327,6 @@ def host(tmp_path):
         # The forge's admin token as the fixture's user wrote it, so a caller's own fixture token is checked too.
         f"    expected = ({PERSON_TOKEN!r}, pathlib.Path({str(api_token)!r}).read_text().strip())\n"
         "    assert any('password=' + token + '\\n' in result.stdout for token in expected)\n"
-
         "with calls.open('a') as handle:\n"
         "    handle.write(\n"
         "        f\"{os.environ.get('GIT_SSL_CAINFO', '')}|\"\n"
@@ -361,7 +353,17 @@ def host(tmp_path):
         f"os.execv({GIT!r}, [{GIT!r}, *mapped])\n"
     )
     for stub in (
-        "id", "getent", "stat", "runuser", "porelo-host-person", "sudo", "unshare", "ip", "python3", "curl", "git"
+        "id",
+        "getent",
+        "stat",
+        "runuser",
+        "porelo-host-person",
+        "sudo",
+        "unshare",
+        "ip",
+        "python3",
+        "curl",
+        "git",
     ):
         (bin_dir / stub).chmod(0o755)
 
@@ -453,14 +455,22 @@ def push(host, *arguments, token=CENTRAL_TOKEN, environment=None, interrupt=Fals
     if arguments and arguments[0] == "--migrate" and environment != {"TEST_ROOT_MIGRATE": "yes"}:
         (host["root"] / "uid").write_text(f"{host['person_uid']}\n")
     process = subprocess.Popen(
-        ["/usr/bin/env", "-S", host["command"].read_text().splitlines()[0].removeprefix("#!/usr/bin/env -S "),
-         str(host["command"]), *arguments],
+        [
+            "/usr/bin/env",
+            "-S",
+            host["command"].read_text().splitlines()[0].removeprefix("#!/usr/bin/env -S "),
+            str(host["command"]),
+            *arguments,
+        ],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         env={
-            "PATH": "/usr/bin:/bin", "HOME": str(host["decoy_home"]),
-            "SUDO_UID": str(host["person_uid"]), "SUDO_USER": "alice", **(environment or {}),
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(host["decoy_home"]),
+            "SUDO_UID": str(host["person_uid"]),
+            "SUDO_USER": "alice",
+            **(environment or {}),
         },
         text=True,
         start_new_session=True,
@@ -910,10 +920,16 @@ def test_pull_says_when_local_main_is_ahead_and_brings_nothing(host):
     assert not git("--git-dir", str(host["local"]), "for-each-ref", "refs/heads/central/main")
 
 
-@pytest.mark.parametrize("environment", [
-    {"SUDO_UID": "0"}, {"SUDO_UID": "9999"}, {"SUDO_USER": "bob"},
-    {"SUDO_UID": "invalid"}, {"SUDO_USER": "../alice"},
-])
+@pytest.mark.parametrize(
+    "environment",
+    [
+        {"SUDO_UID": "0"},
+        {"SUDO_UID": "9999"},
+        {"SUDO_USER": "bob"},
+        {"SUDO_UID": "invalid"},
+        {"SUDO_USER": "../alice"},
+    ],
+)
 def test_false_sudo_callers_are_refused_before_credentials(host, environment):
     """Prevent root rights from being used with a forged or inconsistent caller identity."""
     code, output = push(host, "porelo", environment=environment)
@@ -939,7 +955,7 @@ def test_socket_api_and_sudoers_contract(host):
     assert all("http://localhost/api/v1/" in line and "--cacert" not in line for line in api)
     rules = (ROOT / "roles/forge/files/porelo-host-push.sudoers").read_text().splitlines()
     assert [line for line in rules if line and not line.startswith("#")] == [
-        '%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-push *'
+        "%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-push *"
     ]
     tasks = yaml.safe_load((ROOT / "roles/forge/tasks/push.yml").read_text())
     installed = [task["ansible.builtin.copy"] for task in tasks if "ansible.builtin.copy" in task]
