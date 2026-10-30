@@ -27,21 +27,33 @@ def drop_in():
 
 def test_every_account_uses_root_owned_keys_and_revocations():
     """Prevent account-writable key files or missing global forwarding restrictions bypassing admission."""
-    global_part, people_part = drop_in().split("Match Group porelo-people\n")
+    global_part, rest = drop_in().split("Match Group porelo-people\n")
+    people_part, others_part = rest.split("Match all\n")
     directives = dict(line.split(None, 1) for line in global_part.splitlines())
+    # sshd keeps the first value it reads, so neither forwarding keyword may stand before the Match blocks.
     assert directives == {
         "Port": "22",
         "PasswordAuthentication": "no",
         "KbdInteractiveAuthentication": "no",
         "AuthorizedKeysFile": "/etc/ssh/authorized_keys/%u",
         "RevokedKeys": "/etc/ssh/porelo-revoked.krl",
-        "AllowTcpForwarding": "no",
         "AllowAgentForwarding": "no",
         "X11Forwarding": "no",
         "PermitTunnel": "no",
-        "AllowStreamLocalForwarding": "no",
     }
-    assert people_part.split() == ["AllowStreamLocalForwarding", "all", "StreamLocalBindUnlink", "yes", "Match", "all"]
+    # OpenSSH opens no Unix socket forward while AllowTcpForwarding is no, and PermitOpen none refuses socket paths
+    # too; PermitListen none still refuses every remote TCP listener.
+    assert people_part.split() == [
+        "AllowTcpForwarding",
+        "yes",
+        "PermitListen",
+        "none",
+        "AllowStreamLocalForwarding",
+        "all",
+        "StreamLocalBindUnlink",
+        "yes",
+    ]
+    assert others_part.split() == ["AllowTcpForwarding", "no", "AllowStreamLocalForwarding", "no"]
 
 
 def test_sshd_accepts_the_policy_and_only_people_can_forward_sockets(tmp_path):
@@ -65,7 +77,9 @@ def test_sshd_accepts_the_policy_and_only_people_can_forward_sockets(tmp_path):
         assert result.returncode == 0, result.stderr
         settings = dict(line.split(None, 1) for line in result.stdout.splitlines())
         assert settings["allowstreamlocalforwarding"] == expected
-        assert settings["allowtcpforwarding"] == "no"
+        assert settings["allowtcpforwarding"] == expected
+        if expected == "yes":
+            assert settings["permitlisten"] == "none"
         assert settings["allowagentforwarding"] == "no"
 
 

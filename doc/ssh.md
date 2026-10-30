@@ -8,9 +8,12 @@ in `/root/.ssh/authorized_keys` (or `base_host_admin_key_file`); up copies this 
 A host admin handover replaces both the seed and the active root file. Installation seeds a valid empty KRL through
 `ssh-keygen -k` and an atomic rename, without requiring registry synchronization. A later up preserves the KRL.
 
-TCP forwarding, agent forwarding, X forwarding and tunnels are disabled for every account. Unix socket forwarding
-is disabled except for `porelo-people`; that group gets local and remote Unix socket forwarding with
-`StreamLocalBindUnlink yes` and keeps its login shell. A person's return socket belongs below
+Agent forwarding, X forwarding and tunnels are disabled for every account, and so is all other forwarding except
+for `porelo-people`. That group gets local and remote Unix socket forwarding with `StreamLocalBindUnlink yes` and keeps
+its login shell. OpenSSH forwards no Unix socket while `AllowTcpForwarding` is `no`, and `PermitOpen none` refuses
+socket paths as well, so the group also gets local TCP forwarding: it reaches only what the person's shell on the host
+reaches anyway. `PermitListen none` refuses every remote TCP listener. sshd keeps the first value it reads, so both
+forwarding keywords stand only in the `Match` blocks. A person's return socket belongs below
 `/run/porelo-host/people/<login>/`, mode 0700, owned by that person. Admission creates the directory and an
 `/etc/tmpfiles.d/porelo-person-<login>.conf` boot rule. The install step restores these for recorded people;
 lock and purge remove both without following links in the person's writable directory.
