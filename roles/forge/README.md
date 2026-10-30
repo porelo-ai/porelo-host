@@ -76,9 +76,9 @@ ports. Its image is pinned by digest. The proxy owns the network namespace; the 
 joins `container:forgejo-runner-proxy`, as do registration and every job. Registration uses
 `http://127.0.0.1:<forge_http_port>`; existing registrations keep their token and move to that address.
 
-Jobs map `<host>.localhost` to `127.0.0.1` with `--add-host`, so Forgejo's canonical URL, checkout and package registry
-reach the token gate on loopback. Jobs receive no gate socket or forge CA trust mounts. External HTTPS uses each
-image's own certificate authorities.
+Jobs inherit the proxy's `/etc/hosts`, where `AddHost=` maps `<host>.localhost` to `127.0.0.1`, so Forgejo's canonical
+URL, checkout and package registry reach the token gate on loopback. Jobs receive no gate socket or forge CA trust
+mounts. External HTTPS uses each image's own certificate authorities.
 
 Forgejo's `ROOT_URL` is `http://<host>.localhost:<forge_http_port>/`, with browser port `3000` by default.
 `forge_git_port` defaults to `3001`. These are the person's local forwarded ports, not listeners on the host.

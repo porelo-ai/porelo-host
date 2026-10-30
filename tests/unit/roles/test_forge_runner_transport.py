@@ -88,9 +88,15 @@ def test_runner_and_registration_join_the_proxy_before_using_loopback():
     for line in (
         "Network=container:forgejo-runner-proxy",
         "After=forgejo-runner-proxy.service",
-        "Requires=forgejo-runner-proxy.service",
+        "BindsTo=forgejo-runner-proxy.service",
+        "PartOf=forgejo-runner-proxy.service",
     ):
         assert line in runner.splitlines()
+    proxy = template("forgejo-runner-proxy.container")
+    # Jobs inherit the namespace owner's /etc/hosts; podman refuses extra hosts on a container that joins it.
+    assert "AddHost={{ forge_name }}:127.0.0.1" in proxy.splitlines()
+    # A job left behind depends on the proxy, so podman would refuse to replace it.
+    assert "ExecStartPre=-/usr/bin/podman rm -v -f -i --depend forgejo-runner-proxy" in proxy.splitlines()
     assert "PublishPort=" not in runner
     runner_tasks = tasks("runner")
     index, register = next(
@@ -128,7 +134,7 @@ def test_jobs_share_loopback_for_checkout_registry_and_cache():
     )
     config = yaml.safe_load(env.from_string(template("runner-config.yml")).render(**values))
     assert config["container"]["network"] == "container:forgejo-runner-proxy"
-    assert "--add-host=example.localhost:127.0.0.1" in config["container"]["options"].split()
+    assert "--add-host" not in config["container"]["options"]
     assert config["cache"]["host"] == "127.0.0.1"
     assert (config["cache"]["port"], config["cache"]["proxy_port"]) == (4000, 4001)
     assert "tls/" not in config["container"]["options"]

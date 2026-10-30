@@ -20,7 +20,6 @@ container:
   options: >-
     --cpus={{ forge_job_cpus }} --memory={{ forge_job_memory }} --pids-limit={{ forge_job_pids_limit }}
     --env=OMP_NUM_THREADS={{ forge_job_omp_num_threads }}
-    --add-host={{ forge_name }}:127.0.0.1
     --volume={{ __forge_runner_jdk_dir }}:{{ __forge_runner_jdk_job_dir }}:ro
     --env=JAVA_HOME_25_X64={{ __forge_runner_jdk_job_dir }}
 {% if porelo_host_vm_pool is defined %}

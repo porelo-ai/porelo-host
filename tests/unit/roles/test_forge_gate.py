@@ -249,3 +249,12 @@ def test_runner_forwards_job_tokens_as_git_does(gate):
     """Prevent a job's checkout token failing on the runner's path."""
     response, calls = request(gate, "runner", path="/owner/repo.git/info/refs", headers=[("Authorization", "token t")])
     assert response.startswith(b"HTTP/1.1 200") and calls[0][3]["Authorization"] == "token t"
+
+
+def test_runner_forwards_a_jobs_bearer_token_but_git_does_not(gate):
+    """Prevent a job's artifact calls failing, without widening the Git socket's credentials."""
+    path = "/api/actions_pipeline/_apis/pipelines/workflows/1/artifacts"
+    response, calls = request(gate, "runner", path=path, headers=[("Authorization", "Bearer job.fixture-token")])
+    assert response.startswith(b"HTTP/1.1 200") and calls[0][3]["Authorization"] == "Bearer job.fixture-token"
+    response, calls = request(gate, "git", path=path, headers=[("Authorization", "Bearer job.fixture-token")])
+    assert response.startswith(b"HTTP/1.1 401") and calls == []

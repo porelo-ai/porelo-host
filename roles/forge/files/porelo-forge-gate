@@ -131,7 +131,9 @@ class Handler(BaseHTTPRequestHandler):
         if tokens and not authorizations and not (self.server.mode == "runner" and runner_route(self.path)):
             self.reply(401, challenge=True)
             return
-        if tokens and authorizations and not re.fullmatch(r"(?i:Basic|token) [A-Za-z0-9+/=_\-.]+", authorizations[0]):
+        # A job's artifact and cache calls carry its own token as Bearer; only the runner's socket takes those.
+        schemes = "Basic|token|Bearer" if self.server.mode == "runner" else "Basic|token"
+        if tokens and authorizations and not re.fullmatch(rf"(?i:{schemes}) [A-Za-z0-9+/=_\-.]+", authorizations[0]):
             self.reply(401, challenge=True)
             return
         lengths = self.headers.get_all("Content-Length", [])

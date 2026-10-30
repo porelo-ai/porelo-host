@@ -21,13 +21,13 @@ The runner uses a third system socket, `/run/porelo-forge/runner.sock`, owned by
 account's primary group, mode `0660` in the same `0755` directory. It applies the same token-only rules as `git.sock`,
 except for the runner's own protocol under `/api/actions/`, which Forgejo authenticates by the runner's tokens.
 The runner account's `forgejo-runner-proxy.container` mounts only `runner.sock` and forwards two loopback listeners,
-on the web and Git ports, to that socket. The runner starts after and requires this proxy; its container,
+on the web and Git ports, to that socket. The runner starts after this proxy and is bound to it; its container,
 registration container and jobs all join `container:forgejo-runner-proxy`.
 
-Registration uses `http://127.0.0.1:<web_port>`. Jobs get `--add-host=<host>.localhost:127.0.0.1`, so checkout and the
-package registry use the canonical forge URL with their tokens. The Actions cache uses `127.0.0.1` on its existing
-ports, `4000` and `4001` by default, in this shared namespace. Neither forge nor cache ports are published on the
-host's VPN address. Jobs receive no forge socket or forge CA trust mounts.
+Registration uses `http://127.0.0.1:<web_port>`. Jobs inherit the proxy's `/etc/hosts`, which maps `<host>.localhost` to
+`127.0.0.1`, so checkout and the package registry use the canonical forge URL with their tokens. The Actions cache uses
+`127.0.0.1` on its existing ports, `4000` and `4001` by default, in this shared namespace. Neither forge nor cache ports
+are published on the host's VPN address. Jobs receive no forge socket or forge CA trust mounts.
 
 The local forge is the host's private Forgejo: it holds task branches, runs independent builds and supplies snapshots
 through its local registry. The central forge holds the work the person sends outward and runs the central publication

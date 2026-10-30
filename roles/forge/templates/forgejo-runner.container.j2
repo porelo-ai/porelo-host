@@ -4,7 +4,8 @@
 Description=Forgejo's runner, its jobs in the runner account's containers
 StartLimitIntervalSec=0
 After=forgejo-runner-proxy.service
-Requires=forgejo-runner-proxy.service
+# Stopped with the proxy whenever it ends, not only when it is stopped: its namespace goes with it.
+BindsTo=forgejo-runner-proxy.service
 PartOf=forgejo-runner-proxy.service
 
 [Container]
