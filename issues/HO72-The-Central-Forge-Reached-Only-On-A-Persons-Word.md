@@ -11,31 +11,34 @@ Git on the central forge, every service on the host behind a Unix socket.
 issue.
 
 - The bring's migration of a project's repositories, the gathered push and the pull of the central state take the
-  starting person's own token on standard input through the tunnel and use it once, through a credential helper reading
-  a pipe: never in a process's argv, a log, a file or `.git/config`.
+  starting person's own token on standard input through the tunnel and use it once, on a pipe or in git's own
+  environment: never in a process's argv, a log, a file or `.git/config`.
 - The publisher's and the runner's own tokens, which act only on the host's forge, stay.
 - Goes: the `forge-central-token` stop and `/run/porelo-host/forge-central.token`.
 
 ## Acceptance
 
-- after each of the three, the token is in no file, no `.git/config` and no log, and was in no argv (a test watching
+- [x] after each of the three, the token is in no file, no `.git/config` and no log, and was in no argv (a test watching
   `/proc/*/cmdline`).
 
 ## Plan
 
-- `roles/forge/tasks/repositories.yml` migrates no more inside bring: the stop and the token file go. A new verb
-  `porelo-host-project migrate <project>` (`roles/forge/files/porelo-host-project`), run by the project admin's Porelo
-  through the tunnel, reads the central token from stdin, migrates the repositories the verified project names that the
-  forge lacks, and keeps the token in memory alone; `credential.helper` is a pipe-reading shell function, never `argv`
-  or `.git/config`.
-- `porelo-host-project remove`'s check (`central_forge_token()`, line 501) takes the token from its caller's stdin
-  instead of `/run/porelo-host/forge-central.token`; `porelo-host-push` already reads it from stdin.
-- The pull of the central state: `porelo-host-push --pull <project>` with the same stdin token, fast-forwarding the
-  host's `main` from the central one.
-- Goes: `forge-central-token` in `porelo-host-stop`, `doc/lines.md`, the bring's `__forge_central_token` vars in
-  `tasks/own.yml`.
-- Red first: unit tests for `migrate` and `--pull` with a stand-in forge, asserting the token is in no argv
-  (`/proc/*/cmdline` sampled by the stand-in), no file and no output.
+- `roles/forge/tasks/repositories.yml` migrates no more inside bring: where a repository is still to migrate, it lists
+  them in `~/.config/porelo-host/push/<project>.migrate` (the push config's form, no secret) and waits with the need
+  `forge-central-token`, unchanged for the interface. The token file goes.
+- The person's stop (`porelo-host-stop --stdin forge-central-token`) pipes the token into
+  `porelo-host-push --migrate <project>` in the person's own account, which checks the list like a push config, has
+  Forgejo migrate each listed repository it lacks with the person's own forge token, the central token in the request
+  body on a pipe alone, and removes the list; the bring run again goes on. The migration sits beside the push rather
+  than in `porelo-host-project`, which is root's alone and would need a new sudo rule.
+- `porelo-host-project remove`'s check (`central_forge_token()`) already takes the token from its caller's stdin, and
+  `porelo-host-push` reads it from stdin; git gets it as a header in its environment, never `argv` or `.git/config`.
+- The pull of the central state: `porelo-host-push --pull <project> [repositories...]` with the same stdin token brings
+  central `main` to the local forge as `central/main`, since local `main` is protected and reaches it by a pull request.
+- Goes: the token file in `porelo-host-stop`, `doc/lines.md` and `doc/local-forge.md`, the bring's
+  `__forge_central_token` vars in `tasks/own.yml` and `down.yml`.
+- Red first: unit tests for `--migrate` and `--pull` with a stand-in forge, asserting the token is in no argv
+  (`/proc/*/cmdline` sampled while they run), no file and no output; the stop's tests assert the pipe.
 
 ## To be checked
 

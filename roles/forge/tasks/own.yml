@@ -100,13 +100,8 @@
     - name: own | Give the organization its repositories, the teams, main's protection and the Actions variables
       when: porelo_own_act == 'bring'
       block:
-        - name: own | Migrate the project's repositories with the person's central token
+        - name: own | Make the organization and wait for the person's migration of what it lacks
           ansible.builtin.include_tasks: "{{ role_path }}/tasks/repositories.yml"
-          vars:
-            __forge_central_token: "{{ __forge_own_dir }}/forge-central-token"
-            __forge_secret_uid: "{{ __forge_own_uid }}"
-            __forge_secret_owner: "{{ porelo_account }}"
-            __forge_secret_rerun: bring
 
         # Before main's protection, which names the developers team as one allowed to approve and merge.
         - name: own | Make the project's teams

@@ -7,7 +7,9 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -203,6 +205,8 @@ def host(tmp_path):
     )
 
     repos_json = tmp_path / "forge-repos.json"
+    routes_json = tmp_path / "forge-routes.json"
+    bodies = tmp_path / "forge-bodies"
     (bin_dir / "curl").write_text(
         f"#!{sys.executable}\n"
         "import json, pathlib, ssl, sys, urllib.error, urllib.parse, urllib.request\n"
@@ -210,7 +214,8 @@ def host(tmp_path):
         "with calls.open('a') as handle:\n"
         "    handle.write('curl|' + ' '.join(sys.argv[1:]) + '\\n')\n"
         "args = sys.argv[1:]\n"
-        "out_file = ca_file = header_arg = url = None\n"
+        "out_file = ca_file = header_arg = url = data_arg = None\n"
+        "method = 'GET'\n"
         "write_code = False\n"
         "i = 0\n"
         "while i < len(args):\n"
@@ -225,6 +230,10 @@ def host(tmp_path):
         "        write_code = True; i += 2; continue\n"
         "    if arg in ('--max-time', '--noproxy'):\n"
         "        i += 2; continue\n"
+        "    if arg == '-X':\n"
+        "        method = args[i + 1]; i += 2; continue\n"
+        "    if arg == '--data':\n"
+        "        data_arg = args[i + 1]; i += 2; continue\n"
         "    if arg.startswith('https://') or arg.startswith('http://'):\n"
         "        url = arg\n"
         "    i += 1\n"
@@ -233,6 +242,20 @@ def host(tmp_path):
         "    header_line = pathlib.Path(header_arg[1:]).read_text().strip()\n"
         "elif header_arg:\n"
         "    header_line = header_arg\n"
+        f"routes = pathlib.Path({str(routes_json)!r})\n"
+        "if routes.exists():\n"
+        "    table = json.loads(routes.read_text())\n"
+        "    status, body = 401, {}\n"
+        "    if header_line == 'Authorization: token ' + table['token']:\n"
+        "        status, body = table['routes'].get(method + ' ' + urllib.parse.urlsplit(url).path, [404, {}])\n"
+        "    if data_arg == '@-':\n"
+        f"        with pathlib.Path({str(bodies)!r}).open('a') as handle:\n"
+        "            handle.write(sys.stdin.read().strip() + '\\n')\n"
+        "    if out_file:\n"
+        "        pathlib.Path(out_file).write_text(json.dumps(body))\n"
+        "    if write_code:\n"
+        "        sys.stdout.write(str(status))\n"
+        "    sys.exit(0)\n"
         f"fixture = pathlib.Path({str(repos_json)!r})\n"
         "if fixture.exists():\n"
         "    data = json.loads(fixture.read_text())\n"
@@ -356,6 +379,8 @@ def host(tmp_path):
         "person_uid": person_uid,
         "foreign_marker": foreign_marker,
         "repos_json": repos_json,
+        "routes_json": routes_json,
+        "bodies": bodies,
         "vault_calls": vault_calls,
         "command": command,
         "temporary": temporary,
@@ -363,6 +388,30 @@ def host(tmp_path):
         "local": local,
         "local_two": local_two,
     }
+
+
+@contextmanager
+def argv_watched(token):
+    """Samples every process's argv while the command runs, as another account on the host could read it."""
+    seen = []
+    done = threading.Event()
+
+    def sample():
+        while not done.is_set():
+            for cmdline in Path("/proc").glob("[0-9]*/cmdline"):
+                try:
+                    if token.encode() in cmdline.read_bytes():
+                        seen.append(cmdline.read_bytes())
+                except OSError:
+                    pass
+
+    watcher = threading.Thread(target=sample, daemon=True)
+    watcher.start()
+    try:
+        yield seen
+    finally:
+        done.set()
+        watcher.join(timeout=10)
 
 
 def push(host, *arguments, token=CENTRAL_TOKEN, environment=None, interrupt=False):
@@ -694,3 +743,115 @@ def test_nothing_reads_or_writes_roots_push_conf():
     assert not offenders, f"root's push.conf is still named in: {offenders}"
     main_tasks = (ROOT / "roles/forge/tasks/main.yml").read_text(encoding="utf-8")
     assert "tasks/push.yml" in main_tasks, "roles/forge/tasks/main.yml does not include tasks/push.yml"
+
+
+def migration(host, routes):
+    """The bring's list of repositories still to migrate, and a forge that answers the person's own token."""
+    listed = host["alice_push"] / "porelo.migrate"
+    listed.write_text(
+        "# Written by porelo.host.bring; read by porelo-host-push --migrate.\n"
+        f"local {LOCAL_BASE}\n"
+        "owner porelo\n"
+        f"central-ca {host['forge_etc'] / 'central-ca.pem'}\n"
+        f"repository stand-in {CENTRAL_BASE}/stand-in.git\n"
+        f"repository second {CENTRAL_BASE}/second.git\n"
+    )
+    listed.chmod(0o600)
+    host["routes_json"].write_text(json.dumps({"token": PERSON_TOKEN, "routes": routes}))
+    return listed
+
+
+def test_migrate_takes_only_the_missing_repositories_with_the_central_token_in_the_body_alone(host):
+    """Prevents the central token from lying on the host, or reaching an argv, a log or an answer, at migration."""
+    listed = migration(
+        host,
+        {
+            "GET /api/v1/repos/porelo/stand-in": [200, {"name": "stand-in"}],
+            "GET /api/v1/repos/porelo/second": [404, {}],
+            "POST /api/v1/repos/migrate": [201, {"name": "second"}],
+        },
+    )
+
+    with argv_watched(CENTRAL_TOKEN) as seen:
+        code, output = push(host, "--migrate", "porelo")
+
+    assert code == 0, output
+    assert "stand-in: already on the forge" in output and "second: migrated" in output, output
+    bodies = [json.loads(line) for line in host["bodies"].read_text().splitlines()]
+    assert bodies == [
+        {
+            "clone_addr": f"{CENTRAL_BASE}/second.git",
+            "repo_name": "second",
+            "repo_owner": "porelo",
+            "service": "git",
+            "mirror": False,
+            "private": True,
+            "auth_token": CENTRAL_TOKEN,
+        }
+    ]
+    assert not seen, f"the central token was in an argv: {seen}"
+    assert_no_token_anywhere(host, output)
+    assert not listed.exists(), "the migration list outlived a migration that took every repository"
+    files = [path for path in host["root"].rglob("*") if path.is_file() and path != host["bodies"]]
+    assert not [path for path in files if CENTRAL_TOKEN.encode() in path.read_bytes()], "the token lies in a file"
+    assert list(host["temporary"].iterdir()) == [], "the temporary answer was left behind"
+
+
+def test_a_migration_the_forge_refuses_names_its_answer_and_keeps_the_list(host):
+    """Prevents a refused migration from passing silently or losing what is still to migrate."""
+    listed = migration(
+        host,
+        {
+            "GET /api/v1/repos/porelo/stand-in": [404, {}],
+            "GET /api/v1/repos/porelo/second": [404, {}],
+            "POST /api/v1/repos/migrate": [422, {"message": "clone address refused"}],
+        },
+    )
+
+    code, output = push(host, "--migrate", "porelo")
+
+    assert code == 65, output
+    assert "stand-in: the forge answered HTTP 422: clone address refused" in output, output
+    assert listed.exists(), "the migration list went although nothing was migrated"
+    assert_no_token_anywhere(host, output)
+
+
+def test_migrate_runs_only_in_the_persons_own_account_from_their_own_list(host):
+    """Prevents root, or a list another account could write, from deciding what is migrated with the token."""
+    migration(host, {})
+    host["root"].joinpath("uid").write_text("0\n")
+    code, output = push(host, "--migrate", "porelo")
+    assert code == 77, output
+
+    host["root"].joinpath("uid").write_text(f"{host['person_uid']}\n")
+    (host["alice_push"] / "porelo.migrate").chmod(0o644)
+    code, output = push(host, "--migrate", "porelo")
+    assert code == 66 and "porelo.migrate" in output, output
+    assert not host["bodies"].exists(), "a request body was sent"
+
+
+def test_pull_brings_central_main_to_the_local_forge_as_central_main(host):
+    """Prevents the central state from reaching the host only through a token kept there."""
+    central = host["root"] / "central" / "stand-in.git"
+    local_main = head(host["local"])
+    central_work = commit(central, host["root"] / "central-work", "A")
+
+    with argv_watched(CENTRAL_TOKEN) as seen:
+        code, output = push(host, "--pull", "porelo", "stand-in")
+
+    assert code == 0, output
+    assert head(host["local"], "central/main") == central_work, "central main did not reach the local forge"
+    assert head(host["local"]) == local_main, "local main was moved past its protection"
+    assert "stand-in: central main is 1 commit ahead" in output, output
+    assert not seen, f"the central token was in an argv: {seen}"
+    assert_no_token_anywhere(host, output)
+    assert list(host["temporary"].iterdir()) == [], "the temporary clone was left behind"
+
+
+def test_pull_says_when_local_main_is_central_main(host):
+    """Prevents an empty branch from being brought where nothing is to merge."""
+    code, output = push(host, "--pull", "porelo", "stand-in")
+
+    assert code == 0, output
+    assert "stand-in: local main is central main" in output, output
+    assert not git("--git-dir", str(host["local"]), "for-each-ref", "refs/heads/central/main")

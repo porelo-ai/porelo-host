@@ -92,7 +92,7 @@ with the needs as `up` names them. Standard input holds one line per secret, `<n
 | `vault` | `vault <passphrase>` | `porelo vault unlock --passphrase-stdin`, as the account |
 | `keys` | `key <name> <key>`, one per key of the machine, none or more | `porelo vault put <name>`, as the account, once the vault is open |
 | `wireguard` | `wireguard <private key>` | the VPN's key file, root's with mode `0600`, kept for the host's life |
-| `forge-central-token` | `forge-central-token <token>` | `/run/porelo-host/forge-central.token`, root's with mode `0600`, until the migration |
+| `forge-central-token` | `forge-central-token <token>` | `porelo-host-push --migrate <project>` on a pipe, as the account, for the repositories the waiting `bring` listed; the token lies in no file |
 | `forge-certificate` | `forge-certificate <the forge's certificate, then the CA's, as PEM>` | `/etc/porelo-host/forge/forge.pem` and `ca.pem`, once every check below holds |
 | `matrix-token` | `matrix-token <token>` | `~/.config/porelo/matrix/host-registration-token` of the account, the account's own with mode `0600` in a `0700` directory, written as the account; `down` removes it |
 

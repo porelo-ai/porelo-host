@@ -250,24 +250,6 @@ stdin_stop() {
 # used, and no value is ever echoed.
 own_people_dir=/run/porelo-host/people
 
-own_write_file() {
-    local value=$1 target=$2 dir tmp
-    dir=$(dirname -- "$target")
-    if [ ! -e "$dir" ] && [ ! -L "$dir" ]; then
-        (umask 077 && mkdir -p -- "$dir") || stdin_refuse "cannot make $dir" 73
-    fi
-    [ -d "$dir" ] && [ ! -L "$dir" ] && [ -O "$dir" ] || stdin_refuse "$dir is no directory of this account's" 73
-    chmod 0700 -- "$dir" || stdin_refuse "cannot keep $dir private" 73
-    if [ -L "$target" ] || { [ -e "$target" ] && [ ! -f "$target" ]; }; then
-        stdin_refuse "$target is no plain file" 73
-    fi
-    tmp=$(umask 077 && mktemp -- "$dir/.porelo-host-stop.XXXXXX") || stdin_refuse "cannot write in $dir" 73
-    if ! stdin_decode "$value" > "$tmp" || ! mv -fT -- "$tmp" "$target"; then
-        rm -f -- "$tmp"
-        stdin_refuse "cannot write $target" 73
-    fi
-}
-
 # The vault names Porelo reads (Agent Core, room 2026-10-29): the gate's token by the forge's host as its push URL
 # names it, the git fallback of doc/credentials.md; the person's own login under a name only the host's acts read.
 own_identity_name() {
@@ -282,7 +264,8 @@ own_identity_name() {
 own_stop() {
     local -A named=() given=()
     local -a key_names=()
-    local need line count=0 rest name value user forge tokens identity token
+    local need line count=0 rest name value user forge tokens identity token project
+    local -a waiting=()
     local -a identity_names=() identity_tokens=()
     [ "$#" -gt 0 ] || stdin_refuse 'at least one need is required: vault-new, vault, keys, forge-central-token, identities'
     for need in "$@"; do
@@ -340,10 +323,15 @@ own_stop() {
         stdin_refuse 'no line gives keys'
     fi
 
+    # The bring that waits left its list of repositories to migrate; porelo-host-push checks it again before use.
     if [ -n "${named[forge-central-token]+x}" ]; then
-        [ -n "${XDG_RUNTIME_DIR-}" ] || stdin_refuse 'XDG_RUNTIME_DIR is not set; log in to this account first' 69
-        [ -d "$XDG_RUNTIME_DIR" ] && [ -O "$XDG_RUNTIME_DIR" ] \
-            || stdin_refuse "$XDG_RUNTIME_DIR is no runtime directory of this account's" 69
+        shopt -s nullglob
+        waiting=("${HOME-}"/.config/porelo-host/push/*.migrate)
+        shopt -u nullglob
+        [ "${#waiting[@]}" = 1 ] || stdin_refuse 'no single bring waits for the central token; run the bring again' 69
+        project=${waiting[0]##*/}
+        project=${project%.migrate}
+        require_command porelo-host-push
     fi
     # The tokens admission left for this person, read whole and checked before the vault is touched.
     if [ -n "${named[identities]+x}" ]; then
@@ -390,8 +378,11 @@ own_stop() {
     if [ -n "${named[identities]+x}" ]; then
         rm -f -- "$tokens" || stdin_refuse "cannot remove $tokens" 73
     fi
+    # Used once, on a pipe: the token is in no file, and the bring run again finds the repositories there.
     if [ -n "${named[forge-central-token]+x}" ]; then
-        own_write_file "${given["forge-central-token "]}" "$XDG_RUNTIME_DIR/porelo-host/forge-central-token"
+        if ! stdin_decode "${given["forge-central-token "]}" | porelo-host-push --migrate "$project"; then
+            stdin_refuse "the migration of $project stopped; porelo-host-push said why above" 65
+        fi
     fi
     printf '%s\n' "Your stop is done."
     exit 0

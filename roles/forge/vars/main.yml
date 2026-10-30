@@ -7,14 +7,8 @@ __forge_meminfo: /proc/meminfo
 __forge_image: >-
   codeberg.org/forgejo/forgejo:17.0.0-rootless@sha256:6554520f7574602100b7d6620c6ac5b18cec30325f823777497eac36234f5cf8
 
-# The person's token for migration from the central forge, where porelo-host-stop --stdin forge-central-token writes
-# it, root's alone on the tmpfs; only the shell reads it into the request, and the migration removes it.
-__forge_central_token: /run/porelo-host/forge-central.token
-# Whose alone the central token and the API token must be, and what to run again once it is given; bring names the
-# project admin and itself.
-__forge_secret_uid: 0
-__forge_secret_owner: root
-__forge_secret_rerun: up
+# Where the person's push config and the bring's list of repositories still to migrate lie, theirs alone.
+__forge_push_dir: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo-host/push"
 __forge_to_migrate: "{{ __forge_repositories_state.results | selectattr('stdout', 'equalto', 'missing')
   | map(attribute='item.name') | list }}"
 

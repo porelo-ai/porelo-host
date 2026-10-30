@@ -29,10 +29,10 @@ at `project.bundle` and `access: {bundle: access.bundle}`. Then `porelo setup`, 
 (`porelo-host-stop --stdin`, run without `sudo`), Porelo's inventory, each key in the vault, `porelo project verify` on
 both bundles from the commits in force, and `project follow --signed-by` with the keys pinned. The bring's machine file
 also names `forge: {repositories: [{name, url}, ...]}`, which a join's must not. With the person's own forge token, taken
-from their vault into their runtime directory for the run alone, the bring migrates each repository into the project's
-organization (registered first by `porelo-host-project add`) with the central token the stop left there, protects
-`main` (fast-forward only, one approval from `Owners` or `developers`), makes the teams `developers`, `gates` and
-`agents`, and sets the Actions variables. Both write `~/.config/porelo-host/push/<project>.conf` from the repositories
+from their vault into their runtime directory for the run alone, the bring has each repository migrated into the
+project's organization (registered first by `porelo-host-project add`) by `porelo-host-push --migrate`, into which the
+stop pipes the central token, protects `main` (fast-forward only, one approval from `Owners` or `developers`), makes
+the teams `developers`, `gates` and `agents`, and sets the Actions variables. Both write `~/.config/porelo-host/push/<project>.conf` from the repositories
 the forge lists with their `original_url`. The bring ends with `sudo -n porelo-host-person sync <project>`, a user
 timer that runs it again for each upload, and the project's room through `porelo talk room` once Porelo has that command.
 

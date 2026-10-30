@@ -54,3 +54,20 @@ def test_a_forge_stop_is_a_tagged_failure_whose_message_is_its_needs(name, task,
 def test_no_forge_stop_in_a_bring_is_left_a_plain_assert_naming_porelo_host_stop(name):
     for task in tasks(name):
         assert "porelo-host-stop" not in str(task.get("ansible.builtin.assert", "")), task.get("name")
+
+
+def test_no_central_token_lies_on_the_host_for_a_bring():
+    """Prevent the bring from reading the central token from a file, or migrating with it, instead of the stop's pipe."""
+    forge = TASKS.parent
+    named = [
+        path
+        for path in [*forge.glob("tasks/*.yml"), *forge.glob("vars/*.yml"), *forge.glob("defaults/*.yml")]
+        if "forge-central.token" in path.read_text() or "forge_central_token" in path.read_text()
+    ]
+    assert not named, f"a central token file is still named in: {named}"
+    assert "repos/migrate" not in (forge / "tasks/repositories.yml").read_text()
+    listing = next(
+        t for t in tasks("repositories.yml") if t.get("name") == "repositories | List what is still to migrate"
+    )
+    assert "{{ forge_owner }}.migrate" in listing["ansible.builtin.copy"]["dest"]
+    assert listing["ansible.builtin.copy"]["mode"] == "0600"

@@ -3,7 +3,9 @@
 # The gathered push, run by any developer of a project in their own account on the host: each repository's approved
 # local main goes to the central forge with a plain push. A central forge that moved refuses it, and its commits reach
 # the local forge as central/main. With --check, root compares every local ref of a project against Forgejo's migrated
-# original_url before project removal, writing neither forge.
+# original_url before project removal, writing neither forge. With --migrate, the project admin's bring stop has
+# Forgejo migrate the repositories the bring listed and the forge lacks; with --pull, central main reaches the local
+# forge as central/main. The central token is read from standard input every time and kept in memory alone.
 # The line above empties the environment before bash starts: it takes no PATH, HOME, git, proxy or shell setting from
 # its caller.
 set -u
@@ -50,9 +52,11 @@ forge_conf_value() {
 }
 
 caller_uid=$(id -u) || fail "cannot read the calling account id" 69
+mode=push
+case "${1-}" in --migrate | --pull) mode=${1#--} && shift ;; esac
 checking=
 project_owner=
-if [ "${1-}" = --check ]; then
+if [ "$mode" = push ] && [ "${1-}" = --check ]; then
     [ "$caller_uid" = 0 ] || fail "--check runs only as root" 77
     [ "$#" -ge 3 ] || fail "--check needs an organization and its repository names" 64
     checking=yes
@@ -66,6 +70,7 @@ else
     project_owner=$1
     [[ $project_owner =~ $project_pattern ]] || fail "'$project_owner' is not a project name" 64
     shift
+    [ "$mode" != migrate ] || [ "$#" -eq 0 ] || fail "--migrate takes the project alone" 64
 fi
 
 trusted "$local_ca" || fail "the host's CA $local_ca is not a file only root can change" 66
@@ -85,7 +90,9 @@ if [ -z "$checking" ]; then
         || fail "getent passwd gave no home directory for account $caller_uid" 69
 
     push_dir="$caller_home/.config/porelo-host/push"
+    # The bring's list of repositories still to migrate has the push config's form, under a name of its own.
     conf="$push_dir/$project_owner.conf"
+    [ "$mode" != migrate ] || conf="$push_dir/$project_owner.migrate"
     for dir in "$caller_home" "$caller_home/.config" "$caller_home/.config/porelo-host"; do
         [ ! -L "$dir" ] || fail "$dir is a symbolic link, not a directory of $caller_user's" 66
         [ -e "$dir" ] || fail "$conf does not exist ($dir is missing)" 66
@@ -321,6 +328,70 @@ for item in data:
         [[ ${central_url[$name]:-} =~ $url_pattern ]] \
             || fail "$name: the forge holds no central https:// original_url from migration" 69
     done
+fi
+
+# Forgejo's own message on a refusal; its answers never repeat a request's body, and redact cuts any token out.
+answer="$work/answer.json"
+api() {
+    curl -sS --max-time 120 --noproxy '*' --cacert "$local_ca" -H 'Content-Type: application/json' \
+        -H @<(printf 'Authorization: token %s\n' "$local_token") -o "$answer" -w '%{http_code}' "$@"
+}
+said() {
+    python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1])).get("message", ""))' "$answer" 2> /dev/null \
+        || true
+}
+
+# The token reaches the request body on a pipe, never an argument: Forgejo clones with it once and keeps it nowhere.
+if [ "$mode" = migrate ]; then
+    for name in "${targets[@]}"; do
+        http_code=$(api "$local_forge/api/v1/repos/$owner/$name") || fail "$name: the forge did not answer" 69
+        case "$http_code" in
+            200) printf '%s: already on the forge\n' "$name" && continue ;;
+            404) ;;
+            *) fail "$name: the forge answered HTTP $http_code" 69 ;;
+        esac
+        http_code=$(printf '%s' "$central_token" | python3 -I -c '
+import json, sys
+print(json.dumps({"clone_addr": sys.argv[1], "repo_name": sys.argv[2], "repo_owner": sys.argv[3], "service": "git",
+                  "mirror": False, "private": True, "auth_token": sys.stdin.read()}))
+' "${central_url[$name]}" "$name" "$owner" | api -X POST --data @- "$local_forge/api/v1/repos/migrate") \
+            || fail "$name: the forge did not answer the migration" 69
+        [ "$http_code" = 201 ] || fail "$name: the forge answered HTTP $http_code: $(redact "$(said)")" 65
+        printf '%s: migrated\n' "$name"
+    done
+    # Nothing is left to migrate, so the bring run again finds every repository and writes the push config.
+    rm -f -- "$conf" || fail "$conf could not be removed" 73
+    exit 0
+fi
+
+# Main is protected on the local forge, so central main arrives beside it and reaches it by a pull request.
+if [ "$mode" = pull ]; then
+    for name in "${targets[@]}"; do
+        repo="$work/$name"
+        local_url="$local_forge/$owner/$name.git"
+        if ! said=$(as_local clone --quiet --branch main --single-branch "$local_url" "$repo" 2>&1); then
+            fail "$name: local main could not be read from $local_url: $(redact "$said")"
+        fi
+        if ! said=$(as_central -C "$repo" fetch --quiet "${central_url[$name]}" main 2>&1); then
+            fail "$name: central main could not be read: $(redact "$said")"
+        fi
+        if [ "$(git -C "$repo" rev-parse HEAD)" = "$(git -C "$repo" rev-parse FETCH_HEAD)" ]; then
+            printf '%s: local main is central main\n' "$name"
+            continue
+        fi
+        if ! said=$(as_local -C "$repo" push --quiet "$local_url" FETCH_HEAD:refs/heads/central/main 2>&1); then
+            fail "$name: central main could not be brought to the local forge: $(redact "$said")"
+        fi
+        if git -C "$repo" merge-base --is-ancestor HEAD FETCH_HEAD; then
+            ahead=$(git -C "$repo" rev-list --count HEAD..FETCH_HEAD)
+            printf '%s: central main is %s commit%s ahead; it is on the local forge as central/main, %s\n' \
+                "$name" "$ahead" "$([ "$ahead" = 1 ] || printf s)" 'for a pull request'
+        else
+            printf '%s: central main and local main went apart; central/main on the local forge is merged in a task\n' \
+                "$name"
+        fi
+    done
+    exit 0
 fi
 
 pushed=()

@@ -265,10 +265,13 @@ documentation](https://github.com/porelo-ai/porelo/blob/main/doc/credentials.md)
 
 The gathered push asks for the central token with hidden input in the SSH terminal and stores it nowhere; git
 receives it only as a header in its environment, never on a command line, and the command's output names no token. The
-token for initial repository migration has a different lifetime: `up` asks for it, naming `forge-central-token`, only
-while a repository is still to migrate; the person's stop writes it from their secrets file into
-`/run/porelo-host/forge-central.token`, root's alone on the tmpfs, the forge role reads it from there into the
-migration request, and the migration, or else `down` or a reboot, removes it.
+token for the initial repository migration is used the same way, once: a `bring` with a repository still to migrate
+lists it in `~/.config/porelo-host/push/<project>.migrate` (no secret) and waits, naming `forge-central-token`; the
+person's stop pipes the token into `porelo-host-push --migrate <project>`, which has Forgejo migrate each listed
+repository it lacks, with the token in the request body on a pipe alone, and removes the list; the `bring` run again
+goes on. `porelo-host-push --pull <project> [repositories...]` brings central `main` to the local forge as
+`central/main` with the same token on standard input; local `main` is protected and reaches it by a pull request. No
+token for the central forge lies on the host.
 
 ## If the host is lost
 

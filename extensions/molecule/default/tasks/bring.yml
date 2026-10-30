@@ -479,7 +479,7 @@
           asked /home/bo/.local/share/porelo-host/setup/alpha-one for bo:bo 0700 holding bo:bo 0600 plain files;
           got {{ verify_bring_bo_upload.results | map(attribute='stat') | list }}
 
-    - name: Run bo's own stop as bo with no sudo for vault-new, forge-central-token and identities
+    - name: Run bo's own stop as bo with no sudo for vault-new and identities
       ansible.builtin.command:
         argv:
           - python3
@@ -488,14 +488,12 @@
             import base64, json, pathlib, pwd, secrets, subprocess
             pw = pwd.getpwnam("bo")
             passphrase = "bo-vault-passphrase-" + secrets.token_hex(20)
-            central_tok = pathlib.Path("/root/verify-bring/bo-central.token").read_text(encoding="utf-8").strip()
             pat_path = pathlib.Path("/root/verify-people/tokens.pat")
             with pat_path.open("a", encoding="utf-8") as handle:
                 handle.write(passphrase + "\n")
             patterns = [line for line in pat_path.read_text(encoding="utf-8").splitlines() if line]
             b64_pass = base64.b64encode(passphrase.encode("utf-8")).decode("ascii")
-            b64_tok = base64.b64encode(central_tok.encode("utf-8")).decode("ascii")
-            payload = f"vault-new {b64_pass}\nforge-central-token {b64_tok}\n"
+            payload = f"vault-new {b64_pass}\n"
             run = subprocess.run(
                 [
                     "/usr/sbin/runuser", "-u", "bo", "--",
@@ -504,7 +502,7 @@
                     "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
                     "LC_ALL=C.UTF-8",
                     "/usr/local/bin/porelo-host-stop", "--stdin",
-                    "vault-new", "forge-central-token", "identities",
+                    "vault-new", "identities",
                 ],
                 input=payload,
                 capture_output=True,
@@ -587,6 +585,80 @@
       vars:
         verify_bring_stop_out: "{{ verify_bring_bo_stop.stdout | from_json }}"
         verify_bring_vault_out: "{{ verify_bring_bo_vault.stdout | from_json }}"
+
+    # No token for the central forge lies on the host: the bring lists what is to migrate and waits, and bo's stop pipes
+    # the token into porelo-host-push --migrate.
+    - name: Run porelo.host.bring as bo until it waits for the central token, then bo's stop for it
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import base64, json, pathlib, pwd, subprocess
+            pw = pwd.getpwnam("bo")
+            patterns = [
+                line for line in pathlib.Path("/root/verify-people/tokens.pat").read_text(encoding="utf-8").splitlines()
+                if line
+            ]
+            central_tok = pathlib.Path("/root/verify-bring/bo-central.token").read_text(encoding="utf-8").strip()
+            env = [
+                "/usr/sbin/runuser", "-u", "bo", "--",
+                "/usr/bin/env", f"HOME={pw.pw_dir}", "USER=bo", "LOGNAME=bo",
+                f"XDG_RUNTIME_DIR=/run/user/{pw.pw_uid}",
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "LC_ALL=C.UTF-8",
+            ]
+            waiting = subprocess.run(
+                [*env, "ANSIBLE_NOCOLOR=1", "ansible-playbook", "-c", "local", "porelo.host.bring",
+                 "-e", "porelo_project=alpha-one"],
+                capture_output=True, text=True, cwd=pw.pw_dir,
+            )
+            listed = pathlib.Path(f"{pw.pw_dir}/.config/porelo-host/push/alpha-one.migrate")
+            list_text = listed.read_text(encoding="utf-8") if listed.exists() else ""
+            payload = "forge-central-token " + base64.b64encode(central_tok.encode("utf-8")).decode("ascii") + "\n"
+            stop = subprocess.run(
+                [*env, "/usr/local/bin/porelo-host-stop", "--stdin", "forge-central-token"],
+                input=payload, capture_output=True, text=True, cwd=pw.pw_dir,
+            )
+            with open("/root/verify-bring/act.out", "a", encoding="utf-8") as out_file:
+                out_file.write(waiting.stdout + waiting.stderr + stop.stdout + stop.stderr)
+            def redact(text):
+                for item in [*patterns, central_tok]:
+                    text = text.replace(item, "<redacted>")
+                return text
+            print(
+                json.dumps(
+                    {
+                        "bring_rc": waiting.returncode,
+                        "waited": "forge-central-token" in waiting.stdout,
+                        "list": list_text,
+                        "list_left": listed.exists(),
+                        "stop_rc": stop.returncode,
+                        "token_in_list": central_tok in list_text,
+                        "stop": redact(stop.stdout + stop.stderr)[-2000:],
+                        "tail": redact((waiting.stdout + waiting.stderr)[-2000:]),
+                    }
+                )
+            )
+      register: verify_bring_central_stop
+      changed_when: true
+      no_log: true
+
+    - name: Assert the bring waited for the central token with a list of app alone, and bo's stop migrated it
+      ansible.builtin.assert:
+        that:
+          - verify_bring_waited.bring_rc != 0
+          - verify_bring_waited.waited
+          - "'repository app ' in verify_bring_waited.list"
+          - not verify_bring_waited.token_in_list
+          - verify_bring_waited.stop_rc == 0
+          - "'app: migrated' in verify_bring_waited.stop"
+          - not verify_bring_waited.list_left
+        fail_msg: >-
+          asked the bring to wait naming forge-central-token with alpha-one.migrate listing app and no token, and bo's
+          stop to migrate app and remove the list; got {{ verify_bring_waited }}
+      vars:
+        verify_bring_waited: "{{ verify_bring_central_stop.stdout | from_json }}"
 
     - name: Run porelo.host.bring as bo with no sudo to bring alpha-one onto the host
       ansible.builtin.command:

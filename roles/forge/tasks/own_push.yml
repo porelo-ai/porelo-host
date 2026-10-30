@@ -50,13 +50,13 @@
 
 - name: own_push | Make the person's push directory, theirs alone
   ansible.builtin.file:
-    path: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo-host/push"
+    path: "{{ __forge_push_dir }}"
     state: directory
     mode: "0700"
 
 - name: own_push | Write the person's push config for the project
   ansible.builtin.copy:
-    dest: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo-host/push/{{ forge_owner }}.conf"
+    dest: "{{ __forge_push_dir }}/{{ forge_owner }}.conf"
     mode: "0600"
     content: |
       # Written by porelo.host.{{ porelo_own_act }}; read by porelo-host-push.

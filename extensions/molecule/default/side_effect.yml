@@ -168,7 +168,6 @@
         - /etc/porelo-host/forge.conf
         - /usr/local/sbin/porelo-host-forge-password
         - /usr/local/sbin/porelo-host-push
-        - /run/porelo-host/forge-central.token
         - /etc/systemd/system/porelo-forge-https.socket
         - /etc/systemd/system/porelo-forge-https.service
       register: side_effect_paths_after
