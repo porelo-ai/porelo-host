@@ -13,7 +13,7 @@
     <properties>
         <!-- The shared build tools, from porelo-ai/porelo-buildtools: its snapshot between releases, as every Porelo
              repository builds on. -->
-        <porelo.buildtools.version>0.5.1-SNAPSHOT</porelo.buildtools.version>
+        <porelo.buildtools.version>0.5.2-SNAPSHOT</porelo.buildtools.version>
     </properties>
 
     <!-- Central's snapshots, for snapshots only: this repository has no settings file, and the workflow's one Maven
