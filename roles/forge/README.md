@@ -33,11 +33,16 @@ files; the person's sudoers configuration provides no password-setting command. 
 forge CA trust block and task CA file.
 
 `up` prepares the forge without repositories (`forge_repositories` stays empty on the host) and installs
-`/usr/local/sbin/porelo-host-push` (`0755`, run by any project developer in their own account from
-`~/.config/porelo-host/push/<project>.conf` with `<forge_name>.person` from their vault, and as root with `--check` by
+`/usr/local/sbin/porelo-host-push` (`0755`, push and `--pull` through `sudo -n` for a current project developer,
+reading `~/.config/porelo-host/push/<project>.conf` from the sudo caller's home, and as root with `--check` by
 `porelo-host-project remove` against Forgejo's `original_url`) together with `/etc/porelo-host/forge/central-ca.conf`
 (`0644`, holding `forge_central_ca`). `porelo.host.bring` and `porelo.host.join` write each person's
 `~/.config/porelo-host/push/<project>.conf` from the repositories they reach on the forge.
+The helper gets the caller's local token from root's `porelo-host-person forge-token --for <login>`;
+`--migrate` remains in the person's own account and gets it through `sudo -n porelo-host-person forge-token`.
+APIs use `git.sock`; each local Git transfer uses a fresh root network namespace with a loopback-to-socket forwarder
+and a credential pipe. No listener opens on the host's loopback. Central transfers retain HTTPS and their CA.
+The checked sudoers drop-in admits `porelo-people`; the helper validates all arguments and current membership.
 
 `/usr/local/sbin/porelo-host-project`, root's alone, registers an organization with an unlocked member in
 `/etc/porelo-host/people/` (recording `member=<project> project-admin`) whom the applied registry in

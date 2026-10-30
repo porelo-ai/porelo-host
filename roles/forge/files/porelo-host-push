@@ -1,6 +1,6 @@
-#!/usr/bin/env -S -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C /bin/bash --noprofile --norc
+#!/usr/bin/env -S -i PATH=/usr/sbin:/usr/bin SUDO_UID=${SUDO_UID} SUDO_USER=${SUDO_USER} /bin/bash --noprofile --norc
 # shellcheck shell=bash
-# The gathered push, run by any developer of a project in their own account on the host: each repository's approved
+# The gathered push, run through sudo by a project developer on the host: each repository's approved
 # local main goes to the central forge with a plain push. A central forge that moved refuses it, and its commits reach
 # the local forge as central/main. With --check, root compares every local ref of a project against Forgejo's migrated
 # original_url before project removal, writing neither forge. With --migrate, the project admin's bring stop has
@@ -9,10 +9,13 @@
 # The line above empties the environment before bash starts: it takes no PATH, HOME, git, proxy or shell setting from
 # its caller.
 set -u
+export LC_ALL=C
 cd / || exit 1
 
 forge_conf=/etc/porelo-host/forge.conf
-local_ca=/etc/porelo-host/forge/ca.pem
+local_socket=/run/porelo-forge/git.sock
+people_dir=/etc/porelo-host/people
+person_helper=/usr/local/sbin/porelo-host-person
 central_ca_conf=/etc/porelo-host/forge/central-ca.conf
 default_central_ca=/etc/ssl/certs/ca-certificates.crt
 ca_owner=0
@@ -64,8 +67,14 @@ if [ "$mode" = push ] && [ "${1-}" = --check ]; then
     [[ $project_owner =~ $project_pattern ]] || fail "--check needs a valid project organization" 64
     shift 2
 else
-    [ "$caller_uid" != 0 ] \
-        || fail "do not run porelo-host-push as root or with sudo; run it in your own account" 77
+    if [ "$mode" = migrate ]; then
+        [ "$caller_uid" != 0 ] || fail "--migrate runs in the person's own account" 77
+    else
+        [ "$caller_uid" = 0 ] && [[ ${SUDO_UID:-} =~ ^[1-9][0-9]*$ ]] \
+            && [[ ${SUDO_USER:-} =~ ^[a-z][a-z0-9-]{0,30}$ ]] && [ "$SUDO_USER" != root ] \
+            || fail "push and --pull require sudo from a person's account" 77
+        caller_uid=$SUDO_UID
+    fi
     [ "$#" -ge 1 ] || fail "name the project, and optionally the repositories to push" 64
     project_owner=$1
     [[ $project_owner =~ $project_pattern ]] || fail "'$project_owner' is not a project name" 64
@@ -73,9 +82,10 @@ else
     [ "$mode" != migrate ] || [ "$#" -eq 0 ] || fail "--migrate takes the project alone" 64
 fi
 
-trusted "$local_ca" || fail "the host's CA $local_ca is not a file only root can change" 66
+git_port=$(forge_conf_value git_port '^[1-9][0-9]{0,4}$') || exit $?
+[ "$git_port" -le 65535 ] || fail "$forge_conf names no valid git_port" 69
+local_forge="http://127.0.0.1:$git_port"
 
-local_forge=
 owner=
 central_ca=
 local_token=
@@ -88,6 +98,21 @@ if [ -z "$checking" ]; then
     [ "$passwd_uid" = "$caller_uid" ] && [ -n "$caller_user" ] \
         && [[ $caller_home == /* ]] && [ "$caller_home" != / ] \
         || fail "getent passwd gave no home directory for account $caller_uid" 69
+
+    if [ "$mode" != migrate ]; then
+        [ "$caller_user" = "$SUDO_USER" ] || fail "sudo's caller name and uid disagree" 77
+        person_record="$people_dir/$caller_user.conf"
+        trusted_plain "$person_record" || fail "the caller has no trusted person record" 77
+        member= locked=
+        while IFS= read -r line; do
+            case "$line" in
+                "member=$project_owner developer" | "member=$project_owner project-admin") member=yes ;;
+                locked=false) locked=no ;;
+                locked=true) fail "the caller is locked" 77 ;;
+            esac
+        done < "$person_record"
+        [ "$member" = yes ] && [ "$locked" = no ] || fail "the caller is no developer of $project_owner" 77
+    fi
 
     push_dir="$caller_home/.config/porelo-host/push"
     # The bring's list of repositories still to migrate has the push config's form, under a name of its own.
@@ -120,13 +145,21 @@ if [ -z "$checking" ]; then
     [ "$conf_mode" = 600 ] || fail "$conf has mode 0$conf_mode, expected 0600" 66
     [ -r "$conf" ] || fail "$conf is not readable" 66
 
+    # Reading as the person keeps a raced path from exposing a root-only file after the ownership checks.
+    if [ "$mode" = migrate ]; then
+        config_data=$(timeout 10 cat -- "$conf" < /dev/null) || fail "$conf could not be read" 66
+    else
+        config_data=$(timeout 10 runuser -u "$caller_user" -- cat -- "$conf" < /dev/null) \
+            || fail "$conf could not be read as $caller_user" 66
+    fi
+    configured_local=
     config_repos=()
     while read -r key first second extra; do
         case "$key" in
             local)
-                [ -z "${second:-}" ] && [[ ${first:-} =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] \
-                    || fail "$conf names no valid https:// local forge" 65
-                local_forge=$first
+                [ -z "${second:-}" ] && [ "${first:-}" = "$local_forge" ] \
+                    || fail "$conf names no matching local forge" 65
+                configured_local=yes
                 ;;
             owner)
                 [ -z "${second:-}" ] || fail "$conf gives extra words on owner" 65
@@ -149,8 +182,8 @@ if [ -z "$checking" ]; then
             '' | '#'*) ;;
             *) fail "$conf names '$key', which this command does not read" 65 ;;
         esac
-    done < "$conf"
-    [ -n "$local_forge" ] && [ -n "$owner" ] && [ -n "$central_ca" ] \
+    done <<< "$config_data"
+    [ -n "$configured_local" ] && [ -n "$owner" ] && [ -n "$central_ca" ] \
         || fail "$conf names no local forge, owner or central CA" 65
     [ "$owner" = "$project_owner" ] || fail "$conf is for project '$owner', not '$project_owner'" 65
     [ "${#config_repos[@]}" -gt 0 ] || fail "$conf names no repositories to push" 65
@@ -170,18 +203,14 @@ if [ -z "$checking" ]; then
         done
     fi
 
-    forge_name=$(forge_conf_value name '^forge\.[a-z0-9-]+\.porelo\.internal$') || exit $?
-    _=$(forge_conf_value account '^[a-z_][a-z0-9_-]{0,31}$') || exit $?
-    vault_entry="$forge_name.person"
-    vault_reply=$(printf 'protocol=https\nhost=%s\n\n' "$forge_name" \
-        | HOME="$caller_home" XDG_RUNTIME_DIR="/run/user/$caller_uid" \
-            porelo vault credential --entry="$vault_entry" get 2>/dev/null) \
-        || fail "the vault holds no $vault_entry; give it with porelo-host-stop --stdin identities" 69
-    while IFS= read -r line; do
-        case "$line" in password=*) local_token=${line#password=} ;; esac
-    done <<< "$vault_reply"
-    [ -n "$local_token" ] \
-        || fail "the vault holds no $vault_entry; give it with porelo-host-stop --stdin identities" 69
+    if [ "$mode" = migrate ]; then
+        local_token=$(sudo -n "$person_helper" forge-token 2>/dev/null) \
+            || fail "the person's forge token could not be made" 69
+    else
+        local_token=$(env -u SUDO_USER -u SUDO_UID "$person_helper" forge-token --for "$caller_user" 2>/dev/null) \
+            || fail "the person's forge token could not be made" 69
+    fi
+    [ -n "$local_token" ] || fail "the person's forge token is empty" 69
 else
     declare -A named=()
     for name in "$@"; do
@@ -191,11 +220,7 @@ else
         targets+=("$name")
     done
 
-    forge_address=$(forge_conf_value address '^[0-9]{1,3}(\.[0-9]{1,3}){3}$') || exit $?
-    forge_port=$(forge_conf_value port '^[1-9][0-9]{0,4}$') || exit $?
-    [ "$forge_port" -le 65535 ] || fail "$forge_conf names no valid port" 69
     forge_account=$(forge_conf_value account '^[a-z_][a-z0-9_-]{0,31}$') || exit $?
-    local_forge="https://$forge_address:$forge_port"
     owner=$project_owner
 
     if [ -e "$central_ca_conf" ] || [ -L "$central_ca_conf" ]; then
@@ -226,8 +251,11 @@ else
     [ -n "$local_token" ] || fail "$admin_token_file is empty" 66
 fi
 
+[[ $local_token != *$'\r'* && $local_token != *$'\n'* ]] || fail "invalid local forge token" 69
+
 printf 'Token for the central forge (not shown): ' >&2
-IFS= read -rs central_token || fail "no token was given" 75
+central_token=
+IFS= read -rs central_token || [ -n "$central_token" ] || fail "no token was given" 75
 printf '\n' >&2
 [ -n "$central_token" ] || fail "no token was given" 75
 
@@ -255,7 +283,78 @@ git_as() {
     GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=http.extraHeader GIT_CONFIG_VALUE_0="$header" \
         GIT_CONFIG_KEY_1=http.followRedirects GIT_CONFIG_VALUE_1=false GIT_SSL_CAINFO="$ca" git "$@"
 }
-as_local() { git_as "$local_header" "$local_ca" "$@"; }
+# Git has no HTTP Unix-socket transport; only the child namespace ever opens a TCP listener.
+as_local() {
+    printf '%s\n' "$local_token" | unshare --net python3 -I -c '
+import os
+import selectors
+import signal
+import socket
+import socketserver
+import subprocess
+import sys
+import threading
+
+port, upstream = int(sys.argv[1]), sys.argv[2]
+token = sys.stdin.buffer.readline().rstrip(b"\n")
+if not token or b"\r" in token:
+    sys.exit("invalid local credential")
+subprocess.run(["ip", "link", "set", "lo", "up"], check=True, stdin=subprocess.DEVNULL)
+
+class Forward(socketserver.BaseRequestHandler):
+    def handle(self):
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+            peer.connect(upstream)
+            with selectors.DefaultSelector() as ready:
+                ready.register(self.request, selectors.EVENT_READ, peer)
+                ready.register(peer, selectors.EVENT_READ, self.request)
+                while ready.get_map():
+                    for key, _ in ready.select():
+                        data = key.fileobj.recv(65536)
+                        if data:
+                            key.data.sendall(data)
+                        else:
+                            ready.unregister(key.fileobj)
+                            key.data.shutdown(socket.SHUT_WR)
+
+server = socketserver.ThreadingTCPServer(("127.0.0.1", port), Forward)
+server.daemon_threads = True
+threading.Thread(target=server.serve_forever, daemon=True).start()
+read_fd, write_fd = os.pipe()
+def credentials():
+    try:
+        while True:
+            os.write(write_fd, token + b"\n")
+    except BrokenPipeError:
+        pass
+    finally:
+        os.close(write_fd)
+threading.Thread(target=credentials, daemon=True).start()
+helper = ("!f() { [ \"$1\" = get ] || exit 0; IFS= read -r token <&" + str(read_fd)
+          + "; printf \"username=x-access-token\\npassword=%s\\n\" \"$token\"; }; f")
+env = dict(os.environ, GIT_CONFIG_COUNT="3", GIT_CONFIG_KEY_0="credential.helper", GIT_CONFIG_VALUE_0="",
+           GIT_CONFIG_KEY_1="credential.helper", GIT_CONFIG_VALUE_1=helper,
+           GIT_CONFIG_KEY_2="http.followRedirects", GIT_CONFIG_VALUE_2="false")
+child = None
+def interrupted(signum, frame):
+    if child is not None:
+        child.send_signal(signum)
+    raise SystemExit(128 + signum)
+signal.signal(signal.SIGTERM, interrupted)
+signal.signal(signal.SIGINT, interrupted)
+try:
+    child = subprocess.Popen(["git", *sys.argv[3:]], env=env, pass_fds=(read_fd,), stdin=subprocess.DEVNULL)
+    result = child.wait()
+finally:
+    if child is not None and child.poll() is None:
+        child.terminate()
+        child.wait()
+    os.close(read_fd)
+    server.shutdown()
+    server.server_close()
+sys.exit(result if result >= 0 else 128 - result)
+' "$git_port" "$local_socket" "$@"
+}
 as_central() { git_as "$central_header" "$central_ca" "$@"; }
 
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
@@ -279,10 +378,10 @@ if [ -n "$checking" ]; then
     page_file="$work/repos-page.json"
     finished=
     for ((page = 1; page <= 100; page++)); do
-        http_code=$(curl -sS --max-time 30 --noproxy '*' --cacert "$local_ca" \
+        http_code=$(curl -sS --max-time 30 --noproxy '*' --unix-socket "$local_socket" \
             -H @<(printf 'Authorization: token %s\n' "$local_token") \
             -o "$page_file" -w '%{http_code}' \
-            "$local_forge/api/v1/orgs/$owner/repos?limit=50&page=$page") \
+            "http://localhost/api/v1/orgs/$owner/repos?limit=50&page=$page") \
             || fail "the forge did not answer /api/v1/orgs/$owner/repos" 69
         [ "$http_code" = 200 ] \
             || fail "the forge answered HTTP $http_code for /api/v1/orgs/$owner/repos" 69
@@ -333,7 +432,7 @@ fi
 # Forgejo's own message on a refusal; its answers never repeat a request's body, and redact cuts any token out.
 answer="$work/answer.json"
 api() {
-    curl -sS --max-time 120 --noproxy '*' --cacert "$local_ca" -H 'Content-Type: application/json' \
+    curl -sS --max-time 120 --noproxy '*' --unix-socket "$local_socket" -H 'Content-Type: application/json' \
         -H @<(printf 'Authorization: token %s\n' "$local_token") -o "$answer" -w '%{http_code}' "$@"
 }
 said() {
@@ -344,7 +443,7 @@ said() {
 # The token reaches the request body on a pipe, never an argument: Forgejo clones with it once and keeps it nowhere.
 if [ "$mode" = migrate ]; then
     for name in "${targets[@]}"; do
-        http_code=$(api "$local_forge/api/v1/repos/$owner/$name") || fail "$name: the forge did not answer" 69
+        http_code=$(api "http://localhost/api/v1/repos/$owner/$name") || fail "$name: the forge did not answer" 69
         case "$http_code" in
             200) printf '%s: already on the forge\n' "$name" && continue ;;
             404) ;;
@@ -354,7 +453,7 @@ if [ "$mode" = migrate ]; then
 import json, sys
 print(json.dumps({"clone_addr": sys.argv[1], "repo_name": sys.argv[2], "repo_owner": sys.argv[3], "service": "git",
                   "mirror": False, "private": True, "auth_token": sys.stdin.read()}))
-' "${central_url[$name]}" "$name" "$owner" | api -X POST --data @- "$local_forge/api/v1/repos/migrate") \
+' "${central_url[$name]}" "$name" "$owner" | api -X POST --data @- "http://localhost/api/v1/repos/migrate") \
             || fail "$name: the forge did not answer the migration" 69
         [ "$http_code" = 201 ] || fail "$name: the forge answered HTTP $http_code: $(redact "$(said)")" 65
         printf '%s: migrated\n' "$name"

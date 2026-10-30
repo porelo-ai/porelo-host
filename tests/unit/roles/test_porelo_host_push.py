@@ -1,4 +1,4 @@
-"""Exercise the gathered push as an unprivileged developer and its root check against local repositories."""
+"""Exercise the gathered sudo push, person-run migration and root check against local repositories."""
 
 import base64
 import json
@@ -13,14 +13,15 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "roles/forge/files/porelo-host-push"
 ADMIN_TOKEN = "admin-token-4f1c9e"
 PERSON_TOKEN = "person-token-9a3e1d"
 CENTRAL_TOKEN = "central-token-7b2d5a"
-FORGE_NAME = "forge.alpha.porelo.internal"
-LOCAL_BASE = "https://127.0.0.1:3000"
+FORGE_NAME = "alpha.localhost"
+LOCAL_BASE = "http://127.0.0.1:3001"
 CENTRAL_BASE = "https://central.example"
 ELSEWHERE_BASE = "https://elsewhere.example"
 GIT = shutil.which("git")
@@ -87,8 +88,8 @@ def host(tmp_path):
         ca.write_text("")
         ca.chmod(0o644)
     (etc / "forge.conf").write_text(
-        f"address=127.0.0.1\nhost=alpha\nname={FORGE_NAME}\n"
-        "matrix_name=matrix.alpha.porelo.internal\nport=3000\naccount=porelo-forge\n"
+        f"host=alpha\nname={FORGE_NAME}\n"
+        "git_port=3001\nport=3000\naccount=porelo-forge\n"
     )
     (etc / "forge.conf").chmod(0o644)
 
@@ -122,7 +123,6 @@ def host(tmp_path):
     temporary = tmp_path / "temporary"
     temporary.mkdir()
     calls = tmp_path / "calls"
-    vault_calls = tmp_path / "vault-calls"
 
     script = SCRIPT.read_text()
     script = moved_if_present(script, "/etc/porelo-host/forge/push.conf", str(forge_etc / "push.conf"))
@@ -132,16 +132,20 @@ def host(tmp_path):
     script = moved_if_present(script, "/etc/porelo-host/forge/central-ca.conf", str(forge_etc / "central-ca.conf"))
     script = moved_if_present(script, "/etc/ssl/certs/ca-certificates.crt", str(etc / "system-ca.pem"))
     script = moved_if_present(
-        script, "PATH=/usr/sbin:/usr/bin:/sbin:/bin", f"PATH={bin_dir}:/usr/sbin:/usr/bin:/sbin:/bin"
+        script, "PATH=/usr/sbin:/usr/bin", f"PATH={bin_dir}:/usr/sbin:/usr/bin"
     )
     script = moved_if_present(script, "work=$(mktemp -d)", f"work=$(mktemp -d -p {temporary})")
+    script = moved_if_present(script, "/etc/porelo-host/people", str(etc / "people"))
+    script = moved_if_present(script, "/usr/local/sbin/porelo-host-person", str(bin_dir / "porelo-host-person"))
     script = moved_if_present(script, "ca_owner=0", f"ca_owner={os.getuid()}")
+    (etc / "people").mkdir()
+    (etc / "people/alice.conf").write_text("member=porelo developer\nlocked=false\n")
     command = tmp_path / "porelo-host-push"
     command.write_text(script)
     command.chmod(0o755)
 
     (bin_dir / "id").write_text(f"#!/bin/sh\ncat {tmp_path / 'uid'}\n")
-    (tmp_path / "uid").write_text(f"{person_uid}\n")
+    (tmp_path / "uid").write_text("0\n")
 
     (bin_dir / "getent").write_text(
         f"#!{sys.executable}\n"
@@ -181,27 +185,40 @@ def host(tmp_path):
 
     (bin_dir / "runuser").write_text('#!/bin/sh\nwhile [ "$1" != -- ]; do shift; done\nshift\nexec "$@"\n')
 
-    (bin_dir / "porelo").write_text(
+    (bin_dir / "porelo-host-person").write_text(
         f"#!{sys.executable}\n"
-        "import os, pathlib, sys\n"
-        f"calls = pathlib.Path({str(calls)!r})\n"
-        f"vault_calls = pathlib.Path({str(vault_calls)!r})\n"
-        "with calls.open('a') as handle:\n"
-        "    handle.write('porelo|' + ' '.join(sys.argv[1:]) + '\\n')\n"
-        "stdin = sys.stdin.read()\n"
-        "with vault_calls.open('a') as handle:\n"
-        "    handle.write(\n"
-        "        f\"{os.environ.get('HOME', '')}|{os.environ.get('XDG_RUNTIME_DIR', '')}|\"\n"
-        "        f\"{' '.join(sys.argv[1:])}|{stdin.replace(chr(10), ',')}\\n\"\n"
-        "    )\n"
-        f"if pathlib.Path({str(tmp_path / 'vault-missing')!r}).exists():\n"
-        "    sys.exit(1)\n"
-        f"expected = ['vault', 'credential', '--entry={FORGE_NAME}.person', 'get']\n"
-        "if sys.argv[1:] != expected:\n"
-        "    sys.exit(2)\n"
-        f"if 'protocol=https\\nhost={FORGE_NAME}\\n' not in stdin:\n"
-        "    sys.exit(3)\n"
-        f"print('username=alice\\npassword={PERSON_TOKEN}')\n"
+        "import pathlib, sys\n"
+        f"assert sys.argv[1:] == ['forge-token', '--for', 'alice'], sys.argv[1:]\n"
+        f"if pathlib.Path({str(tmp_path / 'person-token-failed')!r}).exists(): sys.exit(1)\n"
+        f"sys.stdout.write({PERSON_TOKEN!r})\n"
+    )
+    (bin_dir / "sudo").write_text(
+        '#!/bin/sh\n[ "$1" = -n ] || exit 1\nshift\n[ -n "$1" ] || exit 1\n'
+        f'exec {bin_dir}/porelo-host-person forge-token --for alice\n'
+    )
+    (bin_dir / "unshare").write_text(
+        '#!/bin/sh\n[ "$1" = --net ] || exit 1\nshift\nexport TEST_NETNS=yes\nexec "$@"\n'
+    )
+    (bin_dir / "ip").write_text(
+        '#!/bin/sh\n[ "$TEST_NETNS" = yes ] && [ "$*" = "link set lo up" ]\n'
+    )
+    # The namespace is stubbed: refuse every real TCP bind, and exercise the wrapper without host listeners.
+    (bin_dir / "python3").write_text(
+        f"#!{sys.executable}\n"
+        "import os, sys\n"
+        "if 'class Forward' in ' '.join(sys.argv): assert os.environ.get('TEST_NETNS') == 'yes'\n"
+        "if 'TEST_NETNS' not in os.environ: os.execv(sys.executable, [sys.executable, *sys.argv[1:]])\n"
+        "import socketserver\n"
+        "class Server:\n"
+        "    def __init__(self, address, handler):\n"
+        "        assert os.environ['TEST_NETNS'] == 'yes' and address == ('127.0.0.1', 3001)\n"
+        "    def serve_forever(self): pass\n"
+        "    def shutdown(self): pass\n"
+        "    def server_close(self): pass\n"
+        "socketserver.ThreadingTCPServer = Server\n"
+        "code = sys.argv[sys.argv.index('-c') + 1]\n"
+        "sys.argv = ['-c', *sys.argv[sys.argv.index('-c') + 2:]]\n"
+        "exec(compile(code, '<namespace>', 'exec'))\n"
     )
 
     repos_json = tmp_path / "forge-repos.json"
@@ -222,6 +239,9 @@ def host(tmp_path):
         "    arg = args[i]\n"
         "    if arg == '-o':\n"
         "        out_file = args[i + 1]; i += 2; continue\n"
+        "    if arg == '--unix-socket':\n"
+        "        assert args[i + 1] == '/run/porelo-forge/git.sock'\n"
+        "        i += 2; continue\n"
         "    if arg == '--cacert':\n"
         "        ca_file = args[i + 1]; i += 2; continue\n"
         "    if arg == '-H':\n"
@@ -302,6 +322,19 @@ def host(tmp_path):
         "import os, pathlib, re, subprocess, sys, time\n"
         f"calls = pathlib.Path({str(calls)!r})\n"
         "args = sys.argv[1:]\n"
+        f"local = any(arg.startswith({LOCAL_BASE!r}) for arg in args)\n"
+        "if local:\n"
+        "    assert os.environ.get('TEST_NETNS') == 'yes', 'local git escaped the namespace'\n"
+        "    helper = os.environ['GIT_CONFIG_VALUE_1']\n"
+        "    fd = int(re.search(r'<&([0-9]+)', helper)[1])\n"
+        f"    result = subprocess.run([{GIT!r}, 'credential', 'fill'], pass_fds=(fd,),\n"
+        "                            input='protocol=http\\nhost=127.0.0.1:3001\\n\\n',\n"
+        "                            capture_output=True, text=True)\n"
+        "    assert result.returncode == 0\n"
+        # The forge's admin token as the fixture's user wrote it, so a caller's own fixture token is checked too.
+        f"    expected = ({PERSON_TOKEN!r}, pathlib.Path({str(api_token)!r}).read_text().strip())\n"
+        "    assert any('password=' + token + '\\n' in result.stdout for token in expected)\n"
+
         "with calls.open('a') as handle:\n"
         "    handle.write(\n"
         "        f\"{os.environ.get('GIT_SSL_CAINFO', '')}|\"\n"
@@ -310,7 +343,7 @@ def host(tmp_path):
         "    )\n"
         "if 'clone' in args and "
         f"pathlib.Path({str(tmp_path / 'clone-says-header')!r}).exists():\n"
-        "    sys.stderr.write(os.environ.get('GIT_CONFIG_VALUE_0', '') + '\\n')\n"
+        "    sys.stderr.write(result.stdout if local else os.environ.get('GIT_CONFIG_VALUE_0', '') + '\\n')\n"
         "    sys.exit(128)\n"
         "if 'push' in args:\n"
         f"    pathlib.Path({str(tmp_path / 'pushing')!r}).touch()\n"
@@ -321,13 +354,15 @@ def host(tmp_path):
         "        sys.exit(128)\n"
         "mapped = []\n"
         "for arg in args:\n"
-        f"    arg = re.sub(r'^https://127\\.0\\.0\\.1:[0-9]+/', 'file://{tmp_path / 'local'}/', arg)\n"
+        f"    arg = re.sub(r'^http://127\\.0\\.0\\.1:[0-9]+/', 'file://{tmp_path / 'local'}/', arg)\n"
         f"    arg = arg.replace('{CENTRAL_BASE}/', 'file://{tmp_path / 'central'}/')\n"
         f"    arg = arg.replace('{ELSEWHERE_BASE}/', 'file://{tmp_path / 'elsewhere'}/')\n"
         "    mapped.append(arg)\n"
         f"os.execv({GIT!r}, [{GIT!r}, *mapped])\n"
     )
-    for stub in ("id", "getent", "stat", "runuser", "porelo", "curl", "git"):
+    for stub in (
+        "id", "getent", "stat", "runuser", "porelo-host-person", "sudo", "unshare", "ip", "python3", "curl", "git"
+    ):
         (bin_dir / stub).chmod(0o755)
 
     central = bare(tmp_path / "central" / "stand-in.git")
@@ -381,7 +416,6 @@ def host(tmp_path):
         "repos_json": repos_json,
         "routes_json": routes_json,
         "bodies": bodies,
-        "vault_calls": vault_calls,
         "command": command,
         "temporary": temporary,
         "calls": calls,
@@ -415,18 +449,24 @@ def argv_watched(token):
         watcher.join(timeout=10)
 
 
-def push(host, *arguments, token=CENTRAL_TOKEN, environment=None, interrupt=False):
+def push(host, *arguments, token=CENTRAL_TOKEN, environment=None, interrupt=False, newline=True):
+    if arguments and arguments[0] == "--migrate" and environment != {"TEST_ROOT_MIGRATE": "yes"}:
+        (host["root"] / "uid").write_text(f"{host['person_uid']}\n")
     process = subprocess.Popen(
-        [str(host["command"]), *arguments],
+        ["/usr/bin/env", "-S", host["command"].read_text().splitlines()[0].removeprefix("#!/usr/bin/env -S "),
+         str(host["command"]), *arguments],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        env={"PATH": "/usr/bin:/bin", "HOME": str(host["decoy_home"]), **(environment or {})},
+        env={
+            "PATH": "/usr/bin:/bin", "HOME": str(host["decoy_home"]),
+            "SUDO_UID": str(host["person_uid"]), "SUDO_USER": "alice", **(environment or {}),
+        },
         text=True,
         start_new_session=True,
     )
     if not interrupt:
-        output, _ = process.communicate(token + "\n", timeout=60)
+        output, _ = process.communicate(token + ("\n" if newline else ""), timeout=60)
         return process.returncode, output
     process.stdin.write(token + "\n")
     process.stdin.close()
@@ -454,8 +494,8 @@ def assert_no_token_anywhere(host, output, extra_tokens=()):
             assert form not in calls, f"a token reached a command line: {calls}"
 
 
-def test_a_persons_push_reads_their_own_config_and_vault_token_ignoring_home(host):
-    """Prevents pushing with another account's config or $HOME override instead of the caller's own passwd home and vault."""
+def test_a_persons_push_reads_the_sudo_callers_config_and_token_ignoring_home(host):
+    """Prevents a HOME override from choosing another person's configuration or local token."""
     central = host["root"] / "central" / "stand-in.git"
     elsewhere = bare(host["root"] / "elsewhere" / "stand-in.git")
     approved = commit(host["local"], host["root"] / "work", "B")
@@ -466,12 +506,6 @@ def test_a_persons_push_reads_their_own_config_and_vault_token_ignoring_home(hos
     assert head(central) == approved, f"asked for central main {approved}, got {head(central)}"
     assert not git("--git-dir", str(elsewhere), "for-each-ref"), "$HOME redirected the push config"
     assert "stand-in: taken" in output, output
-    vault_log = host["vault_calls"].read_text() if host["vault_calls"].exists() else ""
-    assert (
-        f"{host['alice_home']}|/run/user/{host['person_uid']}|"
-        f"vault credential --entry={FORGE_NAME}.person get|"
-        f"protocol=https,host={FORGE_NAME}"
-    ) in vault_log, f"unexpected vault call: {vault_log}"
     assert_no_token_anywhere(host, output)
     assert list(host["temporary"].iterdir()) == [], "the temporary clone was left behind"
 
@@ -552,33 +586,32 @@ def test_another_persons_or_untrusted_push_config_is_refused(host, defect, expec
 
 
 def test_root_running_the_persons_push_is_refused(host):
-    """Prevents running the developer push as root or under sudo instead of the person's own account."""
+    """Prevents a direct root call from choosing a person without a sudo caller."""
     (host["root"] / "uid").write_text("0\n")
 
-    code, output = push(host, "porelo", "stand-in")
+    code, output = push(host, "porelo", "stand-in", environment={"SUDO_UID": "", "SUDO_USER": ""})
 
     assert code == 77, f"asked for 77 when run as root, got {code}: {output}"
-    assert "root" in output, output
+    assert "sudo" in output, output
     assert "Token" not in output, output
     assert not host["calls"].exists(), "commands ran when root invoked the person push"
 
 
-def test_a_missing_vault_entry_is_refused_naming_the_entry_and_identities_stop(host):
-    """Prevents an unauthenticated clone or opaque failure when the person's forge token is absent from their vault."""
-    (host["root"] / "vault-missing").touch()
+def test_a_failed_person_token_call_stops_before_git(host):
+    """Prevents an unauthenticated clone when the person helper cannot issue a local token."""
+    (host["root"] / "person-token-failed").touch()
 
     code, output = push(host, "porelo", "stand-in")
 
     assert code == 69, f"asked for 69 on missing vault entry, got {code}: {output}"
-    assert f"{FORGE_NAME}.person" in output, output
-    assert "porelo-host-stop --stdin identities" in output, output
+    assert "forge token" in output, output
     assert "Token" not in output, f"asked for central token despite missing local vault entry: {output}"
     git_calls = [
         line
         for line in (host["calls"].read_text().splitlines() if host["calls"].exists() else [])
         if not line.startswith("porelo|")
     ]
-    assert not git_calls, f"git ran without the person's vault token: {git_calls}"
+    assert not git_calls, f"git ran without the person's local token: {git_calls}"
 
 
 @pytest.mark.parametrize("stage", ["clone", "push"])
@@ -617,17 +650,12 @@ def test_each_forge_is_trusted_by_its_own_authority_and_no_redirect_is_followed(
     code, output = push(host, "porelo", "stand-in")
 
     assert code == 0, f"the push was refused with {code}: {output}"
-    lines = [
-        line.split("|", 2)
-        for line in host["calls"].read_text().splitlines()
-        if not line.startswith(("porelo|", "curl|"))
-    ]
-    remote = [call for call in lines if any(f" {verb} " in f" {call[2]} " for verb in ("clone", "push", "fetch"))]
-    assert remote, f"no call reached a forge: {lines}"
-    for ca, redirects, line in remote:
-        assert redirects == "http.followRedirects=false", f"a forge call follows redirects: {line}"
-        want = forge_etc / ("ca.pem" if line.startswith("clone") else "central-ca.pem")
-        assert ca == str(want), f"asked for {want} for {line!r}, got {ca!r}"
+    lines = host["calls"].read_text().splitlines()
+    central = [line for line in lines if CENTRAL_BASE in line and not line.startswith("curl|")]
+    assert central
+    assert all(line.startswith(str(forge_etc / "central-ca.pem") + "|http.followRedirects=false|") for line in central)
+    local = [line for line in lines if LOCAL_BASE in line]
+    assert local and all(line.startswith("|") for line in local)
 
 
 def test_unknown_or_duplicate_repositories_are_refused_before_tokens_are_asked(host):
@@ -658,6 +686,7 @@ def test_an_interrupted_push_leaves_no_clone_behind_and_pushes_nothing(host):
 def test_check_reads_original_url_as_root_and_refuses_unpushed_or_missing_url(host):
     """Prevents project removal from reading push.conf, running non-root, or deleting unpushed or unmigrated work."""
     # Non-root cannot run --check.
+    (host["root"] / "uid").write_text(f"{host['person_uid']}\n")
     code, output = push(host, "--check", "porelo", "stand-in")
     assert code == 77, f"asked for 77 when non-root runs --check, got {code}: {output}"
 
@@ -774,7 +803,7 @@ def test_migrate_takes_only_the_missing_repositories_with_the_central_token_in_t
     )
 
     with argv_watched(CENTRAL_TOKEN) as seen:
-        code, output = push(host, "--migrate", "porelo")
+        code, output = push(host, "--migrate", "porelo", newline=False)
 
     assert code == 0, output
     assert "stand-in: already on the forge" in output and "second: migrated" in output, output
@@ -821,7 +850,7 @@ def test_migrate_runs_only_in_the_persons_own_account_from_their_own_list(host):
     """Prevents root, or a list another account could write, from deciding what is migrated with the token."""
     migration(host, {})
     host["root"].joinpath("uid").write_text("0\n")
-    code, output = push(host, "--migrate", "porelo")
+    code, output = push(host, "--migrate", "porelo", environment={"TEST_ROOT_MIGRATE": "yes"})
     assert code == 77, output
 
     host["root"].joinpath("uid").write_text(f"{host['person_uid']}\n")
@@ -879,3 +908,92 @@ def test_pull_says_when_local_main_is_ahead_and_brings_nothing(host):
     assert code == 0, output
     assert "stand-in: local main is ahead of central main" in output, output
     assert not git("--git-dir", str(host["local"]), "for-each-ref", "refs/heads/central/main")
+
+
+@pytest.mark.parametrize("environment", [
+    {"SUDO_UID": "0"}, {"SUDO_UID": "9999"}, {"SUDO_USER": "bob"},
+    {"SUDO_UID": "invalid"}, {"SUDO_USER": "../alice"},
+])
+def test_false_sudo_callers_are_refused_before_credentials(host, environment):
+    """Prevent root rights from being used with a forged or inconsistent caller identity."""
+    code, output = push(host, "porelo", environment=environment)
+    assert code == 77 and "Token" not in output
+    assert not host["calls"].exists()
+
+
+def test_a_removed_developer_cannot_use_an_old_push_config(host):
+    """Prevent a former member from sending work with a stale configuration."""
+    (host["etc"] / "people/alice.conf").write_text("member=other developer\nlocked=false\n")
+    code, output = push(host, "porelo")
+    assert code == 77 and "Token" not in output
+    assert not host["calls"].exists()
+
+
+def test_socket_api_and_sudoers_contract(host):
+    """Prevent local API traffic escaping to TCP and sudo granting unrelated root verbs."""
+    code, output = push(host, "--check", "porelo", "stand-in")
+    assert code == 0, output
+    calls = host["calls"].read_text().splitlines()
+    api = [line for line in calls if line.startswith("curl|")]
+    assert api and all("--unix-socket /run/porelo-forge/git.sock" in line for line in api)
+    assert all("http://localhost/api/v1/" in line and "--cacert" not in line for line in api)
+    rules = (ROOT / "roles/forge/files/porelo-host-push.sudoers").read_text().splitlines()
+    assert [line for line in rules if line and not line.startswith("#")] == [
+        '%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-push *'
+    ]
+    tasks = yaml.safe_load((ROOT / "roles/forge/tasks/push.yml").read_text())
+    installed = [task["ansible.builtin.copy"] for task in tasks if "ansible.builtin.copy" in task]
+    rule = next(task for task in installed if task["dest"] == "/etc/sudoers.d/porelo-host-push")
+    assert rule["owner"] == rule["group"] == "root" and rule["mode"] == "0440"
+    assert rule["validate"] == "/usr/sbin/visudo -cf %s"
+    assert rule["src"] == "{{ role_path }}/files/porelo-host-push.sudoers"
+    down = yaml.safe_load((ROOT / "roles/forge/tasks/down.yml").read_text())
+    assert any("/etc/sudoers.d/porelo-host-push" in task.get("loop", []) for task in down)
+
+
+@pytest.mark.parametrize("stage", ["unshare", "ip"])
+def test_namespace_setup_failure_never_falls_back_to_host_git(host, stage):
+    """Prevent a failed namespace or loopback setup from opening a host listener or sending work."""
+    stub = host["root"] / "bin" / stage
+    stub.write_text("#!/bin/sh\nexit 1\n")
+    before = head(host["root"] / "central/stand-in.git")
+    code, output = push(host, "--pull", "porelo", "stand-in")
+    assert code != 0
+    calls = host["calls"].read_text() if host["calls"].exists() else ""
+    assert LOCAL_BASE not in calls
+    assert head(host["root"] / "central/stand-in.git") == before
+    assert_no_token_anywhere(host, output)
+    assert list(host["temporary"].iterdir()) == []
+
+
+@pytest.mark.parametrize("entry", ["", "local http://127.0.0.1:9999"])
+def test_missing_or_foreign_local_destination_is_refused_before_credentials(host, entry):
+    """Prevent a user-controlled config from directing root's Git to another destination."""
+    conf = host["person_conf"]
+    conf.write_text(conf.read_text().replace(f"local {LOCAL_BASE}", entry))
+    code, output = push(host, "porelo")
+    assert code == 65 and "Token" not in output
+    assert not host["calls"].exists()
+
+
+def test_a_config_swapped_after_ownership_checks_is_not_read_with_root_rights(host):
+    """Prevent a caller from racing the config check to expose a root-only file in diagnostics."""
+    conf = host["person_conf"]
+    protected = host["root"] / "protected"
+    protected.write_text("private-fixture-content\n")
+    stat_stub = host["root"] / "bin/stat"
+    stat_stub.write_text(stat_stub.read_text().replace("sys.exit(real.returncode)\n", ""))
+    with stat_stub.open("a") as stream:
+        stream.write(f"if sys.argv[-1] == {str(conf)!r}:\n")
+        stream.write(f"    pathlib.Path({str(conf)!r}).unlink()\n")
+        stream.write(f"    pathlib.Path({str(conf)!r}).symlink_to({str(protected)!r})\n")
+    runuser = host["root"] / "bin/runuser"
+    runuser.write_text(
+        '#!/bin/sh\nwhile [ "$1" != -- ]; do shift; done\nshift\n'
+        f'[ "$1" != cat ] || [ "$3" != "{conf}" ] || exit 1\n'
+        'exec "$@"\n'
+    )
+    code, output = push(host, "porelo")
+    assert code == 66
+    assert "private-fixture-content" not in output
+    assert not host["calls"].exists()

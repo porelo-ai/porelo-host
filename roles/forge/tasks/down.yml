@@ -124,6 +124,7 @@
     state: absent
   loop:
     - /usr/local/libexec/porelo-forge-gate
+    - /etc/sudoers.d/porelo-host-push
     - /usr/local/sbin/porelo-host-push
     - /usr/local/sbin/porelo-host-forge-password
     - /usr/local/sbin/porelo-host-project

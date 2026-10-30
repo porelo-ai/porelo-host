@@ -261,25 +261,33 @@ lifecycle steps are not built:
 - End the task after the person merges its pull request: not built yet.
 
 **Second, start a gathered push of accepted local `main` to the central forge.** This is a separate decision about
-sending the merged work outward. Any developer or admin of the project runs it in their own account on the host over
-SSH, never as root and never through `sudo` (root is refused with `77`), naming the project and optionally the
-repositories in their order:
+sending the merged work outward. Any developer or admin of the project runs it through sudo on the host over SSH,
+naming the project and optionally the repositories in their order. The helper checks `SUDO_UID` and `SUDO_USER`
+against the account and its current project membership; a direct root call is refused with `77`:
 
-    porelo-host-push porelo
-    porelo-host-push porelo porelo-message-sluice
+    sudo -n /usr/local/sbin/porelo-host-push porelo
+    sudo -n /usr/local/sbin/porelo-host-push porelo porelo-message-sluice
 
 Without repository names it pushes every repository `~/.config/porelo-host/push/<project>.conf` names, in the config's
 order; with names, those, refusing an unknown or duplicate name before asking for credentials. The config is read only
 from the caller's `getent passwd` home (never `$HOME`): a plain file of theirs, not a link, mode `0600`, in a `0700`
 directory of theirs, written by `porelo.host.bring` and `porelo.host.join` from the repositories the person reaches on
 the forge and their `original_url`; anything else is refused naming what was found. It reads local `main` with the
-person's own local forge token `<forge_name>.person` from their vault (a missing entry refuses with `69`, naming the
-entry and `porelo-host-stop --stdin identities`), asks once on the terminal for their central forge write token without
+person's own local forge token from root's `porelo-host-person forge-token --for <login>` call (a failed token request
+refuses with `69`), asks once on the terminal for their central forge write token without
 showing it (`Token for the central forge (not shown): `) and keeps it only for the run, and pushes local `main` to each
 repository's central address with a plain `git push` without force, the next only once the one before was taken. The
 config's `central-ca` names the authority the central forge is trusted by (`porelo_host_forge_central_ca`, the system's
-CA bundle by default), never the host's own CA unless configured so. `up` installs `/usr/local/sbin/porelo-host-push`
-(`0755`) and `/etc/porelo-host/forge/central-ca.conf` (`0644`), and `down` removes both.
+CA bundle by default). The local forge uses no TLS or CA. `up` installs `/usr/local/sbin/porelo-host-push`
+(`0755`), its checked sudoers rule for `porelo-people`, and `/etc/porelo-host/forge/central-ca.conf` (`0644`);
+`down` removes them.
+
+Every API request goes through `/run/porelo-forge/git.sock` to `http://localhost/api/v1/`, with the token header on a
+pipe. Each local Git transfer runs as root in a fresh private network namespace, with loopback up and a Python
+standard-library forwarder from `127.0.0.1:<git_port>` to that socket. Nothing listens on the host's loopback. Git
+receives the local token through a credential helper reading a pipe, never a URL or argument. Git has no HTTP
+Unix-socket transport, and Ubuntu 26.04 refuses unprivileged user namespaces. Central Git transfers still use HTTPS
+and the configured central CA.
 
 When central `main` holds commits local `main` lacks, the push is refused and nothing is lost on either forge. The
 command names those commits and brings central `main` to the local forge as the branch `central/main`. A task joins
@@ -315,9 +323,10 @@ token for the initial repository migration is used the same way, once: a `bring`
 lists it in `~/.config/porelo-host/push/<project>.migrate` (no secret) and waits, naming `forge-central-token`; the
 person's stop pipes the token into `porelo-host-push --migrate <project>`, which has Forgejo migrate each listed
 repository it lacks, with the token in the request body on a pipe alone, and removes the list; the `bring` run again
-goes on. `porelo-host-push --pull <project> [repositories...]` brings central `main` to the local forge as
-`central/main` with the same token on standard input; local `main` is protected and reaches it by a pull request. No
-token for the central forge lies on the host.
+goes on. `sudo -n /usr/local/sbin/porelo-host-push --pull <project> [repositories...]` brings central `main` locally as
+`central/main`, using the same sudo caller checks and central token on stdin. Local `main` reaches it by a pull
+request. Migration stays in the person's account and calls `sudo -n porelo-host-person forge-token` for its local token.
+No token for the central forge lies on the host.
 
 ## If the host is lost
 

@@ -60,7 +60,7 @@
     mode: "0600"
     content: |
       # Written by porelo.host.{{ porelo_own_act }}; read by porelo-host-push.
-      local https://{{ forge_address }}:{{ forge_http_port }}
+      local http://127.0.0.1:{{ forge_git_port }}
       owner {{ forge_owner }}
       central-ca {{ forge_central_ca }}
       {% for repository in __forge_own_repositories.stdout | from_json | sort(attribute='name') %}

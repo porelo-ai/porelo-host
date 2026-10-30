@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Gathered push and pull run through sudo for the current project developer. Local API traffic uses the forge gate's
+  Unix socket; each local Git transfer uses a private root network namespace and a credential pipe, with no host TCP
+  listener, local CA or vault token. Migration stays in the person's account and obtains its local token on demand.
+
 - SSH on port 22 is the public entry point. Root-owned key files, an atomically published KRL, private person
   return-socket directories and forwarding restrictions replace VPN access. Lock ends sessions and the user manager;
   the registry reader can supply card keys, expiries and host-wide revocations through the person helper.

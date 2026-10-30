@@ -98,7 +98,7 @@
     mode: "0600"
     content: |
       # Written by porelo.host.bring; read by porelo-host-push --migrate.
-      local https://{{ forge_address }}:{{ forge_http_port }}
+      local http://127.0.0.1:{{ forge_git_port }}
       owner {{ forge_owner }}
       central-ca {{ forge_central_ca }}
       {% for repository in forge_repositories | selectattr('name', 'in', __forge_to_migrate) | sort(attribute='name') %}

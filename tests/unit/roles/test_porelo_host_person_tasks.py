@@ -541,3 +541,16 @@ def test_a_rotated_registry_key_cannot_authorize_the_previous_keys_certificate(t
     assert capsys.readouterr().out == ""
     assert snapshot(tasks.root) == before
     assert tasks.forge.requests == []
+
+
+@pytest.mark.parametrize("caller", [None, "alice"])
+def test_only_direct_root_can_request_a_named_person_token(tasks, capsys, caller):
+    """Prevent sudo callers from minting another person's token through the root-only interface."""
+    code = tasks.call("forge-token", "--for", "bob", caller=caller)
+    output = capsys.readouterr()
+    assert code == (0 if caller is None else 65)
+    assert bool(output.out) == (caller is None)
+    if caller is None:
+        assert list(tasks.forge.tokens["bob"].values())[0]["secret"] == output.out
+    else:
+        assert tasks.forge.calls == []

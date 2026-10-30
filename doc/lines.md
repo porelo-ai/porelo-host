@@ -68,8 +68,8 @@ plays from the top; what is done is done, so it goes on where it stopped.
 
 `bring` and `join`, run in the person's own account, stop the same way: `vault-new` with `keys` when the account has
 no vault, `vault` when it is shut, `keys` when the open vault lacks a key the machine file names, and, in a `bring`,
-`identities` while the vault holds no forge token of the person's and `forge-central-token` while a repository is still
-to migrate and no token for the central forge is given. Any other answer about the vault is a failure with words.
+`forge-central-token` while a repository is still to migrate and no token for the central forge is given.
+Any other answer about the vault is a failure with words.
 
 A person at the host's terminal may instead run `porelo-host-stop NEED...` as the account, with `vault-new` or
 `vault`: `vault-new` asks for a new vault passphrase twice, `vault` for the existing one to unlock it. A failed attempt
@@ -79,9 +79,18 @@ The command exits 0 when every named need is done, 75 on `n`, `N` or Ctrl+C, 64 
 required command is missing. Its last line on success is "The host's stop is done; close this terminal, and setup
 goes on." On cancellation it is "Cancelled; the host waits at this stop. Running up again comes back here."
 
-**The stop on standard input.** Every need is given from the person's secrets file by one pipeline, run as root:
+Push and pull are separate sudo verbs: `sudo -n /usr/local/sbin/porelo-host-push [--pull] <project> [repos...]`.
+They read the central token on stdin, validate the sudo caller's current project membership, and read only that
+caller's private push config. Root gets the local token with `porelo-host-person forge-token --for <login>`.
+Each local Git transfer runs in a private network namespace with a loopback forwarder to `git.sock`; API requests
+use the socket directly. No listener opens on the host's loopback, and no local CA or vault token is used.
+`porelo-host-push --migrate <project>` stays in the person's own account, using
+`sudo -n /usr/local/sbin/porelo-host-person forge-token` for its local API token. The stop pipes the central token
+into that migration verb. Neither push nor pull stores the central token.
 
-    <secrets> | ssh <admin>@<host> sudo porelo-host-stop --stdin NEED...
+**The stop on standard input.** Every need is given from the person's secrets file by one pipeline, as the person:
+
+    <secrets> | ssh <person>@<host> porelo-host-stop --stdin NEED...
 
 with the needs as `up` names them. Standard input holds one line per secret, `<need> <value>` or, for a key,
 `key <name> <value>`, the value in base64:
@@ -91,12 +100,12 @@ with the needs as `up` names them. Standard input holds one line per secret, `<n
 | `vault-new` | `vault-new <passphrase>` | `porelo vault init --passphrase-stdin`, as the account |
 | `vault` | `vault <passphrase>` | `porelo vault unlock --passphrase-stdin`, as the account |
 | `keys` | `key <name> <key>`, one per key of the machine, none or more | `porelo vault put <name>`, as the account, once the vault is open |
-| `forge-central-token` | `forge-central-token <token>` | `porelo-host-push --migrate <project>` on a pipe, as the account, for the repositories the waiting `bring` listed; the token lies in no file |
+| `forge-central-token` | `forge-central-token <token>` | Migrate the waiting bring's list as the caller, on a pipe |
 
 Every line is checked before any is used: a need not named, an unknown need, a line given twice, a key name other than
 letters, digits, `.`, `_` and `-`, or a value that is not base64 is refused, naming the line and never the value, and so
 is a named need no line gives; only `keys` beside `vault-new` may come with no line, for a machine without keys. `drive`
-is refused, as is a call not made as root. The values then go in the table's order, each decoded on a pipe into its
+is refused, as is a call made as root. The values then go in the table's order, each decoded on a pipe into its
 user, and nothing is asked. A key the vault lacks later, or the central token, is given by another call with that need
 alone: `forge-central-token` is named only by a `bring`'s own stop, since only the running forge knows whether a
 repository is still to migrate; `up` fails with a message beginning `keys:` for a missing key. Matrix access uses
