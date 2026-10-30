@@ -9,10 +9,10 @@ The host's checks in the operator's one pass over sprints 6j, 6k and 6l. The pas
 - the developer's laptops and the developer kept to the signed access file;
 - the project taken off and the people locked and purged.
 
-Agent Frontend's walk 23 does each act in the interface, on laptop A or laptop B, and then sends you to the step of
-the same name here. After its check, go back to the walk. Agent Core's checks (`~/.porelo/handover/porelo/6-pass/`)
-and Agent Matrix's (`~/.porelo/handover/porelo-message-matrix/6-pass/`) hang on these steps too. Each step below says
-which of theirs follows it.
+Agent Frontend's walk 23 does each act in the interface, on laptop A, walkadmin's VM or laptop B, and then sends you to
+the step of the same name here. After its check, go back to the walk. Agent Core's checks
+(`~/.porelo/handover/porelo/6-pass/`) and Agent Matrix's (`~/.porelo/handover/porelo-message-matrix/6-pass/`) hang on
+these steps too. Each step below says which of theirs follows it.
 
 **Versions:**
 
@@ -38,6 +38,8 @@ which of theirs follows it.
 
 **Not run:**
 
+- The steps changed on 2026-10-30 for the walk's new order were not rehearsed against the stand-in host:
+  host-bring.4 and .5, host-join.4 and host-sync two's step 2, and the new host-push-run.
 - The developer's VPN on laptop B: laptop B's interface brings it up; this guide checks only the host's peer.
 - `down` after the pass: nothing below checks it.
 
@@ -45,9 +47,9 @@ which of theirs follows it.
 
 ## Before you start
 
-- Laptop A is your own computer, where you are host admin and project admin in one: `walkadmin` on the host, with
-  the laptop `walklaptop`. Laptop B is the account `walkdev` on test-ubuntu-vm, the developer `walkdev`. Walk 23 says
-  how to prepare laptop B.
+- Laptop A is your own computer, where you are host admin. The project admin `walkadmin` works from a VM of its own,
+  its laptop `walklaptop`, as michi decided: one laptop holds one VPN identity per host. Laptop B is the account
+  `walkdev` on test-ubuntu-vm, the developer `walkdev`. Walk 23 says how to prepare walkadmin's VM and laptop B.
 - Every command below runs **on laptop A, in your own account, in Claude with `!`**. The scripts ask for nothing.
   They lie in `~/.porelo/handover/porelo-host/6/` on laptop A.
 - They take the host from the interface's settings on laptop A (`~/.config/porelo/frontend.json`, `hostUps.walk6`):
@@ -104,7 +106,8 @@ Expected, each line with `ok:`:
 - **host-prepare.3** `ok: 200`: the homeserver answers at `https://matrix.walk6.porelo.internal:8448`, trusted by your
   CA;
 - **host-prepare.4** `ok: 200`: the forge answers at `https://forge.walk6.porelo.internal:3000`, trusted by your CA;
-- **host-prepare.5** `ok: ` with nothing after it: the forge has no user named `operator`, each person's login is their own;
+- **host-prepare.5** `ok: ` with nothing after it: the forge has no user named `operator`, each person's login is
+  their own;
 - **host-prepare.6** `ok: present|present|1`: `porelo-host-person` with its `sync`, `porelo-host-push`, and the rule
   that lets a project's admin run `sync` with sudo.
 
@@ -124,11 +127,11 @@ After the walk's step that admits you as the project admin.
 
 Expected:
 
-- **host-person-admit.1** `ok: member=hand|locked=false|laptop=walklaptop 10.73.<n>.3`: laptop A has the next free
-  address after the host's;
-- **host-person-admit.2** `ok: from="10.73.<n>.3" ssh-ed25519`: ssh lets laptop A's key in from that address alone;
+- **host-person-admit.1** `ok: member=hand|locked=false|laptop=walklaptop 10.73.<n>.3`: walkadmin's VM has the next
+  free address after the host's;
+- **host-person-admit.2** `ok: from="10.73.<n>.3" ssh-ed25519`: ssh lets walkadmin's key in from that address alone;
 - **host-person-admit.3** `ok: ok`: `sshd -t` accepts the configuration with your drop-in;
-- **host-person-admit.4** `ok: 10.73.<n>.3/32`: the VPN has laptop A as a peer;
+- **host-person-admit.4** `ok: 10.73.<n>.3/32`: the VPN has walkadmin's VM as a peer;
 - **host-person-admit.5** `ok: walkadmin 600`: the homeserver's registration token waits in your home, yours alone;
 - **host-person-admit.6** `ok: walkadmin 600`: the forge identities' tokens wait in
   `/run/porelo-host/people/walkadmin/`, yours alone.
@@ -163,14 +166,14 @@ Then `host-project-register passed`.
 
 ## host-bring: the project brought in your own account
 
-After the walk's step that brings walk6-demo onto the host from laptop A. The interface writes your setup files into
-your account on the host. It then runs `ansible-playbook -c local porelo.host.bring -e porelo_project=walk6-demo`
+After the walk's step that brings walk6-demo onto the host from walkadmin's VM. The interface writes your setup files
+into your account on the host. It then runs `ansible-playbook -c local porelo.host.bring -e porelo_project=walk6-demo`
 there as you, with no sudo. The bring:
 
 - migrates the project's repositories from GitHub into the host's forge;
 - writes your push config;
 - follows the project in your Porelo;
-- runs `sync`, which admits the developer from the signed access file;
+- runs `sync` against the signed access file, which lists no developer yet: the walk adds walkdev after the bring;
 - starts your sync timer;
 - makes the project's room with `porelo talk room walk6-demo` in your account.
 
@@ -196,10 +199,9 @@ Expected:
   `machine.yml`, `project.bundle` and `access.bundle` are yours alone;
 - **host-bring.3** `ok: walk6-demo https://github.com/porelo-ai/walk6-demo true false fast-forward-only`, one entry
   per repository: each was migrated from GitHub, private, no mirror, main fast-forward only;
-- **host-bring.4** `ok: developers=walkdev|gates=|agents=`: the developer is in the developers team, and nobody else
-  is in any team yet;
-- **host-bring.5** `ok: member=walk6-demo developer|locked=false|laptop=l1 10.73.<n>.<b>`: the bring's sync admitted
-  the developer from the access file. They have no hand membership, and laptop B is at the address the file gave it;
+- **host-bring.4** `ok: developers=|gates=|agents=`: the teams are there, and nobody is in any of them yet;
+- **host-bring.5** `ok: absent`: walkdev is not on the host yet. The walk adds them after the bring, and host-sync two
+  checks them;
 - **host-bring.6** `ok: walkadmin 600|local https://10.73.<n>.1:3000|owner walk6-demo|central-ca …|repository
   walk6-demo https://github.com/…`: your push config;
 - **host-bring.7** `ok: enabled|active`: your sync timer runs in your own account;
@@ -210,16 +212,15 @@ Then `host-bring passed: <repositories>`.
 
 Then:
 
-- Agent Core's **B314-1** to **B314-3** (`porelo-checks-room.sh`), once: the room the bring made; <!-- not-a-citation: Agent Core's step names -->
-- Agent Matrix's **matrix-room 1**;
-- Agent Matrix's **matrix-person-admit** for `walkdev`, since the sync admitted the developer.
+- Agent Core's **B314-1** to **B314-3** (`porelo-checks-room.sh`): the room the bring made; <!-- not-a-citation: Agent Core's step names -->
+- Agent Matrix's **matrix-room 1**.
 
 <a id="host-join"></a>
 
 ## host-join: the developer joined in their own account
 
-After the walk's step on laptop B that joins walk6-demo. Laptop B's interface uploads walkdev's setup files and runs
-`porelo.host.join` as walkdev, with no sudo.
+After the walk's step on laptop B that joins walk6-demo, which comes after host-sync two. Laptop B's interface uploads
+walkdev's setup files and runs `porelo.host.join` as walkdev, with no sudo.
 
 **host-join 1.** Run, on laptop A:
 
@@ -232,22 +233,39 @@ Expected:
 - **host-join.2** `ok: walkdev 600|same`: walkdev's push config names the same forge, organization and repositories
   as yours;
 - **host-join.3** `ok: true`: walkdev's Porelo follows the project, verified;
-- **host-join.4** `ok: member=walk6-demo developer|locked=false|laptop=l1 …`: the join changed no membership;
+- **host-join.4** `ok: member=walk6-demo developer|locked=false|laptop=l1 …|laptop=l2 …`: the join changed no
+  membership;
 - **host-join.5** `ok: absent|absent`: no forge token is left in walkdev's runtime directory.
 
 Then `host-join passed`.
 
 Then:
 
-- Agent Core's **B331-1**, **B331-2**, **B310-1**, **B310-2** and **B311-1** to **B311-3**; <!-- not-a-citation: Agent Core's step names -->
+- Agent Core's **B331-1**, **B331-2**, **B310-1**, **B310-2** and **B311-1** to **B311-3**, after the join: walkdev's <!-- not-a-citation: Agent Core's step names -->
+  Porelo follows from the access bundle in walkdev's setup directory, made by the join, not by the sync;
 - Agent Matrix's **matrix-room 2**, once walkdev's Porelo has set up its messages.
 
 <a id="host-push"></a>
 
 ## host-push: both pushes reached GitHub
 
-After the walk's steps where you on laptop A and walkdev on laptop B each push through the host. Each push is the
-gathered push in the person's own account.
+After the walk's steps where a change reached main on the host's forge, through a pull request merged there. Each
+push is the gathered push, `porelo-host-push walk6-demo`, in the person's own account on the host.
+
+**host-push-run.** This one is an act, not a check: it pushes to GitHub. Run it once for each person, on laptop A:
+
+    ! bash ~/.porelo/handover/porelo-host/6/6-host-push-run.sh walkadmin
+    ! bash ~/.porelo/handover/porelo-host/6/6-host-push-run.sh walkdev
+
+It takes the GitHub token from laptop A's own git credentials and hands it to the host only on ssh's standard input.
+For walkdev, too, that is laptop A's token. Expected, each time:
+
+- **host-push-run.1** `ok: …member=walk6-demo …|locked=false…` and `ok: present`: the person is on the host, unlocked,
+  with a push config;
+- **host-push-run.2** `ok: a token is there (not shown)`;
+- **host-push-run.3** porelo-host-push's own lines, then `ok: pushed`.
+
+Then `host-push-run passed`. Not run yet: the script has run against neither a host nor a stand-in.
 
 **host-push 1.** Run:
 
@@ -266,24 +284,30 @@ Then `host-push passed`.
 
 ## host-sync: the host kept to the signed access file
 
-The walk changes the access file three times. Each time, you sign a new commit of it on laptop A, and the interface
-uploads the bundles to your setup directory. Your sync timer runs `sync` within a minute, or the interface runs it at
-once. Run the check after each change, with one argument: what the file now lists for walkdev.
+The walk changes the access file three times. Each time, you sign a new commit of it on walkadmin's VM, and the
+interface uploads the bundles to your setup directory. Your sync timer runs `sync` within a minute, or the interface
+runs it at once. Run the check after each change, with one argument: what the file now lists for walkdev.
 
-**host-sync two:** after the walk adds walkdev's second laptop. Run:
+**host-sync two:** after the walk adds walkdev with two laptops, l1 and l2. Run:
 
     ! bash ~/.porelo/handover/porelo-host/6/6-host-sync.sh two
 
 Expected:
 
 - **host-sync.1** `ok: access_commit=<40 hex>`: the project's record took the newest commit;
-- **host-sync.2** `ok: member=walk6-demo developer|locked=false|laptop=l1 …|laptop=l2 …`: walkdev keeps l1 and
-  gains l2;
+- **host-sync.2** `ok: member=walk6-demo developer|locked=false|laptop=l1 …|laptop=l2 …`: walkdev is admitted with
+  both laptops, each at the address the file gave it;
 - **host-sync.3** `ok: from="…"|from="…"`: ssh lets in exactly those two laptops, each from its own address;
 - **host-sync.4** `ok: 10.73.<n>.<b>/32|10.73.<n>.<c>/32`: the VPN has both as peers;
-- **host-sync.5** `ok: walkdev`: walkdev stays in the developers team.
+- **host-sync.5** `ok: walkdev`: walkdev is in the developers team.
 
 Then `host-sync two passed`.
+
+Then:
+
+- Agent Core's **B314-1** to **B314-3** again: the room after the sync that admitted walkdev; <!-- not-a-citation: Agent Core's step names -->
+- Agent Matrix's **matrix-person-admit** for `walkdev`, since this sync admitted the developer;
+- then the walk's join, and host-join.
 
 **host-sync one:** after the walk drops the second laptop. Run:
 
