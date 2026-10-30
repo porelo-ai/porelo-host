@@ -2,7 +2,7 @@
 """Register a forge organization and its package publisher, or remove it after checking the central forge.
 
 Tokens stay in this process and the forge. The publisher's generated password is discarded by Forgejo's CLI,
-and its package token goes directly to the organization's Actions secret over TLS.
+and its package token goes directly to the organization's Actions secret over the private socket.
 """
 
 import base64
@@ -10,12 +10,12 @@ import binascii
 import fcntl
 import getpass
 import http.client
-import ipaddress
+import pwd
 import json
 import os
 import re
 import secrets
-import ssl
+import socket
 import stat
 import subprocess
 import sys
@@ -27,7 +27,6 @@ from contextlib import contextmanager
 
 ETC = "/etc/porelo-host"
 CONF = "/etc/porelo-host/forge.conf"
-CA = "/etc/porelo-host/forge/ca.pem"
 PUSH = "/usr/local/sbin/porelo-host-push"
 PERSON = "/usr/local/sbin/porelo-host-person"
 ROOT_UID = 0
@@ -276,30 +275,45 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+class UnixConnection(http.client.HTTPConnection):
+    """Reach only the forge account's private socket."""
+
+    def __init__(self, path, **kwargs):
+        super().__init__("localhost", **kwargs)
+        self.path = path
+
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(self.timeout)
+        self.sock.connect(self.path)
+
+
+class UnixHandler(urllib.request.HTTPHandler):
+    """Use HTTP framing without a TCP listener or proxy."""
+
+    def __init__(self, path):
+        super().__init__()
+        self.path = str(path)
+
+    def http_open(self, request):
+        return self.do_open(lambda host, **kwargs: UnixConnection(self.path, **kwargs), request)
+
+
 class Forge:
-    """The host forge's API, trusted by its own CA and never a proxy from the caller's environment."""
+    """The host forge's API, reached only on the account's private socket."""
 
     def __init__(self, values):
-        address = setting(values, "address", r"[0-9]{1,3}(\.[0-9]{1,3}){3}")
-        try:
-            ipaddress.IPv4Address(address)
-        except ipaddress.AddressValueError:
-            refuse(f"{CONF} names no valid address", 69)
-        port = setting(values, "port", r"[1-9][0-9]{0,4}")
-        if int(port) > 65535:
-            refuse(f"{CONF} names no valid port", 69)
         self.account = setting(values, "account", r"[a-z_][a-z0-9_-]{0,31}")
-        trusted(CA)
         try:
-            context = ssl.create_default_context(cafile=CA)
-        except (OSError, ssl.SSLError):
-            refuse(f"{CA} is not a readable TLS authority", 69)
+            uid = pwd.getpwnam(self.account).pw_uid
+        except KeyError:
+            refuse("the forge account is missing", 69)
         self.opener = urllib.request.build_opener(
             urllib.request.ProxyHandler({}),
-            urllib.request.HTTPSHandler(context=context),
+            UnixHandler(f"/run/user/{uid}/porelo-forge/http.sock"),
             NoRedirect(),
         )
-        self.base = f"https://{address}:{port}/api/v1"
+        self.base = "http://localhost/api/v1"
         self.token = token(
             self.account,
             "porelo-admin",

@@ -1,5 +1,5 @@
 {{ ansible_managed | comment }}
-# keep-id maps the account to the image's user, so the certificate files the account owns are readable inside.
+# keep-id makes the private socket readable by the forge account outside the container.
 [Unit]
 Description=Forgejo, the host's forge with its registry
 StartLimitIntervalSec=0
@@ -11,30 +11,34 @@ PidsLimit={{ forge_pids_limit }}
 Memory={{ forge_memory }}
 PodmanArgs=--cpus={{ forge_cpus }}
 UserNS=keep-id:uid=1000,gid=1000
-PublishPort={{ forge_address }}:{{ forge_http_port }}:3000
-PublishPort={{ forge_address }}:{{ forge_ssh_port }}:2222
+
 Volume=forgejo-data:/var/lib/gitea
 Volume=forgejo-config:/etc/gitea
-Volume=%h/tls:/tls:ro
+Volume=%t/porelo-forge:/run/forgejo
 Environment=FORGEJO__security__INSTALL_LOCK=true
 Environment=FORGEJO__database__DB_TYPE=sqlite3
 Environment=FORGEJO__service__DISABLE_REGISTRATION=true
 Environment=FORGEJO__actions__ENABLED=true
 # Workflows pin actions by commit SHA, so jobs fetch exactly that state from GitHub as they do there.
 Environment=FORGEJO__actions__DEFAULT_ACTIONS_URL=https://github.com
-Environment=FORGEJO__server__PROTOCOL=https
-Environment=FORGEJO__server__CERT_FILE=/tls/forge.pem
-Environment=FORGEJO__server__KEY_FILE=/tls/forge.key
+Environment=FORGEJO__server__PROTOCOL=http+unix
+Environment=FORGEJO__server__HTTP_ADDR=/run/forgejo/http.sock
+Environment=FORGEJO__server__UNIX_SOCKET_PERMISSION=600
 Environment=FORGEJO__server__DOMAIN={{ forge_name }}
-Environment=FORGEJO__server__ROOT_URL=https://{{ forge_name }}/
-Environment=FORGEJO__server__SSH_PORT={{ forge_ssh_port }}
+Environment=FORGEJO__server__ROOT_URL=http://{{ forge_name }}:{{ forge_http_port }}/
+Environment=FORGEJO__server__START_SSH_SERVER=false
+Environment=FORGEJO__server__DISABLE_SSH=true
+Environment=FORGEJO__service__ENABLE_REVERSE_PROXY_AUTHENTICATION=true
+Environment=FORGEJO__service__ENABLE_REVERSE_PROXY_AUTHENTICATION_API=false
+Environment=FORGEJO__service__ENABLE_REVERSE_PROXY_AUTO_REGISTRATION=false
+Environment=FORGEJO__security__REVERSE_PROXY_AUTHENTICATION_USER=X-WEBAUTH-USER
+# Only the forge account reaches this socket, so no network proxy address needs admission.
+Environment=FORGEJO__security__REVERSE_PROXY_TRUSTED_PROXIES=*
 Environment=FORGEJO__migrations__ALLOW_LOCALNETWORKS={{ forge_migrations_allow_local | string | lower }}
-# The system's CAs and the host's in one bundle, for Forgejo itself and for the git it runs.
-Environment=SSL_CERT_FILE=/tls/ca-bundle.pem
-Environment=GIT_SSL_CAINFO=/tls/ca-bundle.pem
 
 [Service]
-# After a boot the VPN may come up after the unit; it tries again until its address is there.
+ExecStartPre=/usr/bin/install -d -m 0700 %t/porelo-forge
+# Retry while the container runtime starts after boot.
 Restart=always
 RestartSec=10
 

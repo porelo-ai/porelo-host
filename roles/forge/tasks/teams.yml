@@ -9,10 +9,10 @@
       trap 'echo failed; exit 0' ERR
       refuse() { echo "$1"; exit 0; }
       umask 077
-      api() { curl -sS --max-time 10 --cacert {{ __forge_ca_dir }}/ca.pem \
+      api() { curl -sS --max-time 10 --unix-socket {{ __forge_socket | quote }} \
           -H @<(sed 's/^/Authorization: token /' {{ __forge_token }}) \
           -H 'Content-Type: application/json' "$@"; }
-      base=https://{{ forge_address }}:{{ forge_http_port }}/api/v1
+      base=http://localhost/api/v1
       answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
       desired={{ item | combine({'units': item.units_map.keys() | list}) | to_json | quote }}
       # The list, not the search: a search finds only the teams its caller belongs to unless a site admin asks.

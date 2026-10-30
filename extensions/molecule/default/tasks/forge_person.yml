@@ -1,7 +1,5 @@
 ---
-# No operator forge login is pre-created by up, no password file or CA key lies on the host, forge.conf carries no
-# person= line, direct root calls to porelo-host-forge-password refuse with 64, and a person admitted as operator by
-# porelo-host-person add gets their own login, tokens and sudo password change like anyone else.
+# No default operator login, password helper, password file or CA key belongs on the host.
 - name: Read whether a password file or a CA key of a person's is on the host
   ansible.builtin.stat:
     path: "{{ item }}"
@@ -16,22 +14,15 @@
     fail_msg: >-
       found {{ verify_person_files.results | selectattr('stat.exists') | map(attribute='item') | list }} on the host
 
-- name: Read the password script's owner and mode
+- name: Read whether the password helper remains
   ansible.builtin.stat:
     path: /usr/local/sbin/porelo-host-forge-password
   register: verify_person_script
 
-- name: Assert the password script is root's executable alone
+- name: Assert the password helper is absent
   ansible.builtin.assert:
-    that:
-      - verify_person_script.stat.exists
-      - verify_person_script.stat.isreg | default(false)
-      - verify_person_script.stat.uid | default(-1) == 0
-      - verify_person_script.stat.gid | default(-1) == 0
-      - verify_person_script.stat.mode | default('') == '0700'
-    fail_msg: >-
-      asked for /usr/local/sbin/porelo-host-forge-password as root:root regular file mode 0700,
-      got {{ verify_person_script.stat }}
+    that: not verify_person_script.stat.exists
+    fail_msg: "asked for no forge password helper, got {{ verify_person_script.stat }}"
 
 - name: Read /etc/porelo-host/forge.conf to verify no person= setting remains
   ansible.builtin.slurp:
@@ -60,63 +51,6 @@
     that: "'operator' not in (verify_person_users.stdout_lines[1:] | map('split') | map(attribute=1) | list)"
     fail_msg: asked for no operator user in Forgejo after up, got operator present
 
-- name: Call porelo-host-forge-password directly as root without SUDO_USER and check it refuses 64 without leaking stdin
-  ansible.builtin.shell:
-    cmd: |
-      set -euo pipefail
-      umask 077
-      work=$(mktemp -d)
-      trap 'rm -rf "$work"' EXIT
-      head -c 24 /dev/urandom | base64 > "$work/password"
-      [ -s "$work/password" ] && [ "$(wc -l < "$work/password")" = 1 ] \
-          || { echo "asked for one nonempty password line, got another form" >&2; exit 1; }
-      script_rc=0
-      env -u SUDO_USER -u SUDO_UID -u SUDO_GID -u SUDO_COMMAND /usr/local/sbin/porelo-host-forge-password \
-          < "$work/password" > "$work/out" 2> "$work/err" || script_rc=$?
-      search() {
-          local rc=0
-          [ -s "$1" ] || { echo "asked for nonempty search input, got none" >&2; return 2; }
-          grep -F -f "$work/password" -- "$1" > /dev/null || rc=$?
-          case $rc in
-              0) echo "the password appears in search input" >&2; return 1 ;;
-              1) return 0 ;;
-              *) echo "password search ended $rc" >&2; return 2 ;;
-          esac
-      }
-      cat "$work/password" > "$work/planted"
-      rc=0
-      search "$work/planted" > "$work/probe" 2>&1 || rc=$?
-      [ "$rc" = 1 ] || { echo "asked to refuse a planted password, got rc $rc" >&2; exit 1; }
-      echo 'planted password: refused'
-      [ ! -s "$work/out" ] || { echo "asked for empty stdout on refusal, got output" >&2; exit 1; }
-      search "$work/err"
-      echo 'stderr: clean'
-      [ "$script_rc" = 64 ] || { echo "asked for exit 64, got $script_rc: $(cat "$work/err")" >&2; exit 1; }
-      grep -Eq '^porelo-host-forge-password: .*sudo.*person' "$work/err" \
-          || { echo "asked refusal words to name sudo as a person, got: $(cat "$work/err")" >&2; exit 1; }
-      echo 'refused: 64'
-      journalctl -o cat --no-pager > "$work/journal"
-      search "$work/journal"
-      echo 'journal: clean'
-    executable: /bin/bash
-  register: verify_person_direct_root
-  changed_when: false
-  failed_when: false
-  no_log: true
-
-- name: Assert direct root call without SUDO_USER exited 64 naming sudo as a person and leaked nowhere
-  ansible.builtin.assert:
-    that:
-      - verify_person_direct_root.rc == 0
-      - >-
-        verify_person_direct_root.stdout_lines
-        == ['planted password: refused', 'stderr: clean', 'refused: 64', 'journal: clean']
-    fail_msg: >-
-      asked direct root call without SUDO_USER to refuse 64 naming sudo as a person without leaking stdin;
-      got rc {{ verify_person_direct_root.rc }}: {{ verify_person_direct_root.stderr }}
-
-# Ubuntu's base-passwd holds a system group operator (GID 37), so no person may take that name: the helper refuses it
-# before anything is made, and nothing of an operator is left in the accounts, the records or the forge.
 - name: Verify that admitting a person named operator is refused and leaves nothing
   when: verify_admit_operator | default(true) | bool
   block:

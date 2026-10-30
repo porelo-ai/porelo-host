@@ -53,6 +53,6 @@
 - name: tasks | Keep the host's own names out of the account's containers
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/hosts.yml"
 
-- name: tasks | Trust the host's forge for the account and its tasks
+- name: tasks | Remove the forge's certificate trust from the account and its tasks
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/trust.yml"
   when: porelo_host_forge | default(false) | bool

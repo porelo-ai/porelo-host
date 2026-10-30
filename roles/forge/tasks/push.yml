@@ -18,7 +18,7 @@
 
 - name: push | Write which authority root's removal check trusts for the central forge
   ansible.builtin.copy:
-    dest: "{{ __forge_ca_dir }}/central-ca.conf"
+    dest: "{{ __forge_state_dir }}/central-ca.conf"
     owner: root
     group: root
     mode: "0644"

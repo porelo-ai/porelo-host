@@ -1307,7 +1307,7 @@ def sync_host(host, monkeypatch):
             assert timeout == 30
             assert request.get_header("Authorization") == "token " + FORGE_ADMIN_TOKEN
             url = urlsplit(request.full_url)
-            assert (url.scheme, url.hostname, url.port) == ("https", "10.73.7.1", 3000)
+            assert (url.scheme, url.hostname, url.port) == ("http", "localhost", None)
             method, path = request.get_method(), url.path
             state.forge_requests.append((method, path))
             page = int(parse_qs(url.query).get("page", ["1"])[0])

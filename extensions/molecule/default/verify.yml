@@ -241,25 +241,42 @@
         that: verify_tresorit.stdout_lines | length == 0
         fail_msg: "asked for nothing of Tresorit or a drive on the host, found {{ verify_tresorit.stdout_lines }}"
 
-    - name: Reach Forgejo by name on loopback port 443, trusting only the host's CA
-      ansible.builtin.command:  # noqa: command-instead-of-module
-        cmd: >-
-          curl -fsS --max-time 10 --noproxy '*' --cacert /etc/porelo-host/forge/ca.pem
-          --resolve forge.alpha.porelo.internal:443:127.0.0.1 -o /dev/null -w '%{http_code}'
-          https://forge.alpha.porelo.internal/api/v1/version
-      register: verify_forge_loopback
+    # The vpn role: a service bound to every address is reached through the VPN on 10.73.7.1, from a peer at 10.73.7.2
+    # in a network namespace of its own, and refused on the public address, from where Molecule itself connects.
+    - name: Start a service bound to every address
+      ansible.builtin.command:
+        argv: [systemd-run, --unit, verify-listener, --collect, python3, -m, http.server, --bind, "::", "8080"]
+        creates: /run/systemd/transient/verify-listener.service
+
+    - name: Make the test peer in a network namespace of its own, linked to the host on 10.73.7.0/24
+      ansible.builtin.shell:
+        cmd: |
+          set -eu
+          ip netns add verify-peer
+          ip link add verify-host type veth peer name verify-ns netns verify-peer
+          ip address add 10.250.0.1/30 dev verify-host && ip link set verify-host up
+          ip -n verify-peer address add 10.250.0.2/30 dev verify-ns
+          ip -n verify-peer link set verify-ns up && ip -n verify-peer link set lo up
+          ip -n verify-peer link add wg0 type wireguard
+          ip netns exec verify-peer wg set wg0 private-key /etc/wireguard/verify-peer.key \
+              peer "$(cat /root/vpn-host.pub)" endpoint 10.250.0.1:51820 allowed-ips 10.73.7.1/32
+          ip -n verify-peer address add 10.73.7.2/24 dev wg0 && ip -n verify-peer link set wg0 up
+        executable: /bin/bash
+        creates: /run/netns/verify-peer
+
+    - name: Reach the service through the VPN from the test peer
+      ansible.builtin.command:
+        cmd: ip netns exec verify-peer curl -fsS --max-time 10 -o /dev/null -w '%{http_code}' http://10.73.7.1:8080/
+      register: verify_vpn_reach
       changed_when: false
       failed_when: false
-      when: verify_forge == 'on'
 
-    - name: Assert Forgejo answers by name on loopback port 443 with the host's certificate
+    - name: Assert the service answers through the VPN on 10.73.7.1
       ansible.builtin.assert:
-        that: verify_forge_loopback['rc'] == 0 and verify_forge_loopback['stdout'] == '200'
+        that: verify_vpn_reach.rc == 0 and verify_vpn_reach.stdout == '200'
         fail_msg: >-
-          asked https://forge.alpha.porelo.internal/api/v1/version through 127.0.0.1:443 for 200;
-          got rc {{ verify_forge_loopback['rc'] }}, {{ verify_forge_loopback['stdout'] }}
-          {{ verify_forge_loopback['stderr'] }}
-      when: verify_forge == 'on'
+          asked http://10.73.7.1:8080/ through the VPN for 200;
+          got rc {{ verify_vpn_reach.rc }}, {{ verify_vpn_reach.stdout }} {{ verify_vpn_reach.stderr }}
 
     - name: Read where Forgejo's ports listen
       ansible.builtin.command:
@@ -268,12 +285,12 @@
       changed_when: false
       when: verify_forge == 'on'
 
-    - name: Assert Forgejo listens on loopback and VPN port 443 and keeps its VPN ports on 10.73.7.1
+    - name: Assert Forgejo publishes no TCP ports
       ansible.builtin.assert:
         that:
-          - verify_forge_ports | sort == ['10.73.7.1:2222', '10.73.7.1:3000', '10.73.7.1:443', '127.0.0.1:443']
+          - verify_forge_ports == []
         fail_msg: >-
-          asked Forgejo to listen on 10.73.7.1:{2222,3000,443} and 127.0.0.1:443;
+          asked for no Forgejo TCP listeners;
           got {{ verify_forge_listen.stdout_lines }}
       vars:
         verify_forge_ports: "{{ verify_forge_listen.stdout_lines | map('split') | map(attribute=3) | list }}"
@@ -370,57 +387,6 @@
 
     # The host admin's CA is constrained critically to alpha.porelo.internal and 10.73.7.0/24, so a certificate signed
     # by that same CA for another host's name must fail verification.
-    - name: Verify a certificate signed by the same CA for forge.beta.porelo.internal fails openssl verify
-      block:
-        - name: Make a temporary directory for the cross-host certificate check
-          ansible.builtin.tempfile:
-            state: directory
-            prefix: porelo-beta-cert-
-          register: verify_beta_dir
-
-        - name: Sign a certificate for forge.beta.porelo.internal with the stand-in host CA
-          ansible.builtin.shell:
-            cmd: |
-              set -euo pipefail
-              umask 077
-              work={{ verify_beta_dir.path | quote }}
-              openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
-                  -subj "/CN=forge.beta.porelo.internal" -keyout "$work/beta.key" -out "$work/beta.csr" 2> /dev/null
-              {
-                  printf 'subjectAltName=DNS:forge.beta.porelo.internal,IP:10.73.7.1\n'
-                  printf 'basicConstraints=critical,CA:FALSE\n'
-                  printf 'keyUsage=critical,digitalSignature\n'
-                  printf 'extendedKeyUsage=serverAuth\n'
-              } > "$work/ext"
-              openssl x509 -req -in "$work/beta.csr" -CA /root/desktop-ca/ca.pem -CAkey /root/desktop-ca/ca.key \
-                  -CAcreateserial -days 365 -extfile "$work/ext" -out "$work/beta.pem" 2> /dev/null
-            executable: /bin/bash
-          changed_when: true
-          no_log: true
-
-        - name: Run openssl verify on forge.beta.porelo.internal against the host's CA
-          ansible.builtin.command:
-            argv: [openssl, verify, -CAfile, /etc/porelo-host/forge/ca.pem, "{{ verify_beta_dir.path }}/beta.pem"]
-          register: verify_beta_cert
-          changed_when: false
-          failed_when: false
-
-        - name: Assert openssl verify rejects forge.beta.porelo.internal for violating the CA's name constraints
-          ansible.builtin.assert:
-            that:
-              - verify_beta_cert.rc != 0
-              - (verify_beta_cert.stdout ~ verify_beta_cert.stderr) is search('permitted subtree violation')
-            fail_msg: >-
-              asked openssl verify -CAfile /etc/porelo-host/forge/ca.pem to reject forge.beta.porelo.internal for a
-              permitted subtree violation; got rc {{ verify_beta_cert.rc }}:
-              {{ verify_beta_cert.stdout }} {{ verify_beta_cert.stderr }}
-      always:
-        - name: Remove the temporary directory of the cross-host certificate check
-          ansible.builtin.file:
-            path: "{{ verify_beta_dir.path }}"
-            state: absent
-          when: verify_beta_dir.path is defined
-
     - name: Reach ssh on the public address, from where Molecule connects
       ansible.builtin.wait_for:
         host: "{{ ansible_host }}"
@@ -448,7 +414,7 @@
       loop_control:
         label: "{{ item['item'] }}"
 
-    - name: Verify up made no operator forge login and refuses direct root password changes
+    - name: Verify up made no operator forge login or password helper
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_person.yml"
       vars:
         verify_admit_operator: false

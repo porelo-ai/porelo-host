@@ -56,28 +56,25 @@
     - name: Install the collection before up runs
       ansible.builtin.meta: flush_handlers
 
-    # Stands in for the host admin's lasting CA on the desktop, constrained critically to alpha.porelo.internal and
-    # 10.73.7.0/24 with its key never in /etc/porelo-host, plus a wider CA constrained only to porelo.internal that the
-    # stop must refuse.
-    - name: Make the stand-in host admin's constrained CA and a wider CA for refusal
+    # Stands in for the host admin's secrets file: the host's VPN key, made for the run under /root, reaches the host
+    # only through the stop's --stdin; the test peer's is used by verify from a network namespace of its own.
+    - name: Install WireGuard's tools to make the run's VPN keys
+      ansible.builtin.apt:
+        name: wireguard-tools
+        state: present
+
+    - name: Make the run's VPN keys, the host's and the test peer's
       ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          umask 077
-          mkdir -p /root/desktop-ca
-          nc='nameConstraints=critical,permitted;DNS:alpha.porelo.internal,permitted;IP:10.73.7.0/255.255.255.0'
-          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 3650 \
-              -subj "/CN=Porelo host alpha" -addext basicConstraints=critical,CA:TRUE \
-              -addext keyUsage=critical,keyCertSign,cRLSign -addext "$nc" \
-              -keyout /root/desktop-ca/ca.key -out /root/desktop-ca/ca.pem 2> /dev/null
-          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 3650 \
-              -subj "/CN=Porelo wide" -addext basicConstraints=critical,CA:TRUE \
-              -addext keyUsage=critical,keyCertSign,cRLSign \
-              -addext 'nameConstraints=critical,permitted;DNS:porelo.internal,permitted;IP:10.73.7.0/255.255.255.0' \
-              -keyout /root/desktop-ca/wide-ca.key -out /root/desktop-ca/wide-ca.pem 2> /dev/null
-        creates: /root/desktop-ca/wide-ca.pem
-        executable: /bin/bash
-      no_log: true
+        cmd: >-
+          umask 077 && mkdir -p /etc/wireguard && wg genkey > {{ item }}.key
+          && wg pubkey < {{ item }}.key > {{ item }}.pub
+        creates: "{{ item }}.key"
+      loop: [/root/vpn-host, /etc/wireguard/verify-peer]
+
+    - name: Read the test peer's public WireGuard key
+      ansible.builtin.slurp:
+        src: /etc/wireguard/verify-peer.pub
+      register: converge_peer_public
 
     - name: Write the v2 inventory host up writes for host alpha on network 7
       ansible.builtin.copy:
@@ -133,15 +130,15 @@
       failed_when: false
       when: not converge_first_seen.stat.exists
 
-    - name: Assert the first up stopped with rc 2 waiting for forge-certificate alone
+    - name: Assert the first up stopped with rc 2 waiting for wireguard alone
       ansible.builtin.assert:
         that:
           - converge_first_up.rc == 2
           - converge_first_waiting | length == 1
-          - converge_first_waiting[0].needs == ['forge-certificate']
+          - converge_first_waiting[0].needs == ['wireguard']
           - converge_first_failed | length == 0
         fail_msg: >-
-          asked the first up for rc 2 and waiting needs ['forge-certificate'] with no failed step;
+          asked the first up for rc 2 and waiting needs ['wireguard'] with no failed step;
           got rc {{ converge_first_up.rc }} and lines {{ converge_first_up.stdout }}
       vars:
         converge_first_lines: "{{ converge_first_up.stdout_lines | select | map('from_json') | list }}"
@@ -173,97 +170,6 @@
     - name: Install the handed-over packages before the next up
       ansible.builtin.meta: flush_handlers
 
-    - name: Read whether the root stop has already placed the host's CA
-      ansible.builtin.stat:
-        path: /etc/porelo-host/forge/ca.pem
-      register: converge_ca_placed
-
-    # porelo-host-stop --request prints two PEM requests, the forge's then the homeserver's; sign both valid leaves and
-    # the invalid certificate bundles the stop must refuse before writing anything.
-    - name: Split the two requests from porelo-host-stop --request and sign the valid and refused certificates
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          umask 077
-          d=/root/desktop-ca
-          porelo-host-stop --request > "$d/requests.pem"
-          awk -v out="$d" '
-              /^-----BEGIN CERTIFICATE REQUEST-----$/ { n++; inside = 1 }
-              inside { print > (out "/" (n == 1 ? "forge.csr" : n == 2 ? "matrix.csr" : "extra.csr")) }
-              /^-----END CERTIFICATE REQUEST-----$/ { inside = 0 }
-              END { if (n != 2) { printf "asked --request for 2 CSRs, got %d\n", n > "/dev/stderr"; exit 1 } }
-          ' "$d/requests.pem"
-          [ "$(openssl req -noout -subject -nameopt RFC2253 -in "$d/forge.csr")" \
-              = 'subject=CN=forge.alpha.porelo.internal' ]
-          [ "$(openssl req -noout -subject -nameopt RFC2253 -in "$d/matrix.csr")" \
-              = 'subject=CN=matrix.alpha.porelo.internal' ]
-          sign() {
-              local csr=$1 ca=$2 cakey=$3 dns=$4 out=$5
-              {
-                  printf 'subjectAltName=DNS:%s,IP:10.73.7.1\n' "$dns"
-                  printf 'basicConstraints=critical,CA:FALSE\n'
-                  printf 'keyUsage=critical,digitalSignature\n'
-                  printf 'extendedKeyUsage=serverAuth\n'
-              } > "$d/ext"
-              openssl x509 -req -in "$csr" -CA "$ca" -CAkey "$cakey" -CAcreateserial -days 365 \
-                  -extfile "$d/ext" -out "$out" 2> /dev/null
-          }
-          sign "$d/forge.csr" "$d/ca.pem" "$d/ca.key" forge.alpha.porelo.internal "$d/forge.pem"
-          sign "$d/matrix.csr" "$d/ca.pem" "$d/ca.key" matrix.alpha.porelo.internal "$d/matrix.pem"
-          sign "$d/forge.csr" "$d/wide-ca.pem" "$d/wide-ca.key" forge.alpha.porelo.internal "$d/wide-forge.pem"
-          sign "$d/matrix.csr" "$d/wide-ca.pem" "$d/wide-ca.key" matrix.alpha.porelo.internal "$d/wide-matrix.pem"
-          sign "$d/matrix.csr" "$d/ca.pem" "$d/ca.key" forge.alpha.porelo.internal "$d/matrix-as-forge.pem"
-          cat "$d/forge.pem" "$d/matrix.pem" "$d/ca.pem" > "$d/bundle-good.pem"
-          cat "$d/wide-forge.pem" "$d/wide-matrix.pem" "$d/wide-ca.pem" > "$d/bundle-wide.pem"
-          cat "$d/forge.pem" "$d/ca.pem" > "$d/bundle-two.pem"
-          cat "$d/forge.pem" "$d/matrix-as-forge.pem" "$d/ca.pem" > "$d/bundle-wrong-name.pem"
-        executable: /bin/bash
-      changed_when: true
-      no_log: true
-      when: not converge_ca_placed.stat.exists
-
-    - name: Ask porelo-host-stop to refuse the wide CA, two certificates and a misnamed homeserver certificate
-      ansible.builtin.shell:
-        cmd: |
-          set -uo pipefail
-          rc=0
-          printf 'forge-certificate %s\n' "$(base64 -w0 < {{ item.bundle | quote }})" \
-              | porelo-host-stop --stdin forge-certificate || rc=$?
-          written=none
-          for f in /etc/porelo-host/forge/ca.pem /etc/porelo-host/forge/forge.pem /etc/porelo-host/forge/matrix.pem; do
-              if [ -e "$f" ] || [ -L "$f" ]; then written=$f; break; fi
-          done
-          printf 'rc=%s written=%s\n' "$rc" "$written"
-        executable: /bin/bash
-      loop:
-        - label: wide CA
-          bundle: /root/desktop-ca/bundle-wide.pem
-          expected: is not held to alpha.porelo.internal
-        - label: two certificates
-          bundle: /root/desktop-ca/bundle-two.pem
-          expected: three certificates
-        - label: homeserver certificate for the forge's name
-          bundle: /root/desktop-ca/bundle-wrong-name.pem
-          expected: does not name exactly
-      loop_control:
-        label: "{{ item.label }}"
-      register: converge_cert_refusals
-      changed_when: false
-      when: not converge_ca_placed.stat.exists
-
-    - name: Assert each invalid certificate bundle was refused with rc 64 and wrote nothing to /etc/porelo-host/forge
-      ansible.builtin.assert:
-        that:
-          - item.stdout_lines == ['rc=64 written=none']
-          - item.stderr is search(item.item.expected)
-        fail_msg: >-
-          asked porelo-host-stop to refuse {{ item.item.label }} with rc 64, '{{ item.item.expected }}' and nothing
-          written to /etc/porelo-host/forge/{ca,forge,matrix}.pem; got {{ item.stdout_lines }} and '{{ item.stderr }}'
-      loop: "{{ converge_cert_refusals.results }}"
-      loop_control:
-        label: "{{ item.item.label }}"
-      when: not converge_ca_placed.stat.exists
-
     - name: Ask porelo-host-stop --stdin to refuse every person need removed from the root act
       ansible.builtin.shell:
         cmd: |
@@ -279,7 +185,6 @@
       loop: [vault-new, vault, keys, matrix-token, forge-central-token]
       register: converge_need_refusals
       changed_when: false
-      when: not converge_ca_placed.stat.exists
 
     - name: Assert porelo-host-stop --stdin refused each person need with rc 64 and wrote nothing
       ansible.builtin.assert:
@@ -292,30 +197,27 @@
       loop: "{{ converge_need_refusals.results }}"
       loop_control:
         label: "{{ item.item }}"
-      when: not converge_ca_placed.stat.exists
 
-    # The pipeline the host admin's interface runs as root: the three certificates, base64 on two lines.
-    - name: Give the host's three certificates on porelo-host-stop --stdin
+    # The host admin supplies the VPN key as a base64 line.
+    - name: Give the host's VPN key on porelo-host-stop --stdin
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
           {
-              printf 'forge-certificate %s\n' "$(base64 -w0 < /root/desktop-ca/bundle-good.pem)"
-          } | porelo-host-stop --stdin forge-certificate
+              printf 'wireguard %s\n' "$(base64 -w0 < /root/vpn-host.key)"
+          } | porelo-host-stop --stdin wireguard
         executable: /bin/bash
       register: converge_good_stop
       changed_when: true
       failed_when: false
       no_log: true
-      when: not converge_ca_placed.stat.exists
 
-    - name: Assert porelo-host-stop accepted forge-certificate with rc 0
+    - name: Assert porelo-host-stop accepted wireguard with rc 0
       ansible.builtin.assert:
         that: converge_good_stop.rc == 0
         fail_msg: >-
-          asked porelo-host-stop --stdin forge-certificate for rc 0,
+          asked porelo-host-stop --stdin wireguard for rc 0,
           got rc {{ converge_good_stop.rc }}: {{ converge_good_stop.stderr }}
-      when: not converge_ca_placed.stat.exists
 
     - name: Run up on the host itself after the stop, its steps as JSON lines
       # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.

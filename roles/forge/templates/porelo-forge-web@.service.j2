@@ -1,0 +1,15 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=The host's forge web connection
+
+[Service]
+User={{ forge_account }}
+Group={{ forge_account }}
+ExecStart=/usr/local/libexec/porelo-forge-gate --web --upstream {{ __forge_socket }}
+PrivateTmp=true
+ProtectSystem=strict
+NoNewPrivileges=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX
+StandardOutput=null
+StandardError=journal

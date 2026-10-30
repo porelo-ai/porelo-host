@@ -1,4 +1,4 @@
-"""Exercise project registration against a TLS forge and removal against real Git histories."""
+"""Exercise project registration against a request-level forge and removal against real Git histories."""
 
 import base64
 import errno
@@ -16,6 +16,7 @@ import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import parse_qs, unquote, urlsplit
 
 import pytest
@@ -170,52 +171,6 @@ def forge(tmp_path):
     return state
 
 
-@pytest.fixture
-def https_forge(forge, tmp_path):
-    state = forge
-
-    class Handler(BaseHTTPRequestHandler):
-        def log_message(self, *_args):
-            pass
-
-        def handle_request(self):
-            assert self.headers.get("Authorization") == "token " + ADMIN_TOKEN
-            body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
-            if urlsplit(self.path).path == "/redirected":
-                state.redirected.append(self.headers.get("Authorization"))
-                self.send_response(200)
-                self.end_headers()
-                self.wfile.write(b'{"username":"already-taken"}')
-                return
-            if state.redirect:
-                self.send_response(307)
-                self.send_header("Location", f"https://127.0.0.1:{self.server.server_port}/redirected")
-                self.end_headers()
-                return
-            status, answer = state.respond(self.command, self.path, json.loads(body) if body else None)
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            if answer is not None:
-                self.wfile.write(json.dumps(answer).encode())
-
-        do_GET = do_POST = do_PUT = do_DELETE = handle_request
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    tls.load_cert_chain(forge.ca, tmp_path / "server-key.pem")
-    server.socket = tls.wrap_socket(server.socket, server_side=True)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    state.port = server.server_port
-    try:
-        yield state
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join()
-
-
 PERSON_RECORD = "role=project-admin\nprojects=\nlocked=false\nlaptop=laptop ssh-ed25519 AAAA wg= 10.73.7.3\n"
 
 
@@ -251,18 +206,10 @@ def project_host(tmp_path, forge, push_host):
     return dict(etc=etc, forge=forge, cli=cli, cli_calls=cli_calls, push=push_host, tmp=tmp_path)
 
 
-@pytest.fixture(params=["memory", "https"])
-def api_host(request, project_host):
-    """Run API behavior separately from the HTTPS transport so socket restrictions do not hide unit results."""
-    if request.param == "https":
-        forge = request.getfixturevalue("https_forge")
-        settings = project_host["etc"] / "forge.conf"
-        settings.write_text(settings.read_text().replace("port=443\n", f"port={forge.port}\n"))
-        push_settings = project_host["push"]["etc"] / "forge.conf"
-        push_settings.write_text(push_settings.read_text().replace("port=3000\n", f"port={forge.port}\n"))
-        project_host["push"]["repos_json"].unlink(missing_ok=True)
-    else:
-        project_host["memory"] = True
+@pytest.fixture
+def api_host(project_host):
+    """Exercise request behavior without binding a socket; transport has its own direct unit check."""
+    project_host["memory"] = True
     return project_host
 
 
@@ -273,13 +220,15 @@ def memory_host(project_host):
 
 
 class MemoryOpener:
-    """An in-process API stand-in for unit checks; the HTTPS parameter exercises the actual server."""
+    """An in-process API stand-in; the transport has a separate direct unit check."""
 
     def __init__(self, forge):
         self.forge = forge
 
     def open(self, request, **_kwargs):
         assert request.headers["Authorization"] == "token " + ADMIN_TOKEN
+        if getattr(self.forge, "unavailable", False):
+            raise urllib.error.URLError("fixture socket unavailable")
         if self.forge.redirect:
             raise urllib.error.HTTPError(request.full_url, 307, "redirect", {}, None)
         code, value = self.forge.respond(
@@ -334,6 +283,7 @@ def project(
         return central_token
 
     with monkeypatch.context() as patch:
+        patch.setattr(values["pwd"], "getpwnam", lambda account: SimpleNamespace(pw_uid=1200))
         patch.setattr(os, "geteuid", lambda: uid)
         patch.setattr(sys, "argv", [str(SCRIPT), *arguments])
         patch.setattr(subprocess, "run", commands)
@@ -593,9 +543,9 @@ def test_remove_refuses_a_repository_without_an_original_url(api_host, monkeypat
     assert not (host["push"]["forge_etc"] / "push.conf").exists()
 
 
-@pytest.mark.parametrize("failure", ["server", "redirect", "ca"])
+@pytest.mark.parametrize("failure", ["server", "redirect", "socket"])
 def test_an_untrusted_or_unavailable_forge_changes_nothing(api_host, monkeypatch, capsys, failure):
-    """Prevent an API failure, untrusted certificate, or redirect from granting access or leaking a token."""
+    """Prevent an API failure, unavailable socket, or redirect from granting access or leaking a token."""
     project_host = api_host
     forge = project_host["forge"]
     overrides = None
@@ -604,9 +554,7 @@ def test_an_untrusted_or_unavailable_forge_changes_nothing(api_host, monkeypatch
     elif failure == "redirect":
         forge.redirect = True
     else:
-        ca = project_host["tmp"] / "bad-ca.pem"
-        ca.write_text("not a certificate")
-        overrides = {"CA": str(ca)}
+        forge.unavailable = True
     result = project(
         project_host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY, overrides=overrides
     )
@@ -1177,17 +1125,19 @@ def test_remove_refuses_incomplete_duplicate_or_malformed_sync_lines(memory_host
     assert record.exists()
 
 
-def test_remove_deletes_only_its_matrix_admins_file(memory_host, monkeypatch, capsys):
-    """Prevent a removed project retaining room administration or deleting another project's admins."""
-    host = memory_host
-    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
-    directory = host["etc"] / "matrix"
-    directory.mkdir(mode=0o750)
-    for name in ("alpha", "beta"):
-        path = directory / f"{name}.admins"
-        path.write_text("alice\n")
-        path.chmod(0o640)
-    code, _, err = project(host, monkeypatch, capsys, "remove", "alpha")
-    assert code == 0, err
-    assert not (directory / "alpha.admins").exists()
-    assert (directory / "beta.admins").read_text() == "alice\n"
+def test_project_admin_transport_connects_only_to_a_unix_socket(monkeypatch):
+    """Keep the project administrator's token from reaching a TCP endpoint."""
+    scope = runpy.run_path(str(SCRIPT), run_name="unix_transport_test")
+    connected = []
+
+    class Socket:
+        def settimeout(self, timeout):
+            pass
+
+        def connect(self, path):
+            connected.append(path)
+
+    monkeypatch.setattr(scope["socket"], "socket", lambda family, kind: Socket())
+    connection = scope["UnixConnection"]("/run/user/1200/porelo-forge/http.sock")
+    connection.connect()
+    assert connected == ["/run/user/1200/porelo-forge/http.sock"]

@@ -12,8 +12,9 @@ __forge_push_dir: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.conf
 __forge_to_migrate: "{{ __forge_repositories_state.results | selectattr('stdout', 'equalto', 'missing')
   | map(attribute='item.name') | list }}"
 
-# Where the person's CA certificate, which a client trusts, and the forge's waiting key and request lie; no CA key.
-__forge_ca_dir: /etc/porelo-host/forge
+# Root's nonpublic forge settings and agent tokens; no certificate authority.
+__forge_state_dir: /etc/porelo-host/forge
+__forge_socket: "/run/user/{{ __forge_uid }}/porelo-forge/http.sock"
 __forge_environment:
   XDG_RUNTIME_DIR: "/run/user/{{ __forge_uid }}"
 

@@ -1,6 +1,9 @@
 ---
 # Forgejo as a quadlet unit of the forge's account. The image is pulled before the unit starts, so its start is not
-# timed by a download; its ports listen on the VPN's address alone, never on every address behind the firewall.
+# timed by a download; only the forge account can open the upstream socket.
+- name: service | Remove the forge's old HTTPS listener
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/legacy.yml"
+
 - name: service | Make the account's directories for quadlet units
   ansible.builtin.file:
     path: "{{ item }}"
@@ -53,34 +56,60 @@
   become_user: "{{ forge_account }}"
   environment: "{{ __forge_environment }}"
 
-- name: service | Restart Forgejo now if its unit or certificate changed
+- name: service | Restart Forgejo now if its unit changed
   ansible.builtin.meta: flush_handlers
 
-- name: service | Wait until Forgejo answers over TLS with the host's certificate
-  ansible.builtin.uri:
-    url: "https://{{ forge_address }}:{{ forge_http_port }}/api/v1/version"
-    ca_path: "{{ __forge_ca_dir }}/ca.pem"
+- name: service | Wait until Forgejo answers on its private socket
+  ansible.builtin.command:
+    argv: [curl, -fsS, --max-time, "5", --unix-socket, "{{ __forge_socket }}", "http://localhost/api/v1/version"]
   register: __forge_version
-  until: __forge_version.status == 200
+  changed_when: false
+  until: __forge_version.rc == 0
   retries: 30
   delay: 2
 
-- name: service | Write the system socket and proxy units for HTTPS
+- name: service | Make the people's socket group before admission
+  ansible.builtin.group:
+    name: porelo-people
+    state: present
+
+- name: service | Make the gate executable directory
+  ansible.builtin.file:
+    path: /usr/local/libexec
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: service | Install the forge gate
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/porelo-forge-gate"
+    dest: /usr/local/libexec/porelo-forge-gate
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: service | Write the system socket and gate units
   ansible.builtin.template:
     src: "{{ role_path }}/templates/{{ item }}.j2"
     dest: "/etc/systemd/system/{{ item }}"
     owner: root
     group: root
     mode: "0644"
-  loop: [porelo-forge-https.socket, porelo-forge-https.service]
-  notify: Restart the forge's HTTPS socket
+  loop:
+    - porelo-forge-web.socket
+    - porelo-forge-web@.service
+    - porelo-forge-git.socket
+    - porelo-forge-git@.service
+  notify: Restart the forge's gate sockets
 
-- name: service | Enable and start the HTTPS socket after Forgejo answers
+- name: service | Enable and start the gate sockets after Forgejo answers
   ansible.builtin.systemd_service:
-    name: porelo-forge-https.socket
+    name: "{{ item }}"
     enabled: true
     state: started
     daemon_reload: true
+  loop: [porelo-forge-web.socket, porelo-forge-git.socket]
 
-- name: service | Apply changed HTTPS units before the forge is used
+- name: service | Apply changed gate units before the forge is used
   ansible.builtin.meta: flush_handlers

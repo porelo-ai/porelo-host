@@ -1,5 +1,22 @@
 # The local forge
 
+## Socket gates
+
+Forgejo serves HTTP over `/run/user/<forge uid>/porelo-forge/http.sock`, mode `0600` in a `0700` directory of its
+account. It publishes no TCP port, certificate or SSH server. The system's `web.sock` and `git.sock` in
+`/run/porelo-forge/` are owned by that account and `porelo-people`, mode `0660` in a `0755` directory.
+
+Porelo forwards the browser's local web port over SSH to `web.sock`, at `http://<host>.localhost:<web_port>/`.
+The gate takes the login from Unix peer credentials and `porelo-people` membership, removes supplied identity headers,
+and signs the person in without a password when no Authorization header is present. Browser credential settings,
+password reset and user-administration routes, and API token or password mutations are refused.
+
+Git and API clients use `git.sock` with a token. The first unauthenticated Git request receives `401` and
+`WWW-Authenticate: Basic`, so Git can ask its credential helper. The gate drops cookies and identity headers and
+passes Basic or token Authorization to Forgejo. Porelo must set remotes to the local `git_port`; Forgejo's clone URLs
+use its browser `ROOT_URL`. Tasks receive neither socket nor a person's token; their host task gate supplies the
+task's token. The runner's connection and package-registry access need a socket-capable transport as well.
+
 The local forge is the host's private Forgejo: it holds task branches, runs independent builds and supplies snapshots
 through its local registry. The central forge holds the work the person sends outward and runs the central publication
 workflows. These are separate destinations, with separate credentials.
@@ -43,14 +60,12 @@ provides `/usr/libexec/porelo/builds/forgejo`. With repositories configured, it 
 `forge_porelo_account` defaults to `porelo_host_account`, in the organization's `gates` team. That team writes code and
 pull requests and reads Actions on every repository. Its generated token is piped directly into the account's vault as
 `git.token.forge.porelo.internal`, only while that entry is missing; no token file is written. The gate and build reader
-use this entry for `forge.porelo.internal`. The host resolves that name to `127.0.0.1` through a marked `/etc/hosts`
-block, removed by `down`. Podman would copy that block into a task's container, where loopback is the container's own,
-so the account's containers are made without the host's `/etc/hosts`; a task reaches the forge by the address Porelo's
-resolver gives it.
+use their token through the host's Git gate. Tasks receive no forge socket; the host passes their branch with the
+task token outside the container. No forge-specific `/etc/hosts` block is installed.
 
 The reader receives its credential from the vault for each call, independently of any task access to declared services.
-The project's build configuration names `forge: forgejo`, `api: https://forge.porelo.internal/api/v1` and
-`credential: git.token.forge.porelo.internal`; see the [adapter
+The project's build configuration names `forge: forgejo` and a token credential, with its API transport reaching
+`git.sock`; see the [adapter
 documentation](https://github.com/porelo-ai/porelo-adapters/blob/main/doc/index.md#forgejo-actions) and Porelo's
 [build-reader contract](https://github.com/porelo-ai/porelo/blob/main/doc/build-readers.md).
 
@@ -65,14 +80,14 @@ sets the local forge's values only.
 |---|---|---|
 | `vars.PORELO_PUBLISH` | `false` | `true` |
 | `vars.PORELO_DEPLOY_PROFILE` | `forge-release` | `central-sonatype-release` |
-| `vars.MAVEN_SNAPSHOTS_URL` | `https://<forge_address>:<forge_http_port>/api/packages/<forge_owner>/maven` | `https://central.sonatype.com/repository/maven-snapshots/` |
+| `vars.MAVEN_SNAPSHOTS_URL` | `http://localhost/api/packages/<forge_owner>/maven` over the Unix socket | `https://central.sonatype.com/repository/maven-snapshots/` |
 | `secrets.PORELO_PUBLISHER_TOKEN` | The local publisher's package token; private registry reads need authentication too | A placeholder for anonymous Sonatype snapshot reads; central deployment uses its own credentials |
 | `vars.JF_URL` | `https://jfrog.invalid`, a placeholder: the variables API takes no empty value, and no real service answers it | The Artifactory instance that `PORELO_PUBLISH` uploads go to |
 | `secrets.JF_ACCESS_TOKEN` | `porelo-host-placeholder`, created only when the secret is absent; an existing value is kept | The Artifactory access token for those uploads |
 
-The local address uses the VPN address and port reached by a runner job; the default port is `3000` and the default
-organization is `porelo`. The forge's browser address is `https://forge.porelo.internal/`. Jobs trust the host's CA
-through the runner's certificate bundle and JVM trust store.
+The default organization is `porelo`. The forge's browser address is `http://<host>.localhost:<web_port>/`.
+Registry clients require an authenticated Unix-socket transport. The runner's bundle and JVM trust store contain the
+system's certificate authorities for external services.
 
 Two differences from GitHub reach a job. The JVM trust store comes through `JAVA_TOOL_OPTIONS`, so every JVM a job
 starts announces it on stderr; a test that reads a child JVM's stderr together with its output must keep them apart.
@@ -242,21 +257,9 @@ An agent's push starts the workflows' `push` and `pull_request` runs, but the fo
 (`403`), since the team only reads Actions. Its token also reads no job's log (`404` through the API), no push mirror
 (`403`) and not its own user (`403`, no `read:user` scope).
 
-Each admitted person's web login is their own account name, created by `porelo-host-person` rather than pre-created as
-`operator` by `up`. In a project they own or join they belong to its `Owners` or `developers` team, so they can read
-private repositories, build runs and packages and merge pull requests. The
-interface's VPN step resolves `forge.<host>.porelo.internal` (`forge_name`) to the host's VPN address (`forge_address`), and
-the person's computer trusts the host's lasting CA, made once on the desktop with a name constraint that holds it to
-`porelo.internal` and the VPN's network; its key stays in the secrets file and never reaches a host. Each
-host's forge certificate is signed by that CA at the stop: the host makes a key and a request, the stop's `--request`
-prints the request, and the desktop's answer comes back as `forge-certificate` on the stop's standard input, checked
-before it is written (the [line contract](lines.md)).
-
-Each person's password is lasting too, kept in their secrets file: over their own SSH session, the desktop pipes it
-into `sudo /usr/local/sbin/porelo-host-forge-password`, which sets it on their own forge login with no change asked at
-the next sign-in and refuses direct root calls without `SUDO_USER` (`64`). The password lives only in that script's
-memory and the request to the forge's admin API; no host file holds it, and Forgejo's own generated first password goes
-nowhere.
+Each admitted person's web login is their own account name. In a project they own or join they belong to its
+`Owners` or `developers` team. Their browser reaches the forge through the [web gate](#socket-gates), which derives
+their login from the host account. There is no forge certificate exchange or password-setting helper.
 
 The registry publisher is a separate account. Its package token stays with Forgejo and runner jobs as
 `PORELO_PUBLISHER_TOKEN`; it is not handed to tasks. The host build reader's credential and a task's declared service

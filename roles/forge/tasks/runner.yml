@@ -114,9 +114,9 @@
   loop_control:
     label: "{{ item.path }}"
 
-- name: runner | Give the runner the forge's CA bundle, for itself and its jobs
+- name: runner | Give the runner the system's CA bundle, for itself and its jobs
   ansible.builtin.copy:
-    src: "{{ __forge_home }}/tls/ca-bundle.pem"
+    src: /etc/ssl/certs/ca-certificates.crt
     dest: "{{ __forge_runner_home }}/tls/ca-bundle.pem"
     remote_src: true
     owner: "{{ forge_runner_account }}"

@@ -17,10 +17,10 @@
   ansible.builtin.shell:
     cmd: |
       set -euo pipefail
-      api() { curl -sS --max-time 10 --cacert {{ __forge_ca_dir }}/ca.pem \
+      api() { curl -sS --max-time 10 --unix-socket {{ __forge_socket | quote }} \
           -H @<(printf 'Authorization: token %s\n' "$(cat {{ __forge_token }})") \
           -H 'Content-Type: application/json' "$@"; }
-      base=https://{{ forge_address }}:{{ forge_http_port }}/api/v1/orgs/{{ forge_owner }}/actions/variables
+      base=http://localhost/api/v1/orgs/{{ forge_owner }}/actions/variables
       variable=$base/{{ item.key }}
       body={{ {'value': item.value} | to_json | quote }}
       answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
@@ -73,10 +73,10 @@
   ansible.builtin.shell:
     cmd: |
       set -euo pipefail
-      api() { curl -sS --max-time 10 --cacert {{ __forge_ca_dir }}/ca.pem \
+      api() { curl -sS --max-time 10 --unix-socket {{ __forge_socket | quote }} \
           -H @<(printf 'Authorization: token %s\n' "$(cat {{ __forge_token }})") \
           -H 'Content-Type: application/json' "$@"; }
-      base=https://{{ forge_address }}:{{ forge_http_port }}/api/v1/orgs/{{ forge_owner }}/actions/secrets
+      base=http://localhost/api/v1/orgs/{{ forge_owner }}/actions/secrets
       answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
       has_secret() {
           local page code state previous= digest

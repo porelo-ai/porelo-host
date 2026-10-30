@@ -1,9 +1,9 @@
 ---
 argument_specs:
   main:
-    short_description: Forgejo with its registry in rootless podman under accounts of its own, on the VPN's address.
+    short_description: Forgejo and its registry behind Unix socket gates in rootless podman.
     description:
-      - Run in up's second play after the VPN, where the host setting porelo_host_forge is true.
+      - Run in up's second play where the host setting porelo_host_forge is true.
     options:
       forge_account:
         type: str
@@ -15,32 +15,21 @@ argument_specs:
         description: The account Forgejo's runner runs as, never Porelo's nor the forge's.
       forge_address:
         type: str
-        description: The host's address inside the VPN, the only one the forge listens on; the vpn role's by default.
+        description: The runner's cache address; Forgejo itself publishes no TCP port.
       forge_host:
         type: str
         description: The host's single DNS label, from porelo_host_name.
       forge_name:
         type: str
-        description: >-
-          The name the forge's certificate carries beside that address, forge.<porelo_host_name>.porelo.internal by
-          default.
-      forge_matrix_name:
-        type: str
-        description: >-
-          The homeserver's DNS name that request checks beside the forge's, matrix.<porelo_host_name>.porelo.internal
-          by default.
-      forge_matrix_account:
-        type: str
-        default: porelo-matrix
-        description: The homeserver's account, whose tls/ holds its certificate once moved there.
+        description: The browser's host name, <porelo_host_name>.localhost by default.
       forge_http_port:
         type: int
         default: 3000
-        description: The port Forgejo serves HTTPS on.
-      forge_ssh_port:
+        description: The local browser port forwarded by Porelo to web.sock.
+      forge_git_port:
         type: int
-        default: 2222
-        description: The port Forgejo serves git over ssh on.
+        default: 3001
+        description: The local Git and API port forwarded by Porelo to git.sock.
       forge_runner_name:
         type: str
         default: porelo-host
@@ -133,7 +122,7 @@ argument_specs:
           PORELO_PUBLISH: "false"
           JF_URL: "https://jfrog.invalid"
           PORELO_DEPLOY_PROFILE: forge-release
-          MAVEN_SNAPSHOTS_URL: "https://{{ forge_address }}:{{ forge_http_port }}/api/packages/{{ forge_owner }}/maven"
+          MAVEN_SNAPSHOTS_URL: "http://localhost/api/packages/{{ forge_owner }}/maven"
         description: >-
           Nonsecret organization Actions variables; uppercase names and nonempty string values, only with repositories.
       forge_porelo_account:
@@ -158,35 +147,6 @@ argument_specs:
         type: bool
         default: false
         description: Lets Forgejo migrate from a private address, for a stand-in central forge on the host.
-  request:
-    short_description: >-
-      Before the stop, keys and requests for the forge's and the homeserver's certificates where either does not hold,
-      and forge-certificate named as a need.
-    options:
-      forge_address:
-        type: str
-        description: The host's address on the VPN, which both certificates must name.
-      forge_host:
-        type: str
-        description: The host's single DNS label, from porelo_host_name, named to the stop.
-      forge_name:
-        type: str
-        description: The forge's DNS name, forge.<porelo_host_name>.porelo.internal by default.
-      forge_matrix_name:
-        type: str
-        description: The homeserver's DNS name, matrix.<porelo_host_name>.porelo.internal by default.
-      forge_matrix_account:
-        type: str
-        default: porelo-matrix
-        description: The homeserver's account, whose tls/ holds its certificate once moved there.
-      forge_http_port:
-        type: int
-        default: 3000
-        description: The forge's HTTPS port, named to the host's helpers.
-      forge_account:
-        type: str
-        default: porelo-forge
-        description: The forge's account, whose tls/ holds the certificate once moved there.
   capacity:
     short_description: Refuse runner jobs that, with the VM pool, would take more than half the host.
     options:

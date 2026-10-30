@@ -23,13 +23,13 @@ def test_no_task_or_role_setting_names_forge_person():
         "roles/forge/defaults/main.yml",
         "roles/forge/meta/argument_specs.yml",
         "roles/forge/tasks/main.yml",
-        "roles/forge/tasks/request.yml",
+        "roles/forge/tasks/settings.yml",
     }
     assert expected <= relative
     offenders = [path.relative_to(ROOT).as_posix() for path in paths if "forge_person" in path.read_text()]
     assert offenders == []
 
-    request_tasks = yaml.safe_load((ROOT / "roles/forge/tasks/request.yml").read_text())
+    request_tasks = yaml.safe_load((ROOT / "roles/forge/tasks/settings.yml").read_text())
     forge_conf = next(
         task["ansible.builtin.copy"]["content"]
         for task in request_tasks
@@ -40,7 +40,7 @@ def test_no_task_or_role_setting_names_forge_person():
         for line in forge_conf.splitlines()
         if "=" in line and not line.strip().startswith("{%")
     ]
-    assert keys == ["address", "host", "name", "matrix_name", "port", "account"]
+    assert keys == ["host", "name", "port", "git_port", "account"]
 
 
 def test_up_deletes_only_an_unrecorded_operator_forge_user_and_installs_helpers():
@@ -62,7 +62,7 @@ def test_up_deletes_only_an_unrecorded_operator_forge_user_and_installs_helpers(
         for task in tasks
         if "ansible.builtin.copy" in task and "dest" in task["ansible.builtin.copy"]
     }
-    for helper in ("/usr/local/sbin/porelo-host-forge-password", "/usr/local/sbin/porelo-host-project"):
+    for helper in ("/usr/local/sbin/porelo-host-project",):
         assert helper in installed
         assert installed[helper]["owner"] == "root"
         assert installed[helper]["group"] == "root"
@@ -99,3 +99,36 @@ def test_up_deletes_only_an_unrecorded_operator_forge_user_and_installs_helpers(
     assert f"{record_var}.stat.islnk" in joined
     assert "'operator' in" in joined
     assert delete_task.get("no_log") is True
+
+
+def test_password_helper_is_removed_instead_of_installed():
+    """Prevent an upgrade from keeping a privileged route to set forge passwords."""
+    tasks = yaml.safe_load((ROOT / "roles/forge/tasks/helpers.yml").read_text())
+    assert any(
+        task.get("ansible.builtin.file") == {"path": "/usr/local/sbin/porelo-host-forge-password", "state": "absent"}
+        for task in tasks
+    )
+
+
+def test_teardown_stops_the_previous_https_listener_without_an_upgrade():
+    """Prevent an old public listener from surviving a direct teardown."""
+    tasks = yaml.safe_load((ROOT / "roles/forge/tasks/down.yml").read_text())
+    units = next(task["loop"] for task in tasks if "__forge_down_gate_units" == task.get("register"))
+    assert set(units) == {
+        "porelo-forge-web.socket",
+        "porelo-forge-git.socket",
+        "porelo-forge-https.socket",
+        "porelo-forge-https.service",
+    }
+    stop = next(task for task in tasks if task.get("ansible.builtin.systemd_service", {}).get("state") == "stopped")
+    assert stop["ansible.builtin.systemd_service"]["enabled"] is False
+    assert "__forge_down_gate_units" in stop["loop"]
+    removed = set().union(
+        *(
+            set(task.get("loop", []))
+            for task in tasks
+            if task.get("ansible.builtin.file", {}).get("path") == "/etc/systemd/system/{{ item }}"
+            and task["ansible.builtin.file"].get("state") == "absent"
+        )
+    )
+    assert set(units) <= removed

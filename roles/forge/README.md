@@ -1,31 +1,33 @@
 # Role `forge`
 
-Project removal also deletes `/etc/porelo-host/matrix/<project>.admins` after checking its ownership and path, so
-a removed project retains no Matrix room administration. See [Matrix access](../../doc/matrix.md).
+The host's forge: Forgejo with its package registry in rootless podman under `porelo-forge`, serving HTTP on a
+private Unix socket. The account's runtime directory `porelo-forge/` has mode `0700` and `http.sock` has mode `0600`;
+keep-id maps the container's socket owner to the account. Forgejo publishes no TCP port and runs no SSH server.
+The role runs when `porelo_host_forge` is true; `down` stops its gates and removes the forge. The runner has its own
+account, `porelo-runner`, apart from the forge and every task.
 
-The host's forge: Forgejo with its package registry in rootless podman, as a quadlet user unit of an account of its
-own (`porelo-forge`), serving HTTPS with a certificate the person's own CA signed on their desktop. It runs
-where the host setting `porelo_host_forge` is true, in `up`'s second play after the VPN; `down` stops it and keeps
-nothing. Its runner gets an account of its own (`porelo-runner`), never Porelo's: what holds the forge's admin and the
-person's token for the central forge shares no user namespace with a task.
+The system sockets `/run/porelo-forge/web.sock` and `git.sock` are owned by the forge account and group
+`porelo-people`, mode `0660`, inside a `0755` directory. Each connection starts the Python standard-library gate as
+the forge account through an `Accept=yes` socket unit. The gate reads the connected socket on fd 3 and removes all
+caller-supplied `X-WEBAUTH-*` headers. It handles one request per connection, closes both sides, streams Git bodies,
+and logs no requests. Unsupported transfer encodings, chunk extensions and trailers fail closed.
 
-The CA is the host's lasting one, made on the admin's desktop; its certificate is `/etc/porelo-host/forge/ca.pem`,
-written by the stop, and its key never reaches the host. `tasks_from: request`, in `up`'s first play whether or not
-`porelo_host_forge` is true, makes keys and certificate requests in `/etc/porelo-host/forge/` for both the forge
-(`forge.key`, `forge.csr`) and the homeserver (`matrix.key`, `matrix.csr`) where either certificate signed by that CA
-does not hold for 30 days more with the host's VPN address and its DNS name, and adds `forge-certificate` to
-`porelo_host_needs`. `tls` moves the forge's signed certificate and its key into the forge account's `tls/`, never
-copying them, and refuses naming `forge-certificate` where none holds. `/etc/porelo-host/forge.conf` names the host's
-VPN address, host label, forge name, homeserver name, port, account and configured agents to the stop and the host's
-helpers; it holds no secret.
+`web.sock` reads `SO_PEERCRED` and admits a login in `porelo-people` with uid at least 1000 and a supported login
+shell. Root, service accounts with a non-login shell, unknown users and nonmembers receive `403`. Without
+`Authorization`, the gate supplies that person's `X-WEBAUTH-USER`. It blocks all browser user settings and credential
+reset routes, browser user administration and API token routes or user credential mutations. Reverse-proxy automatic
+registration and reverse-proxy authentication for the API are disabled.
 
-`up` creates no default forge user, and deletes an unrecorded `operator` forge user left outside
-`/etc/porelo-host/people/`. Each person gets their forge login when admitted by `porelo-host-person`.
-`/usr/local/sbin/porelo-host-forge-password`, root's alone and run through `sudo` as an admitted person, takes their
-lasting password on standard input and sets it on their own login through the admin API with a token it makes for the
-call and keeps in memory; direct root calls without `SUDO_USER` refuse with `64`; see the
-[local forge guide](../../doc/local-forge.md#credentials-belong-to-their-destination). Down removes the script and
-`forge.conf`.
+`git.sock` supplies no identity header and removes cookies. Without `Authorization`, it answers `401` with
+`WWW-Authenticate: Basic`; Basic and token credentials pass to Forgejo, which checks their owner and rights.
+Token issuance and task-token isolation belong to the host's token lifecycle. Tasks receive neither socket nor a
+person's token. `/etc/porelo-host/forge.conf` records `host`, `name`, `port`, `git_port` and `account`, with no secret.
+Root's administration helpers reach the private upstream socket; a person's bring and join use `git.sock`.
+
+`up` creates no default forge user and removes an unrecorded `operator` login. Each person gets their own login
+at admission. Browser access needs no password. The role removes the password helper, old HTTPS units and forge TLS
+files; the person's sudoers configuration provides no password-setting command. Porelo's account setup removes its
+forge CA trust block and task CA file.
 
 `up` prepares the forge without repositories (`forge_repositories` stays empty on the host) and installs
 `/usr/local/sbin/porelo-host-push` (`0755`, run by any project developer in their own account from
@@ -56,12 +58,10 @@ the other half. A refusal names both sides; the `capacity` entry point runs this
 reaches the runner's cache on the forge's address, its server on `forge_runner_cache_port` (4000) and its proxy on
 `forge_runner_cache_proxy_port` (4001), both published there alone.
 
-The forge's URLs use `https://forge.<porelo_host_name>.porelo.internal/` (`forge_name`) with no port. A root-owned
-system socket forwards port 443 on loopback and the VPN's address to Forgejo's original HTTPS port (`forge_http_port`,
-3000 by default), which stays reachable on the VPN for the runner and existing clients. The role replaces
-`/etc/systemd/system/porelo-forge-https.socket` and `porelo-forge-https.service` from templates; `down` stops and
-disables both and removes them before stopping Forgejo. The socket may bind before the VPN address exists at boot.
-The host resolves `forge_name` to `127.0.0.1` through a marked `/etc/hosts` block; `down` removes only that block.
+Forgejo's `ROOT_URL` is `http://<host>.localhost:<forge_http_port>/`, with browser port `3000` by default.
+`forge_git_port` defaults to `3001`. These are the person's local forwarded ports, not listeners on the host.
+Porelo forwards them over SSH to the two sockets and sets Git remotes to the Git port because Forgejo renders clone
+URLs from its browser URL alone. See the [gate access contract](../../doc/local-forge.md#socket-gates).
 
 A build publishes into the registry with the organization's Actions secret `PORELO_PUBLISHER_TOKEN`, a `write:package`
 token of the account `porelo-publisher`, whose team may write the organization's packages and nothing else; a run's
@@ -75,7 +75,7 @@ read access to actions and packages, and no repository creation. Each token has 
 `write:repository,read:package,read:organization` and stays in `/etc/porelo-host/forge/agents/<name>.token`,
 root:root `0600`, in a root:root `0700` directory. Up keeps an existing token file and makes a missing one;
 removing a name from the inventory leaves its account and token alone. Down removes the token directory with
-the forge's CA and volumes.
+the forge's settings and volumes.
 
 `forge_variables` defaults to `PORELO_PUBLISH: "false"`, `JF_URL: "https://jfrog.invalid"`, `PORELO_DEPLOY_PROFILE:
 forge-release` and `MAVEN_SNAPSHOTS_URL`, the forge's own Maven registry; GitHub holds the same names with its values.

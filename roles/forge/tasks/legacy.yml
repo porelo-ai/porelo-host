@@ -1,0 +1,38 @@
+---
+- name: legacy | Read which HTTPS units are installed
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ item }}"
+  loop: [porelo-forge-https.socket, porelo-forge-https.service]
+  register: __forge_legacy_units
+
+- name: legacy | Stop the HTTPS listener and proxy
+  ansible.builtin.systemd_service:
+    name: "{{ item.item }}"
+    enabled: false
+    state: stopped
+  loop: "{{ __forge_legacy_units.results | selectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: legacy | Remove the HTTPS units
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}"
+    state: absent
+  loop: [porelo-forge-https.socket, porelo-forge-https.service]
+
+- name: legacy | Remove the forge's certificates, requests and CA
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ __forge_home }}/tls"
+    - "{{ __forge_state_dir }}/ca.pem"
+    - "{{ __forge_state_dir }}/forge.key"
+    - "{{ __forge_state_dir }}/forge.pem"
+    - "{{ __forge_state_dir }}/forge.csr"
+
+- name: legacy | Remove the forge's marked name from the host
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} porelo-host forge name"
+    state: absent

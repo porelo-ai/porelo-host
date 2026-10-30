@@ -3,7 +3,8 @@
 The host's base: the packages every host gets, KVM with libvirt running, and podman, installed machine-wide, the SSH forwarding policy and the public-interface firewall; the
 `controllers` check for an account's delegated cgroup controllers; and `tasks_from: host` at the end of `up`, writing
 `/etc/porelo-host/host.json` (`0644`) and printing `porelo-host: host {json}` with what a project's `access.yml` needs
-of the host.
+of the host. With the forge enabled, `services.forge` names `web_port` and `git_port`, the local ports Porelo
+forwards to the forge's browser and Git Unix sockets; defaults are `3000` and `3001`.
 
 ## Requirements
 

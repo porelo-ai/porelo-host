@@ -1,11 +1,8 @@
 ---
-- name: helpers | Install the script that sets a person's lasting password, root's alone
-  ansible.builtin.copy:
-    src: "{{ role_path }}/files/porelo-host-forge-password"
-    dest: /usr/local/sbin/porelo-host-forge-password
-    owner: root
-    group: root
-    mode: "0700"
+- name: helpers | Remove the password helper
+  ansible.builtin.file:
+    path: /usr/local/sbin/porelo-host-forge-password
+    state: absent
 
 - name: helpers | Install the project registration helper, root's alone
   ansible.builtin.copy:

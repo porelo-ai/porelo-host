@@ -73,6 +73,9 @@
       ssh_host_key: "{{ (__base_ssh_host_key_raw.content | b64decode | trim).split()[:2] | join(' ') }}"
       ca_sha256: "{{ __base_ca_sha256.stdout | trim }}"
       homeserver: "{{ base_matrix_name }}"
+      services: "{{ {'forge': {'web_port': forge_http_port | default(3000) | int,
+        'git_port': forge_git_port | default(3001) | int}}
+        if porelo_host_forge | default(false) | bool else {} }}"
   vars:
     __base_address: >-
       {{ ((__base_default_routes.stdout | from_json)[0].prefsrc

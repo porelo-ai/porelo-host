@@ -8,7 +8,7 @@ podman, the SSH policy and a firewall allowing only port 22 on public interfaces
 account part (the account in `kvm` and `libvirt`, and the person's ssh key on the account for the stop), `porelo setup`
 with `porelo vault status`, and, where the host runs a forge,
 `forge`'s request part (whether a certificate signed by the person's CA holds for it). Each role that needs the person's
-step adds what is missing (`vault-new` with `keys`, `vault` or `forge-certificate`) to `porelo_host_needs`.
+step adds what is missing (`vault-new` with `keys`, `vault` or `wireguard`) to `porelo_host_needs`.
 The second play stops first with a [waiting line](lines.md) while `porelo_host_needs` is not empty; the person's stop
 gives every need on [standard input](lines.md), from their secrets file on the desktop. Once the vault is open, it runs
 `porelo`'s project part (the machine file read from

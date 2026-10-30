@@ -7,11 +7,11 @@
     cmd: |
       set -euo pipefail
       answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
-      repos=https://{{ forge_address }}:{{ forge_http_port }}/api/v1/orgs/{{ forge_owner }}/repos
+      repos=http://localhost/api/v1/orgs/{{ forge_owner }}/repos
       page=1
       found='[]'
       while :; do
-          code=$(curl -sS --max-time 10 --cacert {{ __forge_ca_dir }}/ca.pem \
+          code=$(curl -sS --max-time 10 --unix-socket {{ __forge_socket | quote }} \
               -H @<(sed 's/^/Authorization: token /' {{ __forge_token | quote }}) -o "$answer" -w '%{http_code}' \
               "$repos?limit=50&page=$page") || { echo '"failed"'; exit 0; }
           [ "$code" = 200 ] || { echo "\"http-$code\""; exit 0; }

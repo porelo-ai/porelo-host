@@ -65,6 +65,7 @@ from pathlib import Path
 import pwd
 import re
 import shutil
+import socket
 import ssl
 import stat
 import subprocess
@@ -250,6 +251,30 @@ def key_block(data, code=64, addresses_required=False):
         wg_keys.add(wg)
         result.append({"laptop": name, "ssh": ssh, "wg": wg, "address": address})
     return result
+
+
+class UnixConnection(http.client.HTTPConnection):
+    """Reach only the forge account's private socket."""
+
+    def __init__(self, path, **kwargs):
+        super().__init__("localhost", **kwargs)
+        self.path = path
+
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(self.timeout)
+        self.sock.connect(self.path)
+
+
+class UnixHandler(urllib.request.HTTPHandler):
+    """Use HTTP framing without a TCP listener or proxy."""
+
+    def __init__(self, path):
+        super().__init__()
+        self.path = str(path)
+
+    def http_open(self, request):
+        return self.do_open(lambda host, **kwargs: UnixConnection(self.path, **kwargs), request)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -565,14 +590,15 @@ class Host:
         return domain
 
     def forge_endpoint(self):
-        """Validate the fixed API endpoint and its trusted CA before revocation starts."""
-        address = str(ipv4(self.setting("/etc/porelo-host/forge.conf", "address"), 69))
-        port = self.setting("/etc/porelo-host/forge.conf", "port")
-        if not re.fullmatch(r"[1-9][0-9]{0,4}", port) or int(port) > 65535:
-            refuse("forge.conf names no valid port", 69)
-        ca = self.path("/etc/porelo-host/forge/ca.pem")
-        self.check(ca, required=True)
-        return f"https://{address}:{port}/api/v1/admin/users/", ca
+        """Resolve the private API socket before revocation starts."""
+        account = self.setting("/etc/porelo-host/forge.conf", "account")
+        if not re.fullmatch(USER, account):
+            refuse("forge.conf names no valid account", 69)
+        try:
+            uid = pwd.getpwnam(account).pw_uid
+        except KeyError:
+            refuse("the forge account is missing", 69)
+        return "http://localhost/api/v1/admin/users/", self.path(f"/run/user/{uid}/porelo-forge/http.sock")
 
     def prepare_services(self, user, verb):
         """Validate real hooks' settings, root paths and programs before changing host access."""
@@ -636,7 +662,7 @@ class Host:
             self.write(path, "".join(tokens), 0o600, owner=entry.pw_uid, group=entry.pw_gid)
 
     def forge_api(self, opener, base, token, method, route, expected, body=None, not_found=None):
-        """Refuse HTTP and TLS failures without printing a header, credential or response body."""
+        """Refuse HTTP and socket failures without printing a header, credential or response body."""
         request = urllib.request.Request(
             base + route,
             method=method,
@@ -653,18 +679,15 @@ class Host:
                 refuse(not_found, 65)
             refuse(f"Forgejo admin API answered HTTP {error.code}", 69)
         except (OSError, urllib.error.URLError, http.client.HTTPException, ValueError, UnicodeError):
-            refuse("Forgejo admin API did not answer valid JSON over trusted TLS", 69)
+            refuse("Forgejo admin API did not answer valid JSON on its private socket", 69)
 
-    def forge_opener(self, ca):
-        """Build a redirect-free HTTPS opener trusting only the host forge CA."""
-        try:
-            return urllib.request.build_opener(
-                urllib.request.ProxyHandler({}),
-                NoRedirect(),
-                urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=str(ca))),
-            )
-        except (OSError, ValueError):
-            refuse("the forge CA cannot be loaded", 69)
+    def forge_opener(self, endpoint):
+        """Build a redirect-free opener for the forge's private socket."""
+        return urllib.request.build_opener(
+            urllib.request.ProxyHandler({}),
+            NoRedirect(),
+            UnixHandler(endpoint),
+        )
 
     def forge_developers_prepare(self, project, admin):
         """Verify the project's developers team exists on the local forge and read its members."""

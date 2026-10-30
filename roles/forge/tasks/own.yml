@@ -18,8 +18,7 @@
   ansible.builtin.assert:
     that:
       - __forge_own_settings.account | default('') != ''
-      - __forge_own_settings.address | default('') is match('^10\.73\.[0-9]{1,3}\.1\Z')
-      - __forge_own_settings.name | default('') is match('^forge\.[a-z0-9-]+\.porelo\.internal\Z')
+      - __forge_own_settings.name | default('') is match('^[a-z0-9-]+\.localhost\Z')
       - __forge_own_settings.port | default('') is match('^[0-9]{1,5}\Z')
     fail_msg: >-
       /etc/porelo-host/forge.conf names no running forge; the host admin runs up with the forge on before a
@@ -28,7 +27,7 @@
 
 - name: own | Name the forge, the project's organization and its repositories for the forge's tasks
   ansible.builtin.set_fact:
-    forge_address: "{{ __forge_own_settings.address }}"
+    __forge_socket: /run/porelo-forge/git.sock
     forge_http_port: "{{ __forge_own_settings.port | int }}"
     forge_name: "{{ __forge_own_settings.name }}"
     forge_owner: "{{ porelo_project }}"
@@ -73,9 +72,9 @@
         cmd: |
           set -euo pipefail
           answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
-          code=$(curl -sS --max-time 10 --cacert {{ __forge_ca_dir }}/ca.pem \
+          code=$(curl -sS --max-time 10 --unix-socket {{ __forge_socket | quote }} \
               -H @<(sed 's/^/Authorization: token /' {{ __forge_token | quote }}) -o "$answer" -w '%{http_code}' \
-              "https://{{ forge_address }}:{{ forge_http_port }}/api/v1/users/{{ porelo_account }}/orgs/{{
+              "http://localhost/api/v1/users/{{ porelo_account }}/orgs/{{
               forge_owner }}/permissions") || { echo failed; exit 0; }
           [ "$code" = 200 ] || { echo "http-$code"; exit 0; }
           python3 -I -c 'import json,sys; p=json.load(open(sys.argv[1]))

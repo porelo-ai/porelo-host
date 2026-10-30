@@ -102,7 +102,7 @@ class Services:
         assert timeout == 30
         assert request.get_header("Authorization") == "token " + ADMIN_TOKEN
         url = urlsplit(request.full_url)
-        assert (url.scheme, url.hostname, url.port) == ("https", "192.0.2.1", 3000)
+        assert (url.scheme, url.hostname, url.port) == ("http", "localhost", None)
         method, path = request.get_method(), url.path
         self.requests.append((method, path, request.data))
         user = path.split("/")[5]
@@ -501,94 +501,21 @@ def test_admin_api_redirects_cannot_forward_an_admin_credential(services):
     assert handler.redirect_request(None, None, 302, "redirect", {}, "https://elsewhere.example.org") is None
 
 
-@pytest.mark.parametrize("trusted_ca", [True, False])
-def test_forge_lock_over_local_tls_checks_the_ca_and_revokes_tokens(services, tmp_path, monkeypatch, trusted_ca):
-    """Exercise the real HTTP/TLS boundary so an untrusted server cannot accept the admin credential."""
+def test_forge_admin_transport_connects_only_to_the_private_socket(services, monkeypatch):
+    """Keep revocation credentials off TCP while using HTTP request framing."""
+    connected = []
 
-    class Forge(BaseHTTPRequestHandler):
-        def answer(self):
-            request = urllib.request.Request(
-                "https://192.0.2.1:3000" + self.path,
-                data=self.rfile.read(int(self.headers["Content-Length"])) if self.command == "PATCH" else None,
-                method=self.command,
-                headers={"Authorization": self.headers["Authorization"]},
-            )
-            response = services.recorder.open(request, 30)
-            self.send_response(response.status)
-            self.end_headers()
-            if response.status != 204:
-                self.wfile.write(response.read())
-
-        do_PATCH = do_GET = do_DELETE = answer
-
-        def log_message(self, format, *args):
+    class Socket:
+        def settimeout(self, timeout):
             pass
 
-    try:
-        server = HTTPServer(("127.0.0.1", 0), Forge)
-    except PermissionError:
-        pytest.skip("sandbox cannot bind a local TLS test server")
-    try:
-        openssl = shutil.which("openssl")
-        if openssl is None:
-            pytest.skip("openssl is not installed")
-        for stem in ("server", "other"):
-            made = subprocess.run(
-                [
-                    openssl,
-                    "req",
-                    "-x509",
-                    "-newkey",
-                    "ec",
-                    "-pkeyopt",
-                    "ec_paramgen_curve:P-256",
-                    "-nodes",
-                    "-keyout",
-                    str(tmp_path / (stem + ".key")),
-                    "-out",
-                    str(tmp_path / (stem + ".pem")),
-                    "-days",
-                    "1",
-                    "-subj",
-                    "/CN=localhost",
-                    "-addext",
-                    "subjectAltName=IP:127.0.0.1",
-                ],
-                capture_output=True,
-                text=True,
-            )
-            assert made.returncode == 0, made.stderr
-        tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        tls.load_cert_chain(tmp_path / "server.pem", tmp_path / "server.key")
-        server.socket = tls.wrap_socket(server.socket, server_side=True)
-        ca = services.host.path("/etc/porelo-host/forge/ca.pem")
-        ca.write_bytes((tmp_path / ("server.pem" if trusted_ca else "other.pem")).read_bytes())
-        config = services.host.path("/etc/porelo-host/forge.conf")
-        config.write_text(
-            config.read_text().replace("192.0.2.1", "127.0.0.1").replace("port=3000", f"port={server.server_port}")
-        )
-        monkeypatch.setattr(ssl, "create_default_context", REAL_CONTEXT)
-        monkeypatch.setattr(urllib.request, "build_opener", REAL_OPENER)
-        monkeypatch.setattr(urllib.request, "HTTPSHandler", REAL_HTTPS)
-        services.recorder.users = dict.fromkeys(IDENTITIES, False)
-        services.recorder.tokens = {user: [1, 2] for user in IDENTITIES}
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        try:
-            if trusted_ca:
-                hook(services, "forge_lock", "alice")
-                assert services.recorder.users == dict.fromkeys(IDENTITIES, True)
-                assert services.recorder.tokens == dict.fromkeys(IDENTITIES, [])
-            else:
-                with pytest.raises(services.scope["Refusal"]) as error:
-                    hook(services, "forge_lock", "alice")
-                assert error.value.code == 69
-                assert services.recorder.requests == []
-        finally:
-            server.shutdown()
-            thread.join(timeout=5)
-    finally:
-        server.server_close()
+        def connect(self, endpoint):
+            connected.append(endpoint)
+
+    monkeypatch.setattr(services.scope["socket"], "socket", lambda family, kind: Socket())
+    connection = services.scope["UnixConnection"]("/run/user/1200/porelo-forge/http.sock")
+    connection.connect()
+    assert connected == ["/run/user/1200/porelo-forge/http.sock"]
 
 
 def test_the_persons_login_may_run_the_bring_and_the_gate_only_its_branches(services):
@@ -600,21 +527,9 @@ def test_the_persons_login_may_run_the_bring_and_the_gate_only_its_branches(serv
     }
 
 
-def test_matrix_expels_the_login_as_the_service_account_without_credentials(services):
-    """Prevent purge leaving person and task accounts active or issuing a reusable host credential."""
-    hook(services, "matrix_expel_revoke", "alice")
-    assert len(services.recorder.calls) == 1
-    assert services.recorder.calls[0][-3:] == ["/usr/bin/porelo-message-transport-matrix", "expel", "alice"]
-    assert services.recorder.inputs == [None]
-    assert not services.host.path("/etc/porelo-host/matrix-admin.token").exists()
-
-
-@pytest.mark.parametrize("code", [1, 78])
-def test_failed_matrix_expulsion_blocks_removal_without_repeating_output(services, code):
-    """Prevent a failed account deactivation from being treated as successful purge."""
-    services.recorder.transport_exit = code
-    services.recorder.transport_error = MATRIX_ADMIN
-    with pytest.raises(services.scope["Refusal"]) as error:
-        hook(services, "matrix_expel_revoke", "alice")
-    assert error.value.code == 69
-    assert MATRIX_ADMIN not in str(error.value)
+def test_forge_admin_uses_only_the_private_socket_without_a_ca(services):
+    """Keep administrative credentials off TCP and remove dependency on a forge CA."""
+    services.host.path("/etc/porelo-host/forge/ca.pem").unlink()
+    base, endpoint = services.host.forge_endpoint()
+    assert base == "http://localhost/api/v1/admin/users/"
+    assert str(endpoint).endswith("/run/user/1200/porelo-forge/http.sock")

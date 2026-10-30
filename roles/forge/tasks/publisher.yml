@@ -30,9 +30,9 @@
   ansible.builtin.shell:
     cmd: |
       set -euo pipefail
-      api() { curl -sS --cacert {{ __forge_ca_dir }}/ca.pem -H @<(printf 'Authorization: token %s\n' \
+      api() { curl -sS --unix-socket {{ __forge_socket | quote }} -H @<(printf 'Authorization: token %s\n' \
           "$(cat {{ __forge_token }})") -H 'Content-Type: application/json' "$@"; }
-      base=https://{{ forge_address }}:{{ forge_http_port }}/api/v1
+      base=http://localhost/api/v1
       answer=$(mktemp) && trap 'rm -f "$answer"' EXIT
       changed=
       code=$(api -o "$answer" -w '%{http_code}' \
@@ -71,12 +71,12 @@
     cmd: |
       set -euo pipefail
       cd /
-      secret=https://{{ forge_address }}:{{ forge_http_port }}/api/v1/orgs/{{ forge_owner }}/actions/secrets
+      secret=http://localhost/api/v1/orgs/{{ forge_owner }}/actions/secrets
       code=$(runuser -u {{ forge_account }} -- env XDG_RUNTIME_DIR=/run/user/{{ __forge_uid }} \
           podman exec forgejo forgejo admin user generate-access-token --username {{ __forge_publisher }} \
           --token-name publish-$(date -u +%Y%m%dT%H%M%SZ) --scopes write:package --raw \
           | python3 -I -c 'import json,sys; print(json.dumps({"data": sys.stdin.read().strip()}))' \
-          | curl -sS -o /dev/null -w '%{http_code}' --cacert {{ __forge_ca_dir }}/ca.pem \
+          | curl -sS -o /dev/null -w '%{http_code}' --unix-socket {{ __forge_socket | quote }} \
               -H @<(printf 'Authorization: token %s\n' "$(cat {{ __forge_token }})") \
               -H 'Content-Type: application/json' -X PUT "$secret/{{ __forge_publisher_secret }}" --data @-)
       [ "$code" = 201 ] || [ "$code" = 204 ] \

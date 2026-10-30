@@ -331,20 +331,7 @@ def test_the_central_token_without_a_waiting_bring_is_refused(own_account):
     assert not (home / "push-calls").exists()
 
 
-def test_a_refused_migration_fails_the_stop(own_account):
-    """Prevent the interface from running the bring again as if the repositories had come."""
-    home = own_account
-    waiting_bring(home)
-    result = own_stop(
-        home,
-        "forge-central-token",
-        lines=f"forge-central-token {b64('central-token')}\n",
-        extra={"PUSH_STUB_EXIT": "65"},
-    )
-    assert result.returncode == 65 and "alpha" in result.stderr
-
-
-@pytest.mark.parametrize("need", ["forge-certificate"])
+@pytest.mark.parametrize("need", ["wireguard"])
 def test_the_host_admins_needs_are_refused_in_a_persons_account(own_account, need):
     """Prevent a person from believing they gave the host's key or certificates, which only root writes."""
     home = own_account

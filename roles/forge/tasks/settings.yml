@@ -1,0 +1,21 @@
+---
+- name: settings | Make root's forge directory
+  ansible.builtin.file:
+    path: "{{ __forge_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: settings | Name the forge to the host's helpers
+  ansible.builtin.copy:
+    dest: /etc/porelo-host/forge.conf
+    content: |
+      host={{ forge_host }}
+      name={{ forge_name }}
+      port={{ forge_http_port }}
+      git_port={{ forge_git_port }}
+      account={{ forge_account }}
+    owner: root
+    group: root
+    mode: "0644"

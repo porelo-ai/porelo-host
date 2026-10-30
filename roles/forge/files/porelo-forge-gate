@@ -1,0 +1,205 @@
+#!/usr/bin/python3
+"""Pass socket-activated HTTP requests to the account's private Forgejo socket."""
+
+import argparse
+import grp
+import http.client
+import posixpath
+import pwd
+import re
+import socket
+import struct
+from http.server import BaseHTTPRequestHandler
+from urllib.parse import unquote, urlsplit
+
+
+HOP_HEADERS = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer",
+               "transfer-encoding", "upgrade"}
+
+
+class UnixConnection(http.client.HTTPConnection):
+    def __init__(self, path):
+        super().__init__("localhost", timeout=60)
+        self.path = path
+
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(self.timeout)
+        self.sock.connect(self.path)
+
+
+def peer_login(uid):
+    try:
+        person = pwd.getpwuid(uid)
+        people = grp.getgrnam("porelo-people")
+        if (uid < 1000 or person.pw_shell not in ("/bin/bash", "/bin/sh", "/bin/zsh", "/usr/bin/bash", "/usr/bin/zsh")
+                or not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", person.pw_name)
+                or (person.pw_gid != people.gr_gid and person.pw_name not in people.gr_mem)):
+            return None
+        return person.pw_name
+    except KeyError:
+        return None
+
+
+def blocked_route(target, method):
+    path = posixpath.normpath(unquote(urlsplit(target).path)).rstrip("/")
+    if (path == "/user/settings" or path.startswith("/user/settings/") or
+            path in {"/user/forgot_password", "/user/reset_password", "/user/change_password"} or
+            path == "/admin/users" or path.startswith("/admin/users/")):
+        return True
+    if path.startswith("/api/"):
+        parts = path.split("/")
+        return ("tokens" in parts or (method not in ("GET", "HEAD", "OPTIONS") and
+                (path == "/api/v1/user" or path.startswith("/api/v1/admin/users"))))
+    return False
+
+
+class RequestBody:
+    def __init__(self, stream, length, chunked=False):
+        self.stream = stream
+        self.remaining = length
+        self.chunked = chunked
+        self.finished = False
+
+    def read(self, size=8192):
+        if self.finished:
+            return b""
+        if self.chunked and self.remaining == 0:
+            line = self.stream.readline(128)
+            if not re.fullmatch(rb"[0-9a-fA-F]{1,16}\r\n", line):
+                raise ValueError("invalid chunk size")
+            self.remaining = int(line, 16)
+            if self.remaining == 0:
+                if self.stream.read(2) != b"\r\n":
+                    raise ValueError("trailers are not supported")
+                self.finished = True
+                return b""
+        data = self.stream.read(min(size, self.remaining))
+        if not data and self.remaining:
+            raise ValueError("incomplete body")
+        self.remaining -= len(data)
+        if self.remaining == 0:
+            if self.chunked:
+                if self.stream.read(2) != b"\r\n":
+                    raise ValueError("invalid chunk ending")
+            else:
+                self.finished = True
+        return data
+
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *args):
+        # Paths and HTTP parser errors can contain credentials.
+        pass
+
+    def reply(self, status, challenge=False):
+        self.send_response_only(status)
+        if challenge:
+            self.send_header("WWW-Authenticate", "Basic")
+        self.send_header("Content-Length", "0")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+    def send_error(self, code, message=None, explain=None):
+        self.close_connection = True
+        self.reply(code)
+
+    def handle_expect_100(self):
+        # Authentication and route checks must precede a body upload.
+        return True
+
+    def forward(self):
+        self.close_connection = True
+        login = peer_login(self.server.uid) if self.server.mode == "web" else None
+        if self.server.mode == "web" and (login is None or blocked_route(self.path, self.command)):
+            self.reply(403)
+            return
+        authorizations = self.headers.get_all("Authorization", [])
+        if len(authorizations) > 1:
+            self.reply(400)
+            return
+        if self.server.mode == "git" and not authorizations:
+            self.reply(401, challenge=True)
+            return
+        if self.server.mode == "git" and not re.fullmatch(r"(?i:Basic|token) [A-Za-z0-9+/=_\-.]+", authorizations[0]):
+            self.reply(401, challenge=True)
+            return
+        lengths = self.headers.get_all("Content-Length", [])
+        transfers = self.headers.get_all("Transfer-Encoding", [])
+        chunked = transfers == ["chunked"]
+        if ((transfers and (not chunked or lengths)) or len(lengths) > 1 or
+                (lengths and not re.fullmatch(r"[0-9]{1,12}", lengths[0])) or
+                not self.path.startswith("/") or self.path.startswith("//") or "#" in self.path):
+            self.reply(400)
+            return
+        if self.headers.get("Expect", "").lower() == "100-continue":
+            self.send_response_only(100)
+            self.end_headers()
+        omitted = HOP_HEADERS | {item.strip().lower() for item in self.headers.get("Connection", "").split(",")}
+        if "authorization" in omitted:
+            self.reply(400)
+            return
+        headers = {key: value for key, value in self.headers.items()
+                   if key.lower() not in omitted and not key.lower().startswith("x-webauth-")
+                   and key.lower() not in {"host", "expect"}
+                   and not (self.server.mode == "git" and key.lower() == "cookie")}
+        headers["Host"] = "localhost"
+        headers["Connection"] = "close"
+        if not chunked:
+            headers["Content-Length"] = lengths[0] if lengths else "0"
+        if self.server.mode == "web" and not authorizations:
+            headers["X-WEBAUTH-USER"] = login
+        upstream = self.server.upstream()
+        try:
+            body = RequestBody(self.rfile, int(lengths[0]) if lengths else 0, chunked)
+            upstream.request(self.command, self.path, body, headers, encode_chunked=chunked)
+            response = upstream.getresponse()
+        except (OSError, ValueError, http.client.HTTPException):
+            upstream.close()
+            self.reply(502)
+            return
+        try:
+            self.send_response_only(response.status)
+            for key, value in response.getheaders():
+                if key.lower() not in HOP_HEADERS:
+                    self.send_header(key, value)
+            self.send_header("Connection", "close")
+            self.end_headers()
+            if self.command != "HEAD":
+                while data := response.read(65536):
+                    self.wfile.write(data)
+        finally:
+            upstream.close()
+
+    do_GET = forward
+    do_HEAD = forward
+    do_POST = forward
+    do_PUT = forward
+    do_PATCH = forward
+    do_DELETE = forward
+    do_OPTIONS = forward
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    modes = parser.add_mutually_exclusive_group(required=True)
+    modes.add_argument("--web", action="store_true")
+    modes.add_argument("--git", action="store_true")
+    parser.add_argument("--upstream", required=True)
+    args = parser.parse_args()
+    # Accept=yes hands one connected descriptor to each process, with no listening socket to inherit.
+    with socket.socket(fileno=3) as connection:
+        connection.settimeout(60)
+        _, uid, _ = struct.unpack("3i", connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")))
+        server = argparse.Namespace(mode="web" if args.web else "git", uid=uid,
+                                    upstream=lambda: UnixConnection(args.upstream))
+        try:
+            Handler(connection, ("local", 0), server)
+        except (OSError, ValueError, http.client.HTTPException):
+            raise SystemExit("porelo-forge-gate: connection failed") from None
+
+
+if __name__ == "__main__":
+    main()

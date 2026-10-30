@@ -48,7 +48,7 @@ these steps too. Each step below says which of theirs follows it.
 ## Before you start
 
 - Laptop A is your own computer, where you are host admin. The project admin `walkadmin` works from a VM of its own,
-  its laptop `walklaptop`, as michi decided: one laptop holds one VPN identity per host. Laptop B is the account
+  its laptop `walklaptop`. One laptop holds one VPN identity per host. Laptop B is the account
   `walkdev` on test-ubuntu-vm, the developer `walkdev`. Walk 23 says how to prepare walkadmin's VM and laptop B.
 - Every command below runs **on laptop A, in your own account, in Claude with `!`**. The scripts ask for nothing.
   They lie in `~/.porelo/handover/porelo-host/6/` on laptop A.

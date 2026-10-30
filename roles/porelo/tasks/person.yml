@@ -7,7 +7,7 @@
     group: root
     mode: "0700"
 
-- name: person | Allow people to set their own forge password and sync their project
+- name: person | Allow people to sync their project
   ansible.builtin.copy:
     src: "{{ role_path }}/files/porelo-host-person.sudoers"
     dest: /etc/sudoers.d/porelo-host-person

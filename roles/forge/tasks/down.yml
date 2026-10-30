@@ -6,32 +6,44 @@
     state: absent
 
 # Down takes the forge off the host and keeps nothing: its volumes, the API token, the runner's registration and the
-# CA go with the accounts' linger, so nothing of the forge starts again at the next boot. The next up migrates anew.
-- name: down | Read which HTTPS units up installed
+# settings go with the accounts' linger, so nothing of the forge starts again at boot. The next up migrates anew.
+- name: down | Read which gate sockets up installed
   ansible.builtin.stat:
     path: "/etc/systemd/system/{{ item }}"
-  loop: [porelo-forge-https.socket, porelo-forge-https.service]
-  register: __forge_down_https_units
+  loop: [porelo-forge-web.socket, porelo-forge-git.socket, porelo-forge-https.socket, porelo-forge-https.service]
+  register: __forge_down_gate_units
 
-- name: down | Stop and disable the HTTPS socket and proxy before Forgejo
+- name: down | Stop and disable the gate sockets before Forgejo
   ansible.builtin.systemd_service:
     name: "{{ item['item'] }}"
     state: stopped
     enabled: false
-  loop: "{{ __forge_down_https_units['results'] | selectattr('stat.exists') | list }}"
+  loop: "{{ __forge_down_gate_units['results'] | selectattr('stat.exists') | list }}"
   loop_control:
     label: "{{ item['item'] }}"
 
-- name: down | Remove both HTTPS units
+- name: down | Stop active gate connections
+  ansible.builtin.command:
+    argv: [systemctl, stop, "porelo-forge-web@*.service", "porelo-forge-git@*.service"]
+  changed_when: true
+  when: __forge_down_gate_units['results'] | selectattr('stat.exists') | list | length > 0
+
+- name: down | Remove the gate units
   ansible.builtin.file:
     path: "/etc/systemd/system/{{ item }}"
     state: absent
-  loop: [porelo-forge-https.socket, porelo-forge-https.service]
+  loop:
+    - porelo-forge-web.socket
+    - porelo-forge-git.socket
+    - porelo-forge-web@.service
+    - porelo-forge-git@.service
+    - porelo-forge-https.socket
+    - porelo-forge-https.service
 
-- name: down | Reload systemd after removing the HTTPS units
+- name: down | Reload systemd after removing the gate units
   ansible.builtin.systemd_service:
     daemon_reload: true
-  when: __forge_down_https_units['results'] | selectattr('stat.exists') | list | length > 0
+  when: __forge_down_gate_units['results'] | selectattr('stat.exists') | list | length > 0
 
 - name: down | Read which of the forge's accounts up made
   ansible.builtin.command:
@@ -86,9 +98,9 @@
   loop_control:
     label: "{{ item.item }}"
 
-- name: down | Remove the host's CA and the agents' token directory for the forge
+- name: down | Remove the forge's settings and agents' token directory
   ansible.builtin.file:
-    path: "{{ __forge_ca_dir }}"
+    path: "{{ __forge_state_dir }}"
     state: absent
   no_log: true
 
@@ -97,6 +109,7 @@
     path: "{{ item }}"
     state: absent
   loop:
+    - /usr/local/libexec/porelo-forge-gate
     - /usr/local/sbin/porelo-host-push
     - /usr/local/sbin/porelo-host-forge-password
     - /usr/local/sbin/porelo-host-project
