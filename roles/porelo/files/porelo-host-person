@@ -15,7 +15,8 @@ porelo-host-peers/*.conf at wg-porelo startup.
 
 sync <project> runs for root or sudo -n from <project>'s unlocked recorded admin.
 It copies the admin's plain private project.bundle and access.bundle into a fresh
-0700 directory under /run/porelo-host/sync/, verifies them through porelo project
+0700 directory under /run/porelo-host/sync/, after removing what a sync that was
+stopped or killed left there, verifies them through porelo project
 verify --json under a DynamicUser unit without home or network, checks host:
 against this host's VPN network, wg-porelo public key and forge/ca.pem DER
 SHA-256, validates the whole developer diff before acting, reconciles accounts,
@@ -1228,6 +1229,15 @@ class Host:
         sync_root = self.path("/run/porelo-host/sync")
         self.directories(sync_root)
         self.check(sync_root, 73, required=True, directory=True, mode=0o700)
+        # Every call holds forge.conf's lock, so whatever is here was left by a sync stopped before its finally ran.
+        try:
+            for left in sync_root.iterdir():
+                if stat.S_ISDIR(left.lstat().st_mode):
+                    shutil.rmtree(left)
+                else:
+                    left.unlink()
+        except OSError:
+            refuse("cannot remove what an earlier sync left in /run/porelo-host/sync", 73)
         try:
             temp_dir = Path(tempfile.mkdtemp(prefix=f"{project}.", dir=sync_root))
             os.chown(temp_dir, self.owner, self.group)

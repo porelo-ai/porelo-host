@@ -1277,6 +1277,7 @@ def sync_host(host, monkeypatch):
         verify_exit=0,
         verify_stderr="",
         verify_calls=[],
+        staged=None,
         forge_requests=[],
         teams={
             "alpha": [
@@ -1299,6 +1300,7 @@ def sync_host(host, monkeypatch):
             host.calls.append(args)
             host.events.append(args)
             state.verify_calls.append(args)
+            state.staged = sorted(p.name for p in host.path("/run/porelo-host/sync").iterdir())
             assert "--pipe" in args and "--wait" in args and "--quiet" in args and "--collect" in args
             assert "DynamicUser=yes" in args
             assert "PrivateNetwork=yes" in args
@@ -1627,6 +1629,49 @@ def test_sync_refuses_when_porelo_verify_rejects_an_unknown_signer_and_cleans_te
     assert snapshot(host.path("/etc")) == before_etc
     assert state.forge_requests == []
     assert list(host.path("/run/porelo-host/sync").iterdir()) == []
+
+
+def leave_a_stopped_syncs_copies(host):
+    """What a sync killed before its finally leaves: a staged directory, a file and links, made the test's own way."""
+    sync_root = host.path("/run/porelo-host/sync")
+    sync_root.mkdir(parents=True, exist_ok=True)
+    for directory, mode in ((host.path("/run"), 0o755), (sync_root.parent, 0o755), (sync_root, 0o700)):
+        directory.chmod(mode)
+    left = sync_root / "other.k1ll3d"
+    left.mkdir(mode=0o700)
+    (left / "project.bundle").write_bytes(b"other:project.bundle")
+    (left / "inside_link").symlink_to(host.path("/etc/porelo-host"))
+    (sync_root / "stray").write_bytes(b"")
+    (sync_root / "link").symlink_to(host.path("/etc/porelo-host"))
+    return sync_root
+
+
+def test_sync_removes_bundle_copies_a_stopped_sync_left_before_staging_its_own(sync_host, capsys):
+    """Prevent a sync killed before its cleanup from leaving copied bundles in /run for good."""
+    host, state = sync_host
+    capsys.readouterr()
+    sync_root = leave_a_stopped_syncs_copies(host)
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    assert len(state.staged) == 1 and state.staged[0].startswith("alpha."), "only its own copies while verify runs"
+    assert list(sync_root.iterdir()) == []
+    assert host.path("/etc/porelo-host/forge.conf").is_file(), "a link left there is removed, never followed"
+
+
+def test_sync_refuses_with_73_when_a_stopped_syncs_copies_cannot_be_removed(sync_host, capsys, monkeypatch):
+    """Prevent a sync from verifying beside copies it could not remove."""
+    host, state = sync_host
+    capsys.readouterr()
+    leave_a_stopped_syncs_copies(host)
+
+    def cannot(path, *args, **kwargs):
+        raise PermissionError(13, "denied", str(path))
+
+    monkeypatch.setattr(host.factory.__globals__["shutil"], "rmtree", cannot)
+    assert host.invoke("sync", "alpha", data=b"") == 73
+    output = capsys.readouterr()
+    assert not output.out
+    assert output.err == "porelo-host-person: cannot remove what an earlier sync left in /run/porelo-host/sync\n"
+    assert state.verify_calls == []
 
 
 @pytest.mark.parametrize(
