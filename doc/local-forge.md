@@ -171,7 +171,7 @@ Every refusal goes to stderr as `porelo-host-project: <words>`, with no success 
 | `69` | A needed dependency or setting is missing, unavailable or not root's, including a caller who is not root |
 | `73` | A directory, record, temporary file or command output cannot be written or removed |
 
-## Keeping a project's developers in step
+## Keeping a project's persons in step
 
 `/usr/local/sbin/porelo-host-person` manages host people under the exclusive flock on `/etc/porelo-host/forge.conf`,
 with the same refusal prefix (`porelo-host-person: <words>` on stderr) and exit codes (`64`, `65`, `69`, `73`). Root
@@ -180,7 +180,11 @@ project's unlocked recorded admin (`sudo -n /usr/local/sbin/porelo-host-person s
 `%porelo-people` in `/etc/sudoers.d/porelo-host-person` and checked by the helper against `SUDO_USER` and `admin=` in
 `/etc/porelo-host/projects/<project>.conf`) calls `sync <project>`.
 
-`porelo-host-person sync <project>` reconciles the project's developers with its signed bundles, once the
+`add` takes the person's one current key from the applied registry and accepts no credential input on stdin.
+Logins match `[a-z][a-z0-9-]{0,31}` and cannot be `porelo` or start with `porelo-`. A purged login is permanently
+refused through root's mode `0600` `/etc/porelo-host/people/purged`, including on a later registry intake.
+
+`porelo-host-person sync <project>` reconciles the project's persons with its signed bundles, once the
 [applied registry](#the-hosts-state-taken-from-the-registry) names the project for its recorded admin:
 
 1. Root traverses `<admin home>/.local/share/porelo-host/setup/<project>/` without following symlinks, requires
@@ -191,27 +195,34 @@ project's unlocked recorded admin (`sudo -n /usr/local/sbin/porelo-host-person s
    for both copied bundles. Verification pins `signed_by=` from the project record on the first run and the recorded
    `signer=` keys thereafter, passing `--since` and `--access-since` once commits are recorded. A nonzero exit refuses
    with `65` and Porelo's stderr words.
-3. `access.yml`'s `host:` block must match this host's VPN `network`, live `wg-porelo` `wireguard_public_key` and
-   `ca_sha256` (the 64-digit lowercase hex SHA-256 of the DER certificate in `/etc/porelo-host/forge/ca.pem`), or
-   `sync` refuses (`65`) naming every differing field.
-4. When both verified commit IDs equal the project record's `commit=` and `access_commit=`, `sync` changes nothing and
-   answers with `"unchanged":true`. Otherwise it checks the entire diff against `/etc/porelo-host/people/`, host
-   accounts and groups before changing anything: an invalid user name, a system or unrecorded account, an existing
-   group name for a new user, a locked person listed again (who must be purged first), or an SSH key, WireGuard key or
-   VPN address outside the network, reserved or held by another person refuses the whole run (`65`) naming every
-   offending entry. `forge_login` in the verified JSON is ignored; the person's host login is their local forge login.
-5. Unchanged laptops keep their recorded names; newly added laptops receive the lowest free `l1`, `l2`, … name on that
-   person's record. A listed developer with no record is admitted with `member=<project> developer` (host account,
-   VPN-restricted SSH keys, WireGuard peers, local forge identities and Matrix machine token). An existing unlocked
-   person receives `member=<project> developer` without a second account, with added laptops admitted and dropped
-   laptops removed individually from `/etc/ssh/authorized_keys/<user>` and WireGuard. A person no longer listed loses
-   `member=<project> developer` and is locked only when no membership remains; `member=hand` and
-   `member=<project> project-admin` are never changed by `sync`.
-6. The organization's `developers` team on the local forge is brought to the listed developers' host logins; if that
-   team is missing, `sync` refuses (`65`) naming `developers` and `"run bring first"` before changing people or records.
+3. The verified `persons` list supplies `login`, `ssh`, `expires`, `revoked`, `role`, `hosts` and `locked`.
+   The helper validates names, keys, expiries and membership shapes. A purged login is refused alone while other
+   changes continue. The access file's old host CA values are not read. Project verification keys remain trust anchors
+   for the bundles; they grant no commit-signing authority.
+4. The person record holds ordered `member=` lines, `locked=`, `ssh=` and `expires=`, with an optional `reason=` for
+   a host, membership or key lock. Each admitted person's one card key replaces
+   `/etc/ssh/authorized_keys/<login>`, with `expiry-time` when the card expires. There are no device names or VPN
+   fields. `porelo-people` contains exactly the admitted logins that the host has not locked.
+5. A project's lock, revocation, expired card or removal takes the person out of that project's memberships,
+   forge teams, Matrix rooms and signers. Other memberships, the account, sessions and tokens stay.
+   An unlocked verified membership restores that project's access. A host lock, the current key in the host KRL,
+   registry revocation or removal of the last membership locks the account, ends sessions and deletes forge tokens.
+   A project cannot undo a host lock. A membership-only lock can be undone by a verified membership.
+6. Forgejo reconciliation uses its private socket API. Persons join `Owners` or `developers` by their verified role;
+   gate and legacy agent identities join `developers`. Removal reaches every team in that organization and leaves
+   other organizations alone. Matrix reconciliation runs the transport as `porelo-matrix`, sending the project's
+   active logins on stdin. Missing verified `admins` means no room administrators. Even unchanged bundle commits
+   reconcile access again, so a failed service change can be retried.
 7. `/etc/porelo-host/projects/<project>.conf` is updated atomically with `commit=`, `access_commit=` and the verified
    `signer=` lines, and stdout prints one compact JSON line:
-   `{"project":"<project>","commit":"<commit>","access_commit":"<access_commit>","added":[...],"dropped":[...],"laptops_added":["<user>/<laptop>",...],"laptops_dropped":["<user>/<laptop>",...],"unchanged":false}`.
+   `project`, `commit`, `access_commit`, `added`, `dropped`, `refused` and `unchanged` fields.
+
+Each project's `/etc/porelo-host/signers/<project>.allowed` is root-owned mode `0644`, in a mode `0755` directory.
+It lists only that project's unlocked persons: a plain key for the login and a `cert-authority` line restricted to
+the `git` namespace and `task:*` principals. A replaced key remains with `valid-before` bounded by replacement time
+and the old card's expiry. Locked or removed persons have no lines in that project. Private `.json` history files
+retain the keys needed for later reconciliation. The `task:<task>` principal is the host certificate API's current
+convention; further principal and namespace conventions still require agreement with the certificate producer.
 
 ## The host's state taken from the registry
 

@@ -32,9 +32,11 @@ command supplies API scopes with no repository selector. Repository write access
 forge identity by its teams; the gate must restrict use to the repository certified for the task. A token scope alone
 does not provide that gate restriction. The pinned server's additional token restriction options remain unverified.
 
-Registry revocation deletes every token of the person's forge users after recording the applied state. An API failure
-is reported and the next registry intake retries it. Lock, last-membership removal and purge retain their existing
-all-token revocation paths. Lock and purge also remove legacy token delivery directories without following links.
+Registry revocation locks the account, ends its sessions and deletes every token of the person's forge users after
+recording the applied state. An API failure is reported and the next registry intake retries it. A failed service
+revocation leaves the local record locked, so a project sync cannot restore host access. Lock, last-membership removal
+and purge retain their all-token revocation paths. Lock and purge remove legacy token delivery directories without
+following links.
 
 The collection's gate setup and bring still use their earlier vault and runtime-file credential paths. Their migration
 to this API, removal of the identities stop and its Molecule callers, and the Porelo task-start consumer are pending.

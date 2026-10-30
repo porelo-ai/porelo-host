@@ -1,6 +1,6 @@
 ---
 # Start of down: refuse before anything is stopped while any person's record still holds a membership. Only names and
-# memberships leave the reader; laptop keys stay in root's 0600 records.
+# memberships leave the reader; card keys stay in root's 0600 records.
 - name: people | Read the memberships still held in the people directory
   ansible.builtin.command:
     argv:
@@ -11,7 +11,7 @@
         import json, os, re, stat, sys
         directory = sys.argv[1]
         owner = os.geteuid()
-        user_re = re.compile(r"[a-z][a-z0-9-]{0,30}\Z")
+        user_re = re.compile(r"(?!porelo(?:-|$))[a-z][a-z0-9-]{0,31}\Z")
         proj_re = re.compile(r"[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?\Z")
         def fail(words):
             print(words, file=sys.stderr)
@@ -34,6 +34,12 @@
             fail(f"{directory} is not a private directory of root's alone")
         holders = []
         for name in sorted(os.listdir(directory)):
+            if name == "purged":
+                path = os.path.join(directory, name)
+                fst = os.lstat(path)
+                if not stat.S_ISREG(fst.st_mode) or fst.st_uid != owner or stat.S_IMODE(fst.st_mode) != 0o600:
+                    fail("the purged list is not a private plain file of root's alone")
+                continue
             if not name.endswith(".conf") or not user_re.match(name[:-5]):
                 fail("the people directory holds an unknown record")
             user = name[:-5]
@@ -70,7 +76,14 @@
                 if (
                     len(lines) < index + 2
                     or lines[index] not in ("locked=false", "locked=true")
-                    or any(not line.startswith("laptop=") or len(line) <= 7 for line in lines[index + 1 :])
+                    or not (
+                        all(line.startswith("laptop=") and len(line) > 7 for line in lines[index + 1 :])
+                        or (len(lines) in (index + 3, index + 4)
+                            and lines[index + 1].startswith("ssh=")
+                            and lines[index + 2].startswith("expires=")
+                            and (len(lines) == index + 3 or lines[index + 3] in
+                                 ("reason=host", "reason=membership", "reason=key")))
+                    )
                 ):
                     fail(f"the record for {user} is malformed")
             if members:

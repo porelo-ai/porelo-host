@@ -10,7 +10,9 @@ bare `porelo-host-person registry` (checked to the host admin pinned in `/etc/po
 verified registry state lands in `/etc/porelo-host/registry/applied.json`; see
 [the host's state taken from the registry](../../doc/local-forge.md#the-hosts-state-taken-from-the-registry));
 `/etc/porelo-host/people/<user>.conf` records each person's `member=hand` and `member=<project> project-admin|developer`
-memberships, `locked=` state and `laptop=` entries. `tasks_from: people` runs at the start of `down` and refuses before
+memberships, `locked=` state, the one card's `ssh=` key and `expires=`, with an optional lock `reason=`.
+`add` reads the current card from the registry and accepts no credential input on stdin. `tasks_from: people`
+runs at the start of `down` and refuses before
 anything is stopped while any record in `/etc/porelo-host/people/` holds a membership, naming each person and their
 memberships with `"Take the project off"` and `"Purge"`.
 
@@ -67,5 +69,14 @@ GPL-3.0-or-later.
 SSH policy and initial key/KRL installation belong to `base`. The person helper creates
 `/run/porelo-host/people/<login>` (0700, owned by the person) and a per-person tmpfiles rule at admission;
 lock and purge remove both. Lock terminates sessions and stops the user manager even if a service hook refuses.
-The verified registry reader supplies key/expiry and host-wide revocation inputs through the callable methods
-in [SSH access](../../doc/ssh.md). Legacy laptop records remain readable without configuring VPN peers.
+Registry intake applies card keys and expiries, rebuilds the KRL and locks revoked accounts. Project sync applies
+verified person roles and locks to that project's forge teams, Matrix rooms and allowed signers. Other projects,
+sessions and tokens stay until a host lock or last-membership removal. A project can restore a membership-only lock;
+it cannot undo a host lock. `porelo-people` holds exactly unlocked admitted logins. Purge permanently records the login
+in root's `0600` `/etc/porelo-host/people/purged` and refuses later admission.
+
+Allowed signers live in `/etc/porelo-host/signers/<project>.allowed` (root-owned `0644`): each unlocked person has
+a plain-key line and a task CA line restricted to namespace `git` and principals `task:*`. Rotation keeps the old key
+with `valid-before` for history. Project signing keys remain verification anchors and are never commit signers.
+See [person synchronization](../../doc/local-forge.md#keeping-a-projects-persons-in-step) and
+[SSH access](../../doc/ssh.md). Device records are refused by the person helper.

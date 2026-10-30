@@ -32,3 +32,26 @@ Their access per project follows the project's access file, their access to the 
 
 - a project lock removes only that project's teams, rooms and signer lines; a host lock or the current key in the KRL
   ends the account's sessions and tokens, an older key in the KRL does not; signers are per project.
+
+## Plan
+
+- Replace device intake in `roles/porelo/files/porelo-host-person` with verified card records (`ssh`, `expires`),
+  project roles and locks. Keep registry and project verification in their existing isolated units; keep project
+  bundle trust anchors separate from commit signers. Reject reserved logins and permanently retain purged logins.
+- Reconcile only the affected project's forge teams through the private socket and its Matrix room membership
+  through the service-account transport. Retain an applied person roster for retry and host-wide revocation.
+  Reuse account, session and token revocation for host locks, current-key revocation and last-membership removal.
+  Record failed host locks as locked so project sync cannot restore their access.
+- Publish root's project-local allowed signers and private rotation history under `/etc/porelo-host/signers/`.
+  Restrict task CA lines to namespace `git` and principals `task:*`; bound historical keys by replacement time and
+  the old card expiry. Keep the project helper and teardown guard compatible with the new person records.
+- Red first in `tests/unit/roles/test_porelo_host_person_cards.py`: project-local locks and restoration, host locks,
+  current versus old KRL keys, signer isolation and history, purge refusal, expiry and removal of device intake.
+  Retain account, teardown and registry guards in `test_porelo_host_person.py`, use its Forgejo API fake for all-team
+  removal, and migrate the certificate suite's card records. Update the role and local-forge documentation.
+
+## To be checked
+
+- Confirm the Matrix transport's project membership invocation and task signer namespace convention with their
+  producers; the host unit tests use fakes for those boundaries.
+- Run the pinned container checks, document checks and local VM workflow, and obtain independent review.

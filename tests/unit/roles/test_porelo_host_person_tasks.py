@@ -167,8 +167,7 @@ def write(root, name, text, mode=0o600):
 
 
 def record(locked=False):
-    wireguard = base64.b64encode(bytes([7]) * 32).decode()
-    return f"member=hand\nlocked={str(locked).lower()}\nlaptop=l1 {fixture_key(7)} {wireguard} 10.73.7.3\n"
+    return f"member=hand\nlocked={str(locked).lower()}\nssh={fixture_key(7)}\nexpires=\n"
 
 
 @pytest.fixture

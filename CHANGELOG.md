@@ -13,12 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Unix socket; each local Git transfer uses a private root network namespace and a credential pipe, with no host TCP
   listener, local CA or vault token. Migration stays in the person's account and obtains its local token on demand.
 
+- Host persons come from verified cards with one SSH key and optional expiry. Project roles and locks reconcile
+  forge teams, Matrix rooms and project-local allowed signers; other projects and sessions stay. Host locks,
+  current-key revocation and last-membership removal end sessions and revoke forge tokens. Purged logins cannot
+  return. Replaced signer keys remain bounded to their historical validity.
 - SSH on port 22 is the public entry point. Root-owned key files, an atomically published KRL, private person
   return-socket directories and forwarding restrictions replace VPN access. Lock ends sessions and the user manager;
   the registry reader can supply card keys, expiries and host-wide revocations through the person helper.
 
 ### Removed
 
+- Device records, per-device credentials and addresses, and credential stdin for person admission. Project sync no
+  longer reads access-file host CA values or grants commit-signing authority to the project's verification key.
 - The VPN role and the WireGuard stop. Up and down remove a legacy WireGuard interface and its files.
 
 ### Added
@@ -47,11 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the `porelo-people` sudoers rule, copies the admin's plain private `project.bundle` and `access.bundle` into a
   root-only `/run/porelo-host/sync/` directory and verifies them through `porelo project verify --json` in a
   `DynamicUser` transient unit without home or network against the project's pinned signing keys and last applied
-  commits. It checks `access.yml`'s `host:` block against the host's CA
-  certificate digest, validates the whole developer diff before changing anything, reconciles `<project> developer`
-  memberships and per-laptop SSH keys (preserving `hand` and `project-admin` memberships and locking a
-  dropped developer only when no membership remains), updates the organization's `developers` team on the local forge,
-  and records `commit=`, `access_commit=` and `signer=` lines in `/etc/porelo-host/projects/<project>.conf`.
+  commits. Verified persons determine project memberships, SSH card keys, forge teams, Matrix rooms and allowed
+  signers; removal locks an account when its last membership ends. Sync records `commit=`, `access_commit=` and
+  bundle-verification `signer=` lines in `/etc/porelo-host/projects/<project>.conf`.
 - `porelo-host-project` registers a project for a recorded person, with its pinned SSH Ed25519 signing key, forge
   organization and package-only publisher. Removal checks every repository's commits against the central forge
   before deleting its repositories, packages, organization, publisher and root-only record.
