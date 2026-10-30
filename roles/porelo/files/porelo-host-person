@@ -564,9 +564,15 @@ class Host:
             status = directory.lstat()
         except FileNotFoundError:
             return directory
+        try:
+            uid = pwd.getpwnam(user).pw_uid
+        except KeyError:
+            if private:
+                refuse("a required service or person account is missing", 69)
+            uid = None
         if (
             not stat.S_ISDIR(status.st_mode)
-            or status.st_uid != self.account(user).pw_uid
+            or (uid is not None and status.st_uid != self.account(user).pw_uid)
             or (private and stat.S_IMODE(status.st_mode) != 0o700)
         ):
             refuse("the forge token delivery directory is not a private directory of the person's", 73)
@@ -735,7 +741,6 @@ class Host:
     def forge_lock(self, user):
         """Prohibit all the person's logins and delete every token, the host's or not."""
         config = self.forge_configuration(user)
-        self.forge_tokens_directory(user, private=False)
         errors = []
         try:
             self.remove_forge_tokens(user)
@@ -1013,6 +1018,13 @@ class Host:
 
     def lock(self, user, record, porelo):
         """Remove access first; task-stop failure cannot prevent account revocation."""
+        try:
+            uid = self.uid(user)
+        except KeyError:
+            uid = None
+        self.require(["gpasswd"] + ([] if uid is None else ["loginctl", "systemctl", "usermod"])
+                     + (["runuser", "porelo"] if porelo and uid is not None else []))
+        self.prepare_services(user, "lock")
         authorized = self.path(f"/etc/ssh/authorized_keys/{user}")
         self.check(authorized, 73)
         authorized.unlink(missing_ok=True)
@@ -1030,10 +1042,6 @@ class Host:
                 self.hooks[name](user)
             except Refusal as error:
                 errors.append(error)
-        try:
-            uid = self.uid(user)
-        except KeyError:
-            uid = None
         if porelo and uid is not None:
             self.command(self.porelo(user, "task", "stop", "--all"), required=False)
         # Without linger or a session logind may already have let the person go, and knows nobody to end.
@@ -1452,9 +1460,18 @@ class Host:
             # A revocation holds even in an entry refused for its key, its expiry or a repeat.
             if item.get("revoked") is True:
                 revoked.add(login)
+            if login in seen:
+                refused.append(f"{name}: named twice")
+                continue
+            seen.add(login)
+            if valid_ssh_key(item.get("ssh")) and (item["ssh"] in keys or any(
+                    other != login and record["ssh"] == item["ssh"] for other, record in records.items())):
+                refused.append(f"{name}: the key belongs to another person")
+                continue
             if login in self.purged():
                 refused.append(f"{name}: purged on this host and never admitted again")
                 if item.get("revoked") is True and valid_ssh_key(item.get("ssh")):
+                    keys[item["ssh"]] = login
                     persons.append({"login": login, "ssh": item["ssh"], "expires": None, "revoked": True})
                 continue
             try:
@@ -1462,19 +1479,12 @@ class Host:
             except Refusal:
                 refused.append(f"{name}: invalid expiry")
                 continue
-            if login in seen:
-                refused.append(f"{name}: named twice")
-                continue
-            seen.add(login)
             if (
                 not valid_ssh_key(item.get("ssh"))
                 or not (item.get("expires") is None or isinstance(item.get("expires"), str))
                 or type(item.get("revoked")) is not bool
             ):
                 refused.append(f"{name}: invalid key, expiry or revocation")
-            elif (item["ssh"] in keys or any(
-                    other != login and record["ssh"] == item["ssh"] for other, record in records.items())):
-                refused.append(f"{name}: the key belongs to another person")
             elif login in previous_revoked and not item["revoked"]:
                 refused.append(f"{name}: revoked on this host and never admitted again")
             else:
@@ -1720,6 +1730,7 @@ class Host:
             refuse("verified access names no persons list", 65)
         host_name = self.setting("/etc/porelo-host/forge.conf", "host")
         desired, seen, keys, refused = {}, set(), set(), []
+        deferred = set()
         purged = self.purged()
         _, registry = self.applied_registry()
         registry_people = {item["login"]: item for item in registry["persons"]}
@@ -1749,6 +1760,7 @@ class Host:
                 continue
             if any(entry.get(field) != current.get(field) for field in ("login", "ssh", "expires")):
                 refused.append(f"{user}: card key or expiry does not match the host's applied registry")
+                deferred.add(user)
                 continue
             if entry.get("revoked") is True:
                 refused.append(f"{user}: project card is revoked")
@@ -1781,7 +1793,7 @@ class Host:
             desired[user] = entry
         affected = {user for user, rec in records.items()
                     if any(m != "hand" and m.split()[0] == project for m in rec["members"])}
-        added, dropped = sorted(set(desired) - affected), sorted(affected - set(desired))
+        added, dropped = sorted(set(desired) - affected), sorted(affected - set(desired) - deferred)
         groups = self.groups if self.groups is not None else {entry.gr_name for entry in grp.getgrall()}
         for user, entry in desired.items():
             card = {key: entry.get(key) for key in ("ssh", "expires")}
@@ -1819,8 +1831,26 @@ class Host:
         active = {user: entry for user, entry in desired.items() if not records[user]["locked"]}
         people_path = self.path(f"/etc/porelo-host/projects/{project}.people.json")
         self.check(people_path, 73)
+        if deferred & affected and people_path.exists():
+            self.check(people_path, mode=0o600)
+            try:
+                previous_people = json.loads(self.read(people_path))
+            except ValueError:
+                refuse("the project's membership record is malformed", 65)
+            if not isinstance(previous_people, dict):
+                refuse("the project's membership record is malformed", 65)
+            for user in sorted(deferred & affected):
+                if records[user]["locked"] or user not in previous_people:
+                    continue
+                entry = previous_people[user]
+                if (not isinstance(entry, dict) or entry.get("role") not in ("project-admin", "developer")
+                        or not valid_ssh_key(entry.get("ssh"))):
+                    refuse("the project's membership record is malformed", 65)
+                self.card_expiry(entry.get("expires"))
+                active[user] = entry
         self.write(people_path, json.dumps(active) + "\n", 0o600)
-        self.project_signers(project, active)
+        self.project_signers(project, active,
+                             preserve={user for user in deferred & affected if not records[user]["locked"]})
         errors = []
         for apply in (lambda: self.forge_project_apply(project, admin, active),
                       lambda: self.matrix_members(project, sorted(active)),
@@ -1849,6 +1879,7 @@ class Host:
         for user in sorted(current - desired):
             if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", user):
                 refuse("porelo-people holds an invalid login", 65)
+            self.require(["gpasswd"])
             self.command(["gpasswd", "--delete", user, "porelo-people"])
         groups = self.groups if self.groups is not None else {entry.gr_name for entry in grp.getgrall()}
         for user in sorted(desired - current):
@@ -1924,7 +1955,7 @@ class Host:
                 self.forge_api(opener, base, token, "PATCH", identity, 200,
                                {"login_name": identity, "source_id": 0, "prohibit_login": False})
 
-    def project_signers(self, project, persons):
+    def project_signers(self, project, persons, preserve=()):
         """Publish project-local person keys and task CAs, bounding replaced keys to past signatures."""
         state = self.path(f"/etc/porelo-host/signers/{project}.json")
         self.check(state, mode=0o600)
@@ -1936,6 +1967,11 @@ class Host:
                 or not isinstance(previous.get("history"), list)):
             refuse("the project's signer history is malformed", 65)
         current = {user: {"ssh": entry["ssh"], "expires": entry.get("expires")} for user, entry in persons.items()}
+        for user in preserve:
+            if user in previous["current"]:
+                current[user] = previous["current"][user]
+            else:
+                current.pop(user, None)
         history = previous["history"]
         before = self.now().strftime("%Y%m%d%H%M%SZ")
         for user, card in previous["current"].items():
@@ -2306,10 +2342,8 @@ class Host:
                 self.add(user, card, groups, self.next_range(self.subids("subuid")),
                          self.next_range(self.subids("subgid")))
                 return {"person": user, "role": "project-admin"}
-            if uid is None and not record["locked"]:
-                refuse("the unlocked person has no account", 65)
             self.targets(user)
-            programs = [] if record["locked"] else ["loginctl", "usermod", "systemctl"]
+            programs = ["gpasswd"] + ([] if uid is None else ["loginctl", "usermod", "systemctl"])
             porelo = self.available("porelo")
             if porelo and uid is not None:
                 programs.append("runuser")
@@ -2323,8 +2357,6 @@ class Host:
                 if uid is not None:
                     programs.extend(["loginctl", "systemctl", "userdel"])
             self.require(programs)
-            if not record["locked"]:
-                self.prepare_services(user, verb)
             if verb == "lock":
                 record["reason"] = "host"
                 self.lock(user, record, porelo)

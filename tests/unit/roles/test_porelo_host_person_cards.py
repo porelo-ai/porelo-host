@@ -27,7 +27,7 @@ def cards(tmp_path, monkeypatch):
     host.now = lambda: datetime.datetime(2026, 10, 30, tzinfo=datetime.timezone.utc)
     calls = []
     host.runner = lambda args, input=None: (calls.append((args, input)) or subprocess.CompletedProcess(args, 0, "", ""))
-    host.commands = {"usermod", "loginctl", "systemctl", "runuser", "porelo", "systemd-run"}
+    host.commands = {"gpasswd", "usermod", "loginctl", "systemctl", "runuser", "porelo", "systemd-run"}
     monkeypatch.setattr(
         scope["pwd"],
         "getpwnam",
@@ -247,8 +247,11 @@ def test_expired_or_revoked_project_card_loses_only_its_project(cards):
     """Prevent expired project access from retaining teams without letting it lock another project."""
     for change in ({"expires": "2000-01-01"}, {"revoked": True}):
         cards.reply["persons"][1] = person("alice", 2)
+        registry_card(cards, cards.reply["persons"][1])
         sync(cards)
         cards.reply["persons"][1].update(change)
+        if "expires" in change:
+            registry_card(cards, cards.reply["persons"][1])
         sync(cards)
         assert cards.host.records()["alice"]["members"] == ["beta developer"]
         assert not cards.host.records()["alice"]["locked"]
@@ -617,3 +620,133 @@ def test_missing_passwd_account_does_not_crash_locked_record_recovery(cards, mon
     assert not any(
         isinstance(args, list) and args[0] in ("usermod", "loginctl", "systemctl", "runuser") for args, _ in cards.calls
     )
+
+
+@pytest.mark.parametrize("verb", ["lock", "purge"])
+@pytest.mark.parametrize("locked", [False, True])
+def test_missing_account_with_runtime_still_allows_revocation(cards, monkeypatch, verb, locked):
+    """Prevent leftover runtime directories from blocking revocation after account deletion."""
+    host = cards.host
+    host.admit_runtime("alice")
+    record = host.records()["alice"]
+    record["locked"] = locked
+    host.record("alice", record)
+    host.accounts.pop("alice")
+    lookup = cards.scope["pwd"].getpwnam
+
+    def passwd(user):
+        if user == "alice":
+            raise KeyError(user)
+        return lookup(user)
+
+    monkeypatch.setattr(cards.scope["pwd"], "getpwnam", passwd)
+    host.execute([verb, "alice"], None)
+    assert not host.path("/run/porelo-host/people/alice").exists()
+    assert ("forge_lock", ("alice",)) in cards.calls
+    assert ("matrix_expel_revoke", ("alice",)) in cards.calls
+    assert ("alice" not in host.records()) == (verb == "purge")
+    if verb == "lock":
+        assert host.records()["alice"]["locked"]
+
+
+@pytest.mark.parametrize("other", ["record", "entry", "later-entry", "duplicate"])
+def test_purged_revocations_cannot_steal_keys_or_repeat_logins(cards, other):
+    """Prevent a purged login from revoking another person's key or sharing its revoked key."""
+    host = cards.host
+    host.write(host.path("/etc/porelo-host/people/purged"), "carol\n", 0o600)
+    entries = {
+        "record": [person("carol", 2, revoked=True)],
+        "entry": [person("dan", 7), person("carol", 7, revoked=True)],
+        "later-entry": [person("carol", 7, revoked=True), person("dan", 7)],
+        "duplicate": [person("carol", 7, revoked=True), person("carol", 8, revoked=True)],
+    }[other]
+    refused = []
+    persons, revoked = host.registry_persons(entries, None, refused)
+    if other == "record":
+        assert persons == []
+        keys = []
+        host.write_krl = lambda values: keys.extend(values)
+        host.apply_registry_cards(persons, revoked, host.records())
+        assert ssh_key(2) not in keys
+        assert not host.records()["alice"]["locked"]
+    else:
+        assert len(persons) == 1
+        assert persons[0]["login"] == ("dan" if other == "entry" else "carol")
+    assert any(("named twice" if other == "duplicate" else "key belongs to another person") in r for r in refused)
+
+
+@pytest.mark.parametrize("field,value", [("ssh", ssh_key(7)), ("expires", "2027-01-01")])
+@pytest.mark.parametrize("user", ["ada", "alice"])
+def test_lagging_bundle_preserves_membership_and_signers_until_matching_card(cards, field, value, user):
+    """Prevent registry rotation from locking a sole-project admin or losing signer history."""
+    host = cards.host
+    sync(cards)
+    record = host.records()[user]
+    record["members"] = ["alpha project-admin" if user == "ada" else "alpha developer"]
+    host.record(user, record)
+    original = dict(record)
+    state = host.path("/etc/porelo-host/signers/alpha.json")
+    before = json.loads(state.read_text())
+    entry = next(p for p in cards.reply["persons"] if p["login"] == user)
+    registry_card(cards, dict(entry, **{field: value}))
+    record[field] = value
+    host.record(user, record)
+    answer = sync(cards)
+    assert user not in answer["dropped"]
+    assert host.records()[user]["members"] == original["members"]
+    assert not host.records()[user]["locked"]
+    assert json.loads(state.read_text())["current"][user] == before["current"][user]
+    assert any(user in r and "does not match" in r for r in answer["refused"])
+    entry[field] = value
+    sync(cards)
+    after = json.loads(state.read_text())
+    assert after["current"][user][field] == value
+    if field == "ssh":
+        assert any(item["login"] == user and item["ssh"] == original["ssh"] for item in after["history"])
+
+
+@pytest.mark.parametrize("verb", ["lock", "purge", "direct-lock"])
+@pytest.mark.parametrize("program", ["gpasswd", "loginctl", "usermod", "systemctl"])
+def test_retried_lock_requires_every_executable_before_changes(cards, verb, program):
+    """Prevent a lock retry from executing an unchecked or missing privileged program."""
+    host = cards.host
+    host.commands.update({"gpasswd", "userdel"})
+    host.commands.discard("porelo")
+    record = host.records()["alice"]
+    record["locked"] = True
+    host.record("alice", record)
+    host.commands.remove(program)
+    with pytest.raises(cards.scope["Refusal"], match=program):
+        if verb == "direct-lock":
+            host.lock("alice", record, False)
+        else:
+            host.execute([verb, "alice"], None)
+    assert cards.calls == []
+
+
+@pytest.mark.parametrize("membership_state", ["ahead", "missing"])
+def test_lagging_bundle_preserves_signers_after_partial_publication(cards, membership_state):
+    """Prevent a failed sync's membership state from replacing or deleting deferred signer keys."""
+    host = cards.host
+    sync(cards)
+    state = host.path("/etc/porelo-host/signers/alpha.json")
+    before = json.loads(state.read_text())
+    publish = host.project_signers
+
+    def failed_publication(*args, **kwargs):
+        raise cards.scope["Refusal"]("signer publication failed", 73)
+
+    host.project_signers = failed_publication
+    cards.reply["persons"][1]["ssh"] = ssh_key(7)
+    registry_card(cards, cards.reply["persons"][1])
+    with pytest.raises(cards.scope["Refusal"], match="signer publication failed"):
+        sync(cards)
+    host.project_signers = publish
+    if membership_state == "missing":
+        host.path("/etc/porelo-host/projects/alpha.people.json").unlink()
+    registry_card(cards, dict(cards.reply["persons"][1], ssh=ssh_key(8)))
+    answer = sync(cards)
+    after = json.loads(state.read_text())
+    assert any("alice" in r and "does not match" in r for r in answer["refused"])
+    assert after["current"]["alice"] == before["current"]["alice"]
+    assert after["history"] == before["history"]

@@ -22,7 +22,7 @@ def host(tmp_path):
     host.account = lambda user: SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid())
     host.accounts = {"alice": 1001}
     host.runner = lambda args, **kwargs: subprocess.run(args, capture_output=True, text=True, **kwargs)
-    host.commands = {"ssh-keygen", "loginctl", "systemctl"}
+    host.commands = {"ssh-keygen", "loginctl", "systemctl", "usermod", "gpasswd"}
     return host
 
 

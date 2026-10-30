@@ -492,3 +492,34 @@ def test_forge_team_pages_accept_existing_forge_login_characters(services, monke
     replies = iter([rows, []])
     monkeypatch.setattr(services.host, "forge_api", lambda *args: next(replies))
     assert services.host.forge_pages(None, "", ADMIN_TOKEN, "teams/1/members", "login") == rows
+
+
+@pytest.mark.parametrize("linked", [False, True])
+def test_missing_person_account_does_not_skip_forge_revocation(services, linked, tmp_path):
+    """Prevent missing passwd entries or unsafe runtime paths from retaining Forgejo credentials."""
+    host = services.host
+    directory = token_file(services).parent
+    host.directories(directory.parent)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "keep"
+    sentinel.write_text("untouched")
+    if linked:
+        directory.symlink_to(outside)
+    else:
+        directory.mkdir(mode=0o700)
+        (directory / "leftover").write_text("runtime")
+    services.entries.pop("alice")
+    services.recorder.users = dict.fromkeys(IDENTITIES, False)
+    services.recorder.tokens = {user: [1, 2] for user in IDENTITIES}
+    if linked:
+        with pytest.raises(services.scope["Refusal"]):
+            host.forge_lock("alice")
+        assert directory.is_symlink()
+    else:
+        host.targets("alice")
+        host.forge_lock("alice")
+        assert not directory.exists()
+    assert services.recorder.users == dict.fromkeys(IDENTITIES, True)
+    assert services.recorder.tokens == dict.fromkeys(IDENTITIES, [])
+    assert sentinel.read_text() == "untouched"
