@@ -1,8 +1,8 @@
 """Two projects brought by their own admins, one developer with two laptops in both, joined, taken off.
 
 Runs as root on the Molecule VM with -I. It prints one JSON line of facts, never a secret; on a failure it prints
-only the stage, the line, the exception's class, an HTTP code or exit status and, for a host tool or a playbook, the
-tail of its own output with every recorded secret redacted.
+only the stage, the line, the exception's class, an HTTP code or exit status and, for a host tool, its own refusal
+line, which names no secret; for a playbook only the name of its last task.
 """
 
 import base64
@@ -80,6 +80,15 @@ def record_output(run):
         handle.write(run.stdout + run.stderr)
 
 
+def said(name, done):
+    """What a failed command may show: a host tool's refusal line, or a playbook's last task name, never output."""
+    if name.startswith("/usr/local/sbin/porelo-host-"):
+        lines = redact(done.stderr).strip().splitlines()
+        return lines[-1][:300] if lines else None
+    tasks = [line for line in done.stdout.splitlines() if line.startswith("TASK [")]
+    return tasks[-1][:300] if tasks else None
+
+
 def run(argv, stdin="", user=None, check=True, keep=True):
     """Run as root or as a person in their own account, keeping the output for the leak scan."""
     cwd = "/"
@@ -106,7 +115,7 @@ def run(argv, stdin="", user=None, check=True, keep=True):
         record_output(done)
     if check and done.returncode != 0:
         name = next((part for part in argv if part.startswith(("/usr/local/", "porelo"))), argv[0])
-        raise Refused(name, done.returncode, redact((done.stdout + "\n" + done.stderr)[-1500:]))
+        raise Refused(name, done.returncode, said(name, done))
     return done
 
 
@@ -386,7 +395,7 @@ central_token = secret(
     )
 )
 if not re.fullmatch(r"[0-9a-f]{40}", central_token):
-    raise SystemExit("no central token")
+    raise RuntimeError("no central token")
 central = {}
 for project in PROJECTS:
     org = f"central-{project}"
@@ -400,7 +409,7 @@ for project in PROJECTS:
         )[0],
     ]
     if statuses != [201, 201, 201]:
-        raise SystemExit(f"central {org} answered {statuses}")
+        raise RuntimeError(f"central {org} answered {statuses}")
     central[project] = f"{BASE}/{org}/app.git"
 
 STAGE["name"] = "bundles"
@@ -480,7 +489,9 @@ facts["peers_after_drop"] = sum(wg in wg_peers() for _, wg in laptops)
 
 STAGE["name"] = "leak scan"
 captured = OUT.read_text(encoding="utf-8")
-journal = subprocess.run(["/usr/bin/journalctl", "--no-pager", "-q", "-o", "cat"], capture_output=True, text=True)
+journal = subprocess.run(
+    ["/usr/bin/journalctl", "--no-pager", "-q", "-o", "cat"], capture_output=True, text=True, check=True
+)
 facts["patterns"] = len(PATTERNS)
 facts["leaks"] = sum(item in captured or item in journal.stdout for item in PATTERNS)
 print(json.dumps(facts))
