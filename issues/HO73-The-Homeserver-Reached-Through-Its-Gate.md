@@ -32,7 +32,7 @@ Git on the central forge, every service on the host behind a Unix socket.
 
 - `roles/matrix/templates/porelo-matrix-gate.socket.j2` and `porelo-matrix-gate@.service.j2` as Matrix gave them
   (`ListenStream=/run/porelo-matrix/client.sock`, `Accept=yes`, `SocketUser`/`User` porelo-matrix,
-  `SocketGroup=porelo-people`, `SocketMode=0660`, `ExecStart=/usr/bin/porelo-message-transport-matrix gate`,
+  `SocketGroup=porelo-people`, `SocketMode=0660`, `ExecStart=/usr/libexec/porelo/transports/porelo-message-transport-matrix gate`,
   `StandardInput=socket`, `NoNewPrivileges=yes`), written by `roles/matrix/tasks/main.yml`.
 - Tuwunel's settings (the `Add the homeserver's port…` task): `unix_socket_path` under `$XDG_RUNTIME_DIR/porelo-matrix/`
   (0700), `unix_socket_perms = 600`, no `port`/`address`; then `porelo-message-transport-matrix gate --prepare` once as

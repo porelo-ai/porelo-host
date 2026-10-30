@@ -14,7 +14,7 @@ argument_specs:
         description: The homeserver's server name, matrix.<porelo_host_name>.porelo.internal by default.
       matrix_transport_command:
         type: path
-        default: /usr/bin/porelo-message-transport-matrix
+        default: /usr/libexec/porelo/transports/porelo-message-transport-matrix
         description: The Matrix transport command providing gate --prepare.
   down:
     short_description: The gate, homeserver, admins files and service account removed.

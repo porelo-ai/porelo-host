@@ -85,12 +85,12 @@ class Services:
                         self.scopes[user] = args[args.index("--scopes") + 1]
                         answer = PERSON_TOKEN + "\n"
             return subprocess.CompletedProcess(args, 0, answer, "")
-        if "/usr/bin/porelo-message-transport-matrix" in args:
+        if "/usr/libexec/porelo/transports/porelo-message-transport-matrix" in args:
             assert args[2] == "porelo-matrix"
             assert "XDG_RUNTIME_DIR=/run/user/1201" in args
             assert any(arg.startswith("HOME=") for arg in args)
             assert input is None
-            assert args[-3:] == ["/usr/bin/porelo-message-transport-matrix", "expel", "alice"]
+            assert args[-3:] == ["/usr/libexec/porelo/transports/porelo-message-transport-matrix", "expel", "alice"]
             return subprocess.CompletedProcess(args, self.transport_exit, "", self.transport_error)
         assert args[2] == "alice"
         offset = args.index("/bin/sh")
@@ -136,7 +136,7 @@ def services(tmp_path, monkeypatch):
     scope = namespace["Host"].__init__.__globals__
     host = namespace["Host"]()
     host.root, host.owner, host.group = tmp_path, os.getuid(), os.getgid()
-    host.commands = {"runuser", "podman", "/usr/bin/porelo-message-transport-matrix"}
+    host.commands = {"runuser", "podman", "/usr/libexec/porelo/transports/porelo-message-transport-matrix"}
     home = tmp_path / "home" / "alice"
     home.mkdir(parents=True)
     host.home, host.env = home, namespace["ENV"]
@@ -370,7 +370,11 @@ def test_matrix_expels_the_login_as_the_service_account_without_credentials(serv
     """Prevent purge leaving person and task accounts active or issuing a reusable host credential."""
     hook(services, "matrix_expel_revoke", "alice")
     assert len(services.recorder.calls) == 1
-    assert services.recorder.calls[0][-3:] == ["/usr/bin/porelo-message-transport-matrix", "expel", "alice"]
+    assert services.recorder.calls[0][-3:] == [
+        "/usr/libexec/porelo/transports/porelo-message-transport-matrix",
+        "expel",
+        "alice",
+    ]
     assert services.recorder.inputs == [None]
     assert not services.host.path("/etc/porelo-host/matrix-admin.token").exists()
 

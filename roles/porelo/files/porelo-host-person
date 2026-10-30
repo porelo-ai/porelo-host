@@ -84,7 +84,7 @@ import urllib.request
 import uuid
 
 # Installed by the transport package, shared with the system socket unit.
-TRANSPORT = "/usr/bin/porelo-message-transport-matrix"
+TRANSPORT = "/usr/libexec/porelo/transports/porelo-message-transport-matrix"
 ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
 USER = r"(?!porelo(?:-|$))[a-z][a-z0-9-]{0,31}"
 PROJECT = r"[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?"

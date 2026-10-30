@@ -2,4 +2,4 @@
 # The shared homeserver and gate run as the same service account.
 matrix_account: porelo-matrix
 matrix_name: "matrix.{{ porelo_host_name }}.porelo.internal"
-matrix_transport_command: /usr/bin/porelo-message-transport-matrix
+matrix_transport_command: /usr/libexec/porelo/transports/porelo-message-transport-matrix

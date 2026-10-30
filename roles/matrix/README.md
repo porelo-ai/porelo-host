@@ -6,7 +6,7 @@ ranges, and delegated cgroup controllers checked by `porelo.host.base`'s `contro
 or project reaches this role.
 
 The system socket `/run/porelo-matrix/client.sock` belongs to `matrix_account:porelo-people`, mode `0660`, in a
-`0755` directory. Each connection starts `/usr/bin/porelo-message-transport-matrix gate` as `matrix_account`, with
+`0755` directory. Each connection starts `/usr/libexec/porelo/transports/porelo-message-transport-matrix gate` as `matrix_account`, with
 the connected socket on standard input and `NoNewPrivileges=yes`. The gate program belongs to the transport package.
 Task containers must never receive this socket: its peer credentials would identify the person running the container.
 
@@ -34,7 +34,7 @@ transport must provide `gate`, `gate --prepare` and `expel <login>`.
 |---|---|---|
 | `matrix_account` | `porelo-matrix` | The account the host's Matrix homeserver runs as. |
 | `matrix_name` | `matrix.{{ porelo_host_name }}.porelo.internal` | The homeserver's server name. |
-| `matrix_transport_command` | `/usr/bin/porelo-message-transport-matrix` | The transport command used for gate preparation. The socket unit uses the package's fixed `/usr/bin` path. |
+| `matrix_transport_command` | `/usr/libexec/porelo/transports/porelo-message-transport-matrix` | The transport command used for gate preparation. The socket unit uses the package's fixed `/usr/bin` path. |
 
 ## License
 

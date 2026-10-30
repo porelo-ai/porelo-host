@@ -8,7 +8,7 @@ After=user@{{ __matrix_uid }}.service
 [Service]
 User={{ matrix_account }}
 Environment=XDG_RUNTIME_DIR=/run/user/{{ __matrix_uid }}
-ExecStart=/usr/bin/porelo-message-transport-matrix gate
+ExecStart=/usr/libexec/porelo/transports/porelo-message-transport-matrix gate
 StandardInput=socket
 StandardOutput=socket
 NoNewPrivileges=yes

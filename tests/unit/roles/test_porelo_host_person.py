@@ -89,7 +89,7 @@ class Host:
             "runuser",
             "porelo",
             "systemctl",
-            "/usr/bin/porelo-message-transport-matrix",
+            "/usr/libexec/porelo/transports/porelo-message-transport-matrix",
         }
         self.euid = 0
         self.fail = None
@@ -1142,8 +1142,10 @@ def test_project_lock_removes_person_gate_and_agent_only_from_its_teams(sync_hos
     assert state.teams["alpha"][2]["members"] == []
     assert set(state.teams["beta"][1]["members"]) == {"alice", "porelo-alice", "codex-alice"}
     assert not any(event[0] in ("forge_lock", "matrix_expel_revoke") for event in host.events)
-    transport = [call for call in host.calls if "/usr/bin/porelo-message-transport-matrix" in call]
-    assert transport[-1][-3:] == ["/usr/bin/porelo-message-transport-matrix", "members", "alpha"]
+    transport = [
+        call for call in host.calls if "/usr/libexec/porelo/transports/porelo-message-transport-matrix" in call
+    ]
+    assert transport[-1][-3:] == ["/usr/libexec/porelo/transports/porelo-message-transport-matrix", "members", "alpha"]
     person["locked"] = False
     assert host.invoke("sync", "alpha", data=b"") == 0
     assert set(state.teams["alpha"][1]["members"]) == {"alice", "porelo-alice", "codex-alice"}

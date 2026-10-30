@@ -32,7 +32,7 @@ def test_gate_socket_and_service_keep_the_peer_boundary():
         assert setting in socket.splitlines()
     for setting in (
         "User=porelo-matrix",
-        "ExecStart=/usr/bin/porelo-message-transport-matrix gate",
+        "ExecStart=/usr/libexec/porelo/transports/porelo-message-transport-matrix gate",
         "StandardInput=socket",
         "NoNewPrivileges=yes",
         "PartOf=porelo-matrix-gate.socket",
@@ -114,3 +114,12 @@ def test_old_tcp_units_are_stopped_only_where_they_were_published():
     ]:
         old = {"stdout_lines": listing}
         assert [item for item in retired["loop"] if condition(item=item, __matrix_old_units=old)] == acted, listing
+
+
+def test_the_transport_is_called_where_its_package_installs_it():
+    """Prevent the gate, its preparation and expel calling a program the transport package does not ship."""
+    shipped = "/usr/libexec/porelo/transports/porelo-message-transport-matrix"
+    defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())
+    assert defaults["matrix_transport_command"] == shipped
+    for path in [ROOT / "roles/porelo/files/porelo-host-person", *ROLE.glob("templates/*.j2")]:
+        assert "/usr/bin/porelo-message-transport-matrix" not in path.read_text(), path

@@ -3,7 +3,7 @@
 The host's shared homeserver runs as `porelo-matrix`. The Matrix transport package supplies the gate program;
 the collection installs its system socket and service units. `/run/porelo-matrix/client.sock` is owned by
 `porelo-matrix:porelo-people`, mode `0660`, in a `0755` directory. Every accepted connection starts
-`/usr/bin/porelo-message-transport-matrix gate` as `porelo-matrix`, with the connected socket on standard input.
+`/usr/libexec/porelo/transports/porelo-message-transport-matrix gate` as `porelo-matrix`, with the connected socket on standard input.
 The gate authenticates the connecting login through Unix peer credentials.
 
 Task containers must never receive `client.sock` or its containing directory. A container's connection would be
@@ -24,7 +24,7 @@ sync repairs a missing file without replaying developer admission. `porelo-host-
 only that project's admins file. Links and paths writable by other accounts are refused.
 
 Admission issues no Matrix machine or registration credential. Lock and purge run
-`/usr/bin/porelo-message-transport-matrix expel <login>` as `porelo-matrix`; purge repeats expulsion after an earlier
+`/usr/libexec/porelo/transports/porelo-message-transport-matrix expel <login>` as `porelo-matrix`; purge repeats expulsion after an earlier
 lock. A transport failure stops removal without repeating captured output. The transport owns deactivation of the
 person's `@<login>` and task `@*.<login>` accounts.
 
