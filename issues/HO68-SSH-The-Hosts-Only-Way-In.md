@@ -24,11 +24,12 @@ machine. Nothing else on the host answers from outside, and nothing on it listen
   from the card's `expires`, no `from=`. `up` seeds the host admin's file from the key pinned at setup, and a host
   admin's handover replaces it, so the host admin is never locked out before or between syncs.
 - `RevokedKeys /etc/ssh/porelo-revoked.krl`: seeded at install as a valid empty KRL made by `ssh-keygen -k`, since sshd
-  refuses every key on a missing or broken one, and rebuilt by the sync into a new file renamed into place. Only a
-  revocation by the host admin's registry state, or a key change signed by the key's own owner, enters it; a project
-  admin's revocation of a lost key takes that key out of that project alone ([HO75](README.md#ho75)), and the pinned
-  host admin's key is never revoked by a project.
-- A host lock, a revocation in the KRL, or the removal of a person's last membership also ends their running sessions
+  refuses every key on a missing or broken one, and rebuilt by the sync into a new file renamed into place. Only a key
+  the host admin's registry state names lost or stolen enters it, since a KRL refuses a key at every date: a key its
+  owner replaced cleanly leaves `authorized_keys` and stays a `valid-before` signer for history, never in the KRL. A
+  project admin's revocation of a lost key takes that key out of that project alone ([HO75](README.md#ho75)), and the
+  pinned host admin's key is never revoked by a project.
+- A host lock, the person's current key in the KRL, or the removal of their last membership also ends their sessions
   and user manager (`loginctl terminate-user`), so no open tunnel outlives it.
 - Unix sockets are guarded by their file and directory modes alone, and the docs say so: the daemon's socket in
   `/run/user/<uid>/porelo` (0700), the services' sockets as their issues set them.

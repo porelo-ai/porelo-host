@@ -20,7 +20,8 @@ Git on the central forge, every service on the host behind a Unix socket.
 - `web.sock`: it maps the caller's uid from `SO_PEERCRED` to a login admitted in `porelo-people`, never root or a
   service account, and sets the reverse-proxy user header only on a request with no `Authorization` header. It refuses
   Forgejo's routes that set a password or make tokens (`/user/settings/account`, `/user/settings/applications` and their
-  API twins), so a person can neither give themselves a password nor mint a token the host does not track.
+  API twins), so a person can neither give themselves a password nor mint a token the host does not track; Forgejo's
+  OAuth2 provider is off (`[oauth2] ENABLED=false`), so no grant mints one either.
 - `git.sock`, for Git over HTTP and the API: it sets no user header, removes `Cookie`, answers a request without
   credentials with `401` and `WWW-Authenticate: Basic`, as Git expects before it asks its credential helper, and passes
   a request with a token on, Basic or `token`, to Forgejo.

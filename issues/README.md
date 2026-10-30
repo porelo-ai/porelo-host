@@ -56,7 +56,7 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho70"></a>[HO70](HO70-The-Hosts-State-Taken-From-The-Registry.md) | M | Porelo's registry verify | The host takes its project admins and projects from the signed registry state the host admin brings, verified by Porelo. |
-| <a id="ho75"></a>[HO75](HO75-The-Persons-Taken-From-Their-Cards.md) | M | [HO68](#ho68), [HO70](#ho70); Porelo's verify answering persons by key | Persons, keys, signers and per-project locks come from the cards and access files, with no laptop anywhere. |
+| <a id="ho75"></a>[HO75](HO75-The-Persons-Taken-From-Their-Cards.md) | M | [HO68](#ho68), [HO70](#ho70), [HO71](#ho71); Porelo's verify answering persons by key | Persons, keys, signers and per-project locks come from the cards and access files, with no laptop anywhere. |
 | <a id="ho71"></a>[HO71](HO71-A-Task-Recorded-And-Given-Its-Forge-Token-By-The-Host.md) | M | [HO70](#ho70); Porelo's task certificate check | Every forge token on the host is made there and goes with its person or task; each task's certificate is recorded at its start. |
 | <a id="ho76"></a>[HO76](HO76-Each-Push-Judged-When-It-Arrives.md) | M | [HO71](#ho71), [HO75](#ho75); Porelo's commit verify against signers and KRL | The first accepted push of a commit to the host's forge judges it against the signers and KRL in force, and records the verdict. |
 | <a id="ho74"></a>[HO74](HO74-Every-Role-Tested-Without-The-VPN.md) | M | [HO63](#ho63), [HO68](#ho68), [HO69](#ho69), [HO70](#ho70), [HO71](#ho71), [HO72](#ho72), [HO73](#ho73), [HO75](#ho75), [HO76](#ho76) | Molecule shows every role over SSH alone, and the guide's checks pass on a rented host. |

@@ -3,7 +3,8 @@
 **Status:** Accepted (operator, 2026-10-30, with the project's one-click joining).
 **Size:** M - laptops out of `porelo-host-person`, persons, keys, signers and per-project locks from the verify answers,
 with unit tests and a VM run; measured M median 63 min, from three M builds (47, 63, 75).
-**Blocked by:** [HO68](README.md#ho68), [HO70](README.md#ho70); Porelo's verify answering persons by key.
+**Blocked by:** [HO68](README.md#ho68), [HO70](README.md#ho70), [HO71](README.md#ho71); Porelo's verify answering
+persons by key.
 
 Part of the project's decision that a person joins with one click: one SSH key per person, no VPN, the state signed in
 Git on the central forge, every service on the host behind a Unix socket.
@@ -16,7 +17,7 @@ Their access per project follows the project's access file, their access to the 
 - A project admin's lock, or a removal from one project while others stay: the person, their agent forge user and their
   task accounts leave that project's forge teams and, through the Matrix transport's `members`, its rooms; their signer
   lines leave that project. The account, its sessions, tokens and other projects stay; Let back in undoes it.
-- A host admin's lock, a key revoked in the KRL, or the removal of the last membership locks the host account at once,
+- A host admin's lock, the person's current key in the KRL, or the removal of the last membership locks the account,
   and [HO68](README.md#ho68) and [HO71](README.md#ho71) end its sessions and tokens. The vault's reset after a lost key
   is Porelo's.
 - Each project's allowed signers on the host's forge are its own unlocked persons: each with a plain-key line for their
@@ -29,5 +30,5 @@ Their access per project follows the project's access file, their access to the 
 
 ## Tests
 
-- a project lock removes only that project's teams, rooms and signer lines; a host lock or a revoked key ends the
-  account's sessions and tokens; signers are per project.
+- a project lock removes only that project's teams, rooms and signer lines; a host lock or the current key in the KRL
+  ends the account's sessions and tokens, an older key in the KRL does not; signers are per project.
