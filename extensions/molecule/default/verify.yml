@@ -917,3 +917,7 @@
     - name: Verify the gathered push run by a project admin and a developer with their own tokens
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/push.yml"
       when: verify_forge == 'on'
+
+    - name: Verify two projects brought by their own admins, sharing a developer with two laptops, and taken off
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/two_projects.yml"
+      when: verify_forge == 'on'

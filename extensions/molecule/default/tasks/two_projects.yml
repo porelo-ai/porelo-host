@@ -1,0 +1,82 @@
+---
+# Two projects on one host, each brought by its own project admin, and one developer with two laptops in both,
+# admitted by each bring's sync, joining each in his own account, then taken off: one project removed, then dropped
+# from the other's signed access file. Remove leaves his push config and Porelo's follow of the removed project in his
+# account until remove takes the person's push and sync away; nothing here asks for them gone.
+- name: Verify two brought projects sharing a developer with two laptops, joined and taken off
+  block:
+    - name: Copy the two projects' act and its cleanup onto the host
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/files/{{ item }}"
+        dest: "/root/{{ item }}"
+        owner: root
+        group: root
+        mode: "0600"
+      loop: [two_projects.py, two_projects_cleanup.py]
+
+    - name: Bring gamma-one as ga and gamma-two as gb, join both as gd, remove gamma-two and drop gd from gamma-one
+      ansible.builtin.command:
+        argv: [python3, -I, /root/two_projects.py]
+      register: verify_two_act
+      changed_when: true
+      no_log: true
+
+    - name: Assert gd holds one account and both memberships, joined both, kept gamma-one and was locked when dropped
+      ansible.builtin.assert:
+        that:
+          - "'failed_at' not in verify_two"
+          - verify_two.accounts == ['gd']
+          - >-
+            verify_two.records['after gamma-one']
+            is match('^member=gamma-one developer\nlocked=false\nlaptop=l1 .*\nlaptop=l2 ')
+          - >-
+            verify_two.records['after gamma-two']
+            is match('^member=gamma-one developer\nmember=gamma-two developer\nlocked=false\nlaptop=l1 .*\nlaptop=l2 ')
+          - verify_two.keys_after_bring == verify_two.keys_wanted
+          - verify_two.peers_after_bring == 2
+          - ('repository app ' ~ verify_two.central['gamma-one']) in verify_two.push['gamma-one']
+          - ('repository app ' ~ verify_two.central['gamma-two']) in verify_two.push['gamma-two']
+          - verify_two.following['gamma-one'].verified
+          - verify_two.following['gamma-one'].commit == verify_two.commits['gamma-one'].project
+          - verify_two.following['gamma-two'].verified
+          - verify_two.following['gamma-two'].commit == verify_two.commits['gamma-two'].project
+          - verify_two.gamma_two_app_deleted == 204
+          - "verify_two.gamma_two_removed == {'project': 'gamma-two', 'removed': true, 'locked': []}"
+          - >-
+            verify_two.record_after_remove
+            is match('^member=gamma-one developer\nlocked=false\nlaptop=l1 .*\nlaptop=l2 ')
+          - verify_two.keys_after_remove == verify_two.keys_wanted
+          - verify_two.record_after_drop is match('^locked=true\nlaptop=')
+          - verify_two.keys_after_drop == []
+          - verify_two.peers_after_drop == 0
+          - verify_two.patterns >= 8
+          - verify_two.leaks == 0
+        fail_msg: >-
+          asked gd for one account, gamma-one then both memberships with laptops l1 and l2, both keys and peers, push
+          configs naming each central app, both projects followed at their commits, gamma-one kept after gamma-two's
+          removal and locked=true with no key or peer once dropped, and no secret in any output; got {{ verify_two }}
+      vars:
+        verify_two: "{{ verify_two_act.stdout_lines | last | from_json }}"
+  always:
+    - name: Remove gamma-one, gamma-two, their central stand-ins and reader, and purge ga, gb and gd
+      ansible.builtin.command:
+        argv: [python3, -I, /root/two_projects_cleanup.py]
+      register: verify_two_cleanup
+      changed_when: true
+      failed_when: false
+      no_log: true
+
+    - name: Remove the two projects' act and its cleanup from the host
+      ansible.builtin.file:
+        path: "/root/{{ item }}"
+        state: absent
+      loop: [two_projects.py, two_projects_cleanup.py]
+
+    - name: Assert the two projects' cleanup ran to its end
+      ansible.builtin.assert:
+        that:
+          - verify_two_cleanup.rc == 0
+          - (verify_two_cleanup.stdout_lines | last | from_json).cleaned | default(false)
+        fail_msg: >-
+          asked the two projects' cleanup to run to its end; got rc {{ verify_two_cleanup.rc }} and
+          {{ verify_two_cleanup.stdout_lines | last | default('no answer') }}
