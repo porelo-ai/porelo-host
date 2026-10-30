@@ -1,6 +1,8 @@
 # HO62 — The Forge's Own Reason For A Refused Password
 
 **Status:** Idea.
+**Replaced:** by the project's one-click joining: the forge has no password any more, so porelo-host-forge-password
+goes. Proposed to the operator as Rejected.
 
 **What must be true.** When Forgejo refuses the password `porelo-host-forge-password` sets, the helper's answer gives
 Forgejo's own reason with the status, e.g. `the forge refused walkadmin's password (400): <Forgejo's message>`, still

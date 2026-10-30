@@ -1,0 +1,24 @@
+# HO73 — The Homeserver Reached Through Its Gate
+
+**Status:** Accepted (operator, 2026-10-30, with the project's one-click joining).
+**Size:** S - the matrix role's system socket unit for the transport's gate, Tuwunel off TCP and the tokens out, with a
+VM run; measured S 54 min, from one S build only, so nearly a guess.
+**Blocked by:** porelo-message-matrix's gate.
+
+Part of the project's decision that a person joins with one click: one SSH key per person, no VPN, the state signed in
+Git on the central forge, every service on the host behind a Unix socket.
+
+**What must be true.** The host's homeserver is reached only through the Matrix transport's gate on
+`/run/porelo-matrix/client.sock`, which porelo-message-matrix brings, and by no other way from the host.
+
+- A system socket unit, `SocketUser` porelo-matrix, `SocketGroup=porelo-people`, `SocketMode=0660`, in
+  `/run/porelo-matrix/` (0755), starts the gate.
+- Tuwunel listens on a Unix socket of porelo-matrix's alone (0600); where it cannot, in a network namespace of its own
+  that only the gate reaches. Never on the host's loopback.
+- A purge runs the transport's expel for the login, so its person and task accounts are deactivated with it.
+- Goes: the homeserver's TLS, the machine and registration tokens on the host, the `matrix-token` stop.
+
+## Tests
+
+- a login outside `porelo-people` gets `EACCES` on client.sock; nothing of the homeserver listens on TCP; a purge
+  deactivates `@<login>` and `@*.<login>`.

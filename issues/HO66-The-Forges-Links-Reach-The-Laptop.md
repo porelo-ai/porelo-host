@@ -1,6 +1,8 @@
 # HO66 — The Forge's Links Reach The Laptop
 
 **Status:** Idea.
+**Replaced:** by the project's one-click joining: the forge's links follow ROOT_URL at `<host>.localhost`,
+[HO69](README.md#ho69). Proposed to the operator as Rejected.
 
 **What must be true.** Every link the host's forge gives, such as the hint after a push, opens from a developer's
 laptop through the VPN.

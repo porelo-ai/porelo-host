@@ -1,6 +1,8 @@
 # HO22 — Ssh Reached Only Through The VPN Once It Is Up
 
 **Status:** Accepted.
+**Replaced:** by the project's one-click joining: the host's only open port is SSH, with no VPN. Proposed to the
+operator as Rejected.
 
 **What must be true.** Once `up` has brought the VPN up, the host's ssh answers only on the VPN's address; its public
 address offers the VPN's UDP port alone. Before that, ssh on the public address is the one way in, since `up` needs it

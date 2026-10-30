@@ -1,6 +1,8 @@
 # HO67 — The Walk's Host Checks Hold On A Rented Host
 
 **Status:** Idea.
+**Replaced:** by the project's one-click joining: the walk's VPN and token checks go; the guide is rewritten in
+[HO74](README.md#ho74). Proposed to the operator as Rejected.
 
 **What must be true.** The guide's host checks (`doc/guides/6-host.md` and its scripts) pass on a rented host
 without hand patches, and the host runs the porelo-host the walk names.
