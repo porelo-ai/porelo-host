@@ -1,15 +1,5 @@
 ---
-# The account the host's shared Matrix homeserver runs as, with its own linger and subordinate ids.
+# The shared homeserver and gate run as the same service account.
 matrix_account: porelo-matrix
-
-# The host's address inside the VPN, where the homeserver is published; the forge's and vpn's own, without its prefix.
-matrix_address: >-
-  {{ forge_address
-  | default((vpn_address | default('10.73.' ~ (porelo_host_network | string) ~ '.1/24')).split('/') | first) }}
-
-# The DNS name the homeserver's certificate carries beside that address, and the port it listens and publishes on.
 matrix_name: "matrix.{{ porelo_host_name }}.porelo.internal"
-matrix_port: 8448
-
-# The Matrix transport binary from porelo-message-transport-matrix that publishes and unpublishes the homeserver.
-matrix_transport_command: /usr/libexec/porelo/transports/porelo-message-transport-matrix
+matrix_transport_command: /usr/bin/porelo-message-transport-matrix

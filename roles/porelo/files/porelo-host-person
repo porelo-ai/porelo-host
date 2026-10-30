@@ -33,14 +33,11 @@ person's entire delivery directory without following links inside it.
 Lock prohibits all those logins and deletes all their tokens through the TLS
 admin API, trusting forge/ca.pem; its temporary admin token stays in memory.
 
-Matrix uses host= from forge.conf and machine <host>-<user>, as porelo-matrix.
-The first admin credential is atomically saved in root's 0600 matrix-admin.token;
-credentials reach commands only on stdin. The machine token is written by the
-person into private ~/.config/porelo/matrix directories, refusing links. Lock
-uses expel alone to expel accounts and revoke registration, then removes the
-person's local token. Expel answers "known": false, nothing expelled, for a
-machine the homeserver never admitted, so lock has nothing to revoke there;
-every refusal (78 or any other exit) stops the lock.
+Matrix admission stores no token. The gate authenticates the socket's peer.
+Lock and purge run the transport's expel <login> as porelo-matrix, including a
+purge after an earlier lock; a refusal stops removal. Sync publishes the verified
+admins list, one login per line, atomically in matrix/<project>.admins, root's
+0640 file in a root:porelo-matrix 0750 directory.
 
 Validation precedes changes; publication of the record is last. Command failures
 can leave partial system changes and are reported without their captured output.
@@ -77,8 +74,8 @@ import urllib.error
 import urllib.request
 import uuid
 
-# Installed by the transport's package outside every PATH, as the matrix role names it too.
-TRANSPORT = "/usr/libexec/porelo/transports/porelo-message-transport-matrix"
+# Installed by the transport package, shared with the system socket unit.
+TRANSPORT = "/usr/bin/porelo-message-transport-matrix"
 ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
 USER = r"[a-z][a-z0-9-]{0,30}"
 PROJECT = r"[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?"
@@ -263,48 +260,6 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-# This runs only as the person: a link cannot turn a root write into a home-file write.
-MATRIX_FILE = r"""
-set -eu
-case $HOME in /?*) ;; *) exit 73 ;; esac
-part=$HOME
-while [ "$part" != / ]; do
-    [ ! -L "$part" ] || exit 73
-    part=${part%/*}
-    [ -n "$part" ] || part=/
-done
-[ -d "$HOME" ] && [ ! -L "$HOME" ] || exit 73
-cd -P -- "$HOME"
-home=$PWD
-umask 077
-for d in .config porelo matrix; do
-    [ ! -L "$d" ] || exit 73
-    if [ ! -e "$d" ]; then
-        [ "$1" = write ] || exit 0
-        [ -O . ] && [ -w . ] || exit 73
-        mkdir -- "$d"
-    fi
-    [ -d "$d" ] && [ -O "$d" ] || exit 73
-    cd -P -- "$d"
-    [ "$1" != write ] || chmod 0700 .
-done
-[ "$PWD" = "$home/.config/porelo/matrix" ] || exit 73
-[ -O . ] && [ -O .. ] && [ -w . ] || exit 73
-f=host-registration-token
-[ ! -L "$f" ] && { [ ! -e "$f" ] || [ -f "$f" ]; } || exit 73
-if [ "$1" = remove ]; then
-    rm -f -- "$f"
-    exit 0
-fi
-t=$(mktemp .host-registration-token.XXXXXX)
-trap 'rm -f -- "$t"' EXIT HUP INT TERM
-cat > "$t"
-chmod 0600 "$t"
-mv -fT -- "$t" "$f"
-trap - EXIT HUP INT TERM
-"""
-
-
 class Host:
     """Root's paths and system operations, with no production configuration overrides."""
 
@@ -319,7 +274,7 @@ class Host:
         self.groups = None
         self.commands = None
         self.hooks = {
-            name: getattr(self, name) for name in ("forge_admit", "matrix_issue", "forge_lock", "matrix_expel_revoke")
+            name: getattr(self, name) for name in ("forge_admit", "forge_lock", "matrix_expel_revoke")
         }
 
     def path(self, name):
@@ -622,7 +577,6 @@ class Host:
     def prepare_services(self, user, verb):
         """Validate real hooks' settings, root paths and programs before changing host access."""
         forge = "forge_admit" if verb == "add" else "forge_lock"
-        matrix = "matrix_issue" if verb == "add" else "matrix_expel_revoke"
         if self.hooks[forge] == getattr(self, forge):
             config = self.forge_configuration(user)
             if config is not None or verb != "add":
@@ -632,8 +586,9 @@ class Host:
                     self.forge_domain()
                 else:
                     self.forge_endpoint()
-        if self.hooks[matrix] == getattr(self, matrix):
-            self.matrix_context(user)
+        if verb != "add" and self.hooks["matrix_expel_revoke"] == self.matrix_expel_revoke:
+            self.account("porelo-matrix")
+            self.require(["runuser", TRANSPORT])
 
     def forge_admit(self, user, laptops):
         """Make only missing identities and deliver their credentials for the person's own vault import."""
@@ -826,78 +781,10 @@ class Host:
         for identifier in sorted(ids):
             self.forge_api(opener, base, token, "DELETE", identity + f"/tokens/{identifier}", 204)
 
-    def matrix_context(self, user):
-        """Resolve the exact machine name and root's optional private admin credential."""
-        host = self.setting("/etc/porelo-host/forge.conf", "host")
-        if not re.fullmatch(LAPTOP, host):
-            refuse("forge.conf names no valid host", 69)
-        self.account("porelo-matrix")
-        self.require(["runuser", TRANSPORT])
-        path = self.path("/etc/porelo-host/matrix-admin.token")
-        self.check(path, mode=0o600)
-        admin = self.secret(self.read(path).removesuffix("\n")) if path.exists() else None
-        return host + "-" + user, path, admin
-
-    def secret(self, value):
-        """Accept one bounded graphic-ASCII token without ever including it in a refusal."""
-        if not isinstance(value, str) or not re.fullmatch(r"[!-~]{1,1024}", value):
-            refuse("Matrix answered no valid token", 69)
-        return value
-
-    def matrix_call(self, user, verb):
-        """Exchange JSON secrets on stdin; persist a first admin credential before using the answer."""
-        machine, path, admin = self.matrix_context(user)
-        result = self.as_account(
-            "porelo-matrix", [TRANSPORT, "machine-token", verb, machine],
-            input=json.dumps({"secrets": {"PORELO_MATRIX_ADMIN_TOKEN": admin}} if admin else {}),
-            accepted=(0, 78),
-        )
-        if result.returncode == 78:
-            message = result.stderr.strip()
-            if admin:
-                message = message.replace(admin, "[redacted]")
-            refuse(message or "Matrix refused the expelled machine", 65)
-        try:
-            answer = json.loads(result.stdout)
-        except (ValueError, UnicodeError):
-            refuse("Matrix answered no valid JSON", 69)
-        if not isinstance(answer, dict):
-            refuse("Matrix answered no machine object", 69)
-        if "account" in answer:
-            account = answer["account"]
-            if not isinstance(account, dict):
-                refuse("Matrix answered no valid admin account", 69)
-            received = self.secret(account.get("PORELO_MATRIX_ADMIN_TOKEN"))
-            self.write(path, received + "\n", 0o600)
-        if answer.get("machine") != machine:
-            refuse("Matrix answered for another machine", 69)
-        return answer
-
-    def matrix_file(self, user, action, token=None):
-        """Run the link-refusing atomic writer/remover as the person, with a token only on stdin."""
-        result = self.as_account(
-            user, ["/bin/sh", "-c", MATRIX_FILE, "matrix-token", action], input=token, accepted=(0, 73)
-        )
-        if result.returncode != 0:
-            refuse("cannot write or remove the person's Matrix token safely", 73)
-
-    def matrix_issue(self, user):
-        """Issue <host>-<user> and deliver its registration credential in the person's own home."""
-        answer = self.matrix_call(user, "issue")
-        self.matrix_file(user, "write", self.secret(answer.get("token")))
-
     def matrix_expel_revoke(self, user):
-        """Expulsion revokes registration too; only a validated answer permits local cleanup."""
-        answer = self.matrix_call(user, "expel")
-        if (
-            not isinstance(answer.get("expelled"), list)
-            or any(not isinstance(account, str) for account in answer["expelled"])
-            or type(answer.get("revoked")) is not bool
-            or type(answer.get("known")) is not bool
-            or (not answer["known"] and (answer["expelled"] or answer["revoked"]))
-        ):
-            refuse("Matrix answered no valid expulsion and revocation result", 69)
-        self.matrix_file(user, "remove")
+        """Deactivate the person's and tasks' accounts through the transport as its service account."""
+        self.require(["runuser", TRANSPORT])
+        self.as_account("porelo-matrix", [TRANSPORT, "expel", user])
 
     def targets(self, user):
         """Check all publication/removal paths without creating directories."""
@@ -1136,7 +1023,6 @@ class Host:
             0o644,
         )
         self.hooks["forge_admit"](user, laptops)
-        self.hooks["matrix_issue"](user)
         self.record(user, {"members": list(members), "locked": False, "laptops": laptops})
 
     def lock(self, user, record, porelo):
@@ -1191,7 +1077,9 @@ class Host:
 
     def purge(self, user, record, porelo, account_exists):
         """Lock before clearing the vault, deleting the account and releasing recorded IDs."""
-        if not record["locked"]:
+        if record["locked"]:
+            self.hooks["matrix_expel_revoke"](user)
+        else:
             self.lock(user, record, porelo)
         self.remove_runtime(user)
         if account_exists:
@@ -1450,6 +1338,18 @@ class Host:
                 0o644,
             )
 
+    def matrix_admins(self, path, admins, group):
+        """Publish only changed verified authorization, keeping every reader from seeing a partial list."""
+        text = "".join(user + "\n" for user in sorted(admins))
+        self.directories(path.parent)
+        os.chown(path.parent, self.owner, group)
+        path.parent.chmod(0o750)
+        if path.exists() and self.read(path) == text:
+            os.chown(path, self.owner, group)
+            path.chmod(0o640)
+            return
+        self.write(path, text, 0o640, group=group)
+
     def sync(self, project, network, reserved, records, accounts):
         """Verify signed project and access bundles, validate the complete diff and reconcile developers."""
         project_path, project_record = self.project_record(project)
@@ -1468,7 +1368,18 @@ class Host:
         self.require(["systemd-run", "porelo"])
         verified, commit, access_commit, next_signers = self.verify_bundles(project, admin, project_record)
         self.check_host_block(verified.get("host"), network)
+        admins = verified.get("admins")
+        if (
+            not isinstance(admins, list)
+            or any(not isinstance(user, str) or not re.fullmatch(USER, user) for user in admins)
+            or len(set(admins)) != len(admins)
+        ):
+            refuse("verified access names no valid admins list", 65)
+        admins_path = self.path(f"/etc/porelo-host/matrix/{project}.admins")
+        self.check(admins_path, 73)
+        matrix_group = self.account("porelo-matrix").pw_gid
         if project_record["commit"] == commit and project_record["access_commit"] == access_commit:
+            self.matrix_admins(admins_path, admins, matrix_group)
             return {
                 "project": project,
                 "commit": commit,
@@ -1624,6 +1535,7 @@ class Host:
                 self.lock(user, rec, True)
             else:
                 self.record(user, rec)
+        self.matrix_admins(admins_path, admins, matrix_group)
         self.write_project_record(project_path, project_record, commit, access_commit, next_signers)
         return {
             "project": project,

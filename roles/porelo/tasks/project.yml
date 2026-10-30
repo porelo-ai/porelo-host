@@ -110,46 +110,6 @@
     __porelo_keys_missing: "{{ __porelo_host.porelo_vault_keys | default([]) | map(attribute='name')
       | reject('in', __porelo_vault_list.stdout_lines | map('split') | map('first') | list) | list }}"
 
-# The registration token of the room's homeserver comes only on the stop's pipe, into the one path the stop writes; a
-# project naming it is never followed without it (porelo's inventory names a transport's *_file settings, paths only).
-- name: project | Stop on a project naming another path for the room's registration token
-  ansible.builtin.assert:
-    that: __porelo_matrix_token_files | reject('equalto', __porelo_matrix_token_named) | list | length == 0
-    fail_msg: >-
-      registration_token_file: the project names {{ __porelo_matrix_token_files
-      | reject('equalto', __porelo_matrix_token_named) | join(', ') }} for the room's registration token; the host keeps
-      it at {{ __porelo_matrix_token_named }} alone, so the project file must name that
-    quiet: true
-
-- name: project | Read the room's registration token and its directory, where the project names one
-  ansible.builtin.stat:
-    path: "{{ item }}"
-    get_checksum: false
-    get_mime: false
-  loop:
-    - "{{ __porelo_matrix_token_path | dirname | dirname }}"
-    - "{{ __porelo_matrix_token_path | dirname }}"
-    - "{{ __porelo_matrix_token_path }}"
-  register: __porelo_matrix_token_place
-  when: __porelo_matrix_token_files | length > 0
-
-- name: project | Stop while the project names a registration token the account does not hold, naming its place
-  ansible.builtin.assert:
-    that:
-      - __porelo_matrix_token_place.results[:2] | map(attribute='stat.isdir', default=false) | select | list
-        | length == 2
-      - __porelo_matrix_token_place.results[:2] | map(attribute='stat.mode', default='') | unique | list == ['0700']
-      - __porelo_matrix_token_place.results[2].stat.isreg | default(false)
-      - __porelo_matrix_token_place.results[2].stat.mode | default('') == '0600'
-      - __porelo_matrix_token_place.results[2].stat.size | default(0) > 0
-      - __porelo_matrix_token_place.results | map(attribute='stat.uid', default=-1) | unique | list
-        == [ansible_facts['getent_passwd'][porelo_account][1] | int]
-    fail_msg: >-
-      matrix-token: {{ __porelo_matrix_token_path }} must be the account's own plain file, mode 0600 and not empty, in
-      the account's own directories of mode 0700; give it with porelo-host-stop --stdin matrix-token and run up again
-    quiet: true
-  when: __porelo_matrix_token_files | length > 0
-
 - name: project | Ask Porelo which projects the account follows
   ansible.builtin.command:
     cmd: porelo project following --json

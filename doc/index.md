@@ -38,6 +38,9 @@ timer that runs it again for each upload, and the project's room through `porelo
 The [local forge](local-forge.md) connects task branches and independent builds to the person's merge and gathered-push
 decisions.
 
+The shared [Matrix homeserver](matrix.md) accepts clients through the Matrix transport's Unix socket gate. Project
+sync publishes its verified admins; admission needs no host registration token.
+
 Where the host runs a forge, `~/.config/porelo/ca-certificates.pem` of Porelo's account keeps the forge's CA in a
 marked block beside the person's certificates, and `~/.config/porelo/task-ca-certificates.pem` holds that CA alone;
 both are mode `0600` in the account's `0700` Porelo configuration directory. `down` removes the marked block and the

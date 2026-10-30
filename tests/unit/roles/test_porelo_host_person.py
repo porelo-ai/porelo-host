@@ -105,7 +105,7 @@ class Host:
 
         hooks = {
             name: lambda *values, name=name: hook(name, values)
-            for name in ("forge_admit", "matrix_issue", "forge_lock", "matrix_expel_revoke")
+            for name in ("forge_admit", "forge_lock", "matrix_expel_revoke")
         }
         extra = {} if sudo_user is None else {"sudo_user": sudo_user}
         return self.factory(
@@ -376,8 +376,11 @@ def test_add_orders_account_keys_peers_hooks_and_record(host, capsys):
         ["groupadd", "--system", "porelo-people"],
         ["usermod", "--append", "--groups", "kvm,libvirt,porelo-people", "alice"],
     ]
-    assert [event[0] for event in host.events[-2:]] == ["forge_admit", "matrix_issue"]
-    assert not peers.exists()
+    assert host.events[-1][0] == "forge_admit"
+    assert peers.read_text() == (
+        f"[Peer]\nPublicKey = {wg_key(1)}\nAllowedIPs = 10.73.7.3/32\n\n"
+        f"[Peer]\nPublicKey = {wg_key(2)}\nAllowedIPs = 10.73.7.4/32\n\n"
+    )
     assert record.read_text() == (
         "member=hand\nlocked=false\n"
         f"laptop=laptop {ssh_key(1)} {wg_key(1)} 10.73.7.3\n"
@@ -589,7 +592,7 @@ def test_failed_admission_never_publishes_a_record_or_command_output(host, capsy
     assert ssh_key(1) not in output.err and wg_key(1) not in output.err and "untrusted-token" not in output.err
 
 
-@pytest.mark.parametrize("hook", ["forge_admit", "matrix_issue"])
+@pytest.mark.parametrize("hook", ["forge_admit"])
 def test_a_failed_admission_after_the_account_is_locked_and_recorded_for_purge(host, capsys, hook):
     """Prevent a half-admitted account from keeping ssh and VPN access while every verb refuses it as unrecorded."""
 
@@ -985,25 +988,6 @@ def test_failed_service_revocation_still_locks_the_host_account_for_retry(host, 
     assert not capsys.readouterr().out
 
 
-def test_service_configuration_is_validated_before_creating_an_account(host, capsys):
-    """Prevent a missing Matrix machine name from leaving a newly admitted but unrecorded account."""
-    host.write("/etc/porelo-host/forge.conf", "address=10.73.7.1\nhost=invalid/host\n")
-    call = host.factory(
-        host.root,
-        host.run,
-        euid=0,
-        owner=os.getuid(),
-        accounts=host.accounts,
-        groups=host.groups,
-        commands=host.commands,
-        hooks=None,
-    )
-    assert call(["add", "alice", "--role", "project-admin"], laptop().encode()) == 69
-    assert host.calls == []
-    assert not host.path("/etc/ssh/authorized_keys/alice").exists()
-    assert not capsys.readouterr().out
-
-
 @pytest.mark.parametrize("verb", ["lock", "purge"])
 def test_teardown_removes_a_locked_persons_runtime_delivery_directory(host, capsys, monkeypatch, verb):
     """Prevent a completed or retried teardown from leaving the person's delivered credentials behind."""
@@ -1203,7 +1187,7 @@ def sync_host(host, monkeypatch):
         if user == "porelo-forge":
             return SimpleNamespace(pw_uid=1200, pw_gid=1200, pw_dir=str(host.root / "home/porelo-forge"))
         if user == "porelo-matrix":
-            return SimpleNamespace(pw_uid=1201, pw_gid=1201, pw_dir=str(host.root / "home/porelo-matrix"))
+            return SimpleNamespace(pw_uid=1201, pw_gid=os.getgid(), pw_dir=str(host.root / "home/porelo-matrix"))
         if user not in host.accounts:
             raise KeyError(user)
         return SimpleNamespace(
@@ -1250,6 +1234,7 @@ def sync_host(host, monkeypatch):
                 "signers": [SIGNER_ONE],
                 "host": host_block(),
                 "developers": {},
+                "admins": ["ada"],
                 "transports": {},
             },
             "beta": {
@@ -1260,6 +1245,7 @@ def sync_host(host, monkeypatch):
                 "signers": [SIGNER_TWO],
                 "host": host_block(),
                 "developers": {},
+                "admins": ["bo"],
                 "transports": {},
             },
         },
@@ -1408,7 +1394,6 @@ def test_sync_admits_a_developer_with_two_laptops_records_commits_and_updates_fo
     assert not host.path("/etc/wireguard/porelo-host-peers/dan.conf").exists()
     assert not any(args[0] == "wg" for args in host.calls)
     assert any(event[:2] == ["forge_admit", "dan"] for event in host.events)
-    assert ["matrix_issue", "dan"] in host.events
     assert forge_developers(state, "alpha") == ["dan"]
     assert host.path("/etc/porelo-host/projects/alpha.conf").read_text() == (
         f"admin=ada\nsigned_by={SIGNER_ONE}\npublisher=porelo-publisher-alpha\n"
@@ -1844,33 +1829,119 @@ def test_sync_via_sudo_allows_only_the_projects_unlocked_admin_and_checks_bundle
     assert not capsys.readouterr().out
 
 
-def test_person_cannot_prevent_lock_by_changing_the_return_directory_mode(host, capsys):
-    """Prevent a person's writable runtime directory mode from defeating host revocation."""
-    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+def test_sync_publishes_verified_matrix_admins_atomically(sync_host, capsys, monkeypatch):
+    """Prevent unverified or partial room-admin authorization and keep it unreadable to other people."""
+    host, state = sync_host
+    state.verify_reply["alpha"]["admins"] = ["ada", "bo"]
+    scope = host.factory.__globals__
+    replaced = []
+    original = scope["os"].replace
+
+    def replace(source, target):
+        if str(target).endswith("/matrix/alpha.admins"):
+            replaced.append(Path(source).read_text())
+        return original(source, target)
+
+    monkeypatch.setattr(scope["os"], "replace", replace)
+    assert host.invoke("sync", "alpha", data=b"") == 0
     capsys.readouterr()
-    directory = host.path("/run/porelo-host/people/alice")
-    directory.chmod(0o755)
-    host.calls.clear()
+    path = host.path("/etc/porelo-host/matrix/alpha.admins")
+    assert path.read_text() == "ada\nbo\n"
+    assert replaced == ["ada\nbo\n"]
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640
+    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o750
+    assert path.stat().st_gid == path.parent.stat().st_gid == os.getgid()
+    assert path.stat().st_uid == path.parent.stat().st_uid == os.getuid()
+    state.verify_reply["alpha"]["access_commit"] = "5" * 40
+    state.verify_reply["alpha"]["admins"] = ["bo"]
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    assert path.read_text() == "bo\n"
+
+
+@pytest.mark.parametrize("admins", [None, "ada", ["ada\nroot"], ["ada", "ada"], ["../ada"]])
+def test_sync_refuses_invalid_matrix_admins_before_changing_access(sync_host, capsys, admins):
+    """Prevent malformed verified output granting room administration or partial host access."""
+    host, state = sync_host
+    state.verify_reply["alpha"]["admins"] = admins
+    before = snapshot(host.path("/etc"))
+    assert host.invoke("sync", "alpha", data=b"") == 65
+    assert "admin" in capsys.readouterr().err
+    assert snapshot(host.path("/etc")) == before
+
+
+def test_purge_expels_the_login_even_when_already_locked(host, capsys):
+    """Prevent a prior lock from letting purge leave the person's and tasks' Matrix accounts active."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
     assert host.invoke("lock", "alice", data=b"") == 0
-    assert not host.path("/etc/ssh/authorized_keys/alice").exists()
-    assert not directory.exists()
-    assert ["loginctl", "terminate-user", "alice"] in host.calls
-    assert ["systemctl", "stop", "user@1000.service"] in host.calls
-
-
-def test_install_restores_boot_rules_for_existing_admitted_people(host, capsys):
-    """Prevent an upgrade or reboot from leaving recorded people without private return-socket directories."""
-    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    host.events.clear()
+    assert host.invoke("purge", "alice", data=b"") == 0
     capsys.readouterr()
-    directory = host.path("/run/porelo-host/people/alice")
-    directory.rmdir()
-    rule = host.path("/etc/tmpfiles.d/porelo-person-alice.conf")
-    rule.unlink()
-    assert host.invoke("restore-runtime", data=b"") == 0
-    assert json.loads(capsys.readouterr().out) == {"changed": 1}
-    assert stat.S_IMODE(directory.stat().st_mode) == 0o700
-    assert rule.read_text() == "d /run/porelo-host/people/alice 0700 alice alice -\n"
-    before = snapshot(host.root)
-    assert host.invoke("restore-runtime", data=b"") == 0
-    assert json.loads(capsys.readouterr().out) == {"changed": 0}
-    assert snapshot(host.root) == before
+    assert ["matrix_expel_revoke", "alice"] in host.events
+
+
+def test_unchanged_sync_restores_missing_matrix_authorization(sync_host, capsys):
+    """Prevent existing projects from permanently lacking their admins file after a host upgrade."""
+    host, state = sync_host
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    path = host.path("/etc/porelo-host/matrix/alpha.admins")
+    path.unlink()
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    capsys.readouterr()
+    assert path.read_text() == "ada\n"
+
+
+def test_sync_refuses_a_linked_matrix_admins_file(sync_host, capsys):
+    """Prevent a link redirecting root's publication or authorizing a different project."""
+    host, state = sync_host
+    sentinel = host.write("/etc/porelo-host/sentinel", "unchanged\n")
+    directory = host.path("/etc/porelo-host/matrix")
+    directory.mkdir(mode=0o750)
+    (directory / "alpha.admins").symlink_to(sentinel)
+    assert host.invoke("sync", "alpha", data=b"") == 73
+    assert not capsys.readouterr().out
+    assert sentinel.read_text() == "unchanged\n"
+
+
+def test_purge_keeps_the_locked_account_when_matrix_expulsion_fails(host, capsys):
+    """Prevent account deletion from hiding a failed deactivation on the homeserver."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    assert host.invoke("lock", "alice", data=b"") == 0
+    capsys.readouterr()
+
+    def unavailable(name, values):
+        if name == "matrix_expel_revoke":
+            raise host.factory.__globals__["Refusal"]("expulsion unavailable", 69)
+
+    host.hook_inspect = unavailable
+    host.calls.clear()
+    assert host.invoke("purge", "alice", data=b"") == 69
+    assert "expulsion unavailable" in capsys.readouterr().err
+    assert "alice" in host.accounts
+    assert host.path("/etc/porelo-host/people/alice.conf").exists()
+    assert host.calls == []
+
+
+def test_failed_admins_publication_keeps_the_previous_authorization_and_sync_commit(sync_host, capsys, monkeypatch):
+    """Prevent failed publication from advancing sync past an authorization update that never reached the gate."""
+    host, state = sync_host
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    capsys.readouterr()
+    record = host.path("/etc/porelo-host/projects/alpha.conf")
+    before = record.read_bytes()
+    state.verify_reply["alpha"]["access_commit"] = "5" * 40
+    state.verify_reply["alpha"]["admins"] = ["bo"]
+    scope = host.factory.__globals__
+    original = scope["os"].replace
+
+    def replace(source, target):
+        if str(target).endswith("/matrix/alpha.admins"):
+            raise OSError("publication unavailable")
+        return original(source, target)
+
+    monkeypatch.setattr(scope["os"], "replace", replace)
+    assert host.invoke("sync", "alpha", data=b"") == 73
+    assert not capsys.readouterr().out
+    assert record.read_bytes() == before
+    path = host.path("/etc/porelo-host/matrix/alpha.admins")
+    assert path.read_text() == "ada\n"
+    assert sorted(p.name for p in path.parent.iterdir()) == ["alpha.admins"]

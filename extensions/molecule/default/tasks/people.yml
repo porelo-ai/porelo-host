@@ -574,66 +574,22 @@
             verify_people_listed_users: >-
               {{ verify_people_forge_users.stdout_lines[1:] | map('split') | map(attribute=1) | list }}
 
-    - name: Read ada's Matrix directory and host-registration-token metadata
+    - name: Read whether Matrix machine and registration credentials are absent
       ansible.builtin.stat:
         path: "{{ item }}"
       loop:
-        - /home/ada/.config/porelo/matrix
         - /home/ada/.config/porelo/matrix/host-registration-token
+        - /home/bo/.config/porelo/matrix/host-registration-token
+        - /etc/porelo-host/matrix-admin.token
       register: verify_people_matrix_stats
 
-    - name: Validate Matrix registration tokens and record them for the leak scan
-      ansible.builtin.command:
-        argv:
-          - python3
-          - -c
-          - |
-            import pathlib, re
-            paths = [
-                pathlib.Path("/home/ada/.config/porelo/matrix/host-registration-token"),
-                pathlib.Path("/home/bo/.config/porelo/matrix/host-registration-token"),
-            ]
-            admin = pathlib.Path("/etc/porelo-host/matrix-admin.token")
-            if admin.exists():
-                paths.append(admin)
-            tokens = []
-            for path in paths:
-                value = path.read_text(encoding="utf-8").removesuffix("\n")
-                if not re.fullmatch(r"[!-~]{1,1024}", value):
-                    raise SystemExit(f"invalid Matrix token shape in {path}")
-                tokens.append(value)
-            with open("/root/verify-people/tokens.pat", "a", encoding="utf-8") as pat:
-                for token in tokens:
-                    pat.write(token + "\n")
-            print("recorded")
-      register: verify_people_matrix_recorded
-      changed_when: false
-      no_log: true
-
-    - name: Assert ada's ~/.config/porelo/matrix (0700) holds her host-registration-token (0600)
+    - name: Assert Matrix admission stores no machine or registration credentials
       ansible.builtin.assert:
         that:
-          - verify_people_matrix_stats.results[0].stat.isdir | default(false)
-          - verify_people_matrix_stats.results[0].stat.pw_name | default('') == 'ada'
-          - verify_people_matrix_stats.results[0].stat.gr_name | default('') == 'ada'
-          - verify_people_matrix_stats.results[0].stat.mode | default('') == '0700'
-          - verify_people_matrix_stats.results[1].stat.isreg | default(false)
-          - verify_people_matrix_stats.results[1].stat.pw_name | default('') == 'ada'
-          - verify_people_matrix_stats.results[1].stat.gr_name | default('') == 'ada'
-          - verify_people_matrix_stats.results[1].stat.mode | default('') == '0600'
-          - verify_people_matrix_stats.results[1].stat.size | default(0) > 0
-          - verify_people_matrix_recorded.stdout | trim == 'recorded'
+          - verify_people_matrix_stats.results | selectattr('stat.exists') | list | length == 0
         fail_msg: >-
-          asked for /home/ada/.config/porelo/matrix (ada:ada 0700) and non-empty host-registration-token (ada:ada 0600);
+          asked for no registration token for ada or bo and no host Matrix admin token;
           got {{ verify_people_matrix_stats.results | map(attribute='stat') | list }}
-
-    - name: Explain why live @….alpha-ada Matrix registration is skipped here
-      ansible.builtin.debug:
-        msg: >-
-          Skipping @….alpha-ada registration against the homeserver: porelo-message-transport-matrix belongs to
-          porelo-message-matrix, and the 0.5.1~snapshot.81 package installed on this build machine predates
-          machine-token and exposes no host-registration CLI call to read without guessing its contract.
-        verbosity: 0
 
     - name: Set ada's own forge password through sudo -n /usr/local/sbin/porelo-host-forge-password
       ansible.builtin.shell:
@@ -1084,14 +1040,14 @@
       changed_when: false
       no_log: true
 
-    - name: Search registered outputs, helper outputs and journalctl -b for Matrix and identity tokens with a control
+    - name: Search registered outputs, helper outputs and journalctl -b for identity tokens with a control
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
           umask 077
           work=$(mktemp -d)
           trap 'rm -rf "$work"' EXIT
-          expected_min={{ 8 if verify_forge == 'on' else 2 }}
+          expected_min=5
           count=$(wc -l < /root/verify-people/tokens.pat)
           [ "$count" -ge "$expected_min" ] || {
               echo "asked for at least $expected_min recorded tokens, got $count" >&2
@@ -1127,6 +1083,7 @@
       changed_when: false
       failed_when: false
       no_log: true
+      when: verify_forge == 'on'
 
     - name: Assert the planted token control matched and no token leaked to output or journal
       ansible.builtin.assert:
@@ -1136,8 +1093,9 @@
             verify_people_leak_scan.stdout_lines
             == ['planted: refused', 'registered: clean', 'helper: clean', 'journal: clean']
         fail_msg: >-
-          asked for no Matrix or Forgejo identity token in registered stdout/stderr, helper output or journalctl -b;
+          asked for no Forgejo identity token in registered stdout/stderr, helper output or journalctl -b;
           got rc {{ verify_people_leak_scan.rc }}: {{ verify_people_leak_scan.stderr }}
+      when: verify_forge == 'on'
 
     - name: Purge bo before side_effect runs down when the forge project tasks are skipped
       ansible.builtin.command:

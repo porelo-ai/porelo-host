@@ -93,7 +93,6 @@ with the needs as `up` names them. Standard input holds one line per secret, `<n
 | `keys` | `key <name> <key>`, one per key of the machine, none or more | `porelo vault put <name>`, as the account, once the vault is open |
 | `forge-central-token` | `forge-central-token <token>` | `porelo-host-push --migrate <project>` on a pipe, as the account, for the repositories the waiting `bring` listed; the token lies in no file |
 | `forge-certificate` | `forge-certificate <the forge's certificate, then the CA's, as PEM>` | `/etc/porelo-host/forge/forge.pem` and `ca.pem`, once every check below holds |
-| `matrix-token` | `matrix-token <token>` | `~/.config/porelo/matrix/host-registration-token` of the account, the account's own with mode `0600` in a `0700` directory, written as the account; `down` removes it |
 
 Every line is checked before any is used: a need not named, an unknown need, a line given twice, a key name other than
 letters, digits, `.`, `_` and `-`, or a value that is not base64 is refused, naming the line and never the value, and so
@@ -101,10 +100,8 @@ is a named need no line gives; only `keys` beside `vault-new` may come with no l
 is refused, as is a call not made as root. The values then go in the table's order, each decoded on a pipe into its
 user, and nothing is asked. A key the vault lacks later, or the central token, is given by another call with that need
 alone: `forge-central-token` is named only by a `bring`'s own stop, since only the running forge knows whether a
-repository is still to migrate; `up` fails with a message beginning `keys:` for a missing key, and with `matrix-token:` where the followed project names `registration_token_file` for its room and the account holds no
-such token, then the call is made and `up` runs again. The token is one line of 1 to 1024 graphic ASCII characters (`!`
-to `~`, no space, no NUL); a project naming another path than `~/.config/porelo/matrix/host-registration-token` is
-refused with a message beginning `registration_token_file:`, naming it, and no token is asked for it.
+repository is still to migrate; `up` fails with a message beginning `keys:` for a missing key. Matrix access uses
+the transport's Unix socket gate and asks for no machine or registration token at the stop.
 
 `forge-certificate` answers the request `up` made where no certificate signed by the person's CA holds for the forge;
 `porelo-host-stop --request` prints that request as one PEM block and nothing else, exit 0, or exits 65 where none
@@ -117,8 +114,7 @@ It exits 0 when every line is used, printing "The host's stop is done; run up ag
 line, with nothing used; 65 when the vault refuses a value (`vault-new`, `vault`, a key), naming it; 69 when a required
 command is missing, or `/etc/porelo-host/stop.conf`, `forge.conf`, which `up` writes, or the forge's
 waiting key, is missing, not root's alone, or names root or an unknown account; and 73 when a file cannot be written, or
-its directory or the file in its place is not root's alone or not plain (for `matrix-token`, the account's own: a
-link, or anything but a directory or plain file, on its way in the account's home).
+its directory or the file in its place is not root's alone or not plain.
 
 **The version.** `v` is the contract's version. An added field or state keeps it; a field that changes or goes away
 raises it. A reader skips a `state` it does not know, as it skips a field.

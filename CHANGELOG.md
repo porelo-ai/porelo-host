@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Matrix clients use the transport's system socket gate as `porelo-matrix`, restricted to `porelo-people`.
+  The homeserver uses a private Unix socket, with gate preparation before startup and no role-managed TLS or TCP
+  publication. Project sync atomically publishes verified room admins, project removal deletes them, and purge
+  expels the login through the transport. Admission no longer issues Matrix machine or registration tokens.
+
 - `porelo-host-person sync <project>`, callable by root or `sudo -n` by the project's unlocked recorded admin through
   the `porelo-people` sudoers rule, copies the admin's plain private `project.bundle` and `access.bundle` into a
   root-only `/run/porelo-host/sync/` directory and verifies them through `porelo project verify --json` in a

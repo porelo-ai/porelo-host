@@ -1,41 +1,25 @@
 ---
 argument_specs:
   main:
-    short_description: The host's shared Matrix homeserver under its own account, published on the VPN's address.
+    short_description: The shared Matrix homeserver reached through the transport's Unix socket gate.
     description:
-      - Run in up's second play after the VPN and Porelo's package repository.
+      - Run after Porelo's package repository is configured.
     options:
       matrix_account:
         type: str
         default: porelo-matrix
-        description: The account the host's Matrix homeserver runs as.
-      matrix_address:
-        type: str
-        description: >-
-          The host's address inside the VPN, where the homeserver is published; 10.73.<porelo_host_network>.1 by
-          default.
+        description: The account the homeserver and gate run as.
       matrix_name:
         type: str
-        description: >-
-          The DNS name the homeserver's certificate carries beside that address,
-          matrix.<porelo_host_name>.porelo.internal by default.
-      matrix_port:
-        type: int
-        default: 8448
-        description: The TCP port the homeserver listens on locally and publishes on the VPN address.
+        description: The homeserver's server name, matrix.<porelo_host_name>.porelo.internal by default.
       matrix_transport_command:
         type: path
-        default: /usr/libexec/porelo/transports/porelo-message-transport-matrix
-        description: The Matrix transport command that publishes and unpublishes the homeserver.
+        default: /usr/bin/porelo-message-transport-matrix
+        description: The Matrix transport command providing gate --prepare.
   down:
-    short_description: >-
-      The Matrix homeserver stopped and unpublished, and its account, home, linger and marked /etc/hosts name removed.
+    short_description: The gate, homeserver, admins files and service account removed.
     options:
       matrix_account:
         type: str
         default: porelo-matrix
-        description: The account the host's Matrix homeserver runs as.
-      matrix_transport_command:
-        type: path
-        default: /usr/libexec/porelo/transports/porelo-message-transport-matrix
-        description: The Matrix transport command that unpublishes the homeserver before its account is removed.
+        description: The account the homeserver and gate run as.

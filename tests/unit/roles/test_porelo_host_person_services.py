@@ -42,17 +42,6 @@ class Services:
         self.requests = []
         self.users = {}
         self.tokens = {}
-        self.issue = {
-            "machine": "host-alice",
-            "token": MATRIX_TOKEN,
-            "account": {"PORELO_MATRIX_ADMIN_TOKEN": MATRIX_ADMIN},
-        }
-        self.expulsion = {
-            "machine": "host-alice",
-            "known": True,
-            "expelled": ["@person.host-alice:matrix.example.org"],
-            "revoked": True,
-        }
         self.transport_exit = 0
         self.transport_error = "machine was expelled; choose another machine name"
         self.failure = None
@@ -96,17 +85,13 @@ class Services:
                         self.scopes[user] = args[args.index("--scopes") + 1]
                         answer = PERSON_TOKEN + "\n"
             return subprocess.CompletedProcess(args, 0, answer, "")
-        if "/usr/libexec/porelo/transports/porelo-message-transport-matrix" in args:
+        if "/usr/bin/porelo-message-transport-matrix" in args:
             assert args[2] == "porelo-matrix"
             assert "XDG_RUNTIME_DIR=/run/user/1201" in args
             assert any(arg.startswith("HOME=") for arg in args)
-            assert json.loads(input) in ({}, {"secrets": {"PORELO_MATRIX_ADMIN_TOKEN": MATRIX_ADMIN}})
-            verb, machine = args[-2:]
-            assert machine == "host-alice"
-            if self.transport_exit:
-                return subprocess.CompletedProcess(args, self.transport_exit, "", self.transport_error)
-            answer = self.issue if verb == "issue" else self.expulsion
-            return subprocess.CompletedProcess(args, 0, json.dumps(answer), "")
+            assert input is None
+            assert args[-3:] == ["/usr/bin/porelo-message-transport-matrix", "expel", "alice"]
+            return subprocess.CompletedProcess(args, self.transport_exit, "", self.transport_error)
         assert args[2] == "alice"
         offset = args.index("/bin/sh")
         environment = dict(self.host.env)
@@ -151,7 +136,7 @@ def services(tmp_path, monkeypatch):
     scope = namespace["Host"].__init__.__globals__
     host = namespace["Host"]()
     host.root, host.owner, host.group = tmp_path, os.getuid(), os.getgid()
-    host.commands = {"runuser", "podman", "/usr/libexec/porelo/transports/porelo-message-transport-matrix"}
+    host.commands = {"runuser", "podman", "/usr/bin/porelo-message-transport-matrix"}
     home = tmp_path / "home" / "alice"
     home.mkdir(parents=True)
     host.home, host.env = home, namespace["ENV"]
@@ -194,10 +179,6 @@ def hook(services, name, *args):
 
 def token_file(services):
     return services.host.path("/run/porelo-host/people/alice/identities.tokens")
-
-
-def machine_file(services):
-    return services.host.home / ".config/porelo/matrix/host-registration-token"
 
 
 def test_forge_admits_each_identity_once_and_delivers_only_private_tokens(services, capsys):
@@ -258,88 +239,6 @@ def test_forge_lock_disables_every_identity_and_deletes_every_token(services):
     hook(services, "forge_lock", "alice")
 
 
-def test_matrix_bootstrap_saves_admin_before_delivering_the_persons_token(services):
-    """Prevent losing the homeserver admin credential or sending a token to the wrong account."""
-    hook(services, "matrix_issue", "alice")
-    admin = services.host.path("/etc/porelo-host/matrix-admin.token")
-    assert admin.read_text().strip() == MATRIX_ADMIN
-    assert stat.S_IMODE(admin.stat().st_mode) == 0o600
-    assert machine_file(services).read_text() == MATRIX_TOKEN
-    for path in [
-        machine_file(services).parent,
-        machine_file(services).parent.parent,
-        services.host.home / ".config",
-    ]:
-        assert stat.S_IMODE(path.stat().st_mode) == 0o700
-    assert stat.S_IMODE(machine_file(services).stat().st_mode) == 0o600
-    assert json.loads(services.recorder.inputs[0]) == {}
-    services.recorder.issue.pop("account")
-    hook(services, "matrix_issue", "alice")
-    assert json.loads(services.recorder.inputs[-2]) == {"secrets": {"PORELO_MATRIX_ADMIN_TOKEN": MATRIX_ADMIN}}
-    for args in services.recorder.calls:
-        assert not any(secret in " ".join(args) for secret in (MATRIX_TOKEN, MATRIX_ADMIN))
-
-
-@pytest.mark.parametrize(
-    "reply",
-    [
-        {"machine": "other", "token": MATRIX_TOKEN},
-        {"machine": "host-alice"},
-        [],
-        {"machine": "host-alice", "token": "bad\ntoken"},
-    ],
-)
-def test_matrix_refuses_wrong_machine_or_missing_or_invalid_tokens(services, reply):
-    """Prevent a transport reply from registering a different machine or writing malformed credentials."""
-    services.recorder.issue = reply
-    with pytest.raises(services.scope["Refusal"]) as error:
-        hook(services, "matrix_issue", "alice")
-    assert error.value.code == 69
-    assert not machine_file(services).exists()
-
-
-def test_matrix_expelled_machine_reports_the_transport_refusal(services):
-    """Prevent resurrecting a machine whose accounts were expelled."""
-    services.recorder.transport_exit = 78
-    with pytest.raises(services.scope["Refusal"]) as error:
-        hook(services, "matrix_issue", "alice")
-    assert error.value.code == 65
-    assert str(error.value) == services.recorder.transport_error
-
-
-@pytest.mark.parametrize("revoked", [True, False])
-def test_matrix_expulsion_also_revokes_and_removes_the_local_token(services, revoked):
-    """Prevent token revocation from leaving the machine's registered accounts or local credential active."""
-    hook(services, "matrix_issue", "alice")
-    services.recorder.calls.clear()
-    services.recorder.expulsion["revoked"] = revoked
-    hook(services, "matrix_expel_revoke", "alice")
-    assert [args[-2:] for args in services.recorder.calls if "machine-token" in args] == [
-        ["expel", "host-alice"],
-    ]
-    assert not machine_file(services).exists()
-
-
-@pytest.mark.parametrize(
-    "part",
-    [".config", ".config/porelo", ".config/porelo/matrix", ".config/porelo/matrix/host-registration-token"],
-)
-def test_matrix_delivery_refuses_links_without_touching_the_destination(services, tmp_path, part):
-    """Prevent an account-side link from directing a credential outside its private directory."""
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    sentinel = outside / "host-registration-token"
-    sentinel.write_text("untouched")
-    path = services.host.home / part
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.symlink_to(sentinel if path.name == "host-registration-token" else outside)
-    with pytest.raises(services.scope["Refusal"]) as error:
-        hook(services, "matrix_issue", "alice")
-    assert error.value.code == 73
-    assert sentinel.read_text() == "untouched"
-    assert services.host.path("/etc/porelo-host/matrix-admin.token").read_text().strip() == MATRIX_ADMIN
-
-
 def test_service_failure_never_repeats_captured_secrets(services, capsys):
     """Prevent a failed secret-bearing command from echoing its stdout or stderr into a refusal."""
     services.recorder.failure = PERSON_TOKEN + MATRIX_ADMIN
@@ -374,11 +273,11 @@ def test_existing_private_runtime_directories_do_not_hide_the_persons_tokens(ser
     assert stat.S_IMODE(path.parent.parent.parent.stat().st_mode) == 0o755
 
 
-@pytest.mark.parametrize("operation", ["forge_admit", "matrix_issue"])
+@pytest.mark.parametrize("operation", ["forge_admit"])
 def test_secrets_only_reach_their_designated_files_and_never_output(services, capsys, operation):
     """Prevent hidden copies of generated secrets in staged files, arguments or diagnostics."""
     hook(services, operation, "alice", *([[]] if operation == "forge_admit" else []))
-    allowed = {token_file(services), machine_file(services), services.host.path("/etc/porelo-host/matrix-admin.token")}
+    allowed = {token_file(services)}
     for path in services.host.root.rglob("*"):
         if path.is_file() and path not in allowed:
             data = path.read_bytes()
@@ -388,33 +287,6 @@ def test_secrets_only_reach_their_designated_files_and_never_output(services, ca
     for secret in (ADMIN_TOKEN, PERSON_TOKEN, MATRIX_TOKEN, MATRIX_ADMIN, "discarded-fixture-password"):
         assert secret not in output.out + output.err
         assert all(secret not in " ".join(args) for args in services.recorder.calls)
-
-
-@pytest.mark.parametrize("change", ["link", "public", "writable", "wrong-owner"])
-def test_untrusted_matrix_admin_credentials_never_reach_a_command(services, change, monkeypatch):
-    """Prevent a forged or publicly readable homeserver admin credential from being used."""
-    path = services.host.path("/etc/porelo-host/matrix-admin.token")
-    path.write_text(MATRIX_ADMIN)
-    path.chmod(0o600)
-    if change == "link":
-        path.unlink()
-        path.symlink_to(services.host.path("/etc/porelo-host/forge.conf"))
-    elif change in ("public", "writable"):
-        path.chmod(0o644 if change == "public" else 0o622)
-    else:
-        real_lstat = Path.lstat
-
-        def lstat(target, *args, **kwargs):
-            status = real_lstat(target, *args, **kwargs)
-            if target == path:
-                return SimpleNamespace(st_uid=os.getuid() + 1, st_mode=status.st_mode)
-            return status
-
-        monkeypatch.setattr(Path, "lstat", lstat)
-    with pytest.raises(services.scope["Refusal"]) as error:
-        hook(services, "matrix_issue", "alice")
-    assert error.value.code == 69
-    assert services.recorder.calls == []
 
 
 @pytest.mark.parametrize("value", ["../bad", "codex,", "codex,codex", "porelo", "codex\naccount=evil"])
@@ -440,28 +312,6 @@ def test_an_empty_agent_list_creates_only_the_person_and_gate(services):
     path.write_text(path.read_text().replace("agents=codex,claude", "agents="))
     hook(services, "forge_admit", "alice", [])
     assert list(services.recorder.users) == ["alice", "porelo-alice"]
-
-
-def test_matrix_refusal_redacts_the_known_admin_token(services):
-    """Prevent the expelled-machine diagnostic from exposing the supplied admin credential."""
-    path = services.host.path("/etc/porelo-host/matrix-admin.token")
-    path.write_text(MATRIX_ADMIN)
-    path.chmod(0o600)
-    services.recorder.transport_exit = 78
-    services.recorder.transport_error = "expelled: " + MATRIX_ADMIN
-    with pytest.raises(services.scope["Refusal"]) as error:
-        hook(services, "matrix_issue", "alice")
-    assert error.value.code == 65
-    assert MATRIX_ADMIN not in str(error.value)
-
-
-def test_matrix_revocation_stops_when_expulsion_fails(services):
-    """Prevent an unsuccessful expulsion from being hidden by registration-token revocation."""
-    services.recorder.transport_exit = 1
-    with pytest.raises(services.scope["Refusal"]) as error:
-        hook(services, "matrix_expel_revoke", "alice")
-    assert error.value.code == 69
-    assert [args[-2] for args in services.recorder.calls] == ["expel"]
 
 
 def test_a_person_cannot_prevent_forge_lock_by_changing_their_token_file_mode(services):
@@ -552,66 +402,6 @@ def test_failed_runtime_cleanup_still_revokes_forge_access_and_reports_the_lefto
     assert error.value.code == 73
     assert services.recorder.users == dict.fromkeys(IDENTITIES, True)
     assert token_file(services).parent.exists()
-
-
-def test_lock_treats_an_unknown_matrix_machine_as_already_revoked(services):
-    """Prevent an already absent machine from blocking lock or retaining its local registration token."""
-    hook(services, "matrix_issue", "alice")
-    services.recorder.calls.clear()
-    services.recorder.expulsion = {"machine": "host-alice", "known": False, "revoked": False, "expelled": []}
-    hook(services, "matrix_expel_revoke", "alice")
-    assert [args[-2:] for args in services.recorder.calls if "machine-token" in args] == [["expel", "host-alice"]]
-    assert not machine_file(services).exists()
-
-
-@pytest.mark.parametrize(
-    "message", ["the homeserver refused expulsion", "the homeserver knows nothing of this machine"]
-)
-def test_every_matrix_refusal_blocks_lock_with_its_own_words(services, message):
-    """Prevent a refusal, whatever its words, from being mistaken for an absent machine."""
-    hook(services, "matrix_issue", "alice")
-    services.recorder.transport_exit = 78
-    services.recorder.transport_error = message
-    with pytest.raises(services.scope["Refusal"]) as error:
-        hook(services, "matrix_expel_revoke", "alice")
-    assert error.value.code == 65
-    assert str(error.value) == message
-    assert machine_file(services).exists()
-
-
-def test_issue_still_refuses_a_machine_the_homeserver_knows_nothing_of(services):
-    """Prevent the lock-only unknown-machine exception from authorizing a failed admission."""
-    services.recorder.transport_exit = 78
-    services.recorder.transport_error = "the homeserver knows nothing of this machine"
-    with pytest.raises(services.scope["Refusal"]) as error:
-        hook(services, "matrix_issue", "alice")
-    assert error.value.code == 65
-    assert not machine_file(services).exists()
-
-
-@pytest.mark.parametrize(
-    "reply",
-    [
-        {"machine": "host-alice", "expelled": []},
-        {"machine": "host-alice", "expelled": [], "revoked": "true"},
-        {"machine": "host-alice", "expelled": "account", "revoked": True},
-        {"machine": "host-alice", "expelled": [None], "revoked": True},
-        {"machine": "host-alice", "expelled": [], "revoked": False},
-        {"machine": "host-alice", "known": "false", "expelled": [], "revoked": False},
-        {
-            "machine": "host-alice",
-            "known": False,
-            "expelled": ["@person.host-alice:matrix.example.org"],
-            "revoked": False,
-        },
-    ],
-)
-def test_invalid_expulsion_answers_cannot_report_completed_revocation(services, reply):
-    """Prevent an incomplete or malformed expulsion result from hiding a failed revocation."""
-    services.recorder.expulsion = reply
-    with pytest.raises(services.scope["Refusal"]) as error:
-        hook(services, "matrix_expel_revoke", "alice")
-    assert error.value.code == 69
 
 
 def test_command_runner_delivers_stdin_without_inheriting_caller_configuration(services):
@@ -808,3 +598,23 @@ def test_the_persons_login_may_run_the_bring_and_the_gate_only_its_branches(serv
         "alice": "write:repository,write:organization,read:user",
         "porelo-alice": "write:repository,read:organization",
     }
+
+
+def test_matrix_expels_the_login_as_the_service_account_without_credentials(services):
+    """Prevent purge leaving person and task accounts active or issuing a reusable host credential."""
+    hook(services, "matrix_expel_revoke", "alice")
+    assert len(services.recorder.calls) == 1
+    assert services.recorder.calls[0][-3:] == ["/usr/bin/porelo-message-transport-matrix", "expel", "alice"]
+    assert services.recorder.inputs == [None]
+    assert not services.host.path("/etc/porelo-host/matrix-admin.token").exists()
+
+
+@pytest.mark.parametrize("code", [1, 78])
+def test_failed_matrix_expulsion_blocks_removal_without_repeating_output(services, code):
+    """Prevent a failed account deactivation from being treated as successful purge."""
+    services.recorder.transport_exit = code
+    services.recorder.transport_error = MATRIX_ADMIN
+    with pytest.raises(services.scope["Refusal"]) as error:
+        hook(services, "matrix_expel_revoke", "alice")
+    assert error.value.code == 69
+    assert MATRIX_ADMIN not in str(error.value)

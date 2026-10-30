@@ -609,6 +609,10 @@ def remove(forge, project, record, publisher, affected):
                 f"gathered push check exited {checked.returncode}",
                 code,
             )
+    admins = os.path.join(ETC, "matrix", project + ".admins")
+    trusted_directory(os.path.dirname(admins), missing=True)
+    if os.path.lexists(admins):
+        trusted(admins)
     staged = []
     try:
         for user, person_path, content in affected:
@@ -625,6 +629,9 @@ def remove(forge, project, record, publisher, affected):
         for person_path, temporary in staged:
             with writing(person_path):
                 os.replace(temporary, person_path)
+        with writing(admins):
+            if os.path.lexists(admins):
+                os.unlink(admins)
         with writing(record):
             os.unlink(record)
     finally:

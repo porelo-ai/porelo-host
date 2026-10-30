@@ -179,7 +179,7 @@ stdin_stop() {
         case "$need" in
             forge-certificate) ;;
             drive) stdin_refuse 'drive is no need of the host any more' ;;
-            vault-new|vault|keys|forge-central-token|matrix-token)
+            vault-new|vault|keys|forge-central-token)
                 stdin_refuse "$need is no need of the host's root act; the person gives it in their own account" ;;
             *) stdin_refuse "unknown need or option: $need" ;;
         esac
@@ -264,7 +264,6 @@ own_stop() {
             vault-new|vault|keys|forge-central-token|identities) ;;
             forge-certificate) stdin_refuse "$need is the host admin's root act; it runs by sudo as root" ;;
             drive) stdin_refuse 'drive is no need of the host any more' ;;
-            matrix-token) stdin_refuse 'matrix-token is no need any more; admission leaves the token in your home' ;;
             *) stdin_refuse "unknown need or option: $need" ;;
         esac
         [ -z "${named[$need]+x}" ] || stdin_refuse "need named twice: $need"

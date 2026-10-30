@@ -279,42 +279,36 @@
         verify_forge_ports: "{{ verify_forge_listen.stdout_lines | map('split') | map(attribute=3) | list }}"
       when: verify_forge == 'on'
 
-    # The shared Matrix homeserver under porelo-matrix: linger enabled, user unit active, TLS files owned by the
-    # account alone with no CA key, and HTTPS answering on matrix.alpha.porelo.internal:8448 at 10.73.7.1.
-    - name: Read porelo-matrix's linger file and TLS paths
+    - name: Read the Matrix gate and private homeserver socket metadata
       ansible.builtin.stat:
         path: "{{ item }}"
       loop:
         - /var/lib/systemd/linger/porelo-matrix
-        - /home/porelo-matrix/.config/porelo/matrix/ca.crt
-        - /home/porelo-matrix/.config/porelo/matrix/tls
-        - /home/porelo-matrix/.config/porelo/matrix/tls/server.crt
-        - /home/porelo-matrix/.config/porelo/matrix/tls/server.key
-        - /home/porelo-matrix/.config/porelo/matrix/ca.key
-        - /home/porelo-matrix/.config/porelo/matrix/tls/ca.key
+        - /run/porelo-matrix
+        - /run/porelo-matrix/client.sock
+        - "/run/user/{{ ansible_facts['getent_passwd']['porelo-matrix'][1] }}/porelo-matrix-gate"
+        - "/run/user/{{ ansible_facts['getent_passwd']['porelo-matrix'][1] }}/porelo-matrix-gate/homeserver.sock"
       register: verify_matrix_paths
 
-    - name: Assert porelo-matrix has its linger file and TLS files with mode 0644/0700/0600 and no CA key
+    - name: Assert the gate socket belongs to the people and the homeserver socket is private
       ansible.builtin.assert:
         that:
           - verify_matrix_paths.results[0].stat.exists
-          - verify_matrix_paths.results[1].stat.exists
-          - verify_matrix_paths.results[1].stat.pw_name | default('') == 'porelo-matrix'
-          - verify_matrix_paths.results[1].stat.mode | default('') == '0644'
-          - verify_matrix_paths.results[2].stat.isdir | default(false)
+          - verify_matrix_paths.results[1].stat.isdir | default(false)
+          - verify_matrix_paths.results[1].stat.mode | default('') == '0755'
+          - verify_matrix_paths.results[2].stat.issock | default(false)
           - verify_matrix_paths.results[2].stat.pw_name | default('') == 'porelo-matrix'
-          - verify_matrix_paths.results[2].stat.mode | default('') == '0700'
-          - verify_matrix_paths.results[3].stat.exists
+          - verify_matrix_paths.results[2].stat.gr_name | default('') == 'porelo-people'
+          - verify_matrix_paths.results[2].stat.mode | default('') == '0660'
+          - verify_matrix_paths.results[3].stat.isdir | default(false)
           - verify_matrix_paths.results[3].stat.pw_name | default('') == 'porelo-matrix'
-          - verify_matrix_paths.results[3].stat.mode | default('') == '0600'
-          - verify_matrix_paths.results[4].stat.exists
+          - verify_matrix_paths.results[3].stat.mode | default('') == '0700'
+          - verify_matrix_paths.results[4].stat.issock | default(false)
           - verify_matrix_paths.results[4].stat.pw_name | default('') == 'porelo-matrix'
           - verify_matrix_paths.results[4].stat.mode | default('') == '0600'
-          - not verify_matrix_paths.results[5].stat.exists
-          - not verify_matrix_paths.results[6].stat.exists
         fail_msg: >-
-          asked for /var/lib/systemd/linger/porelo-matrix, ca.crt (0644), tls/ (0700), server.crt and server.key (0600)
-          owned by porelo-matrix with no ca.key; got {{ verify_matrix_paths.results | map(attribute='stat') | list }}
+          asked for client.sock porelo-matrix:porelo-people 0660 in 0755 and homeserver.sock porelo-matrix 0600 in 0700;
+          got {{ verify_matrix_paths.results | map(attribute='stat') | list }}
 
     - name: Ask systemd whether porelo-matrix-homeserver.service is enabled and active for porelo-matrix
       ansible.builtin.command:
@@ -340,31 +334,38 @@
           is-active '{{ verify_homeserver_unit.results[1].stdout }}'
           ({{ verify_homeserver_unit.results[1].stderr }})
 
-    - name: Reach the Matrix homeserver by name on 10.73.7.1:8448 with the stand-in CA
-      ansible.builtin.command:  # noqa: command-instead-of-module
-        cmd: >-
-          curl -fsS --max-time 10 --noproxy '*' --cacert /root/desktop-ca/ca.pem
-          --resolve matrix.alpha.porelo.internal:8448:10.73.7.1 -w '\n%{http_code}'
-          https://matrix.alpha.porelo.internal:8448/_matrix/client/versions
-      register: verify_homeserver_https
-      until: >-
-        verify_homeserver_https.rc == 0
-        and (verify_homeserver_https.stdout_lines | last | default('')) == '200'
-      retries: 30
-      delay: 2
+    - name: Refuse a Matrix gate connection from a login outside porelo-people
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import errno, socket
+            with socket.socket(socket.AF_UNIX) as connection:
+                try:
+                    connection.connect('/run/porelo-matrix/client.sock')
+                except OSError as error:
+                    if error.errno != errno.EACCES:
+                        raise
+                else:
+                    raise SystemExit('expected EACCES, connection succeeded')
+      become: true
+      become_user: nobody
       changed_when: false
-      failed_when: false
 
-    - name: Assert the Matrix homeserver answers 200 with versions on matrix.alpha.porelo.internal:8448
+    - name: Read whether the homeserver still listens on its old TCP ports
+      ansible.builtin.command:
+        cmd: ss -Hltn '( sport = :8448 or sport = :6167 )'
+      register: verify_homeserver_tcp
+      changed_when: false
+
+    - name: Assert the homeserver has no old TCP listener
       ansible.builtin.assert:
         that:
-          - verify_homeserver_https.rc == 0
-          - verify_homeserver_https.stdout_lines | last == '200'
-          - (verify_homeserver_https.stdout_lines[:-1] | join('\n') | from_json).versions | default([]) | length > 0
+          - verify_homeserver_tcp.stdout == ''
         fail_msg: >-
-          asked https://matrix.alpha.porelo.internal:8448/_matrix/client/versions at 10.73.7.1 for HTTP 200 with
-          Matrix versions on the host; got rc {{ verify_homeserver_https.rc }}
-          '{{ verify_homeserver_https.stdout }}' ({{ verify_homeserver_https.stderr }}),
+          asked for no listener on the homeserver's old TCP ports 8448 and 6167;
+          got {{ verify_homeserver_tcp.stdout_lines }}
 
     # The host admin's CA is constrained critically to alpha.porelo.internal and 10.73.7.0/24, so a certificate signed
     # by that same CA for another host's name must fail verification.

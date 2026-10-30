@@ -1,0 +1,14 @@
+[Unit]
+Description=Porelo Matrix client gate socket
+
+[Socket]
+ListenStream=/run/porelo-matrix/client.sock
+Accept=yes
+SocketUser={{ matrix_account }}
+SocketGroup=porelo-people
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

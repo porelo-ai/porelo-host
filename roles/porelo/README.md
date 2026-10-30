@@ -11,6 +11,11 @@ unlocked recorded admin); `/etc/porelo-host/people/<user>.conf` records each per
 runs at the start of `down` and refuses before anything is stopped while any record in `/etc/porelo-host/people/`
 holds a membership, naming each person and their memberships with `"Take the project off"` and `"Purge"`.
 
+Matrix admission stores no machine or registration token. Sync atomically publishes the verified access file's
+`admins` list into `/etc/porelo-host/matrix/<project>.admins`, root:porelo-matrix `0640` in a `0750` directory;
+project removal deletes it. Lock and purge run `porelo-message-transport-matrix expel <login>` as `porelo-matrix`,
+including purge after a prior lock. See [Matrix access](../../doc/matrix.md) for the gate boundary.
+
 The account-bound entry points (`main`, `project`, `tasks`, `down`) remain on disk for an explicit `porelo_account`
 when called directly; `up` and `down` do not call them.
 

@@ -1,4 +1,27 @@
 ---
+- name: down | Read whether the Matrix gate socket is installed
+  ansible.builtin.stat:
+    path: /etc/systemd/system/porelo-matrix-gate.socket
+  register: __matrix_down_gate
+
+- name: down | Stop and disable the Matrix gate socket
+  ansible.builtin.systemd_service:
+    name: porelo-matrix-gate.socket
+    state: stopped
+    enabled: false
+  when: __matrix_down_gate.stat.exists
+
+- name: down | Remove the Matrix gate units and admins files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/porelo-matrix-gate.socket
+    - /etc/systemd/system/porelo-matrix-gate@.service
+    - /run/porelo-matrix
+    - /etc/porelo-host/matrix
+  notify: Reload systemd for the Matrix gate
+
 - name: down | Remove the homeserver's marked name from the host
   ansible.builtin.blockinfile:
     path: /etc/hosts
@@ -38,28 +61,6 @@
     - __matrix_down_runtime.stat.isdir | default(false)
     - __matrix_down_unit.stat.exists | default(false)
 
-- name: down | Read whether the Matrix transport command is installed
-  ansible.builtin.stat:
-    path: "{{ matrix_transport_command }}"
-  register: __matrix_down_transport
-  when: ansible_facts['getent_passwd'][matrix_account] is not none
-
-- name: down | Unpublish the Matrix homeserver
-  ansible.builtin.command:
-    argv:
-      - "{{ matrix_transport_command }}"
-      - publish
-      - --off
-  become: true
-  become_user: "{{ matrix_account }}"
-  environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][matrix_account][1] }}"
-  when:
-    - ansible_facts['getent_passwd'][matrix_account] is not none
-    - __matrix_down_runtime.stat.isdir | default(false)
-    - __matrix_down_transport.stat.exists | default(false)
-  changed_when: true
-
 # Rootless podman's containers, database volume and user manager must exit before userdel removes the account and home.
 - name: down | Stop the homeserver account's containers, volume, linger and user manager
   ansible.builtin.shell:
@@ -72,7 +73,7 @@
       as() { runuser -u "$account" -- env XDG_RUNTIME_DIR=/run/user/$uid "$@"; }
       changed=
       if [ -d "/run/user/$uid" ]; then
-          as systemctl --user stop porelo-matrix-homeserver-vpn.socket porelo-matrix-homeserver.service \
+          as systemctl --user stop porelo-matrix-homeserver.service \
               podman.socket 2>/dev/null || true
           if [ -n "$(as podman ps -aq 2>/dev/null || true)" ]; then
               as podman rm --all --force > /dev/null

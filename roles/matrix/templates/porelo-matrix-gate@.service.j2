@@ -1,0 +1,11 @@
+[Unit]
+Description=Porelo Matrix client gate
+PartOf=porelo-matrix-gate.socket
+
+[Service]
+User={{ matrix_account }}
+Environment=XDG_RUNTIME_DIR=/run/user/{{ __matrix_uid }}
+ExecStart=/usr/bin/porelo-message-transport-matrix gate
+StandardInput=socket
+StandardOutput=socket
+NoNewPrivileges=yes

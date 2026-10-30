@@ -1,7 +1,4 @@
 ---
-# Where the host's CA certificate and the homeserver's waiting key and signed certificate lie before main moves them.
-__matrix_ca_dir: /etc/porelo-host/forge
-
 __matrix_packages:
   - porelo-matrix-homeserver
   - porelo-message-transport-matrix
@@ -11,3 +8,6 @@ __matrix_environment:
 
 __matrix_dir: "{{ __matrix_home }}/.config/porelo/matrix"
 __matrix_conf: "{{ __matrix_dir }}/homeserver.conf"
+
+# Where the transport's homeserver unit mounts Tuwunel's own socket in gate mode, as porelo-message-matrix makes it.
+__matrix_socket_dir: "{{ __matrix_environment.XDG_RUNTIME_DIR }}/porelo-matrix-gate"

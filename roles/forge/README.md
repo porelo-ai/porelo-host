@@ -1,5 +1,8 @@
 # Role `forge`
 
+Project removal also deletes `/etc/porelo-host/matrix/<project>.admins` after checking its ownership and path, so
+a removed project retains no Matrix room administration. See [Matrix access](../../doc/matrix.md).
+
 The host's forge: Forgejo with its package registry in rootless podman, as a quadlet user unit of an account of its
 own (`porelo-forge`), serving HTTPS with a certificate the person's own CA signed on their desktop. It runs
 where the host setting `porelo_host_forge` is true, in `up`'s second play after the VPN; `down` stops it and keeps
