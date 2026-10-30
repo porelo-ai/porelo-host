@@ -68,14 +68,20 @@
   failed_when: false
   check_mode: false
 
-- name: own | Stop unless the vault is open, naming the stop that opens it
+# A shut or missing vault is the person's step: the message is the stop's needs as JSON, from which the interface
+# opens the stop that feeds them.
+- name: own | Wait for the stop that opens a shut vault or makes a missing one
+  ansible.builtin.fail:
+    msg: "{{ {3: ['vault'], 4: ['vault-new', 'keys']}[__porelo_vault.rc] | to_json }}"
+  when: __porelo_vault.rc in [3, 4]
+  tags: [porelo_host_waiting]
+
+- name: own | Stop on any other answer about the vault, with Porelo's words
   ansible.builtin.assert:
     that: __porelo_vault.rc == 0
     fail_msg: >-
-      {{ {3: 'the vault is shut; open it with porelo-host-stop --stdin vault',
-          4: 'there is no vault; make it with porelo-host-stop --stdin vault-new keys'}[__porelo_vault.rc]
-      | default('porelo vault status answered ' ~ __porelo_vault.rc ~ ': ' ~ __porelo_vault.stderr) }}, then run
-      {{ porelo_own_act }} again
+      porelo vault status answered {{ __porelo_vault.rc }}: {{ __porelo_vault.stderr }}; run
+      {{ porelo_own_act }} again once the vault answers
     quiet: true
 
 - name: own | Ask Porelo for the project's inventory from the machine file
