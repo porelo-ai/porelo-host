@@ -542,6 +542,7 @@ def test_purge_locks_first_clears_vault_then_removes_account_and_ranges(host, ca
             "clear",
             "--yes",
             "--force",
+            "--json",
         ],
         ["loginctl", "disable-linger", "alice"],
         ["loginctl", "terminate-user", "alice"],
@@ -823,6 +824,28 @@ def test_purge_clears_no_vault_while_a_task_of_the_person_still_runs(host, capsy
     assert host.calls[-1] == ["usermod", "--expiredate", "1", "alice"], "the account left must be expired again"
     assert "alice" in host.accounts
     assert host.path("/etc/porelo-host/people/alice.conf").exists()
+
+
+def test_purge_goes_on_when_only_a_transport_could_not_clear_its_account(host, capsys):
+    """Prevent a person whose project's transport cannot clear its account from staying unpurgeable for good."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    capsys.readouterr()
+    host.fail = ["runuser", "-u", "alice", "--", "env", "XDG_RUNTIME_DIR=/run/user/1000", "porelo", "vault", "clear"]
+    item = {"kind": "conversation", "what": "the matrix account of alpha", "status": "NOT_REMOVED", "why": "exit 78"}
+    host.failed_output = json.dumps({"items": [item | {"transport": "matrix", "project": "alpha"}], "refused": False})
+    assert host.invoke("purge", "alice", data=b"") == 0
+    assert host.calls[-1] == ["userdel", "--remove", "alice"]
+
+
+def test_purge_refuses_when_the_vault_kept_more_than_a_transports_account(host, capsys):
+    """Prevent deleting the account while something of the vault other than a transport's account was not removed."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    capsys.readouterr()
+    host.fail = ["runuser", "-u", "alice", "--", "env", "XDG_RUNTIME_DIR=/run/user/1000", "porelo", "vault", "clear"]
+    item = {"kind": "vault", "what": "vault.bin", "status": "NOT_REMOVED", "why": "", "transport": "", "project": ""}
+    host.failed_output = json.dumps({"items": [item], "refused": False})
+    assert host.invoke("purge", "alice", data=b"") == 69
+    assert not any(args[0] == "userdel" for args in host.calls)
 
 
 def test_failed_vault_clear_keeps_the_locked_account_and_record_for_retry(host, capsys):
