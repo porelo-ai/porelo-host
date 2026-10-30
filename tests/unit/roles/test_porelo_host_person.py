@@ -1454,3 +1454,20 @@ def test_people_can_reach_their_own_return_socket_directory(host):
     for directory in ("/run/porelo-host", "/run/porelo-host/people"):
         assert host.path(directory).stat().st_mode & 0o777 == 0o755
     assert host.path("/run/porelo-host/people/alice").stat().st_mode & 0o777 == 0o700
+
+
+def test_registry_passes_the_signer_it_saved_with_its_commit_after_an_interrupted_handover(registry_host, capsys):
+    """Prevent a handover cut off between the record and the pin from making every later verify refuse the registry."""
+    host, state = registry_host
+    capsys.readouterr()
+    state.registry_reply["host_card"]["signed_by"] = fingerprint(SIGNER_TWO)
+    assert host.invoke("registry", data=b"", sudo_user="ada") == 0
+    capsys.readouterr()
+    pin = host.path("/etc/porelo-host/registry/pin.conf")
+    pin.write_text(f"admin=ada\nkey={SIGNER_ONE}\n")
+    state.registry_reply["commit"] = "b" * 40
+    assert host.invoke("registry", data=b"", sudo_user="ada") == 0
+    verify = state.registry_calls[-1]
+    assert verify[verify.index("--pinned") + 1] == fingerprint(SIGNER_TWO)
+    assert verify[verify.index("--since") + 1] == "a" * 40
+    assert pin.read_text() == f"admin=bo\nkey={SIGNER_TWO}\n"

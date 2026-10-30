@@ -1511,6 +1511,14 @@ class Host:
         records = self.records()
         self.require(["systemd-run", "porelo"])
         pinned_fingerprint = fingerprint(pinned["key"])
+        # Verify takes the key in force at --since: the signer recorded with that commit, which a handover cut off
+        # before its pin was written still names.
+        in_force = pinned_fingerprint
+        if previous is not None:
+            card = previous.get("host_card")
+            in_force = card.get("signed_by") if isinstance(card, dict) else None
+            if not isinstance(in_force, str) or not re.fullmatch(r"SHA256:[A-Za-z0-9+/]{43}", in_force):
+                refuse("the applied registry names no signer of its host card", 65)
         temp_dir = self.sync_directory("registry")
         try:
             copied = self.copy_setup_files(admin, (), ("registry.bundle",), temp_dir, "the host's registry")
@@ -1523,7 +1531,7 @@ class Host:
                 "--host",
                 host,
                 "--pinned",
-                pinned_fingerprint,
+                in_force,
                 "--json",
             ]
             if previous is not None:
