@@ -1,6 +1,6 @@
 # HO68 — SSH The Host's Only Way In
 
-**Status:** Estimated and Backlog (operator, 2026-10-30, sprint 6m).
+**Status:** Implementing.
 **Size:** L - the vpn role's removal reaches up, down, the firewall, the stops and Molecule's converge and verify,
 beside the sshd settings, the KRL and the person helper; L by the size rule (several modules and an acceptance step), no
 measured L yet.

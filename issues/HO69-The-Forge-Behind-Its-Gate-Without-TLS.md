@@ -1,6 +1,6 @@
 # HO69 — The Forge Behind Its Gate Without TLS
 
-**Status:** Estimated and Backlog (operator, 2026-10-30, sprint 6m).
+**Status:** Implementing.
 **Size:** L - a new gate program serving two sockets with its own tests, Forgejo moved to a Unix socket inside rootless
 podman, and the CA, TLS, request and password helper removed with their Molecule steps; L by the size rule, no measured
 L yet.
