@@ -40,7 +40,8 @@ forge CA trust block and task CA file.
 `~/.config/porelo-host/push/<project>.conf` from the repositories they reach on the forge.
 
 `/usr/local/sbin/porelo-host-project`, root's alone, registers an organization with an unlocked member in
-`/etc/porelo-host/people/` (recording `member=<project> project-admin`), a signing key in Porelo's canonical
+`/etc/porelo-host/people/` (recording `member=<project> project-admin`) whom the applied registry in
+`/etc/porelo-host/registry/applied.json` names as the project's admin, a signing key in Porelo's canonical
 `ssh-ed25519 <base64>` signer format and a package-only publisher, or checks its commits against the central forge
 before removing the project (including any `commit=`, `access_commit=` and `signer=` lines recorded by
 `porelo-host-person sync`), dropping its memberships from `/etc/porelo-host/people/` and locking each person left with

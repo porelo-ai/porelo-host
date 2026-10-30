@@ -122,7 +122,8 @@ With the forge running, root registers a project through
 `porelo-host-project add <project> <admin> --signed-by 'ssh-ed25519 <base64>'`.
 The project name is 1 to 40 lowercase letters or digits, with hyphens allowed inside. The admin's user name must have
 an unlocked plain root-only record `/etc/porelo-host/people/<admin>.conf` holding at least one membership, and an
-existing forge login. The signing key is the
+existing forge login, and the [applied registry](#the-hosts-state-taken-from-the-registry) must name the project for
+that admin. The signing key is the
 project's SSH Ed25519 public key, in the form Porelo's `project.yml` uses in `signers`: one argument containing
 `ssh-ed25519 <base64>`, with one space and no comment. Its canonical base64 decodes to the 51-byte SSH wire format:
 the `ssh-ed25519` string header and a 32-byte public key. The bytes re-encode to exactly the supplied base64.
@@ -178,7 +179,8 @@ project's unlocked recorded admin (`sudo -n /usr/local/sbin/porelo-host-person s
 `%porelo-people` in `/etc/sudoers.d/porelo-host-person` and checked by the helper against `SUDO_USER` and `admin=` in
 `/etc/porelo-host/projects/<project>.conf`) calls `sync <project>`.
 
-`porelo-host-person sync <project>` reconciles the project's developers with its signed bundles:
+`porelo-host-person sync <project>` reconciles the project's developers with its signed bundles, once the
+[applied registry](#the-hosts-state-taken-from-the-registry) names the project for its recorded admin:
 
 1. Root traverses `<admin home>/.local/share/porelo-host/setup/<project>/` without following symlinks, requires
    `project.bundle` and `access.bundle` to be plain files owned by the admin and not writable by group or others, and
@@ -209,6 +211,31 @@ project's unlocked recorded admin (`sudo -n /usr/local/sbin/porelo-host-person s
 7. `/etc/porelo-host/projects/<project>.conf` is updated atomically with `commit=`, `access_commit=` and the verified
    `signer=` lines, and stdout prints one compact JSON line:
    `{"project":"<project>","commit":"<commit>","access_commit":"<access_commit>","added":[...],"dropped":[...],"laptops_added":["<user>/<laptop>",...],"laptops_dropped":["<user>/<laptop>",...],"unchanged":false}`.
+
+## The host's state taken from the registry
+
+The host takes which projects it has, and for whom, from the signed registry state its host admin brings, never from
+the central forge. Root pins the host admin once, at setup, with the key that signed the host card:
+`porelo-host-person registry pin <login> "ssh-ed25519 <base64>"` writes `/etc/porelo-host/registry/pin.conf` (`0600`,
+`admin=` and `key=`, in a `0700` directory) and refuses a second pin.
+
+The host admin's Porelo uploads `registry.bundle` into `~/.local/share/porelo-host/setup/`, and root or the pinned host
+admin (`sudo -n /usr/local/sbin/porelo-host-person registry`, the sudoers rule's bare form alone) runs `registry`. Root
+copies the bundle as `sync` does and runs `porelo registry verify --repository <copy> --host <host> --pinned
+<fingerprint> --json` in the transient unit `porelo-host-registry`, isolated like the sync's, with `--since` and the
+applied commit once one is applied; `<host>` is `forge.conf`'s `host=`. A refusal from Porelo, a bundle signed by
+another key or one not descending from the applied state alike, refuses the whole bundle with `65` and changes nothing,
+so no lock, revocation or handover is rolled back.
+
+Each project and person entry is checked alone: a bad or duplicated one is named in the answer's `refused` and left
+out while the rest applies. A login once applied as revoked stays revoked; a later entry admitting it again is refused
+alone. When the host card is signed by another key Porelo accepted as the pinned key's successor, the pin moves to the
+person holding that key, a handover. `/etc/porelo-host/registry/applied.json` (`0600`) records the commit, the host
+card, the projects, the persons and every revoked login; the persons' keys and revocations are for SSH's keys and the
+KRL to read, which this step does not write. A project registered here that the registry no longer names for its
+recorded admin is named in `dropped` and kept: its next `sync` and a new `porelo-host-project add` for it are refused
+(`65`) until the host admin removes it or names it again. Success prints
+`{"commit":"<commit>","pinned":"SHA256:...","projects":[...],"dropped":[...],"revoked":[...],"refused":[...],"unchanged":false}`.
 
 ## The person's two decisions
 

@@ -166,6 +166,10 @@ def refused(host, capsys, code, *args, data=None, diagnostic=None, sudo_user=Non
         ("add", "alice"),
         ("add", "alice", "--role", "developer"),
         ("add", "alice", "--role", "project-admin", "extra"),
+        ("registry", "extra"),
+        ("registry", "pin", "ada"),
+        ("registry", "pin", "Ada", ssh_key(100)),
+        ("registry", "pin", "ada", "ssh-ed25519 AAAA"),
     ],
 )
 def test_wrong_calls_cannot_change_the_host(host, capsys, args):
@@ -1148,6 +1152,11 @@ SIGNER_ROTATED = ssh_key(102)
 FORGE_ADMIN_TOKEN = "f" * 40
 
 
+def fingerprint(key):
+    blob = base64.b64decode(key.split(" ", 1)[1])
+    return "SHA256:" + base64.b64encode(hashlib.sha256(blob).digest()).decode().rstrip("=")
+
+
 def developer_laptop(number, address):
     return {
         "ssh_public_key": ssh_key(number),
@@ -1349,6 +1358,21 @@ def sync_host(host, monkeypatch):
     monkeypatch.setattr(scope["ssl"], "create_default_context", check_ca)
     monkeypatch.setattr(scope["urllib"].request, "HTTPSHandler", lambda *, context: context)
     monkeypatch.setattr(scope["urllib"].request, "build_opener", lambda *handlers: ForgeOpener())
+    host.write(
+        "/etc/porelo-host/registry/applied.json",
+        json.dumps(
+            {
+                "commit": "e" * 40,
+                "host_card": {"host": "host", "signed_by": fingerprint(SIGNER_ONE)},
+                "projects": [
+                    {"name": "alpha", "admin": "ada", "access_repository": "alpha-access"},
+                    {"name": "beta", "admin": "bo", "access_repository": "beta-access"},
+                ],
+                "persons": [],
+                "revoked": [],
+            }
+        ),
+    )
     host.calls.clear()
     host.events.clear()
     return host, state
@@ -1826,163 +1850,260 @@ def test_sync_via_sudo_allows_only_the_projects_unlocked_admin_and_checks_bundle
     assert not capsys.readouterr().out
 
 
-def test_person_cannot_prevent_lock_by_changing_the_return_directory_mode(host, capsys):
-    """Prevent a person's writable runtime directory mode from defeating host revocation."""
-    assert host.invoke("add", "alice", "--role", "project-admin") == 0
-    capsys.readouterr()
-    directory = host.path("/run/porelo-host/people/alice")
-    directory.chmod(0o755)
-    host.calls.clear()
-    assert host.invoke("lock", "alice", data=b"") == 0
-    assert not host.path("/etc/ssh/authorized_keys/alice").exists()
-    assert not directory.exists()
-    assert ["loginctl", "terminate-user", "alice"] in host.calls
-    assert ["systemctl", "stop", "user@1000.service"] in host.calls
+def registry_person(login, key, revoked=False):
+    return {"login": login, "ssh": key, "expires": "2027-10-30", "revoked": revoked}
 
 
-def test_install_restores_boot_rules_for_existing_admitted_people(host, capsys):
-    """Prevent an upgrade or reboot from leaving recorded people without private return-socket directories."""
-    assert host.invoke("add", "alice", "--role", "project-admin") == 0
-    capsys.readouterr()
-    directory = host.path("/run/porelo-host/people/alice")
-    directory.rmdir()
-    rule = host.path("/etc/tmpfiles.d/porelo-person-alice.conf")
-    rule.unlink()
-    assert host.invoke("restore-runtime", data=b"") == 0
-    assert json.loads(capsys.readouterr().out) == {"changed": 1}
-    assert stat.S_IMODE(directory.stat().st_mode) == 0o700
-    assert rule.read_text() == "d /run/porelo-host/people/alice 0700 alice alice -\n"
-    before = snapshot(host.root)
-    assert host.invoke("restore-runtime", data=b"") == 0
-    assert json.loads(capsys.readouterr().out) == {"changed": 0}
-    assert snapshot(host.root) == before
-
-
-def test_sync_publishes_verified_matrix_admins_atomically(sync_host, capsys, monkeypatch):
-    """Prevent unverified or partial room-admin authorization and keep it unreadable to other people."""
+@pytest.fixture
+def registry_host(sync_host):
+    """The sync host with ada pinned as host admin, her registry.bundle uploaded and nothing applied yet."""
     host, state = sync_host
-    state.verify_reply["alpha"]["admins"] = ["ada", "bo"]
-    scope = host.factory.__globals__
-    replaced = []
-    original = scope["os"].replace
+    host.path("/etc/porelo-host/registry/applied.json").unlink()
+    host.write("/etc/porelo-host/registry/pin.conf", f"admin=ada\nkey={SIGNER_ONE}\n")
+    bundle = host.root / "home/ada/.local/share/porelo-host/setup/registry.bundle"
+    bundle.write_bytes(b"registry")
+    bundle.chmod(0o600)
+    state.registry_reply = {
+        "commit": "a" * 40,
+        "host_card": {"host": "host", "signed_by": fingerprint(SIGNER_ONE)},
+        "admins": [{"login": "ada"}],
+        "projects": [
+            {"name": "alpha", "admin": "ada", "access_repository": "alpha-access"},
+            {"name": "beta", "admin": "bo", "access_repository": "beta-access"},
+        ],
+        "persons": [registry_person("ada", SIGNER_ONE), registry_person("bo", SIGNER_TWO)],
+    }
+    state.registry_exit = 0
+    state.registry_stderr = ""
+    state.registry_calls = []
+    sync_run = host.run
 
-    def replace(source, target):
-        if str(target).endswith("/matrix/alpha.admins"):
-            replaced.append(Path(source).read_text())
-        return original(source, target)
+    def run(args, input=None):
+        if args[0] == "systemd-run" and "registry" in args:
+            host.calls.append(args)
+            host.events.append(args)
+            state.registry_calls.append(args)
+            assert "--pipe" in args and "--wait" in args and "--quiet" in args and "--collect" in args
+            assert "DynamicUser=yes" in args and "PrivateNetwork=yes" in args and "ProtectHome=yes" in args
+            assert "--unit=porelo-host-registry" in args
+            porelo = args[args.index("porelo") :]
+            assert porelo[:3] == ["porelo", "registry", "verify"] and "--json" in porelo
+            assert porelo[porelo.index("--repository") + 1] == (
+                "/run/credentials/porelo-host-registry.service/registry.bundle"
+            )
+            assert porelo[porelo.index("--host") + 1] == "host"
+            loaded = [arg.split(":", 1) for arg in args if arg.startswith("LoadCredential=")]
+            assert len(loaded) == 1 and loaded[0][0] == "LoadCredential=registry.bundle"
+            copied = Path(loaded[0][1])
+            assert host.path("/run/porelo-host/sync") in copied.parents and not copied.is_symlink()
+            assert copied.read_bytes() == b"registry"
+            if state.registry_exit:
+                return subprocess.CompletedProcess(args, state.registry_exit, "", state.registry_stderr)
+            return subprocess.CompletedProcess(args, 0, json.dumps(state.registry_reply), "")
+        return sync_run(args, input)
 
-    monkeypatch.setattr(scope["os"], "replace", replace)
-    assert host.invoke("sync", "alpha", data=b"") == 0
+    host.run = run
+    return host, state
+
+
+def applied(host):
+    path = host.path("/etc/porelo-host/registry/applied.json")
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+    return json.loads(path.read_text())
+
+
+def test_registry_applies_a_verified_bundle_against_the_pin_and_records_it_root_only(registry_host, capsys):
+    """Prevent the host from taking projects or persons from anything but Porelo's verify of the pinned bundle."""
+    host, state = registry_host
     capsys.readouterr()
-    path = host.path("/etc/porelo-host/matrix/alpha.admins")
-    assert path.read_text() == "ada\nbo\n"
-    assert replaced == ["ada\nbo\n"]
-    assert stat.S_IMODE(path.stat().st_mode) == 0o640
-    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o750
-    assert path.stat().st_gid == path.parent.stat().st_gid == os.getgid()
-    assert path.stat().st_uid == path.parent.stat().st_uid == os.getuid()
-    state.verify_reply["alpha"]["access_commit"] = "5" * 40
-    state.verify_reply["alpha"]["admins"] = ["bo"]
-    assert host.invoke("sync", "alpha", data=b"") == 0
-    assert path.read_text() == "bo\n"
+    assert host.invoke("registry", data=b"", sudo_user="ada") == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "commit": "a" * 40,
+        "pinned": fingerprint(SIGNER_ONE),
+        "projects": ["alpha", "beta"],
+        "dropped": [],
+        "revoked": [],
+        "refused": [],
+        "unchanged": False,
+    }
+    verify = state.registry_calls[0]
+    assert verify[verify.index("--pinned") + 1] == fingerprint(SIGNER_ONE)
+    assert "--since" not in verify
+    recorded = applied(host)
+    assert recorded["commit"] == "a" * 40
+    assert [project["name"] for project in recorded["projects"]] == ["alpha", "beta"]
+    assert recorded["persons"] == state.registry_reply["persons"]
+    assert recorded["revoked"] == []
+    assert list(host.path("/run/porelo-host/sync").iterdir()) == []
+
+    assert host.invoke("registry", data=b"") == 0
+    assert json.loads(capsys.readouterr().out)["unchanged"] is True
+    assert state.registry_calls[1][state.registry_calls[1].index("--since") + 1] == "a" * 40
 
 
-@pytest.mark.parametrize("admins", ["ada", ["ada\nroot"], ["ada", "ada"], ["../ada"]])
-def test_sync_refuses_invalid_matrix_admins_before_changing_access(sync_host, capsys, admins):
-    """Prevent malformed verified output granting room administration or partial host access."""
-    host, state = sync_host
-    state.verify_reply["alpha"]["admins"] = admins
-    before = snapshot(host.path("/etc"))
-    assert host.invoke("sync", "alpha", data=b"") == 65
-    assert "admin" in capsys.readouterr().err
-    assert snapshot(host.path("/etc")) == before
-
-
-def test_sync_without_verified_admins_applies_and_leaves_no_admins_file(sync_host, capsys):
-    """Prevent every sync from failing while Porelo's verify names no admins yet, or an old list from staying."""
-    host, state = sync_host
-    path = host.path("/etc/porelo-host/matrix/alpha.admins")
-    assert host.invoke("sync", "alpha", data=b"") == 0
-    assert path.exists()
+@pytest.mark.parametrize(
+    "stderr",
+    [
+        "porelo: hosts/host/card.yml at 1111111 is signed by SHA256:other, not the pinned host admin\n",
+        "porelo: the registry at bbbbbbb does not descend from the applied aaaaaaa\n",
+    ],
+)
+def test_registry_refuses_a_foreign_signer_or_an_older_or_forked_state_whole(registry_host, capsys, stderr):
+    """Prevent a bundle signed by another key, or one rolling back a lock or handover, from changing anything."""
+    host, state = registry_host
     capsys.readouterr()
-    del state.verify_reply["alpha"]["admins"]
-    assert host.invoke("sync", "alpha", data=b"") == 0
-    assert not path.exists()
-
-
-def test_purge_expels_the_login_even_when_already_locked(host, capsys):
-    """Prevent a prior lock from letting purge leave the person's and tasks' Matrix accounts active."""
-    assert host.invoke("add", "alice", "--role", "project-admin") == 0
-    assert host.invoke("lock", "alice", data=b"") == 0
-    host.events.clear()
-    assert host.invoke("purge", "alice", data=b"") == 0
+    assert host.invoke("registry", data=b"") == 0
     capsys.readouterr()
-    assert ["matrix_expel_revoke", "alice"] in host.events
+    before_etc = snapshot(host.path("/etc"))
+    state.registry_reply["commit"] = "b" * 40
+    state.registry_reply["persons"][1]["revoked"] = True
+    state.registry_exit = 65
+    state.registry_stderr = stderr
+    assert host.invoke("registry", data=b"", sudo_user="ada") == 65
+    output = capsys.readouterr()
+    assert not output.out
+    assert output.err.startswith("porelo-host-person: ") and stderr.strip().removeprefix("porelo: ") in output.err
+    assert state.registry_calls[-1][state.registry_calls[-1].index("--since") + 1] == "a" * 40
+    assert snapshot(host.path("/etc")) == before_etc
+    assert list(host.path("/run/porelo-host/sync").iterdir()) == []
 
 
-def test_unchanged_sync_restores_missing_matrix_authorization(sync_host, capsys):
-    """Prevent existing projects from permanently lacking their admins file after a host upgrade."""
-    host, state = sync_host
-    assert host.invoke("sync", "alpha", data=b"") == 0
-    path = host.path("/etc/porelo-host/matrix/alpha.admins")
-    path.unlink()
-    assert host.invoke("sync", "alpha", data=b"") == 0
+def test_registry_names_a_dropped_project_keeps_it_and_its_sync_and_registration_are_refused(registry_host, capsys):
+    """Prevent the host from removing a project on its own, or syncing one its registry no longer names."""
+    host, state = registry_host
     capsys.readouterr()
-    assert path.read_text() == "ada\n"
+    state.registry_reply["projects"] = [{"name": "alpha", "admin": "bo", "access_repository": "alpha-access"}]
+    assert host.invoke("registry", data=b"") == 0
+    answer = json.loads(capsys.readouterr().out)
+    assert answer["projects"] == ["alpha"] and answer["dropped"] == ["alpha", "beta"]
+    assert host.path("/etc/porelo-host/projects/beta.conf").is_file()
+    assert host.path("/etc/porelo-host/projects/alpha.conf").is_file()
+    for project, admin in (("beta", "bo"), ("alpha", "ada")):
+        output = refused(host, capsys, 65, "sync", project, data=b"", sudo_user=admin)
+        assert f"registry names no project {project} for {admin}" in output.err
+
+    state.registry_reply["commit"] = "b" * 40
+    state.registry_reply["projects"][0]["admin"] = "ada"
+    assert host.invoke("registry", data=b"") == 0
+    assert json.loads(capsys.readouterr().out)["dropped"] == ["beta"]
+    assert host.invoke("sync", "alpha", data=b"", sudo_user="ada") == 0
 
 
-def test_sync_refuses_a_linked_matrix_admins_file(sync_host, capsys):
-    """Prevent a link redirecting root's publication or authorizing a different project."""
-    host, state = sync_host
-    sentinel = host.write("/etc/porelo-host/sentinel", "unchanged\n")
-    directory = host.path("/etc/porelo-host/matrix")
-    directory.mkdir(mode=0o750)
-    (directory / "alpha.admins").symlink_to(sentinel)
-    assert host.invoke("sync", "alpha", data=b"") == 73
+def test_registry_refuses_a_readmitted_revoked_login_alone_while_a_lock_in_the_same_bundle_applies(
+    registry_host, capsys
+):
+    """Prevent one refused entry from holding up a revocation, or an older card from undoing a purge."""
+    host, state = registry_host
+    capsys.readouterr()
+    state.registry_reply["persons"].append(registry_person("cy", ssh_key(12), revoked=True))
+    assert host.invoke("registry", data=b"") == 0
+    assert json.loads(capsys.readouterr().out)["revoked"] == ["cy"]
+
+    state.registry_reply["commit"] = "b" * 40
+    state.registry_reply["persons"] = [
+        registry_person("ada", SIGNER_ONE),
+        registry_person("bo", SIGNER_TWO, revoked=True),
+        registry_person("cy", ssh_key(13)),
+        registry_person("Bad_Login", ssh_key(14)),
+        {"login": "dan", "ssh": "ssh-ed25519 AAAA", "expires": None, "revoked": False},
+        registry_person("ada", ssh_key(15)),
+    ]
+    state.registry_reply["projects"].append({"name": "Gamma!", "admin": "ada", "access_repository": "x"})
+    assert host.invoke("registry", data=b"") == 0
+    answer = json.loads(capsys.readouterr().out)
+    assert answer["commit"] == "b" * 40
+    assert answer["revoked"] == ["bo", "cy"]
+    assert answer["projects"] == ["alpha", "beta"]
+    assert len(answer["refused"]) == 5
+    for named in ("cy", "Bad_Login", "dan", "ada", "Gamma!"):
+        assert any(named in line for line in answer["refused"]), named
+    assert all("ssh-ed25519" not in line for line in answer["refused"]), "a key never goes to output"
+    recorded = applied(host)
+    assert recorded["revoked"] == ["bo", "cy"]
+    persons = {person["login"]: person for person in recorded["persons"]}
+    assert set(persons) == {"ada", "bo", "cy"}
+    assert persons["bo"]["revoked"] is True
+    assert persons["cy"] == registry_person("cy", ssh_key(12), revoked=True), "the revoked entry stays as applied"
+    assert persons["ada"] == registry_person("ada", SIGNER_ONE), "the first of a duplicated login applies alone"
+
+
+def test_registry_handover_advances_the_pin_to_the_person_whose_key_signed_the_host_card(registry_host, capsys):
+    """Prevent a verified handover from leaving the old host admin pinned, or an unnamed signer from taking the pin."""
+    host, state = registry_host
+    capsys.readouterr()
+    before_etc = snapshot(host.path("/etc"))
+    state.registry_reply["host_card"]["signed_by"] = fingerprint(ssh_key(77))
+    assert host.invoke("registry", data=b"", sudo_user="ada") == 65
+    output = capsys.readouterr()
+    assert not output.out and "no person" in output.err
+    assert snapshot(host.path("/etc")) == before_etc
+
+    state.registry_reply["host_card"]["signed_by"] = fingerprint(SIGNER_TWO)
+    assert host.invoke("registry", data=b"", sudo_user="ada") == 0
+    assert json.loads(capsys.readouterr().out)["pinned"] == fingerprint(SIGNER_TWO)
+    pin = host.path("/etc/porelo-host/registry/pin.conf")
+    assert pin.read_text() == f"admin=bo\nkey={SIGNER_TWO}\n"
+    assert stat.S_IMODE(pin.stat().st_mode) == 0o600
+
+    refused(host, capsys, 65, "registry", data=b"", sudo_user="ada")
+    bundle = host.root / "home/bo/.local/share/porelo-host/setup/registry.bundle"
+    bundle.write_bytes(b"registry")
+    bundle.chmod(0o600)
+    state.registry_reply["commit"] = "b" * 40
+    assert host.invoke("registry", data=b"", sudo_user="bo") == 0
+    verify = state.registry_calls[-1]
+    assert verify[verify.index("--pinned") + 1] == fingerprint(SIGNER_TWO)
+
+
+def test_registry_pin_is_set_once_by_root_alone(registry_host, capsys):
+    """Prevent anyone but root at setup from choosing the key the host anchors on, or a second pin replacing it."""
+    host, state = registry_host
+    capsys.readouterr()
+    pin = host.path("/etc/porelo-host/registry/pin.conf")
+    output = refused(host, capsys, 65, "registry", "pin", "bo", SIGNER_TWO)
+    assert "pinned" in output.err
+    pin.unlink()
+    refused(host, capsys, 69, "registry", data=b"")
+    assert host.invoke("registry", "pin", "ada", SIGNER_ONE, data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {"admin": "ada", "pinned": fingerprint(SIGNER_ONE)}
+    assert pin.read_text() == f"admin=ada\nkey={SIGNER_ONE}\n"
+    assert stat.S_IMODE(pin.stat().st_mode) == 0o600
+    assert state.registry_calls == []
+
+
+def test_registry_by_sudo_allows_only_the_pinned_admin_and_their_own_plain_bundle(registry_host, capsys):
+    """Prevent another person from bringing the host's registry, or root from reading a linked or writable bundle."""
+    host, state = registry_host
+    capsys.readouterr()
+    for caller in ("bo", "ghost", ""):
+        refused(host, capsys, 65, "registry", data=b"", sudo_user=caller)
+    bundle = host.root / "home/ada/.local/share/porelo-host/setup/registry.bundle"
+    bundle.chmod(0o620)
+    assert host.invoke("registry", data=b"", sudo_user="ada") == 65
+    bundle.chmod(0o600)
+    bundle.unlink()
+    bundle.symlink_to(host.root / "home/bo/.local/share/porelo-host/setup/beta/access.bundle")
+    assert host.invoke("registry", data=b"", sudo_user="ada") == 65
     assert not capsys.readouterr().out
-    assert sentinel.read_text() == "unchanged\n"
+    assert state.registry_calls == []
+    assert not host.path("/etc/porelo-host/registry/applied.json").exists()
 
 
-def test_purge_keeps_the_locked_account_when_matrix_expulsion_fails(host, capsys):
-    """Prevent account deletion from hiding a failed deactivation on the homeserver."""
-    assert host.invoke("add", "alice", "--role", "project-admin") == 0
-    assert host.invoke("lock", "alice", data=b"") == 0
+@pytest.mark.parametrize(
+    "change, code",
+    [
+        ({"commit": "short"}, 69),
+        ({"host_card": {"host": "other", "signed_by": fingerprint(SIGNER_ONE)}}, 65),
+        ({"projects": {"alpha": "ada"}}, 69),
+        ({"persons": None}, 69),
+    ],
+)
+def test_registry_refuses_an_answer_of_another_shape_or_host_whole(registry_host, capsys, change, code):
+    """Prevent a malformed answer or one for another host from being recorded as the host's state."""
+    host, state = registry_host
     capsys.readouterr()
-
-    def unavailable(name, values):
-        if name == "matrix_expel_revoke":
-            raise host.factory.__globals__["Refusal"]("expulsion unavailable", 69)
-
-    host.hook_inspect = unavailable
-    host.calls.clear()
-    assert host.invoke("purge", "alice", data=b"") == 69
-    assert "expulsion unavailable" in capsys.readouterr().err
-    assert "alice" in host.accounts
-    assert host.path("/etc/porelo-host/people/alice.conf").exists()
-    assert host.calls == []
-
-
-def test_failed_admins_publication_keeps_the_previous_authorization_and_sync_commit(sync_host, capsys, monkeypatch):
-    """Prevent failed publication from advancing sync past an authorization update that never reached the gate."""
-    host, state = sync_host
-    assert host.invoke("sync", "alpha", data=b"") == 0
-    capsys.readouterr()
-    record = host.path("/etc/porelo-host/projects/alpha.conf")
-    before = record.read_bytes()
-    state.verify_reply["alpha"]["access_commit"] = "5" * 40
-    state.verify_reply["alpha"]["admins"] = ["bo"]
-    scope = host.factory.__globals__
-    original = scope["os"].replace
-
-    def replace(source, target):
-        if str(target).endswith("/matrix/alpha.admins"):
-            raise OSError("publication unavailable")
-        return original(source, target)
-
-    monkeypatch.setattr(scope["os"], "replace", replace)
-    assert host.invoke("sync", "alpha", data=b"") == 73
+    state.registry_reply.update(change)
+    assert host.invoke("registry", data=b"") == code
     assert not capsys.readouterr().out
-    assert record.read_bytes() == before
-    path = host.path("/etc/porelo-host/matrix/alpha.admins")
-    assert path.read_text() == "ada\n"
-    assert sorted(p.name for p in path.parent.iterdir()) == ["alpha.admins"]
+    assert not host.path("/etc/porelo-host/registry/applied.json").exists()
