@@ -1,8 +1,9 @@
 # HO68 — SSH The Host's Only Way In
 
-**Status:** Accepted (operator, 2026-10-30, with the project's one-click joining).
-**Size:** M - the vpn role out, the firewall down to port 22, sshd's settings and the KRL, with unit tests and a VM run;
-measured M median 63 min, from three M builds (47, 63, 75).
+**Status:** Estimated and Backlog (operator, 2026-10-30, sprint 6m).
+**Size:** L - the vpn role's removal reaches up, down, the firewall, the stops and Molecule's converge and verify,
+beside the sshd settings, the KRL and the person helper; L by the size rule (several modules and an acceptance step), no
+measured L yet.
 **Blocked by:** [HO70](README.md#ho70).
 
 Part of the project's decision that a person joins with one click: one SSH key per person, no VPN, the state signed in
@@ -33,7 +34,7 @@ machine. Nothing else on the host answers from outside, and nothing on it listen
   `/run/user/<uid>/porelo` (0700), the services' sockets as their issues set them.
 - Goes: the `vpn` role (WireGuard, `wg-porelo`, the address plan, its firewall rules), the `wireguard` stop.
 
-## Tests
+## Acceptance
 
 - no TCP listener for persons on the host after up (`ss -ltn`), only sshd on 22 from outside; an account outside
   `porelo-people` can forward no socket;
@@ -42,3 +43,33 @@ machine. Nothing else on the host answers from outside, and nothing on it listen
 - a project's revocation of a host admin's or another project's person's key leaves their host access as it was;
 - a host lock ends a running tunnel; `-L` to another person's socket fails on its mode; `-A` and `-L` to a TCP port
   fail.
+
+## Plan
+
+- `roles/base`: a new `tasks/ssh.yml` writes `/etc/ssh/sshd_config.d/10-porelo-host.conf` (first value wins, so before
+  Ubuntu's `50-cloud-init.conf`), validated with `sshd -t`, reloaded by a handler: the global forwarding limits, then
+  `Match Group porelo-people` with `AllowStreamLocalForwarding all`, `StreamLocalBindUnlink yes`, `AuthorizedKeysFile
+  /etc/ssh/authorized_keys/%u`. The person role's own drop-in (`roles/porelo/tasks/person.yml`) goes into it.
+- `roles/base/tasks/firewall.yml` takes the firewall from `roles/vpn/tasks/firewall.yml` with only `tcp dport 22` open
+  on the public interfaces; `templates/firewall.nft.j2` moves with it.
+- KRL: `person.yml` seeds `/etc/ssh/porelo-revoked.krl` with `ssh-keygen -k -f` from an empty list where it is missing,
+  and the drop-in names it. `porelo-host-person` gets `write_krl(keys)`, writing a new file with `ssh-keygen -k` and
+  renaming it into place; [HO75](README.md#ho75) fills the keys.
+- `porelo-host-person`: `admit` makes `/run/porelo-host/people/<login>/` (0700, the person's), `remove`/`purge` take it
+  away; a tmpfiles line in `person.yml` makes it at boot for every recorded person. `lock` already ends the user's
+  sessions in purge; `lock` gets the same `loginctl terminate-user` and `systemctl stop user@`. The authorized-keys line
+  drops `from=` and gains `expiry-time=` ([HO75](README.md#ho75) gives the expiry; until then none).
+- `playbooks/up.yml` and `down.yml` lose the `vpn` role and its `needs`; `porelo_host_needs` loses `wireguard`;
+  `roles/vpn` is deleted, and `roles/base/tasks/down.yml` takes away a `wg-porelo` left by an earlier up.
+  `roles/porelo/files/porelo-host-stop` loses `wireguard`; `doc/lines.md` with it.
+- Molecule: converge feeds no `wireguard`; verify's VPN steps (test peer in a namespace on 10.73.7.0/24, Forgejo over
+  the VPN) go, replaced by `ss -ltn` and a socket-forward check over ssh as a person; the full tunnel tests are
+  [HO74](README.md#ho74)'s.
+- Red first: `test_porelo_host_person.py` tests for the return directory at admit, its removal at purge,
+  `terminate-user` at lock and the KRL written by rename.
+
+## To be checked
+
+- `ssh-keygen -k` with an empty input makes a KRL sshd accepts, on Ubuntu 26.04's OpenSSH 10.2.
+- Whether the host admin, connecting as root for `up`, needs anything of the Match block (they do not forward sockets as
+  root).

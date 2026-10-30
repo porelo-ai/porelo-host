@@ -36,6 +36,10 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho72"></a>[HO72](HO72-The-Central-Forge-Reached-Only-On-A-Persons-Word.md) | M | - | No token for the central forge lies on the host: migration, push and pull take the starting person's own on stdin, once. |
+| <a id="ho73"></a>[HO73](HO73-The-Homeserver-Reached-Through-Its-Gate.md) | M | porelo-message-matrix's gate | The homeserver is reached only through the Matrix transport's gate on its socket, and Tuwunel listens on no TCP port. |
+| <a id="ho68"></a>[HO68](HO68-SSH-The-Hosts-Only-Way-In.md) | L | [HO70](#ho70) | A person reaches the host only over SSH on port 22, with the one key of their card; nothing listens on TCP for persons. |
+| <a id="ho69"></a>[HO69](HO69-The-Forge-Behind-Its-Gate-Without-TLS.md) | L | [HO71](#ho71) | The forge has no TLS and no password: a person's browser is signed in through `web.sock`, Git and the API take a token through `git.sock`. |
 | <a id="ho14"></a>[HO14](HO14-The-Collections-Python-Under-Ansible-Test-Sanity.md) | S | - | `ansible-test sanity` on the collection's Python in the Build, from a pinned image of its own. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | [HO37](#ho37) | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho60"></a>[HO60](HO60-Each-Repositorys-Review-Set-On-The-Forge.md) | M | - | Each repository's `main` on the local forge and the project repository's protected from the signed project file's `review`: one approval by another person, dismissed by a later commit, or none; only owners and developers merge; set again at each sync. |
@@ -51,13 +55,9 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho68"></a>[HO68](HO68-SSH-The-Hosts-Only-Way-In.md) | M | [HO70](#ho70) | A person reaches the host only over SSH on port 22, with the one key of their card; nothing listens on TCP for persons. |
-| <a id="ho69"></a>[HO69](HO69-The-Forge-Behind-Its-Gate-Without-TLS.md) | M | [HO71](#ho71) | The forge has no TLS and no password: a person's browser is signed in through `web.sock`, Git and the API take a token through `git.sock`. |
 | <a id="ho70"></a>[HO70](HO70-The-Hosts-State-Taken-From-The-Registry.md) | M | Porelo's registry verify | The host takes its project admins and projects from the signed registry state the host admin brings, verified by Porelo. |
 | <a id="ho75"></a>[HO75](HO75-The-Persons-Taken-From-Their-Cards.md) | M | [HO68](#ho68), [HO70](#ho70); Porelo's verify answering persons by key | Persons, keys, signers and per-project locks come from the cards and access files, with no laptop anywhere. |
 | <a id="ho71"></a>[HO71](HO71-A-Task-Recorded-And-Given-Its-Forge-Token-By-The-Host.md) | M | [HO70](#ho70); Porelo's task certificate check | Every forge token on the host is made there and goes with its person or task; each task's certificate is recorded at its start. |
-| <a id="ho72"></a>[HO72](HO72-The-Central-Forge-Reached-Only-On-A-Persons-Word.md) | M | - | No token for the central forge lies on the host: migration, push and pull take the starting person's own on stdin, once. |
-| <a id="ho73"></a>[HO73](HO73-The-Homeserver-Reached-Through-Its-Gate.md) | S | porelo-message-matrix's gate | The homeserver is reached only through the Matrix transport's gate on its socket, and Tuwunel listens on no TCP port. |
 | <a id="ho76"></a>[HO76](HO76-Each-Push-Judged-When-It-Arrives.md) | M | [HO71](#ho71), [HO75](#ho75); Porelo's commit verify against signers and KRL | The first accepted push of a commit to the host's forge judges it against the signers and KRL in force, and records the verdict. |
 | <a id="ho74"></a>[HO74](HO74-Every-Role-Tested-Without-The-VPN.md) | M | [HO63](#ho63), [HO68](#ho68), [HO69](#ho69), [HO70](#ho70), [HO71](#ho71), [HO72](#ho72), [HO73](#ho73), [HO75](#ho75), [HO76](#ho76) | Molecule shows every role over SSH alone, and the guide's checks pass on a rented host. |
 | <a id="ho59"></a>[HO59](HO59-An-Interrupted-Bring-Replaced-Safely.md) | M | - | A bring leaves `bring.state` in its setup directory, so an interrupted one is recognized and replaced by a new upload instead of refused. |

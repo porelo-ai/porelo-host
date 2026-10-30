@@ -1,8 +1,9 @@
 # HO69 — The Forge Behind Its Gate Without TLS
 
-**Status:** Accepted (operator, 2026-10-30, with the project's one-click joining).
-**Size:** M - the CA and TLS out, the gate's two sockets with unit tests, Forgejo's settings and a VM run; measured M
-median 63 min, from three M builds (47, 63, 75).
+**Status:** Estimated and Backlog (operator, 2026-10-30, sprint 6m).
+**Size:** L - a new gate program serving two sockets with its own tests, Forgejo moved to a Unix socket inside rootless
+podman, and the CA, TLS, request and password helper removed with their Molecule steps; L by the size rule, no measured
+L yet.
 **Blocked by:** [HO71](README.md#ho71).
 
 Part of the project's decision that a person joins with one click: one SSH key per person, no VPN, the state signed in
@@ -34,7 +35,7 @@ Git on the central forge, every service on the host behind a Unix socket.
 - Goes: the forge's CA, its certificate and request, the `forge-certificate` stop, the HTTPS socket units, the CA's
   trust in the accounts, `porelo-host-forge-password`, the forge's SSH port.
 
-## Tests
+## Acceptance
 
 - a header sent from outside is dropped on both sockets; `web.sock` gives the caller's login and nothing to root or a
   service account;
@@ -42,3 +43,32 @@ Git on the central forge, every service on the host behind a Unix socket.
   and never trusts a cookie or the header;
 - `git clone` through `git.sock` with the credential helper works; Forgejo's own socket refuses every account but the
   forge's.
+
+## Plan
+
+- New `roles/forge/files/porelo-forge-gate`, Python 3 standard library like the other helpers: socket-activated with
+  `Accept=yes`, one process per connection, reading HTTP/1.1 requests from fd 3 and passing them to Forgejo's socket
+  with `http.client` over `AF_UNIX`. `--web`: `SO_PEERCRED` → `pwd` → a login in group `porelo-people` (not root, not a
+  service account), the header set only without `Authorization`, the password and token routes answered 403. `--git`: no
+  header, `Cookie` removed, 401 `WWW-Authenticate: Basic` without credentials. Both remove every `X-WEBAUTH-*`.
+- New templates `porelo-forge-web.socket`/`@.service` and `porelo-forge-git.socket`/`@.service` (system units,
+  `SocketUser` the forge account, `SocketGroup=porelo-people`, `SocketMode=0660`, `User=` the forge account), replacing
+  `porelo-forge-https.socket.j2` and `.service.j2`.
+- `forgejo.container.j2`: no `PublishPort`; `Volume=%t/porelo-forge:/run/forgejo` from a 0700 directory of the account;
+  `PROTOCOL=http+unix`, `HTTP_ADDR=/run/forgejo/http.sock`, `UNIX_SOCKET_PERMISSION=600`,
+  `ROOT_URL=http://<host>.localhost:<web port>/`, `START_SSH_SERVER=false`, `DISABLE_SSH=true`, the reverse-proxy
+  settings; no `/tls`, no CA bundle.
+- `roles/forge/tasks/service.yml` waits for Forgejo on its socket (`curl --unix-socket`), not over TLS; every `curl` of
+  the roles to `https://<forge>` (admin, gate, publisher, agents, own, protection, teams, variables) goes to the socket
+  with `--unix-socket` and `http://localhost`.
+- Goes: `tasks/tls.yml`, `tasks/request.yml`, the `forge-certificate` need in `up.yml` and the stop,
+  `files/porelo-host-forge-password` and its sudoers line, the CA's trust in `roles/porelo/tasks/trust.yml`,
+  `forge_ca_*` defaults.
+- Red first: `tests/unit/roles/test_forge_gate.py`, the gate over socket pairs against a stand-in upstream: header
+  dropped, uid mapped, 403 on the routes, 401 Basic on git, cookie removed.
+
+## To be checked
+
+- Forgejo 13's `http+unix` inside a rootless container with keep-id, and the socket's owner seen by the account.
+- Which Forgejo routes set a password or make tokens, read in Forgejo's router for the pinned version.
+- That `ENABLE_REVERSE_PROXY_AUTHENTICATION_API=false` holds for every `/api/` route in that version.

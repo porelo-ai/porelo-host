@@ -1,8 +1,9 @@
 # HO73 — The Homeserver Reached Through Its Gate
 
-**Status:** Accepted (operator, 2026-10-30, with the project's one-click joining).
-**Size:** S - the matrix role's system socket unit for the transport's gate, Tuwunel off TCP and the tokens out, with a
-VM run; measured S 54 min, from one S build only, so nearly a guess.
+**Status:** Estimated and Backlog (operator, 2026-10-30, sprint 6m).
+**Size:** M - the matrix role's socket unit, Tuwunel's socket setting, the admins files written by the sync, and the TLS
+and tokens removed with their Molecule steps; measured M median 63 min, from three M builds (47, 63, 75); grew from S,
+as the TLS removal and the admins files came in.
 **Blocked by:** porelo-message-matrix's gate.
 
 Part of the project's decision that a person joins with one click: one SSH key per person, no VPN, the state signed in
@@ -22,7 +23,27 @@ Git on the central forge, every service on the host behind a Unix socket.
 - A purge runs the transport's expel for the login, so its person and task accounts are deactivated with it.
 - Goes: the homeserver's TLS, the machine and registration tokens on the host, the `matrix-token` stop.
 
-## Tests
+## Acceptance
 
 - a login outside `porelo-people` gets `EACCES` on client.sock; nothing of the homeserver listens on TCP; a purge
   deactivates `@<login>` and `@*.<login>`.
+
+## Plan
+
+- `roles/matrix/templates/porelo-matrix-gate.socket.j2` and `porelo-matrix-gate@.service.j2` as Matrix gave them
+  (`ListenStream=/run/porelo-matrix/client.sock`, `Accept=yes`, `SocketUser`/`User` porelo-matrix,
+  `SocketGroup=porelo-people`, `SocketMode=0660`, `ExecStart=/usr/bin/porelo-message-transport-matrix gate`,
+  `StandardInput=socket`, `NoNewPrivileges=yes`), written by `roles/matrix/tasks/main.yml`.
+- Tuwunel's settings (the `Add the homeserver's port…` task): `unix_socket_path` under `$XDG_RUNTIME_DIR/porelo-matrix/`
+  (0700), `unix_socket_perms = 600`, no `port`/`address`; then `porelo-message-transport-matrix gate --prepare` once as
+  porelo-matrix before the homeserver starts.
+- Goes: the certificate tasks (line 128 on), the `matrix-token` need and stop, `publish --address` (line 207).
+- `porelo-host-person sync` writes `/etc/porelo-host/matrix/<project>.admins` from the verified access file (one login
+  per line, write, fsync, rename), `remove` deletes it; `purge` runs `porelo-message-transport-matrix expel <login>` as
+  porelo-matrix.
+- Red first: `test_porelo_host_person.py` for the admins file (content, modes, removal) and the expel call at purge.
+
+## To be checked
+
+- Tuwunel 1.9.4's `unix_socket_path` on a real run (Matrix read it in the binary only).
+- The transport package's version that brings `gate` and `gate --prepare`.
