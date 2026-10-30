@@ -168,14 +168,13 @@
   changed_when: false
   check_mode: false
 
-# Only names pass here: each key reaches the vault on the stop's pipe, never through Ansible.
-- name: own | Stop on a key of the machine file the vault does not hold, naming it
-  ansible.builtin.assert:
-    that: __porelo_keys_missing | length == 0
-    fail_msg: >-
-      keys: the vault holds no {{ __porelo_keys_missing | join(', ') }}; give them with
-      porelo-host-stop --stdin keys and run {{ porelo_own_act }} again
-    quiet: true
+# Only names pass here: each key reaches the vault on the stop's pipe, never through Ansible. A missing key is the
+# person's step, so the message is the stop's needs as JSON, as for the vault.
+- name: own | Wait for the stop that gives the keys of the machine file the vault does not hold
+  ansible.builtin.fail:
+    msg: "{{ ['keys'] | to_json }}"
+  when: __porelo_keys_missing | length > 0
+  tags: [porelo_host_waiting]
   vars:
     __porelo_keys_missing: "{{ __porelo_host.porelo_vault_keys | default([]) | map(attribute='name')
       | reject('in', __porelo_vault_list.stdout_lines | map('split') | map('first') | list) | list }}"

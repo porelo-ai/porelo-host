@@ -18,7 +18,7 @@ printf '%s\\n' "$*" >> "$PORELO_LOG"
 case "$1 $2" in
     "setup "*) echo "daemon   running" ;;
     "vault status") exit "${PORELO_VAULT_STATUS:-0}" ;;
-    "vault list") printf 'deploy-key\\n' ;;
+    "vault list") [ -n "${PORELO_VAULT_EMPTY:-}" ] || printf 'deploy-key\\n' ;;
     "project inventory") cat "$PORELO_INVENTORY" ;;
     "project following") echo '{"follows": []}' ;;
     "project verify")
@@ -174,6 +174,16 @@ def test_a_shut_or_missing_vault_waits_for_the_stop_that_opens_it(home, act, sta
     lines = [json.loads(line) for line in done.stdout.splitlines()]
     assert done.returncode != 0
     assert {"v": 1, "state": "waiting", "needs": needs} in lines, done.stdout + done.stderr
+    assert not [line for line in lines if line["state"] == "failed"], done.stdout
+    assert not any(c.startswith("project follow ") for c in calls)
+
+
+# Bring alone: the fixture's machine file has a forge section, which a join refuses before the keys.
+def test_a_key_the_open_vault_does_not_hold_waits_for_the_stop_that_gives_the_keys(home):
+    done, calls = run(home, callback="porelo.host.lines", PORELO_VAULT_EMPTY="yes")
+    lines = [json.loads(line) for line in done.stdout.splitlines()]
+    assert done.returncode != 0
+    assert {"v": 1, "state": "waiting", "needs": ["keys"]} in lines, done.stdout + done.stderr
     assert not [line for line in lines if line["state"] == "failed"], done.stdout
     assert not any(c.startswith("project follow ") for c in calls)
 
