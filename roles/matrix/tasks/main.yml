@@ -76,7 +76,11 @@
   become: true
   become_user: "{{ matrix_account }}"
   environment: "{{ __matrix_environment }}"
-  when: item in (__matrix_old_units.stdout_lines | map('split') | map('first') | list)
+  # Only a socket publish enabled is a TCP way in; the package ships it disabled, with no address systemd would load.
+  when: >-
+    item in (__matrix_old_units.stdout_lines | map('split') | map('first') | list)
+    and 'porelo-matrix-homeserver-vpn.socket' in (__matrix_old_units.stdout_lines | map('split')
+    | rejectattr(1, 'equalto', 'disabled') | map('first') | list)
 
 - name: Read the recorded people for registration token cleanup
   ansible.builtin.find:

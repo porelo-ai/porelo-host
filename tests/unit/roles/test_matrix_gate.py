@@ -96,3 +96,21 @@ def test_existing_tcp_units_and_person_tokens_are_removed():
     assert cleanup["become"] is True
     assert cleanup["become_user"] == "{{ __matrix_person }}"
     assert cleanup["ansible.builtin.command"]["argv"][:3] == ["rm", "-f", "--"]
+
+
+def test_old_tcp_units_are_stopped_only_where_they_were_published():
+    """Prevent a fresh host failing on the shipped, address-less unit that systemd refuses to load."""
+    retired = next(t for t in tasks() if "porelo-matrix-homeserver-vpn.socket" in t.get("loop", []))
+    env = jinja2.Environment()
+    env.filters["split"] = str.split
+    condition = env.compile_expression(retired["when"])
+    for listing, acted in [
+        (["porelo-matrix-homeserver-vpn.socket disabled enabled", "porelo-matrix-homeserver-vpn.service static -"], []),
+        (
+            ["porelo-matrix-homeserver-vpn.socket enabled enabled", "porelo-matrix-homeserver-vpn.service static -"],
+            ["porelo-matrix-homeserver-vpn.socket", "porelo-matrix-homeserver-vpn.service"],
+        ),
+        ([], []),
+    ]:
+        old = {"stdout_lines": listing}
+        assert [item for item in retired["loop"] if condition(item=item, __matrix_old_units=old)] == acted, listing
