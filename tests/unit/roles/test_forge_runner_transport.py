@@ -165,3 +165,17 @@ def test_socket_replacement_refreshes_the_proxy_bind_mount():
         "{{ 'restarted' if __forge_gate_units.changed else 'started' }}"
     )
     assert "PartOf=forgejo-runner-proxy.service" in template("forgejo-runner.container")
+
+
+def test_every_runuser_reaches_the_accounts_own_user_manager():
+    """Prevent podman under runuser failing to place its process in the account's cgroup, as crun refuses it."""
+    lines = [
+        line
+        for path in sorted(ROOT.glob("roles/*/tasks/*.yml"))
+        for line in re.sub(r"\\\n\s*", " ", path.read_text()).splitlines()
+        if "runuser -u" in line and "XDG_RUNTIME_DIR=" in line
+    ]
+    assert lines
+    for line in lines:
+        runtime = re.search(r"XDG_RUNTIME_DIR=(/run/user/(?:\{\{ [^}]+ \}\}|\S+))", line).group(1)
+        assert f"DBUS_SESSION_BUS_ADDRESS=unix:path={runtime}/bus" in line, line

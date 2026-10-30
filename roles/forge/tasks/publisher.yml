@@ -73,6 +73,7 @@
       cd /
       secret=http://localhost/api/v1/orgs/{{ forge_owner }}/actions/secrets
       code=$(runuser -u {{ forge_account }} -- env XDG_RUNTIME_DIR=/run/user/{{ __forge_uid }} \
+                 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __forge_uid }}/bus \
           podman exec forgejo forgejo admin user generate-access-token --username {{ __forge_publisher }} \
           --token-name publish-$(date -u +%Y%m%dT%H%M%SZ) --scopes write:package --raw \
           | python3 -I -c 'import json,sys; print(json.dumps({"data": sys.stdin.read().strip()}))' \

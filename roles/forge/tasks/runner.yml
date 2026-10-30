@@ -217,9 +217,11 @@
       {
           printf '%s\n' http://127.0.0.1:{{ forge_http_port }}
           runuser -u {{ forge_account }} -- env XDG_RUNTIME_DIR=/run/user/{{ __forge_uid }} \
+              DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __forge_uid }}/bus \
               podman exec forgejo forgejo actions generate-runner-token
           printf '%s\n' {{ forge_runner_name | quote }}
       } | runuser -u {{ forge_runner_account }} -- env XDG_RUNTIME_DIR=/run/user/{{ __forge_runner_uid }} \
+              DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __forge_runner_uid }}/bus \
           podman run --rm -i --userns keep-id:uid=1000,gid=1000 \
           --network container:forgejo-runner-proxy \
           -v {{ __forge_runner_home }}/runner:/data {{ __forge_runner_image }} \

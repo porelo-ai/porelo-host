@@ -114,6 +114,7 @@
           new=$(mktemp {{ __forge_state_dir }}/agents/{{ item }}.token.XXXXXX)
           trap 'rm -f "$new"' EXIT
           runuser -u {{ forge_account }} -- env XDG_RUNTIME_DIR=/run/user/{{ __forge_uid }} \
+              DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __forge_uid }}/bus \
               podman exec forgejo forgejo admin user generate-access-token --username agent-{{ item }} \
               --token-name porelo-host-${new##*.} --scopes write:repository,read:package,read:organization --raw \
               > "$new"

@@ -76,7 +76,8 @@
       account={{ item.item | quote }}
       uid=$(id -u "$account")
       home=$(getent passwd "$account" | cut -d: -f6)
-      as() { runuser -u "$account" -- env XDG_RUNTIME_DIR=/run/user/$uid "$@"; }
+      as() { runuser -u "$account" -- env XDG_RUNTIME_DIR=/run/user/$uid \
+                 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus "$@"; }
       changed=
       if [ -d /run/user/$uid ]; then
           as systemctl --user stop forgejo.service forgejo-runner.service forgejo-runner-proxy.service \

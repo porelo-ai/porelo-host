@@ -145,14 +145,17 @@
       uid=$(id -u {{ forge_porelo_account }}) || { echo account-missing; exit 0; }
       name=porelo-host-gate-$(cat /proc/sys/kernel/random/uuid)
       if ! runuser -u {{ forge_account }} -- env XDG_RUNTIME_DIR=/run/user/{{ __forge_uid }} \
+               DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ __forge_uid }}/bus \
           podman exec forgejo forgejo admin user generate-access-token --username porelo-{{ forge_porelo_account }} \
           --token-name "$name" --scopes write:repository,read:organization --raw 2> /dev/null \
           | runuser -u {{ forge_porelo_account }} -- env XDG_RUNTIME_DIR=/run/user/$uid \
+                DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus \
               porelo vault put git.token.forge.porelo.internal > /dev/null 2>&1; then
           echo refused
           exit 0
       fi
-      if ! runuser -u {{ forge_porelo_account }} -- env XDG_RUNTIME_DIR=/run/user/$uid porelo vault list \
+      if ! runuser -u {{ forge_porelo_account }} -- env XDG_RUNTIME_DIR=/run/user/$uid \
+               DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus porelo vault list \
           2> /dev/null | awk '{print $1}' | grep -Fxq git.token.forge.porelo.internal; then
           echo entry-missing
           exit 0

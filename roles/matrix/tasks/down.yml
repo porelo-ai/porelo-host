@@ -70,7 +70,8 @@
       account={{ matrix_account | quote }}
       uid=$(id -u "$account")
       [ "$uid" != 0 ]
-      as() { runuser -u "$account" -- env XDG_RUNTIME_DIR=/run/user/$uid "$@"; }
+      as() { runuser -u "$account" -- env XDG_RUNTIME_DIR=/run/user/$uid \
+                 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus "$@"; }
       changed=
       if [ -d "/run/user/$uid" ]; then
           as systemctl --user stop porelo-matrix-homeserver.service \
