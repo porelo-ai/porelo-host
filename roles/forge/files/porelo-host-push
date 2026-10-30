@@ -8,7 +8,7 @@
 # forge as central/main. The central token is read from standard input every time and kept in memory alone.
 # The line above empties the environment before bash starts: it takes no PATH, HOME, git, proxy or shell setting from
 # its caller.
-set -u
+set -euo pipefail
 export LC_ALL=C
 cd / || exit 1
 
@@ -60,7 +60,8 @@ case "${1-}" in --migrate | --pull) mode=${1#--} && shift ;; esac
 checking=
 project_owner=
 if [ "$mode" = push ] && [ "${1-}" = --check ]; then
-    [ "$caller_uid" = 0 ] || fail "--check runs only as root" 77
+    [ "$caller_uid" = 0 ] && [ -z "${SUDO_USER:-}" ] && [ -z "${SUDO_UID:-}" ] \
+        || fail "--check runs only as root without sudo" 77
     [ "$#" -ge 3 ] || fail "--check needs an organization and its repository names" 64
     checking=yes
     project_owner=$2
@@ -147,11 +148,13 @@ if [ -z "$checking" ]; then
 
     # Reading as the person keeps a raced path from exposing a root-only file after the ownership checks.
     if [ "$mode" = migrate ]; then
-        config_data=$(timeout 10 cat -- "$conf" < /dev/null) || fail "$conf could not be read" 66
+        config_data=$(timeout 10 head -c 65537 -- "$conf" < /dev/null) || fail "$conf could not be read" 66
     else
-        config_data=$(timeout 10 runuser -u "$caller_user" -- cat -- "$conf" < /dev/null) \
+        config_data=$(timeout 10 runuser -u "$caller_user" -- head -c 65537 -- "$conf" < /dev/null) \
             || fail "$conf could not be read as $caller_user" 66
     fi
+    [ -f "$conf" ] && [ ! -L "$conf" ] || fail "$conf is not a plain file after reading" 66
+    [ "${#config_data}" -le 65536 ] || fail "$conf exceeds 64 KiB" 66
     configured_local=
     config_repos=()
     while read -r key first second extra; do
@@ -204,10 +207,11 @@ if [ -z "$checking" ]; then
     fi
 
     if [ "$mode" = migrate ]; then
-        local_token=$(sudo -n "$person_helper" forge-token 2>/dev/null) \
+        local_token=$(sudo -n "$person_helper" forge-token < /dev/null 2>/dev/null) \
             || fail "the person's forge token could not be made" 69
     else
-        local_token=$(env -u SUDO_USER -u SUDO_UID "$person_helper" forge-token --for "$caller_user" 2>/dev/null) \
+        local_token=$(env -u SUDO_USER -u SUDO_UID "$person_helper" forge-token --for "$caller_user" \
+            < /dev/null 2>/dev/null) \
             || fail "the person's forge token could not be made" 69
     fi
     [ -n "$local_token" ] || fail "the person's forge token is empty" 69
@@ -245,7 +249,7 @@ else
         || fail "the forge's account $forge_account has no unprivileged home" 69
     admin_token_file="$forge_home/.config/porelo-forge/api.token"
     # The forge's account reads its own token, so a file it put in that token's place is never read with root's rights.
-    # Never with the person's terminal or the central token on its standard input, and never waiting on a pipe put there.
+    # Neither the terminal nor the central token reaches its stdin, and a pipe put there cannot wait forever.
     local_token=$(timeout 10 runuser -u "$forge_account" -- cat -- "$admin_token_file" < /dev/null) \
         || fail "$admin_token_file could not be read" 66
     [ -n "$local_token" ] || fail "$admin_token_file is empty" 66
@@ -281,11 +285,11 @@ git_as() {
     local header=$1 ca=$2
     shift 2
     GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=http.extraHeader GIT_CONFIG_VALUE_0="$header" \
-        GIT_CONFIG_KEY_1=http.followRedirects GIT_CONFIG_VALUE_1=false GIT_SSL_CAINFO="$ca" git "$@"
+        GIT_CONFIG_KEY_1=http.followRedirects GIT_CONFIG_VALUE_1=false GIT_SSL_CAINFO="$ca" exec setsid git "$@"
 }
 # Git has no HTTP Unix-socket transport; only the child namespace ever opens a TCP listener.
 as_local() {
-    printf '%s\n' "$local_token" | unshare --net python3 -I -c '
+    exec setsid unshare --net python3 -I -c '
 import os
 import selectors
 import signal
@@ -303,19 +307,37 @@ subprocess.run(["ip", "link", "set", "lo", "up"], check=True, stdin=subprocess.D
 
 class Forward(socketserver.BaseRequestHandler):
     def handle(self):
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
-            peer.connect(upstream)
+        with self.request, socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+            self.request.settimeout(30)
+            peer.settimeout(30)
+            try:
+                peer.connect(upstream)
+            except OSError:
+                return
             with selectors.DefaultSelector() as ready:
                 ready.register(self.request, selectors.EVENT_READ, peer)
                 ready.register(peer, selectors.EVENT_READ, self.request)
                 while ready.get_map():
-                    for key, _ in ready.select():
-                        data = key.fileobj.recv(65536)
+                    events = ready.select(30)
+                    if not events:
+                        break
+                    for key, _ in events:
+                        try:
+                            data = key.fileobj.recv(65536)
+                        except OSError:
+                            data = b""
                         if data:
-                            key.data.sendall(data)
-                        else:
-                            ready.unregister(key.fileobj)
+                            try:
+                                key.data.sendall(data)
+                                continue
+                            except OSError:
+                                pass
+                        # A closed request direction must not discard the gate response still waiting to be read.
+                        ready.unregister(key.fileobj)
+                        try:
                             key.data.shutdown(socket.SHUT_WR)
+                        except OSError:
+                            pass
 
 server = socketserver.ThreadingTCPServer(("127.0.0.1", port), Forward)
 server.daemon_threads = True
@@ -337,17 +359,26 @@ env = dict(os.environ, GIT_CONFIG_COUNT="3", GIT_CONFIG_KEY_0="credential.helper
            GIT_CONFIG_KEY_2="http.followRedirects", GIT_CONFIG_VALUE_2="false")
 child = None
 def interrupted(signum, frame):
-    if child is not None:
-        child.send_signal(signum)
     raise SystemExit(128 + signum)
-signal.signal(signal.SIGTERM, interrupted)
-signal.signal(signal.SIGINT, interrupted)
+for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+    signal.signal(signum, interrupted)
 try:
-    child = subprocess.Popen(["git", *sys.argv[3:]], env=env, pass_fds=(read_fd,), stdin=subprocess.DEVNULL)
+    child = subprocess.Popen(["git", *sys.argv[3:]], env=env, pass_fds=(read_fd,),
+                             stdin=subprocess.DEVNULL, start_new_session=True)
     result = child.wait()
 finally:
-    if child is not None and child.poll() is None:
-        child.terminate()
+    for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(signum, signal.SIG_IGN)
+    if child is not None:
+        try:
+            os.killpg(child.pid, signal.SIGTERM)
+            try:
+                child.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                pass
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
         child.wait()
     os.close(read_fd)
     server.shutdown()
@@ -360,7 +391,20 @@ as_central() { git_as "$central_header" "$central_ca" "$@"; }
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
 umask 077
 work=$(mktemp -d) && [ -d "$work" ] || fail "no temporary directory could be made" 73
+active_pid=
 clean_up() {
+    trap "" INT TERM HUP
+    if [ -n "$active_pid" ]; then
+        kill -TERM -- "-$active_pid" 2>/dev/null || kill -TERM "$active_pid" 2>/dev/null || true
+        local timer_pid
+        sleep 3 &
+        timer_pid=$!
+        wait -n "$active_pid" "$timer_pid" 2>/dev/null || true
+        kill -KILL -- "-$active_pid" 2>/dev/null || kill -KILL "$active_pid" 2>/dev/null || true
+        wait "$active_pid" 2>/dev/null || true
+        kill "$timer_pid" 2>/dev/null || true
+        wait "$timer_pid" 2>/dev/null || true
+    fi
     rm -rf "$work"
     if [ -e "$work" ]; then
         printf 'porelo-host-push: left %s behind\n' "$work" >&2
@@ -371,6 +415,26 @@ clean_up() {
 trap clean_up EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+trap 'exit 129' HUP
+
+# Waiting on a background command lets the outer shell handle a signal while git is still running.
+capture_git() {
+    local status=0
+    coproc TRANSFER { "$@" 2>&1; }
+    active_pid=$TRANSFER_PID
+    local output_fd=${TRANSFER[0]} input_fd=${TRANSFER[1]}
+    if [ "$1" = as_local ]; then
+        printf "%s\n" "$local_token" >&"$input_fd" || true
+    fi
+    exec {input_fd}>&-
+    said=
+    IFS= read -r -d "" said <&"$output_fd" || true
+    exec {output_fd}<&-
+    wait "$active_pid" || status=$?
+    active_pid=
+    said=${said%$'\n'}
+    return "$status"
+}
 
 if [ -n "$checking" ]; then
     declare -A repo_seen=()
@@ -468,10 +532,10 @@ if [ "$mode" = pull ]; then
     for name in "${targets[@]}"; do
         repo="$work/$name"
         local_url="$local_forge/$owner/$name.git"
-        if ! said=$(as_local clone --quiet --branch main --single-branch "$local_url" "$repo" 2>&1); then
+        if ! capture_git as_local clone --quiet --branch main --single-branch "$local_url" "$repo"; then
             fail "$name: local main could not be read from $local_url: $(redact "$said")"
         fi
-        if ! said=$(as_central -C "$repo" fetch --quiet "${central_url[$name]}" main 2>&1); then
+        if ! capture_git as_central -C "$repo" fetch --quiet "${central_url[$name]}" main; then
             fail "$name: central main could not be read: $(redact "$said")"
         fi
         if [ "$(git -C "$repo" rev-parse HEAD)" = "$(git -C "$repo" rev-parse FETCH_HEAD)" ]; then
@@ -483,7 +547,7 @@ if [ "$mode" = pull ]; then
             continue
         fi
         # central/main only ever mirrors central main, so it follows it even where central main was rewritten.
-        if ! said=$(as_local -C "$repo" push --quiet "$local_url" +FETCH_HEAD:refs/heads/central/main 2>&1); then
+        if ! capture_git as_local -C "$repo" push --quiet "$local_url" +FETCH_HEAD:refs/heads/central/main; then
             fail "$name: central main could not be brought to the local forge: $(redact "$said")"
         fi
         if git -C "$repo" merge-base --is-ancestor HEAD FETCH_HEAD; then
@@ -505,15 +569,15 @@ for name in "${targets[@]}"; do
     central=${central_url[$name]}
     if [ -n "$checking" ]; then
         # A deletion must keep every commit, including task branches and tags; neither forge is written here.
-        if ! said=$(as_local clone --quiet --mirror "$local_url" "$repo" 2>&1); then
+        if ! capture_git as_local clone --quiet --mirror "$local_url" "$repo"; then
             fail "$name: local refs could not be read: $(redact "$said")" 69
         fi
         refs=$(git -C "$repo" for-each-ref --format='%(objectname)') \
             || fail "$name: local refs could not be enumerated" 69
         local_refs=()
         [ -z "$refs" ] || mapfile -t local_refs <<< "$refs"
-        if ! said=$(as_central -C "$repo" fetch --quiet --no-tags "$central" \
-            '+refs/*:refs/porelo-central/*' 2>&1); then
+        if ! capture_git as_central -C "$repo" fetch --quiet --no-tags "$central" \
+            '+refs/*:refs/porelo-central/*'; then
             fail "$name: central refs could not be read: $(redact "$said")" 69
         fi
         refs=$(git -C "$repo" for-each-ref --format='%(objectname)' refs/porelo-central/) \
@@ -527,11 +591,11 @@ for name in "${targets[@]}"; do
         fi
         continue
     fi
-    if ! said=$(as_local clone --quiet --branch main --single-branch "$local_url" "$repo" 2>&1); then
+    if ! capture_git as_local clone --quiet --branch main --single-branch "$local_url" "$repo"; then
         fail "$name: local main could not be read from $local_url: $(redact "$said")"
     fi
     printf '%s: pushing local main %s to %s\n' "$name" "$(git -C "$repo" rev-parse --short HEAD)" "$central"
-    if said=$(as_central -C "$repo" push --porcelain "$central" main:main 2>&1); then
+    if capture_git as_central -C "$repo" push --porcelain "$central" main:main; then
         printf '%s: taken\n' "$name"
         pushed+=("$name")
         continue
@@ -540,11 +604,11 @@ for name in "${targets[@]}"; do
     if ! [[ $said =~ \[rejected\] ]] || ! [[ $said =~ (fetch\ first|non-fast-forward) ]]; then
         fail "$name: the push failed; not pushed: ${left[*]:-none}. Git said: $(redact "$said")"
     fi
-    if ! said=$(as_central -C "$repo" fetch --quiet "$central" main 2>&1); then
+    if ! capture_git as_central -C "$repo" fetch --quiet "$central" main; then
         fail "$name: refused, and central main could not be read: $(redact "$said")"
     fi
     missing=$(git -C "$repo" log --oneline main..FETCH_HEAD)
-    if ! said=$(as_local -C "$repo" push --quiet "$local_url" FETCH_HEAD:refs/heads/central/main 2>&1); then
+    if ! capture_git as_local -C "$repo" push --quiet "$local_url" FETCH_HEAD:refs/heads/central/main; then
         fail "$name: refused, and central main could not be brought to the local forge: $(redact "$said")"
     fi
     printf '%s: refused, since the central forge holds commits local main lacks:\n%s\n' "$name" "$missing" >&2

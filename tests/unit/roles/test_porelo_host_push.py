@@ -293,7 +293,8 @@ def host(tmp_path):
         "    def redirect_request(self, *_a):\n"
         "        return None\n"
         "ctx = ssl.create_default_context(cafile=ca_file)\n"
-        "opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=ctx), NoRedirect())\n"
+        "opener = urllib.request.build_opener(urllib.request.ProxyHandler({}),\n"
+        "                                    urllib.request.HTTPSHandler(context=ctx), NoRedirect())\n"
         "headers = {}\n"
         "if ':' in header_line:\n"
         "    k, v = header_line.split(':', 1)\n"
@@ -468,8 +469,8 @@ def push(host, *arguments, token=CENTRAL_TOKEN, environment=None, interrupt=Fals
         env={
             "PATH": "/usr/bin:/bin",
             "HOME": str(host["decoy_home"]),
-            "SUDO_UID": str(host["person_uid"]),
-            "SUDO_USER": "alice",
+            "SUDO_UID": "" if arguments and arguments[0] == "--check" else str(host["person_uid"]),
+            "SUDO_USER": "" if arguments and arguments[0] == "--check" else "alice",
             **(environment or {}),
         },
         text=True,
@@ -626,7 +627,7 @@ def test_a_failed_person_token_call_stops_before_git(host):
 
 @pytest.mark.parametrize("stage", ["clone", "push"])
 def test_what_git_says_is_shown_without_any_token(host, stage):
-    """Prevents either the person's local token or central token from reaching the terminal when git repeats a header."""
+    """Prevents either forge token from reaching the terminal when git repeats a header."""
     commit(host["local"], host["root"] / "work", "B")
     (host["root"] / f"{stage}-says-header").touch()
 
@@ -758,7 +759,7 @@ def test_check_reads_original_url_as_root_and_refuses_unpushed_or_missing_url(ho
 
 @pytest.mark.parametrize("token_defect", ["stdin-symlink", "unreadable"])
 def test_check_admin_token_file_defects_stop_before_git(host, token_defect):
-    """Prevents --check from reading stdin through a symlinked admin token file or proceeding without the admin token."""
+    """Prevents --check from reading stdin through a token symlink or proceeding without the admin token."""
     (host["root"] / "uid").write_text("0\n")
     if token_defect == "stdin-symlink":
         host["api_token"].unlink()
@@ -1013,3 +1014,228 @@ def test_a_config_swapped_after_ownership_checks_is_not_read_with_root_rights(ho
     assert code == 66
     assert "private-fixture-content" not in output
     assert not host["calls"].exists()
+
+
+@pytest.mark.parametrize("environment", [{"SUDO_UID": "1000"}, {"SUDO_USER": "alice"}, {"SUDO_UID": "0"}])
+def test_check_refuses_sudo_even_when_effective_uid_is_root(host, environment):
+    """Prevent sudoers callers from bypassing membership checks to read private repositories."""
+    code, output = push(host, "--check", "porelo", "stand-in", environment=environment)
+    assert code == 77 and "Token" not in output, (code, output)
+    assert not host["calls"].exists()
+
+
+@pytest.mark.parametrize("mode", ["push", "migrate"])
+def test_token_helpers_cannot_consume_the_central_credential(host, mode):
+    """Prevent a helper or sudo relay from consuming or observing the central token on stdin."""
+    helper = host["root"] / "bin/porelo-host-person"
+    helper.write_text(
+        helper.read_text().replace(
+            "import pathlib, sys\n", "import pathlib, sys\n" "assert sys.stdin.buffer.read() == b''\n"
+        )
+    )
+    arguments = ("porelo", "stand-in")
+    if mode == "migrate":
+        migration(host, {"GET /api/v1/repos/porelo/stand-in": [200, {}], "GET /api/v1/repos/porelo/second": [200, {}]})
+        arguments = ("--migrate", "porelo")
+    code, output = push(host, *arguments)
+    assert code == 0, (code, output)
+    assert_no_token_anywhere(host, output)
+
+
+def test_oversized_config_is_refused_before_credentials(host):
+    """Prevent root from buffering an arbitrarily large caller-controlled config."""
+    with host["person_conf"].open("a") as stream:
+        stream.write("#" + "x" * 131072 + "\n")
+    code, output = push(host, "porelo")
+    assert code == 66 and "Token" not in output, (code, output)
+    assert not host["calls"].exists()
+
+
+def test_config_swapped_to_a_device_is_refused_after_reading(host):
+    """Prevent a path swapped after stat from passing as a regular config file."""
+    conf = host["person_conf"]
+    runuser = host["root"] / "bin/runuser"
+    runuser.write_text(
+        '#!/bin/sh\nwhile [ "$1" != -- ]; do shift; done\nshift\n'
+        f'rm -- "{conf}"\nln -s /dev/null "{conf}"\nexec "$@"\n'
+    )
+    code, output = push(host, "porelo")
+    assert code == 66 and "plain file" in output, (code, output)
+    assert not host["calls"].exists()
+
+
+def namespace_source():
+    return SCRIPT.read_text().split("unshare --net python3 -I -c '\n", 1)[1].split('\n\' "$git_port"', 1)[0]
+
+
+@pytest.mark.parametrize("failure", ["send", "recv", "shutdown", "idle"])
+def test_forwarder_drains_early_gate_answers_and_closes_sockets(failure):
+    """Prevent early HTTP refusals from being dropped and socket failures from printing tracebacks or hanging."""
+    import ast
+    import selectors
+    import socket
+    import socketserver
+    from types import SimpleNamespace
+
+    class Endpoint:
+        def __init__(self, packets):
+            self.packets = iter(packets)
+            self.sent = b""
+            self.closed = False
+            self.timeout = None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            self.close()
+
+        def connect(self, _):
+            pass
+
+        def settimeout(self, value):
+            self.timeout = value
+
+        def recv(self, _):
+            if failure == "recv" and self is request:
+                raise ConnectionResetError()
+            return next(self.packets, b"")
+
+        def sendall(self, data):
+            if failure == "send" and self is peer:
+                raise BrokenPipeError()
+            self.sent += data
+
+        def shutdown(self, _):
+            if failure == "shutdown":
+                raise OSError("not connected")
+
+        def close(self):
+            self.closed = True
+
+    answer = b"HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\nrefused"
+    request = Endpoint([b"unfinished request", b""])
+    peer = Endpoint([answer, b""])
+
+    class Ready:
+        def __init__(self):
+            self.keys = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def register(self, source, events, target):
+            self.keys[source] = SimpleNamespace(fileobj=source, data=target)
+
+        def unregister(self, source):
+            del self.keys[source]
+
+        def get_map(self):
+            return self.keys
+
+        def select(self, timeout=None):
+            if failure == "idle":
+                assert timeout and timeout <= 30, "an idle forwarder must have a finite deadline"
+                return []
+            return [(key, selectors.EVENT_READ) for key in list(self.keys.values())]
+
+    tree = ast.parse(namespace_source())
+    forward = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "Forward")
+    scope = {
+        "socketserver": socketserver,
+        "selectors": SimpleNamespace(DefaultSelector=Ready, EVENT_READ=selectors.EVENT_READ),
+        "socket": SimpleNamespace(
+            socket=lambda *_: peer, AF_UNIX=socket.AF_UNIX, SOCK_STREAM=socket.SOCK_STREAM, SHUT_WR=socket.SHUT_WR
+        ),
+        "upstream": "unused",
+    }
+    exec(compile(ast.Module(body=[forward], type_ignores=[]), "<forwarder>", "exec"), scope)
+    scope["Forward"](request, None, None)
+    if failure != "idle":
+        assert request.sent == answer, "the gate's refusal must still reach git"
+    assert request.closed and peer.closed, "both ends must close after EOF, failure or timeout"
+    assert request.timeout and peer.timeout, "send and recv must have finite timeouts"
+
+
+@pytest.mark.parametrize("transfer", ["local", "central"])
+@pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGINT, signal.SIGHUP])
+def test_signalling_only_the_helper_stops_namespace_git_and_removes_work(host, signum, transfer):
+    """Prevent orphaned git descendants and private clones after the helper alone receives a signal."""
+    marker = host["root"] / "namespace-processes"
+    git_stub = host["root"] / "bin/git"
+    original_git = host["root"] / "bin/original-git"
+    git_stub.rename(original_git)
+    git_stub.write_text(
+        f"#!{sys.executable}\n"
+        "import os, pathlib, signal, subprocess, sys, time\n"
+        f"if {transfer!r} == 'central' and not any(arg.startswith({CENTRAL_BASE!r}) for arg in sys.argv):\n"
+        f"    os.execv({str(original_git)!r}, [{str(original_git)!r}, *sys.argv[1:]])\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+        f"pathlib.Path({str(marker)!r}).write_text(str(os.getpid()) + ' ' + str(child.pid))\n"
+        "time.sleep(60)\n"
+    )
+    git_stub.chmod(0o755)
+    process = subprocess.Popen(
+        [str(host["command"]), "porelo", "stand-in"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        start_new_session=True,
+        env={"SUDO_UID": str(host["person_uid"]), "SUDO_USER": "alice"},
+    )
+    pids = []
+    try:
+        process.stdin.write(CENTRAL_TOKEN + "\n")
+        process.stdin.flush()
+        deadline = time.monotonic() + 10
+        while not marker.exists() and process.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert marker.exists(), f"{transfer} git never started"
+        pids = [int(pid) for pid in marker.read_text().split()]
+        process.send_signal(signum)
+        try:
+            output, _ = process.communicate(timeout=8)
+        except subprocess.TimeoutExpired:
+            pytest.fail("the helper did not stop its namespace after a signal")
+        assert process.returncode == 128 + signum, (process.returncode, output)
+        assert list(host["temporary"].iterdir()) == [], "the private clone directory survived the signal"
+        for pid in pids:
+            status = Path(f"/proc/{pid}/stat")
+            assert not status.exists() or status.read_text().split()[2] == "Z", f"git descendant {pid} is still running"
+        assert "Traceback" not in output
+    finally:
+        for pid in pids:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+        process.communicate(timeout=5)
+
+
+def test_large_local_credentials_reach_the_namespace_on_a_pipe(host):
+    """Prevent Bash from spilling a large credential to a here-string temporary file."""
+    large_token = "fixture-" + "x" * 65536
+    helper = host["root"] / "bin/porelo-host-person"
+    helper.write_text(helper.read_text().replace(repr(PERSON_TOKEN), repr(large_token)))
+    marker = host["root"] / "credential-is-pipe"
+    python_stub = host["root"] / "bin/python3"
+    python_stub.write_text(
+        python_stub.read_text().replace(
+            "import socketserver\n",
+            "import pathlib, socketserver, stat\n"
+            f"pathlib.Path({str(marker)!r}).write_text(str(stat.S_ISFIFO(os.fstat(0).st_mode)))\n"
+            "sys.exit(1)\n",
+        )
+    )
+    code, output = push(host, "porelo", "stand-in")
+    assert code != 0, "the namespace test stub must refuse before starting Git"
+    assert marker.read_text() == "True", "the local credential reached a disk-backed stdin"
+    assert large_token not in output
+    assert list(host["temporary"].iterdir()) == []

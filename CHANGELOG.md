@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Gathered push refuses sudo callers of the root-only check, bounds caller configuration reads and isolates token
+  helpers from credential stdin. Namespace forwarding preserves early gate responses on socket errors, times out
+  idle sockets and stops Git descendants and removes temporary clones when the helper receives a signal.
+
 ### Changed
 
 - Gathered push and pull run through sudo for the current project developer. Local API traffic uses the forge gate's
