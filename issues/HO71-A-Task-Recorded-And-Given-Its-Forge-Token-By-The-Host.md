@@ -11,20 +11,21 @@ Git on the central forge, every service on the host behind a Unix socket.
 **What must be true.** Every forge token a person or task uses on the host is made by the host, never travels between
 persons, and goes with the person or task; every task's certificate is recorded on the host at its start.
 
-- At admit, the sync makes one token for the person's own forge user, with `write:repository` and `write:issue`, written
-  as root into `~<login>/.config/porelo-forge/token`, 0600, the person's; their Porelo reads it over SSH for Git over
-  HTTP.
+- At admit, the sync makes one token for the person's own forge user, with `write:repository` and `write:issue`. It
+  never lies in a file: `sudo porelo-host-person forge-token` answers it once on stdout to the person's own call through
+  the tunnel, and their Porelo keeps it in their vault. A new call replaces the old token.
 - At a task's start, `sudo porelo-host-person task <task>` takes the task's certificate on stdin, bounded in size, has
-  Porelo check that the person's current key signed it for that task, records it append-only in root's
-  `/var/lib/porelo-host/tasks/<login>/`, and makes a token for the person's agent forge user with the same scopes,
-  answered on stdout only. `task --end <task>` deletes the token; a daily sweep deletes every task token whose recorded
-  certificate has expired.
+  Porelo check that the person's current key signed it for that task, and records it append-only in root's
+  `/var/lib/porelo-host/tasks/<login>/`. The host's task gate then holds a token for the person's agent forge user, made
+  for that task and used only for the task's repository, and passes the task's branch on with it; the task never sees
+  it. `task --end <task>` deletes it; a daily sweep deletes every task token whose recorded certificate has expired.
 - `porelo-host-person task --show <fingerprint>` answers a recorded certificate, read-only, to any admitted person, so a
   plain-key signature is traced to its certificate after the task key is destroyed.
-- A lock, removal or purge deletes the person's and their tasks' tokens.
-- Goes: the `identities` stop and its `identities.tokens` files, the forge token kept in the person's vault.
+- A host lock, the removal of a person's last membership, or a purge deletes every token of the person's forge users,
+  made by the host or not, and any password set on them.
+- Goes: the `identities` stop and its `identities.tokens` files, the forge token kept in a file.
 
 ## Tests
 
 - a certificate not signed by the person's key, or too long, is refused before anything is written; an expired task's
-  token is gone after the sweep; a lock leaves no token.
+  token is gone after the sweep; a host lock leaves no token; the person's token is never in a file.

@@ -16,15 +16,16 @@ admin's Porelo brings it, never from the central forge itself.
   registry verify and applies the answer; the host parses no signature itself.
 - The anchor: the host anchors on its pinned host admin alone, with no forge and no `owners.yml`: at setup it pins the
   key that signed its host card, and Porelo's verify accepts `hosts/<host>/…` only when signed by that key or its named
-  successor. `access.yml` names each project admin with their key's fingerprint, so a project admin is known by key, not
-  by login alone.
-- A project admin registers a project only where `hosts/<host>/access.yml` names them, by login and key fingerprint, for
-  it. A project dropped there is refused at its next sync and named in the sync's answer for the host admin; the host
-  never removes it on its own.
+  successor. A handover advances the pin, like at setup.
+- A brought state must descend from the last one the host applied, as a project's second bring does today; an older or
+  forked bundle is refused, so no lock, revocation or handover is rolled back.
+- `access.yml` names each project admin by login and key fingerprint. A project admin registers a project only where it
+  names them for it. A project dropped there is refused at its next sync and named in the sync's answer for the host
+  admin; the host never removes it on its own.
 - A sync that meets a bad entry names it and keeps applying the rest, so a refused login never holds up a lock or a
   revocation in the same run.
 
 ## Tests
 
-- a bundle signed by another key is refused whole; a dropped project is named and kept; a re-admitted purged login is
-  refused alone while a lock in the same bundle applies.
+- a bundle signed by another key, or not descending from the applied one, is refused whole; a dropped project is named
+  and kept; a re-admitted purged login is refused alone while a lock in the same bundle applies.
