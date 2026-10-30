@@ -70,18 +70,16 @@
     path: "{{ __forge_central_token }}"
   register: __forge_central_token_file
 
-- name: repositories | Stop while a repository is to migrate and the person's token is not given
-  ansible.builtin.assert:
-    that: >-
-      __forge_to_migrate | length == 0
-      or (__forge_central_token_file.stat.isreg | default(false) and __forge_central_token_file.stat.size > 0
-          and __forge_central_token_file.stat.uid == __forge_secret_uid | int
-          and __forge_central_token_file.stat.mode == '0600')
-    fail_msg: >-
-      forge-central-token: {{ __forge_to_migrate | join(', ') }} still to migrate, and no token for the central forge
-      of {{ __forge_secret_owner }}'s alone is given; give it with porelo-host-stop --stdin forge-central-token and
-      run {{ __forge_secret_rerun }} again
-    quiet: true
+# The person's step: the message is the stop's needs as JSON, from which the interface opens the stop.
+- name: repositories | Wait for the stop that gives the person's token while a repository is to migrate
+  ansible.builtin.fail:
+    msg: "{{ ['forge-central-token'] | to_json }}"
+  when: >-
+    __forge_to_migrate | length > 0
+    and not (__forge_central_token_file.stat.isreg | default(false) and __forge_central_token_file.stat.size > 0
+        and __forge_central_token_file.stat.uid == __forge_secret_uid | int
+        and __forge_central_token_file.stat.mode == '0600')
+  tags: [porelo_host_waiting]
 
 # The token goes after the migration, and also where it was given with nothing left to migrate.
 - name: repositories | Migrate each repository once from the central forge, then drop the person's token

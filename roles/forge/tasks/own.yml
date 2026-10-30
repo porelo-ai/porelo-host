@@ -61,13 +61,12 @@
       changed_when: false
       no_log: true
 
-    - name: own | Stop while the vault holds no forge token of the person's
-      ansible.builtin.assert:
-        that: __forge_own_token.stdout == 'given'
-        fail_msg: >-
-          the vault holds no {{ forge_name }}.person; give it with porelo-host-stop --stdin identities and run
-          {{ porelo_own_act }} again
-        quiet: true
+    # The person's step: the message is the stop's needs as JSON, from which the interface opens the stop.
+    - name: own | Wait for the stop that gives the person's forge token while the vault holds none
+      ansible.builtin.fail:
+        msg: "{{ ['identities'] | to_json }}"
+      when: __forge_own_token.stdout != 'given'
+      tags: [porelo_host_waiting]
 
     - name: own | Ask Forgejo whether the person owns the project's organization or belongs to it
       ansible.builtin.shell:
