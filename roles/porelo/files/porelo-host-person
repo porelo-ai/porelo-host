@@ -195,6 +195,20 @@ def plan_laptops(existing, desired_specs):
     return planned, added, dropped
 
 
+def only_transports_kept(answer):
+    """Whether a forced vault clear's JSON answer left nothing unremoved but accounts a transport keeps elsewhere."""
+    try:
+        cleared = json.loads(answer)
+        kept = [item for item in cleared["items"] if item["status"] == "NOT_REMOVED"]
+        return (
+            cleared["refused"] is False
+            and bool(kept)
+            and all(item["kind"] in ("transport", "conversation") or item.get("transport") for item in kept)
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return False
+
+
 def member_key(value, code=65):
     """Return the canonical sort key for one membership value, refusing unknown shapes."""
     if value == "hand":
@@ -1069,7 +1083,11 @@ class Host:
         try:
             self.command(["systemctl", "start", f"user@{self.uid(user)}.service"])
             self.command(self.porelo(user, "task", "stop", "--all"))
-            self.command(self.porelo(user, "vault", "clear", "--yes", "--force"))
+            # Forced, Porelo clears the vault even where a transport could not clear an account it keeps on another
+            # server, and still exits 1 for it; as at down, only something else not removed stops the purge.
+            cleared = self.command(self.porelo(user, "vault", "clear", "--yes", "--force", "--json"), accepted=(0, 1))
+            if cleared.returncode != 0 and not only_transports_kept(cleared.stdout):
+                refuse("porelo vault clear kept more than the accounts a transport keeps elsewhere", 69)
         except Refusal:
             self.command(["usermod", "--expiredate", "1", user])
             raise
