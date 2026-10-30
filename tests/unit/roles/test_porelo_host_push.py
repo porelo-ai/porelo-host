@@ -400,10 +400,11 @@ def argv_watched(token):
         while not done.is_set():
             for cmdline in Path("/proc").glob("[0-9]*/cmdline"):
                 try:
-                    if token.encode() in cmdline.read_bytes():
-                        seen.append(cmdline.read_bytes())
+                    found = cmdline.read_bytes()
                 except OSError:
-                    pass
+                    continue
+                if token.encode() in found:
+                    seen.append(found)
 
     watcher = threading.Thread(target=sample, daemon=True)
     watcher.start()
@@ -827,6 +828,18 @@ def test_migrate_runs_only_in_the_persons_own_account_from_their_own_list(host):
     (host["alice_push"] / "porelo.migrate").chmod(0o644)
     code, output = push(host, "--migrate", "porelo")
     assert code == 66 and "porelo.migrate" in output, output
+
+    (host["alice_push"] / "porelo.migrate").chmod(0o600)
+    host["foreign_marker"].write_text(str(host["alice_push"] / "porelo.migrate"))
+    code, output = push(host, "--migrate", "porelo")
+    assert code == 66 and "9999" in output, output
+    host["foreign_marker"].unlink()
+
+    elsewhere = host["root"] / "elsewhere.migrate"
+    (host["alice_push"] / "porelo.migrate").rename(elsewhere)
+    (host["alice_push"] / "porelo.migrate").symlink_to(elsewhere)
+    code, output = push(host, "--migrate", "porelo")
+    assert code == 66 and "link" in output, output
     assert not host["bodies"].exists(), "a request body was sent"
 
 
@@ -854,4 +867,15 @@ def test_pull_says_when_local_main_is_central_main(host):
 
     assert code == 0, output
     assert "stand-in: local main is central main" in output, output
+    assert not git("--git-dir", str(host["local"]), "for-each-ref", "refs/heads/central/main")
+
+
+def test_pull_says_when_local_main_is_ahead_and_brings_nothing(host):
+    """Prevents an older central main from being brought back as if the two had gone apart."""
+    commit(host["local"], host["root"] / "work", "C")
+
+    code, output = push(host, "--pull", "porelo", "stand-in")
+
+    assert code == 0, output
+    assert "stand-in: local main is ahead of central main" in output, output
     assert not git("--git-dir", str(host["local"]), "for-each-ref", "refs/heads/central/main")

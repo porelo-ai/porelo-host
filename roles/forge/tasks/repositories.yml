@@ -72,6 +72,25 @@
     state: directory
     mode: "0700"
 
+# One bring waits at a time, so the stop knows whose list the token is for; another project's list is from a bring
+# that stopped, and that bring run again writes it anew.
+- name: repositories | Find lists other brings left
+  ansible.builtin.find:
+    paths: "{{ __forge_push_dir }}"
+    patterns: "*.migrate"
+    excludes: "{{ forge_owner }}.migrate"
+  register: __forge_other_lists
+  when: __forge_to_migrate | length > 0
+
+- name: repositories | Remove lists other brings left
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ __forge_other_lists.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: __forge_to_migrate | length > 0
+
 # The push config's form, which porelo-host-push already checks; no secret is in it.
 - name: repositories | List what is still to migrate
   ansible.builtin.copy:
@@ -99,3 +118,4 @@
   ansible.builtin.file:
     path: "{{ __forge_push_dir }}/{{ forge_owner }}.migrate"
     state: absent
+  when: __forge_to_migrate | length == 0

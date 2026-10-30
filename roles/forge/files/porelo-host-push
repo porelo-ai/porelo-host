@@ -379,7 +379,12 @@ if [ "$mode" = pull ]; then
             printf '%s: local main is central main\n' "$name"
             continue
         fi
-        if ! said=$(as_local -C "$repo" push --quiet "$local_url" FETCH_HEAD:refs/heads/central/main 2>&1); then
+        if git -C "$repo" merge-base --is-ancestor FETCH_HEAD HEAD; then
+            printf '%s: local main is ahead of central main; the gathered push sends it\n' "$name"
+            continue
+        fi
+        # central/main only ever mirrors central main, so it follows it even where central main was rewritten.
+        if ! said=$(as_local -C "$repo" push --quiet "$local_url" +FETCH_HEAD:refs/heads/central/main 2>&1); then
             fail "$name: central main could not be brought to the local forge: $(redact "$said")"
         fi
         if git -C "$repo" merge-base --is-ancestor HEAD FETCH_HEAD; then

@@ -635,6 +635,7 @@
                         "list_left": listed.exists(),
                         "stop_rc": stop.returncode,
                         "token_in_list": central_tok in list_text,
+                        "token_in_output": central_tok in stop.stdout + stop.stderr + waiting.stdout + waiting.stderr,
                         "stop": redact(stop.stdout + stop.stderr)[-2000:],
                         "tail": redact((waiting.stdout + waiting.stderr)[-2000:]),
                     }
@@ -651,6 +652,7 @@
           - verify_bring_waited.waited
           - "'repository app ' in verify_bring_waited.list"
           - not verify_bring_waited.token_in_list
+          - not verify_bring_waited.token_in_output
           - verify_bring_waited.stop_rc == 0
           - "'app: migrated' in verify_bring_waited.stop"
           - not verify_bring_waited.list_left

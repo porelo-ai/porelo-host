@@ -14,11 +14,11 @@ issue.
   starting person's own token on standard input through the tunnel and use it once, on a pipe or in git's own
   environment: never in a process's argv, a log, a file or `.git/config`.
 - The publisher's and the runner's own tokens, which act only on the host's forge, stay.
-- Goes: the `forge-central-token` stop and `/run/porelo-host/forge-central.token`.
+- Goes: `/run/porelo-host/forge-central.token`; the `forge-central-token` stop stays, and pipes the token instead.
 
 ## Acceptance
 
-- [x] after each of the three, the token is in no file, no `.git/config` and no log, and was in no argv (a test watching
+- after each of the three, the token is in no file, no `.git/config` and no log, and was in no argv (a test watching
   `/proc/*/cmdline`).
 
 ## Plan
@@ -43,3 +43,7 @@ issue.
 ## To be checked
 
 - Forgejo's migrate API takes the token in the JSON body (`auth_token`); that the body never reaches a log.
+- Forgejo's migration of a `git` service may put the token into the clone URL of its own `git clone`, so it would stand
+  in an argv other accounts read through `/proc`, and in the clone's config while it runs (reading of cb52be0). To be
+  measured on the pinned Forgejo; if so, either `/proc` is mounted `hidepid=invisible` or the migration clones with
+  git's own header and creates the repository empty, keeping the central address beside it.
