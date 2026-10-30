@@ -146,15 +146,61 @@ if [ -z "$checking" ]; then
     [ "$conf_mode" = 600 ] || fail "$conf has mode 0$conf_mode, expected 0600" 66
     [ -r "$conf" ] || fail "$conf is not readable" 66
 
-    # Reading as the person keeps a raced path from exposing a root-only file after the ownership checks.
+    # Descriptor checks bind validation to the bytes read, even when the caller renames paths.
+    config_reader='
+import os
+import stat
+import sys
+
+home, uid, name = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+fd = None
+try:
+    fd = os.open(home, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    for part, mode in ((None, None), (".config", None), ("porelo-host", None), ("push", 0o700)):
+        if part is not None:
+            next_fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = next_fd
+        info = os.fstat(fd)
+        if info.st_uid != uid or stat.S_IMODE(info.st_mode) & 0o022:
+            raise ValueError("directory ownership or permissions changed")
+        if mode is not None and stat.S_IMODE(info.st_mode) != mode:
+            raise ValueError("push directory must have mode 0700")
+    next_fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+    os.close(fd)
+    fd = next_fd
+    info = os.fstat(fd)
+    if not stat.S_ISREG(info.st_mode):
+        raise ValueError("not a plain file")
+    if info.st_uid != uid:
+        raise ValueError("file ownership changed")
+    if stat.S_IMODE(info.st_mode) != 0o600:
+        raise ValueError("file must have mode 0600")
+    data = bytearray()
+    while len(data) <= 65536:
+        chunk = os.read(fd, 65537 - len(data))
+        if not chunk:
+            break
+        data.extend(chunk)
+    if len(data) > 65536:
+        raise ValueError("exceeds 64 KiB")
+    if b"\x00" in data:
+        raise ValueError("contains NUL bytes")
+    sys.stdout.buffer.write(data)
+except (OSError, ValueError) as error:
+    sys.exit("porelo-host-push: caller config is not a plain file with trusted permissions: " + str(error))
+finally:
+    if fd is not None:
+        os.close(fd)
+'
     if [ "$mode" = migrate ]; then
-        config_data=$(timeout 10 head -c 65537 -- "$conf" < /dev/null) || fail "$conf could not be read" 66
+        config_data=$(timeout 10 python3 -I -c "$config_reader" "$caller_home" "$caller_uid" "${conf##*/}" < /dev/null) \
+            || fail "$conf could not be read" 66
     else
-        config_data=$(timeout 10 runuser -u "$caller_user" -- head -c 65537 -- "$conf" < /dev/null) \
+        config_data=$(timeout 10 runuser -u "$caller_user" -- python3 -I -c "$config_reader" \
+            "$caller_home" "$caller_uid" "${conf##*/}" < /dev/null) \
             || fail "$conf could not be read as $caller_user" 66
     fi
-    [ -f "$conf" ] && [ ! -L "$conf" ] || fail "$conf is not a plain file after reading" 66
-    [ "${#config_data}" -le 65536 ] || fail "$conf exceeds 64 KiB" 66
     configured_local=
     config_repos=()
     while read -r key first second extra; do
@@ -305,6 +351,24 @@ if not token or b"\r" in token:
     sys.exit("invalid local credential")
 subprocess.run(["ip", "link", "set", "lo", "up"], check=True, stdin=subprocess.DEVNULL)
 
+# Only this process holds the write end until exit; the watcher then kills any helpers still holding output open.
+watch_read, watch_write = os.pipe()
+watcher = subprocess.Popen([sys.executable, "-I", "-c", """
+import os
+import signal
+import sys
+for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+    signal.signal(signum, signal.SIG_IGN)
+sys.stdout.buffer.write(b"ready\\n")
+sys.stdout.buffer.flush()
+sys.stdin.buffer.read()
+os.killpg(os.getpgrp(), signal.SIGKILL)
+"""], stdin=watch_read, stdout=subprocess.PIPE)
+os.close(watch_read)
+if watcher.stdout.readline() != b"ready\n":
+    sys.exit("cleanup watcher did not start")
+watcher.stdout.close()
+
 class Forward(socketserver.BaseRequestHandler):
     def handle(self):
         with self.request, socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
@@ -364,19 +428,18 @@ for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
     signal.signal(signum, interrupted)
 try:
     child = subprocess.Popen(["git", *sys.argv[3:]], env=env, pass_fds=(read_fd,),
-                             stdin=subprocess.DEVNULL, start_new_session=True)
+                             stdin=subprocess.DEVNULL)
     result = child.wait()
 finally:
     for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         signal.signal(signum, signal.SIG_IGN)
     if child is not None:
         try:
-            os.killpg(child.pid, signal.SIGTERM)
+            os.killpg(os.getpgrp(), signal.SIGTERM)
             try:
                 child.wait(timeout=2)
             except subprocess.TimeoutExpired:
-                pass
-            os.killpg(child.pid, signal.SIGKILL)
+                os.killpg(os.getpgrp(), signal.SIGKILL)
         except ProcessLookupError:
             pass
         child.wait()
@@ -394,14 +457,15 @@ work=$(mktemp -d) && [ -d "$work" ] || fail "no temporary directory could be mad
 active_pid=
 clean_up() {
     trap "" INT TERM HUP
-    if [ -n "$active_pid" ]; then
-        kill -TERM -- "-$active_pid" 2>/dev/null || kill -TERM "$active_pid" 2>/dev/null || true
+    local pid=${active_pid:-${TRANSFER_PID:-}}
+    if [ -n "$pid" ]; then
+        kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
         local timer_pid
         sleep 3 &
         timer_pid=$!
-        wait -n "$active_pid" "$timer_pid" 2>/dev/null || true
-        kill -KILL -- "-$active_pid" 2>/dev/null || kill -KILL "$active_pid" 2>/dev/null || true
-        wait "$active_pid" 2>/dev/null || true
+        wait -n "$pid" "$timer_pid" 2>/dev/null || true
+        kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
         kill "$timer_pid" 2>/dev/null || true
         wait "$timer_pid" 2>/dev/null || true
     fi
@@ -419,18 +483,29 @@ trap 'exit 129' HUP
 
 # Waiting on a background command lets the outer shell handle a signal while git is still running.
 capture_git() {
-    local status=0
-    coproc TRANSFER { "$@" 2>&1; }
-    active_pid=$TRANSFER_PID
-    local output_fd=${TRANSFER[0]} input_fd=${TRANSFER[1]}
-    if [ "$1" = as_local ]; then
-        printf "%s\n" "$local_token" >&"$input_fd" || true
+    local status=0 transfer_pid output_fd input_fd chunk
+    # The startup handshake keeps Bash from reaping the coproc before its descriptors are duplicated.
+    coproc TRANSFER { IFS= read -r _ && "$@" 2>&1; }
+    transfer_pid=${TRANSFER_PID:-}
+    exec {output_fd}<&"${TRANSFER[0]}" {input_fd}>&"${TRANSFER[1]}"
+    active_pid=$transfer_pid
+    # EPIPE must fail the transfer without delivering SIGPIPE to this shell.
+    if ! (trap "" PIPE; printf 'ready\n' >&"$input_fd" || exit 1
+        if [ "$1" = as_local ]; then
+            printf "%s\n" "$local_token" >&"$input_fd" || exit 1
+        fi
+    ); then
+        printf 'porelo-host-push: could not send the local credential to Git\n' >&2
+        status=1
     fi
     exec {input_fd}>&-
     said=
-    IFS= read -r -d "" said <&"$output_fd" || true
+    while IFS= read -r -d "" chunk <&"$output_fd"; do
+        said+=$chunk
+    done
+    said+=$chunk
     exec {output_fd}<&-
-    wait "$active_pid" || status=$?
+    wait "$transfer_pid" || status=$?
     active_pid=
     said=${said%$'\n'}
     return "$status"

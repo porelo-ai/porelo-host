@@ -1197,6 +1197,9 @@ def test_signalling_only_the_helper_stops_namespace_git_and_removes_work(host, s
             time.sleep(0.02)
         assert marker.exists(), f"{transfer} git never started"
         pids = [int(pid) for pid in marker.read_text().split()]
+        if transfer == "local":
+            parent_pid = int(Path(f"/proc/{pids[0]}/stat").read_text().split()[3])
+            assert os.getpgid(pids[0]) == os.getpgid(parent_pid), "Git escaped the forwarder process group"
         process.send_signal(signum)
         try:
             output, _ = process.communicate(timeout=8)
@@ -1239,3 +1242,182 @@ def test_large_local_credentials_reach_the_namespace_on_a_pipe(host):
     assert marker.read_text() == "True", "the local credential reached a disk-backed stdin"
     assert large_token not in output
     assert list(host["temporary"].iterdir()) == []
+
+
+@pytest.mark.parametrize("padding", [b"\n", b"\0"])
+def test_raw_config_limit_cannot_be_hidden_by_shell_substitution(host, padding):
+    """Prevent truncation of an oversized config from silently omitting repositories."""
+    conf = host["person_conf"]
+    content = conf.read_bytes()
+    conf.write_bytes(content + padding * (65537 - len(content)))
+    code, output = push(host, "porelo", "stand-in")
+    assert code == 66 and "64 KiB" in output, (code, output)
+    assert not host["calls"].exists(), "an oversized config reached the forge"
+
+
+def test_nul_in_config_is_refused_before_credentials(host):
+    """Prevent shell NUL removal from changing the configuration's meaning."""
+    with host["person_conf"].open("ab") as stream:
+        stream.write(b"# invisible\0suffix\n")
+    code, output = push(host, "porelo", "stand-in")
+    assert code == 66 and "NUL" in output, (code, output)
+    assert not host["calls"].exists()
+
+
+def capture_source():
+    return SCRIPT.read_text().split("capture_git() {\n", 1)[1].split("\n}\n", 1)[0]
+
+
+def run_capture(setup, command):
+    return subprocess.run(
+        [
+            "bash",
+            "--noprofile",
+            "--norc",
+            "-c",
+            "set -euo pipefail\nactive_pid=\n" + setup + "\ncapture_git() {\n" + capture_source() + "\n}\n" + command,
+        ],
+        capture_output=True,
+        timeout=10,
+    )
+
+
+def test_early_coproc_exit_diagnoses_a_broken_credential_pipe():
+    """Prevent an early namespace failure from killing the parent shell with SIGPIPE."""
+    result = run_capture(
+        "local_token=$(printf '%1000000s' x)\nas_local() { return 42; }",
+        'status=0; capture_git as_local || status=$?; printf "survived:%s" "$status"',
+    )
+    assert result.returncode == 0, (result.returncode, result.stderr)
+    assert b"survived:" in result.stdout and b"survived:0" not in result.stdout
+    assert b"credential" in result.stderr, result.stderr
+    assert b"unbound variable" not in result.stderr
+
+
+def test_reaped_coproc_keeps_its_saved_pid_and_output_descriptors():
+    """Prevent a fast exit from discarding Git's refusal or aborting under nounset."""
+    result = run_capture(
+        "local_token=x\nas_local() { printf refusal; return 42; }\n"
+        "set -T\ntrap 'case $BASH_COMMAND in active_pid=*|local\\ output_fd=*) sleep 0.1;; esac' DEBUG",
+        'status=0; capture_git as_local || status=$?; printf "%s:%s" "$status" "$said"',
+    )
+    assert result.returncode == 0 and result.stdout == b"42:refusal", (result.returncode, result.stdout, result.stderr)
+    assert b"Bad file descriptor" not in result.stderr
+
+
+def test_coproc_output_is_drained_past_nul_bytes():
+    """Prevent truncated diagnostics and SIGPIPE in Git when stderr contains a NUL."""
+    result = run_capture(
+        "producer() { printf 'before\\0'; printf '%100000s' x; printf after; }",
+        'status=0; capture_git producer || status=$?; printf "%s:%s" "$status" "${said: -5}"',
+    )
+    assert result.returncode == 0 and result.stdout == b"0:after", (result.returncode, result.stdout, result.stderr)
+
+
+def test_cleanup_uses_transfer_pid_before_active_pid_is_assigned(tmp_path):
+    """Prevent a signal during coproc setup from leaving its process group alive."""
+    source = SCRIPT.read_text().split("clean_up() {\n", 1)[1].split("\n}\n", 1)[0]
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            "set -eu\nactive_pid=\nTRANSFER_PID=12345\nchecking=\n"
+            f"work={str(tmp_path / 'work')!r}\n"
+            "kill() { printf '%s\\n' \"$*\"; }\nsleep() { :; }\nwait() { :; }\n"
+            + "clean_up() {\n"
+            + source
+            + "\n}\nclean_up",
+        ],
+        capture_output=True,
+        timeout=5,
+    )
+    assert result.returncode == 0 and b"-TERM -- -12345" in result.stdout, (result.stdout, result.stderr)
+    assert b"-KILL -- -12345" in result.stdout
+
+
+@pytest.mark.parametrize("replacement", ["mode", "directory-link", "fifo"])
+def test_config_read_checks_the_open_descriptor_and_ancestor_directories(host, replacement):
+    """Prevent a caller racing the path checks from supplying unsafe config bytes."""
+    conf = host["person_conf"]
+    runuser = host["root"] / "bin/runuser"
+    setup = ""
+    if replacement == "mode":
+        setup = f"os.chmod({str(conf)!r}, 0o644)\n"
+    elif replacement == "directory-link":
+        directory = host["alice_home"] / ".config"
+        moved = host["alice_home"] / "moved-config"
+        setup = f"os.rename({str(directory)!r}, {str(moved)!r})\nos.symlink({str(moved)!r}, {str(directory)!r})\n"
+    else:
+        saved = conf.with_suffix(".saved")
+        writer = (
+            "import errno, os, pathlib, time\n"
+            f"path = {str(conf)!r}\n"
+            "deadline = time.monotonic() + 2\n"
+            "while time.monotonic() < deadline:\n"
+            "    try:\n"
+            "        fd = os.open(path, os.O_WRONLY | os.O_NONBLOCK)\n"
+            "        break\n"
+            "    except OSError as error:\n"
+            "        if error.errno != errno.ENXIO: raise\n"
+            "        time.sleep(0.01)\n"
+            "else: raise SystemExit(0)\n"
+            f"os.replace({str(saved)!r}, path)\n"
+            "with os.fdopen(fd, 'wb') as stream: stream.write(pathlib.Path(path).read_bytes())\n"
+        )
+        setup = (
+            f"os.rename({str(conf)!r}, {str(saved)!r})\nos.mkfifo({str(conf)!r}, 0o600)\n"
+            f"subprocess.Popen([sys.executable, '-c', {writer!r}], stdin=subprocess.DEVNULL, "
+            "stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
+        )
+    runuser.write_text(
+        f"#!{sys.executable}\nimport os, subprocess, sys\n"
+        + setup
+        + "args = sys.argv[sys.argv.index('--') + 1:]\nos.execvp(args[0], args)\n"
+    )
+    code, output = push(host, "porelo", "stand-in")
+    assert code == 66, (replacement, code, output)
+    assert not host["calls"].exists(), "unsafe caller config reached the forge"
+
+
+def test_completed_namespace_git_does_not_leave_a_helper_holding_output_open(host):
+    """Prevent a Git helper ignoring TERM from hanging output capture after Git exits."""
+    marker = host["root"] / "helper-group"
+    git_stub = host["root"] / "bin/git"
+    helper = (
+        "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); print('ready', flush=True); time.sleep(60)"
+    )
+    git_stub.write_text(
+        f"#!{sys.executable}\nimport os, pathlib, subprocess, sys\n"
+        f"child = subprocess.Popen([sys.executable, '-c', {helper!r}], stdout=subprocess.PIPE)\n"
+        "assert child.stdout.readline() == b'ready\\n'\n"
+        # Give the helper the captured stderr too, so it can keep the transfer output open.
+        f"pathlib.Path({str(marker)!r}).write_text(str(os.getpgrp()) + ' ' + str(child.pid))\n"
+    )
+    script = "as_local() {\n" + SCRIPT.read_text().split("as_local() {\n", 1)[1].split("\n}\n", 1)[0] + "\n}\n"
+    process = subprocess.Popen(
+        ["bash", "-c", "git_port=3001\nlocal_socket=unused\n" + script + "as_local version"],
+        env={"PATH": f"{host['root'] / 'bin'}:/usr/bin:/bin"},
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    try:
+        try:
+            output, _ = process.communicate(b"fixture-token\n", timeout=5)
+        except subprocess.TimeoutExpired:
+            pytest.fail("a helper kept namespace output open after Git completed")
+        assert process.returncode == 0, (process.returncode, output)
+        assert marker.exists(), output
+        helper_pid = marker.read_text().split()[1]
+        status = Path(f"/proc/{helper_pid}/stat")
+        assert not status.exists() or status.read_text().split()[2] == "Z", "Git's helper survived completion"
+    finally:
+        if marker.exists():
+            group = int(marker.read_text().split()[0])
+            try:
+                os.killpg(group, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        if process.poll() is None:
+            process.kill()
+        process.communicate(timeout=5)

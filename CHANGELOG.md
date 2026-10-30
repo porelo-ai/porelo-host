@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The runner comes back when its proxy restarts, a stopped proxy removes the jobs left in its namespace, and jobs get a
   read-only name table of root's, so no job can take the forge's name for later jobs. The runner gate's Bearer
   support and its refusal of artifact v4 transfers are documented.
+- Gathered push validates raw caller config bytes and opened descriptors, keeps Git helpers in its cleanup group,
+  and handles early coprocess exits and NUL output safely.
 - Gathered push refuses sudo callers of the root-only check, bounds caller configuration reads and isolates token
   helpers from credential stdin. Namespace forwarding preserves early gate responses on socket errors, times out
   idle sockets and stops Git descendants and removes temporary clones when the helper receives a signal.
