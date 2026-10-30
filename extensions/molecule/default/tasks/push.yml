@@ -450,12 +450,18 @@
           - |
             import json, os, pathlib, pwd, shutil, ssl, subprocess, sys, traceback, urllib.error, urllib.request
 
-            # A failure leaves only its lines, its class and an HTTP code; never its words.
+            # A failure leaves only its lines, its class and an HTTP code; never its words,
+            # except the host tools' own refusal line, which names no secret.
             def failed(kind, error, tb):
                 lines = [f.lineno for f in traceback.extract_tb(tb) if f.filename == "<string>"]
+                said = None
+                if isinstance(error, subprocess.CalledProcessError) and str(error.cmd[0]).startswith(
+                    "/usr/local/sbin/porelo-host-"
+                ):
+                    said = ((error.stderr or "").strip().splitlines() or [""])[-1][:300]
                 print(json.dumps({"failed_at_line": lines[-1] if lines else None, "lines": lines,
                                   "error": kind.__name__, "code": getattr(error, "code", None),
-                                  "returncode": getattr(error, "returncode", None)}), flush=True)
+                                  "returncode": getattr(error, "returncode", None), "said": said}), flush=True)
                 os._exit(0)
 
             sys.excepthook = failed
