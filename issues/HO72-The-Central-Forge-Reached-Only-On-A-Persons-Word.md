@@ -1,6 +1,6 @@
 # HO72 — The Central Forge Reached Only On A Person's Word
 
-**Status:** Estimated and Backlog (operator, 2026-10-30, sprint 6m).
+**Status:** Implementing.
 **Size:** M - the migration moves out of bring into a helper verb, and the project removal's check takes the token from
 its caller; measured M median 63 min, from three M builds (47, 63, 75).
 

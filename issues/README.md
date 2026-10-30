@@ -31,12 +31,12 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho72"></a>[HO72](HO72-The-Central-Forge-Reached-Only-On-A-Persons-Word.md) | M | - | No token for the central forge lies on the host: migration, push and pull take the starting person's own on stdin, once. |
 
 ## Backlog
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho72"></a>[HO72](HO72-The-Central-Forge-Reached-Only-On-A-Persons-Word.md) | M | - | No token for the central forge lies on the host: migration, push and pull take the starting person's own on stdin, once. |
 | <a id="ho73"></a>[HO73](HO73-The-Homeserver-Reached-Through-Its-Gate.md) | M | porelo-message-matrix's gate | The homeserver is reached only through the Matrix transport's gate on its socket, and Tuwunel listens on no TCP port. |
 | <a id="ho68"></a>[HO68](HO68-SSH-The-Hosts-Only-Way-In.md) | L | [HO70](#ho70) | A person reaches the host only over SSH on port 22, with the one key of their card; nothing listens on TCP for persons. |
 | <a id="ho69"></a>[HO69](HO69-The-Forge-Behind-Its-Gate-Without-TLS.md) | L | [HO71](#ho71) | The forge has no TLS and no password: a person's browser is signed in through `web.sock`, Git and the API take a token through `git.sock`. |
