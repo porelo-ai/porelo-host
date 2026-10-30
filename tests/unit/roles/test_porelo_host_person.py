@@ -643,6 +643,17 @@ def test_purge_goes_on_when_logind_has_already_let_the_person_go(host, capsys):
     assert host.calls[-2:] == [["systemctl", "stop", "user@1000.service"], ["userdel", "--remove", "alice"]]
 
 
+def test_lock_goes_on_when_logind_has_already_let_the_person_go(host, capsys):
+    """Prevent a person without sessions or linger from making lock, and so purge, unfinishable."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    capsys.readouterr()
+    host.fail = ["loginctl", "terminate-user"]
+    host.calls.clear()
+    assert host.invoke("purge", "alice", data=b"") == 0
+    assert ["usermod", "--lock", "--expiredate", "1", "alice"] in host.calls
+    assert host.calls[-2:] == [["systemctl", "stop", "user@1000.service"], ["userdel", "--remove", "alice"]]
+
+
 def test_purge_without_porelo_still_stops_the_lingering_user_manager(host, capsys):
     """Prevent userdel from refusing an account whose manager linger started, when Porelo is not installed."""
     assert host.invoke("add", "alice", "--role", "project-admin") == 0

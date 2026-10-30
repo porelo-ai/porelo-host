@@ -1044,9 +1044,13 @@ class Host:
                 errors.append(error)
         if porelo:
             self.command(self.porelo(user, "task", "stop", "--all"), required=False)
-        for args in (["loginctl", "terminate-user", user], ["usermod", "--lock", "--expiredate", "1", user]):
+        # Without linger or a session logind may already have let the person go, and knows nobody to end.
+        for args, accepted in (
+            (["loginctl", "terminate-user", user], (0, 1)),
+            (["usermod", "--lock", "--expiredate", "1", user], (0,)),
+        ):
             try:
-                self.command(args)
+                self.command(args, accepted=accepted)
             except Refusal as error:
                 errors.append(error)
         if errors:
