@@ -2429,3 +2429,12 @@ def test_teardown_removes_a_locked_persons_runtime_delivery_directory(host, caps
     assert host.invoke(verb, "alice", data=b"") == 0
     assert not directory.exists()
     assert ("alice" not in host.accounts) == (verb == "purge")
+
+
+def test_people_can_reach_their_own_return_socket_directory(host):
+    """Prevent a root-private parent hiding each person's own return-socket directory from them."""
+    assert not host.path("/run/porelo-host").exists()
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    for directory in ("/run/porelo-host", "/run/porelo-host/people"):
+        assert host.path(directory).stat().st_mode & 0o777 == 0o755
+    assert host.path("/run/porelo-host/people/alice").stat().st_mode & 0o777 == 0o700

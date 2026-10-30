@@ -1066,7 +1066,7 @@ class Host:
         if directory.exists():
             return
         self.directories(directory.parent)
-        public = ("/etc/ssh/authorized_keys", "/run/porelo-host")
+        public = ("/etc/ssh/authorized_keys", "/run/porelo-host", "/run/porelo-host/people")
         mode = 0o755 if directory in map(self.path, public) else 0o700
         directory.mkdir(mode=mode)
         os.chown(directory, self.owner, self.group)
