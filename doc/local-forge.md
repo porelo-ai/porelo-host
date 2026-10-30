@@ -234,7 +234,10 @@ person holding that key, a handover. `/etc/porelo-host/registry/applied.json` (`
 card, the projects, the persons and every revoked login; the persons' keys and revocations are for SSH's keys and the
 KRL to read, which this step does not write. A project registered here that the registry no longer names for its
 recorded admin is named in `dropped` and kept: its next `sync` and a new `porelo-host-project add` for it are refused
-(`65`) until the host admin removes it or names it again. Success prints
+(`65`) until the host admin removes it or names it again. A revoked login stays revoked: an entry that names it
+revoked counts even where it is refused for another fault, its last key stays recorded for the KRL, and a revoked admin
+gets no project, no `sync` and no `add`. A host card without its signer refuses the bundle (`69`), and `registry pin`
+runs as root alone, never through `sudo`. Success prints
 `{"commit":"<commit>","pinned":"SHA256:...","projects":[...],"dropped":[...],"revoked":[...],"refused":[...],"unchanged":false}`.
 
 ## The person's two decisions

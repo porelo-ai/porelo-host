@@ -2,7 +2,7 @@
 """Register a forge organization and its package publisher, or remove it after checking the central forge.
 
 A project is registered only where the registry state porelo-host-person applied, root's
-/etc/porelo-host/registry/applied.json, names it for its admin.
+/etc/porelo-host/registry/applied.json, names it for its admin and does not revoke that admin.
 
 Tokens stay in this process and the forge. The publisher's generated password is discarded by Forgejo's CLI,
 and its package token goes directly to the organization's Actions secret over the private socket.
@@ -671,7 +671,7 @@ def admitted(admin, person):
 
 
 def named_in_registry(project, admin):
-    """Under the lock, the registry state porelo-host-person applied must name the project for this admin."""
+    """Under the lock, the registry state porelo-host-person applied must name the project for this unrevoked admin."""
     path = os.path.join(ETC, "registry", "applied.json")
     trusted_directory(os.path.dirname(path), private=True, missing=True)
     if not os.path.lexists(path):
@@ -683,8 +683,15 @@ def named_in_registry(project, admin):
     except (UnicodeError, ValueError):
         refuse(f"{path} holds no valid applied registry", 65)
     projects = applied.get("projects") if isinstance(applied, dict) else None
-    if not isinstance(projects, list):
+    revoked = applied.get("revoked") if isinstance(applied, dict) else None
+    if (
+        not isinstance(projects, list)
+        or not isinstance(revoked, list)
+        or not all(isinstance(item, str) for item in revoked)
+    ):
         refuse(f"{path} holds no valid applied registry", 65)
+    if admin in revoked:
+        refuse(f"{admin} is revoked in the host's registry and registers no project", 65)
     named = [item for item in projects if isinstance(item, dict) and item.get("name") == project]
     if not any(item.get("admin") == admin for item in named):
         refuse(f"the host's registry names no project {project} for {admin}", 65)

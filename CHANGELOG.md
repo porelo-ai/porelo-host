@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Matrix clients use the transport's system socket gate as `porelo-matrix`, restricted to `porelo-people`.
+  The homeserver uses a private Unix socket, with gate preparation before startup and no role-managed TLS or TCP
+  publication. Project sync atomically publishes verified room admins, project removal deletes them, and purge
+  expels the login through the transport. Admission no longer issues Matrix machine or registration tokens.
+- Separate Unix socket gates for browser and token-authenticated Git/API access to Forgejo. Browser identity comes
+  from the admitted host account; caller identity headers are removed and browser credential-setting routes refused.
+  Forgejo uses a private Unix socket with no TLS or SSH listener; certificate requests and the password helper go.
 - `porelo-host-person registry`, run by root or `sudo -n` by the host admin pinned once at setup with `registry pin
   <login> <key>`, takes the host's projects and persons from the registry bundle the host admin uploads into
   `~/.local/share/porelo-host/setup/registry.bundle`: Porelo's `registry verify` checks it in the sync's isolated unit
@@ -59,6 +66,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `porelo-host-person sync <project>` and `porelo-host-project add <project> <admin>` refuse a project the applied
   registry does not name for that admin.
+
+- The forge runner, registration and jobs share a loopback proxy to a dedicated token-only gate socket. Checkout,
+  package access and the Actions cache no longer depend on the VPN address or published runner ports; jobs no longer
+  receive forge CA trust mounts. Existing runner registrations keep their token and use the loopback web port.
+
 - `porelo-host-push <project> [<repository>...]` runs in any project developer's own account (refusing root and `sudo`
   with `77`), reading `~/.config/porelo-host/push/<project>.conf` (`0600` plain file in a `0700` directory of the
   caller's `getent passwd` home, never `$HOME`) and the caller's `<forge_name>.person` token from their vault (refusing

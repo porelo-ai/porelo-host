@@ -1850,6 +1850,168 @@ def test_sync_via_sudo_allows_only_the_projects_unlocked_admin_and_checks_bundle
     assert not capsys.readouterr().out
 
 
+def test_person_cannot_prevent_lock_by_changing_the_return_directory_mode(host, capsys):
+    """Prevent a person's writable runtime directory mode from defeating host revocation."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    capsys.readouterr()
+    directory = host.path("/run/porelo-host/people/alice")
+    directory.chmod(0o755)
+    host.calls.clear()
+    assert host.invoke("lock", "alice", data=b"") == 0
+    assert not host.path("/etc/ssh/authorized_keys/alice").exists()
+    assert not directory.exists()
+    assert ["loginctl", "terminate-user", "alice"] in host.calls
+    assert ["systemctl", "stop", "user@1000.service"] in host.calls
+
+
+def test_install_restores_boot_rules_for_existing_admitted_people(host, capsys):
+    """Prevent an upgrade or reboot from leaving recorded people without private return-socket directories."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    capsys.readouterr()
+    directory = host.path("/run/porelo-host/people/alice")
+    directory.rmdir()
+    rule = host.path("/etc/tmpfiles.d/porelo-person-alice.conf")
+    rule.unlink()
+    assert host.invoke("restore-runtime", data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {"changed": 1}
+    assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+    assert rule.read_text() == "d /run/porelo-host/people/alice 0700 alice alice -\n"
+    before = snapshot(host.root)
+    assert host.invoke("restore-runtime", data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {"changed": 0}
+    assert snapshot(host.root) == before
+
+
+def test_sync_publishes_verified_matrix_admins_atomically(sync_host, capsys, monkeypatch):
+    """Prevent unverified or partial room-admin authorization and keep it unreadable to other people."""
+    host, state = sync_host
+    state.verify_reply["alpha"]["admins"] = ["ada", "bo"]
+    scope = host.factory.__globals__
+    replaced = []
+    original = scope["os"].replace
+
+    def replace(source, target):
+        if str(target).endswith("/matrix/alpha.admins"):
+            replaced.append(Path(source).read_text())
+        return original(source, target)
+
+    monkeypatch.setattr(scope["os"], "replace", replace)
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    capsys.readouterr()
+    path = host.path("/etc/porelo-host/matrix/alpha.admins")
+    assert path.read_text() == "ada\nbo\n"
+    assert replaced == ["ada\nbo\n"]
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640
+    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o750
+    assert path.stat().st_gid == path.parent.stat().st_gid == os.getgid()
+    assert path.stat().st_uid == path.parent.stat().st_uid == os.getuid()
+    state.verify_reply["alpha"]["access_commit"] = "5" * 40
+    state.verify_reply["alpha"]["admins"] = ["bo"]
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    assert path.read_text() == "bo\n"
+
+
+@pytest.mark.parametrize("admins", ["ada", ["ada\nroot"], ["ada", "ada"], ["../ada"]])
+def test_sync_refuses_invalid_matrix_admins_before_changing_access(sync_host, capsys, admins):
+    """Prevent malformed verified output granting room administration or partial host access."""
+    host, state = sync_host
+    state.verify_reply["alpha"]["admins"] = admins
+    before = snapshot(host.path("/etc"))
+    assert host.invoke("sync", "alpha", data=b"") == 65
+    assert "admin" in capsys.readouterr().err
+    assert snapshot(host.path("/etc")) == before
+
+
+def test_sync_without_verified_admins_applies_and_leaves_no_admins_file(sync_host, capsys):
+    """Prevent every sync from failing while Porelo's verify names no admins yet, or an old list from staying."""
+    host, state = sync_host
+    path = host.path("/etc/porelo-host/matrix/alpha.admins")
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    assert path.exists()
+    capsys.readouterr()
+    del state.verify_reply["alpha"]["admins"]
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    assert not path.exists()
+
+
+def test_purge_expels_the_login_even_when_already_locked(host, capsys):
+    """Prevent a prior lock from letting purge leave the person's and tasks' Matrix accounts active."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    assert host.invoke("lock", "alice", data=b"") == 0
+    host.events.clear()
+    assert host.invoke("purge", "alice", data=b"") == 0
+    capsys.readouterr()
+    assert ["matrix_expel_revoke", "alice"] in host.events
+
+
+def test_unchanged_sync_restores_missing_matrix_authorization(sync_host, capsys):
+    """Prevent existing projects from permanently lacking their admins file after a host upgrade."""
+    host, state = sync_host
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    path = host.path("/etc/porelo-host/matrix/alpha.admins")
+    path.unlink()
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    capsys.readouterr()
+    assert path.read_text() == "ada\n"
+
+
+def test_sync_refuses_a_linked_matrix_admins_file(sync_host, capsys):
+    """Prevent a link redirecting root's publication or authorizing a different project."""
+    host, state = sync_host
+    sentinel = host.write("/etc/porelo-host/sentinel", "unchanged\n")
+    directory = host.path("/etc/porelo-host/matrix")
+    directory.mkdir(mode=0o750)
+    (directory / "alpha.admins").symlink_to(sentinel)
+    assert host.invoke("sync", "alpha", data=b"") == 73
+    assert not capsys.readouterr().out
+    assert sentinel.read_text() == "unchanged\n"
+
+
+def test_purge_keeps_the_locked_account_when_matrix_expulsion_fails(host, capsys):
+    """Prevent account deletion from hiding a failed deactivation on the homeserver."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    assert host.invoke("lock", "alice", data=b"") == 0
+    capsys.readouterr()
+
+    def unavailable(name, values):
+        if name == "matrix_expel_revoke":
+            raise host.factory.__globals__["Refusal"]("expulsion unavailable", 69)
+
+    host.hook_inspect = unavailable
+    host.calls.clear()
+    assert host.invoke("purge", "alice", data=b"") == 69
+    assert "expulsion unavailable" in capsys.readouterr().err
+    assert "alice" in host.accounts
+    assert host.path("/etc/porelo-host/people/alice.conf").exists()
+    assert host.calls == []
+
+
+def test_failed_admins_publication_keeps_the_previous_authorization_and_sync_commit(sync_host, capsys, monkeypatch):
+    """Prevent failed publication from advancing sync past an authorization update that never reached the gate."""
+    host, state = sync_host
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    capsys.readouterr()
+    record = host.path("/etc/porelo-host/projects/alpha.conf")
+    before = record.read_bytes()
+    state.verify_reply["alpha"]["access_commit"] = "5" * 40
+    state.verify_reply["alpha"]["admins"] = ["bo"]
+    scope = host.factory.__globals__
+    original = scope["os"].replace
+
+    def replace(source, target):
+        if str(target).endswith("/matrix/alpha.admins"):
+            raise OSError("publication unavailable")
+        return original(source, target)
+
+    monkeypatch.setattr(scope["os"], "replace", replace)
+    assert host.invoke("sync", "alpha", data=b"") == 73
+    assert not capsys.readouterr().out
+    assert record.read_bytes() == before
+    path = host.path("/etc/porelo-host/matrix/alpha.admins")
+    assert path.read_text() == "ada\n"
+    assert sorted(p.name for p in path.parent.iterdir()) == ["alpha.admins"]
+
+
 def registry_person(login, key, revoked=False):
     return {"login": login, "ssh": key, "expires": "2027-10-30", "revoked": revoked}
 
@@ -2014,9 +2176,9 @@ def test_registry_refuses_a_readmitted_revoked_login_alone_while_a_lock_in_the_s
     answer = json.loads(capsys.readouterr().out)
     assert answer["commit"] == "b" * 40
     assert answer["revoked"] == ["bo", "cy"]
-    assert answer["projects"] == ["alpha", "beta"]
-    assert len(answer["refused"]) == 5
-    for named in ("cy", "Bad_Login", "dan", "ada", "Gamma!"):
+    assert answer["projects"] == ["alpha"], "a revoked admin's project is named no more"
+    assert len(answer["refused"]) == 6
+    for named in ("cy", "Bad_Login", "dan", "ada", "Gamma!", "beta"):
         assert any(named in line for line in answer["refused"]), named
     assert all("ssh-ed25519" not in line for line in answer["refused"]), "a key never goes to output"
     recorded = applied(host)
@@ -2095,15 +2257,150 @@ def test_registry_by_sudo_allows_only_the_pinned_admin_and_their_own_plain_bundl
     [
         ({"commit": "short"}, 69),
         ({"host_card": {"host": "other", "signed_by": fingerprint(SIGNER_ONE)}}, 65),
+        ({"host_card": {"host": "host"}}, 69),
+        ({"host_card": {"host": "host", "signed_by": None}}, 69),
         ({"projects": {"alpha": "ada"}}, 69),
         ({"persons": None}, 69),
     ],
 )
 def test_registry_refuses_an_answer_of_another_shape_or_host_whole(registry_host, capsys, change, code):
-    """Prevent a malformed answer or one for another host from being recorded as the host's state."""
+    """Prevent a malformed answer, one for another host or one naming no signer from becoming the host's state."""
     host, state = registry_host
     capsys.readouterr()
+    before_etc = snapshot(host.path("/etc"))
     state.registry_reply.update(change)
     assert host.invoke("registry", data=b"") == code
     assert not capsys.readouterr().out
     assert not host.path("/etc/porelo-host/registry/applied.json").exists()
+    assert snapshot(host.path("/etc")) == before_etc
+
+
+SUDOERS = ROOT / "roles/porelo/files/porelo-host-person.sudoers"
+
+
+def test_sudoers_grants_persons_the_bare_registry_call_alone():
+    """Prevent the sudoers drop-in from letting a person pass registry an argument, such as pin, or refusing it."""
+    rules = [line for line in SUDOERS.read_text().splitlines() if line and not line.startswith("#")]
+    person_rules = [line for line in rules if "/usr/local/sbin/porelo-host-person" in line]
+    # In sudoers a command's arguments must match exactly unless they hold a wildcard; "" means no arguments only
+    # right after the command's path, so the bare call needs "registry" with nothing after it.
+    assert person_rules == [
+        "%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person sync *",
+        "%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person registry",
+    ]
+
+
+def test_registry_keeps_every_revocation_whatever_else_is_wrong_with_its_entry(registry_host, capsys):
+    """Prevent a bad key, a bad expiry or a repeat from lifting a revocation, or a dropped revoked login its key."""
+    host, state = registry_host
+    capsys.readouterr()
+    state.registry_reply["persons"] += [registry_person("cy", ssh_key(12)), registry_person("dan", ssh_key(13))]
+    assert host.invoke("registry", data=b"") == 0
+    assert json.loads(capsys.readouterr().out)["revoked"] == []
+
+    state.registry_reply["commit"] = "b" * 40
+    state.registry_reply["persons"] = [
+        registry_person("ada", SIGNER_ONE),
+        registry_person("bo", SIGNER_TWO),
+        registry_person("bo", SIGNER_TWO, revoked=True),
+        {"login": "cy", "ssh": "ssh-ed25519 AAAA", "expires": "2027-10-30", "revoked": True},
+        {"login": "dan", "ssh": ssh_key(13), "expires": 7, "revoked": True},
+        {"login": "eve", "ssh": "not a key", "expires": None, "revoked": True},
+    ]
+    assert host.invoke("registry", data=b"") == 0
+    answer = json.loads(capsys.readouterr().out)
+    assert answer["revoked"] == ["bo", "cy", "dan", "eve"]
+    for named in ("bo", "cy", "dan", "eve"):
+        assert any(named in line for line in answer["refused"]), named
+    recorded = applied(host)
+    assert recorded["revoked"] == ["bo", "cy", "dan", "eve"]
+    persons = {person["login"]: person for person in recorded["persons"]}
+    assert set(persons) == {"ada", "bo", "cy", "dan"}
+    assert persons["bo"] == registry_person("bo", SIGNER_TWO, revoked=True)
+    assert persons["cy"] == registry_person("cy", ssh_key(12), revoked=True), "the last applied key stays for the KRL"
+    assert persons["dan"] == registry_person("dan", ssh_key(13), revoked=True)
+
+    state.registry_reply["commit"] = "c" * 40
+    state.registry_reply["persons"] = [registry_person("ada", SIGNER_ONE)]
+    assert host.invoke("registry", data=b"") == 0
+    assert json.loads(capsys.readouterr().out)["revoked"] == ["bo", "cy", "dan", "eve"]
+    recorded = applied(host)
+    assert recorded["revoked"] == ["bo", "cy", "dan", "eve"]
+    assert {person["login"]: person for person in recorded["persons"]} == {
+        "ada": registry_person("ada", SIGNER_ONE),
+        "bo": registry_person("bo", SIGNER_TWO, revoked=True),
+        "cy": registry_person("cy", ssh_key(12), revoked=True),
+        "dan": registry_person("dan", ssh_key(13), revoked=True),
+    }, "a revoked login dropped from the registry keeps its last applied entry"
+
+
+def test_registry_names_no_project_for_a_revoked_admin_and_its_sync_is_refused(registry_host, capsys):
+    """Prevent a revoked project admin from keeping a project the registry still lists for them, or syncing it."""
+    host, state = registry_host
+    capsys.readouterr()
+    state.registry_reply["persons"][1]["revoked"] = True
+    assert host.invoke("registry", data=b"") == 0
+    answer = json.loads(capsys.readouterr().out)
+    assert answer["projects"] == ["alpha"] and answer["dropped"] == ["beta"] and answer["revoked"] == ["bo"]
+    assert any("beta" in line for line in answer["refused"])
+    assert [project["name"] for project in applied(host)["projects"]] == ["alpha"]
+    assert host.path("/etc/porelo-host/projects/beta.conf").is_file()
+    for caller in ("bo", None):
+        refused(host, capsys, 65, "sync", "beta", data=b"", sudo_user=caller)
+
+    recorded = applied(host)
+    recorded["projects"].append({"name": "beta", "admin": "bo", "access_repository": "beta-access"})
+    host.write("/etc/porelo-host/registry/applied.json", json.dumps(recorded))
+    for caller in ("bo", None):
+        output = refused(host, capsys, 65, "sync", "beta", data=b"", sudo_user=caller)
+        assert "bo" in output.err and "revoked" in output.err
+
+
+@pytest.mark.parametrize("barred", ["locked", "revoked", "unknown"])
+def test_registry_by_sudo_is_refused_to_a_locked_revoked_or_unrecorded_pinned_admin(registry_host, capsys, barred):
+    """Prevent a host admin the host has locked out or revoked from still bringing the host's registry."""
+    host, state = registry_host
+    capsys.readouterr()
+    record = host.path("/etc/porelo-host/people/ada.conf")
+    if barred == "locked":
+        record.write_text(record.read_text().replace("locked=false", "locked=true"))
+    elif barred == "unknown":
+        record.unlink()
+    else:
+        host.write(
+            "/etc/porelo-host/registry/applied.json",
+            json.dumps(
+                {
+                    "commit": "e" * 40,
+                    "host_card": {"host": "host", "signed_by": fingerprint(SIGNER_ONE)},
+                    "projects": [],
+                    "persons": [registry_person("ada", SIGNER_ONE, revoked=True)],
+                    "revoked": ["ada"],
+                }
+            ),
+        )
+    output = refused(host, capsys, 65, "registry", data=b"", sudo_user="ada")
+    assert "ada" in output.err
+    assert state.registry_calls == []
+
+
+@pytest.mark.parametrize("caller", ["ada", "bo", ""])
+def test_registry_pin_through_sudo_is_refused(registry_host, capsys, caller):
+    """Prevent anyone reaching root through sudo, the pinned host admin too, from choosing the key the host trusts."""
+    host, state = registry_host
+    capsys.readouterr()
+    pin = host.path("/etc/porelo-host/registry/pin.conf")
+    pin.unlink()
+    refused(host, capsys, 65, "registry", "pin", "bo", SIGNER_TWO, data=b"", sudo_user=caller)
+    assert not pin.exists()
+
+
+def test_registry_pin_by_a_non_root_caller_is_refused(registry_host, capsys):
+    """Prevent a caller who is not root from choosing the key the host anchors on."""
+    host, state = registry_host
+    capsys.readouterr()
+    pin = host.path("/etc/porelo-host/registry/pin.conf")
+    pin.unlink()
+    host.euid = 1000
+    refused(host, capsys, 69, "registry", "pin", "bo", SIGNER_TWO, data=b"")
+    assert not pin.exists()

@@ -23,15 +23,17 @@ SHA-256, validates the whole developer diff before acting, reconciles accounts,
 laptops, <project> developer memberships and the forge's developers team, and
 records commit=, access_commit= and signer= lines in projects/<project>.conf.
 
-registry runs for root or sudo -n from the host admin pinned in root's 0600
-registry/pin.conf, which root writes once at setup with registry pin <user> <key>.
+registry runs for root or sudo -n from the unlocked, unrevoked host admin pinned in
+root's 0600 registry/pin.conf, which root alone, never through sudo, writes once at
+setup with registry pin <user> <key>.
 It copies the admin's plain private setup/registry.bundle as sync does, verifies it
 through porelo registry verify --json against the pinned key's fingerprint and the
 applied commit in the same kind of isolated unit, checks each project and person
-alone, naming bad ones while the rest applies, keeps every revoked login revoked,
-moves the pin on a verified handover and records the answer in root's 0600
+alone, naming bad ones while the rest applies, keeps every revoked login revoked
+with its last applied entry, refuses an answer naming no host card signer, moves
+the pin on a verified handover and records the answer in root's 0600
 registry/applied.json. sync refuses a project that answer does not name for its
-recorded admin; the host never removes such a project itself.
+recorded, unrevoked admin; the host never removes such a project itself.
 
 With account= in forge.conf, admission creates the login and the porelo-<user>
 gate; lock also revokes each <agent>-<user> a 6j host's agents= names.
@@ -1439,8 +1441,10 @@ class Host:
         return path, applied
 
     def registry_names(self, project, admin):
-        """Only a project the applied registry names for its recorded admin is synced or registered."""
+        """Only a project the applied registry names for its recorded, unrevoked admin is synced or registered."""
         _, applied = self.applied_registry()
+        if applied is not None and admin in applied["revoked"]:
+            refuse(f"{admin} is revoked in the host's registry; project {project} stays for the host admin", 65)
         if applied is None or not any(
             item.get("name") == project and item.get("admin") == admin for item in applied["projects"]
         ):
@@ -1458,13 +1462,16 @@ class Host:
         """Check each person alone; a revoked login stays revoked whatever a later bundle says."""
         previous_revoked = set(previous["revoked"]) if previous else set()
         previous_persons = {item.get("login"): item for item in previous["persons"]} if previous else {}
-        persons, seen = [], set()
+        persons, seen, revoked = [], set(), set(previous_revoked)
         for index, item in enumerate(entries, start=1):
             login = item.get("login") if isinstance(item, dict) else None
             name = f"person {shown(login, index)}"
             if not isinstance(login, str) or not re.fullmatch(USER, login):
                 refused.append(f"{name}: invalid login")
                 continue
+            # A revocation holds even in an entry refused for its key, its expiry or a repeat.
+            if item.get("revoked") is True:
+                revoked.add(login)
             if login in seen:
                 refused.append(f"{name}: named twice")
                 continue
@@ -1479,14 +1486,17 @@ class Host:
                 refused.append(f"{name}: revoked on this host and never admitted again")
             else:
                 persons.append({field: item[field] for field in ("login", "ssh", "expires", "revoked")})
-                continue
-            if login in previous_revoked and login in previous_persons:
+        # A revoked login with no entry applied now keeps its last applied one, so its key can still be named revoked.
+        applied_logins = {item["login"] for item in persons}
+        for login in sorted(revoked - applied_logins):
+            if login in previous_persons:
                 persons.append(dict(previous_persons[login], revoked=True))
-        revoked = sorted(previous_revoked | {item["login"] for item in persons if item["revoked"]})
-        return persons, revoked
+        for item in persons:
+            item["revoked"] = item["revoked"] or item["login"] in revoked
+        return persons, sorted(revoked)
 
-    def registry_projects(self, entries, refused):
-        """Check each project alone; a bad one is left out, so its sync and registration are refused."""
+    def registry_projects(self, entries, revoked, refused):
+        """Check each project alone; a bad one, or one of a revoked admin, is left out, so its sync is refused."""
         projects, seen = [], set()
         for index, item in enumerate(entries, start=1):
             name = item.get("name") if isinstance(item, dict) else None
@@ -1502,6 +1512,9 @@ class Host:
                 refused.append(f"{label}: invalid name, admin or access repository")
             elif name in seen:
                 refused.append(f"{label}: named twice")
+            elif item["admin"] in revoked:
+                seen.add(name)
+                refused.append(f"{label}: its admin {item['admin']} is revoked on this host")
             else:
                 seen.add(name)
                 projects.append({field: item[field] for field in ("name", "admin", "access_repository")})
@@ -1515,10 +1528,14 @@ class Host:
         admin = pinned["admin"]
         if self.sudo_user is not None and self.sudo_user != admin:
             refuse("only the pinned host admin may bring the host's registry", 65)
+        applied_path, previous = self.applied_registry()
+        if self.sudo_user is not None:
+            record = self.records().get(admin)
+            if record is None or record["locked"] or (previous is not None and admin in previous["revoked"]):
+                refuse(f"the pinned host admin {admin} is locked, revoked or no person on this host", 65)
         host = self.setting("/etc/porelo-host/forge.conf", "host")
         if not re.fullmatch(LAPTOP, host):
             refuse("forge.conf names no valid host", 69)
-        applied_path, previous = self.applied_registry()
         projects_directory = self.path("/etc/porelo-host/projects")
         self.check(projects_directory, directory=True, mode=0o700)
         registered = []
@@ -1562,14 +1579,14 @@ class Host:
         if host_card.get("host") != host:
             refuse(f"the registry's host card is for {shown(host_card.get('host'), 0)}, not this host {host}", 65)
         refused = []
-        projects = self.registry_projects(verified["projects"], refused)
         persons, revoked = self.registry_persons(verified["persons"], previous, refused)
+        projects = self.registry_projects(verified["projects"], set(revoked), refused)
         next_pin = pinned
         signer = host_card.get("signed_by")
+        if not isinstance(signer, str) or not re.fullmatch(FINGERPRINT, signer):
+            refuse("porelo registry verify answered no valid host card signer", 69)
         # A handover: the host card is signed by the pinned key's named successor, which Porelo's verify accepted.
-        if signer is not None and signer != pinned_fingerprint:
-            if not isinstance(signer, str) or not re.fullmatch(FINGERPRINT, signer):
-                refuse("porelo registry verify answered no valid host card signer", 69)
+        if signer != pinned_fingerprint:
             heirs = [item for item in persons if not item["revoked"] and fingerprint(item["ssh"]) == signer]
             if len(heirs) != 1:
                 refuse(f"the host card is signed by {signer}, the key of no person in the registry", 65)
@@ -1830,6 +1847,16 @@ class Host:
         """Validate the complete request under the configuration lock before applying it."""
         if self.euid != 0:
             refuse("runs only as root", 69)
+        if arguments == ["restore-runtime"]:
+            changed = 0
+            conf = self.path("/etc/porelo-host/forge.conf")
+            self.check(conf, required=True)
+            with conf.open("rb") as mutex:
+                fcntl.flock(mutex, fcntl.LOCK_EX)
+                for login, record in self.records().items():
+                    if record["members"] and not record["locked"]:
+                        changed += self.admit_runtime(login)
+            return {"changed": changed}
         project = user = None
         if len(arguments) == 4 and arguments[0] == "add" and arguments[2:] == ["--role", "project-admin"]:
             verb, user = arguments[:2]
@@ -1852,6 +1879,8 @@ class Host:
             )
         if user is not None and not re.fullmatch(USER, user):
             refuse("the person name must match [a-z][a-z0-9-]{0,30}")
+        if verb == "pin" and self.sudo_user is not None:
+            refuse("registry pin is root's alone, at setup, and never runs through sudo", 65)
         conf = self.path("/etc/porelo-host/forge.conf")
         self.check(conf, required=True)
         with conf.open("rb") as mutex:

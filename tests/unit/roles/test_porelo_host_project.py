@@ -171,52 +171,6 @@ def forge(tmp_path):
     return state
 
 
-@pytest.fixture
-def https_forge(forge, tmp_path):
-    state = forge
-
-    class Handler(BaseHTTPRequestHandler):
-        def log_message(self, *_args):
-            pass
-
-        def handle_request(self):
-            assert self.headers.get("Authorization") == "token " + ADMIN_TOKEN
-            body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
-            if urlsplit(self.path).path == "/redirected":
-                state.redirected.append(self.headers.get("Authorization"))
-                self.send_response(200)
-                self.end_headers()
-                self.wfile.write(b'{"username":"already-taken"}')
-                return
-            if state.redirect:
-                self.send_response(307)
-                self.send_header("Location", f"https://127.0.0.1:{self.server.server_port}/redirected")
-                self.end_headers()
-                return
-            status, answer = state.respond(self.command, self.path, json.loads(body) if body else None)
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            if answer is not None:
-                self.wfile.write(json.dumps(answer).encode())
-
-        do_GET = do_POST = do_PUT = do_DELETE = handle_request
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    tls.load_cert_chain(forge.ca, tmp_path / "server-key.pem")
-    server.socket = tls.wrap_socket(server.socket, server_side=True)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    state.port = server.server_port
-    try:
-        yield state
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join()
-
-
 def write_registry(etc, projects):
     """The registry state porelo-host-person applied, as root keeps it."""
     (etc / "registry").mkdir(mode=0o700, exist_ok=True)
@@ -1193,6 +1147,40 @@ def test_remove_refuses_incomplete_duplicate_or_malformed_sync_lines(memory_host
     assert record.exists()
 
 
+def test_remove_deletes_only_its_matrix_admins_file(memory_host, monkeypatch, capsys):
+    """Prevent a removed project retaining room administration or deleting another project's admins."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    directory = host["etc"] / "matrix"
+    directory.mkdir(mode=0o750)
+    for name in ("alpha", "beta"):
+        path = directory / f"{name}.admins"
+        path.write_text("alice\n")
+        path.chmod(0o640)
+    code, _, err = project(host, monkeypatch, capsys, "remove", "alpha")
+    assert code == 0, err
+    assert not (directory / "alpha.admins").exists()
+    assert (directory / "beta.admins").read_text() == "alice\n"
+
+
+def test_project_admin_transport_connects_only_to_a_unix_socket(monkeypatch):
+    """Keep the project administrator's token from reaching a TCP endpoint."""
+    scope = runpy.run_path(str(SCRIPT), run_name="unix_transport_test")
+    connected = []
+
+    class Socket:
+        def settimeout(self, timeout):
+            pass
+
+        def connect(self, path):
+            connected.append(path)
+
+    monkeypatch.setattr(scope["socket"], "socket", lambda family, kind: Socket())
+    connection = scope["UnixConnection"]("/run/user/1200/porelo-forge/http.sock")
+    connection.connect()
+    assert connected == ["/run/user/1200/porelo-forge/http.sock"]
+
+
 @pytest.mark.parametrize(
     "projects, diagnostic, code",
     [
@@ -1215,5 +1203,24 @@ def test_add_registers_only_a_project_the_hosts_registry_names_for_its_admin(
         write_registry(project_host["etc"], projects)
     result = project(project_host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)
     assert_refused(project_host, result, diagnostic, code)
+    assert not project_host["forge"].calls
+    assert not (project_host["etc"] / "projects/alpha.conf").exists()
+
+
+@pytest.mark.parametrize(
+    "revoked, diagnostic",
+    [(["alice"], "alice is revoked"), ("alice", "no valid applied registry"), (None, "no valid applied registry")],
+)
+def test_add_registers_no_project_for_an_admin_the_hosts_registry_revoked(
+    project_host, monkeypatch, capsys, revoked, diagnostic
+):
+    """Prevent a revoked admin, or one an unreadable revocation list may hide, from registering a project it names."""
+    write_registry(project_host["etc"], {"alpha": "alice"})
+    applied = project_host["etc"] / "registry/applied.json"
+    state = json.loads(applied.read_text())
+    state["revoked"] = revoked
+    applied.write_text(json.dumps(state))
+    result = project(project_host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)
+    assert_refused(project_host, result, diagnostic, 65)
     assert not project_host["forge"].calls
     assert not (project_host["etc"] / "projects/alpha.conf").exists()
