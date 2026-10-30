@@ -67,8 +67,20 @@ Git on the central forge, every service on the host behind a Unix socket.
   `forge_ca_*` defaults.
 - Red first: `tests/unit/roles/test_forge_gate.py`, the gate over socket pairs against a stand-in upstream: header
   dropped, uid mapped, 403 on the routes, 401 Basic on git, cookie removed.
+- The runner and its jobs (operator, 2026-10-30, option b): a third socket of the gate, `runner.sock`, served like
+  `git.sock` (token only), `SocketGroup` the runner account's group. A proxy container of the runner account,
+  `forgejo-runner-proxy`, from `docker.io/alpine/socat` pinned by digest, owns the network namespace: `socat` on
+  `127.0.0.1:<web port>` and `127.0.0.1:<git port>` forwards to `runner.sock`, mounted alone. The runner joins it
+  (`Network=container:forgejo-runner-proxy`), its registration too, and its jobs through `container.network`, with
+  `--add-host=<host>.localhost:127.0.0.1`, so `ROOT_URL`, checkout and the package registry reach Forgejo on that
+  loopback with a token. The Actions cache listens on that loopback; the runner's `PublishPort`s go. No other account
+  of the host reaches that namespace. Each job's own namespace is a later issue, [HO77](README.md#ho77).
 
 ## To be checked
+
+- That a rootless container started with keep-id (the runner) can join the proxy's network namespace, and that the
+  proxy's root group reaches `runner.sock` through the runner account's group; the proxy's memory and a clone's
+  throughput through it, for the hand-over.
 
 - Forgejo 13's `http+unix` inside a rootless container with keep-id, and the socket's owner seen by the account.
 - Which Forgejo routes set a password or make tokens, read in Forgejo's router for the pinned version.
