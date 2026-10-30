@@ -49,6 +49,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho60"></a>[HO60](HO60-Each-Repositorys-Review-Set-On-The-Forge.md) | M | - | Each repository's `main` on the local forge protected from the signed project file's `review`: one approval by another person, dismissed by a later commit, or none; only owners and developers merge; set again at each sync. |
 | <a id="ho59"></a>[HO59](HO59-An-Interrupted-Bring-Replaced-Safely.md) | M | - | A bring leaves `bring.state` in its setup directory, so an interrupted one is recognized and replaced by a new upload instead of refused. |
 | <a id="ho56"></a>[HO56](HO56-Remove-Takes-The-Persons-Push-And-Sync-Away.md) | M | [HO46](#ho46), [HO47](#ho47) | Removing a project takes the push config and the sync timer out of each person's own account. |
 | <a id="ho57"></a>[HO57](HO57-The-Bring-Checks-With-The-Keys-In-Force-After-A-Handover.md) | S | - | A second bring verifies only what is new since the followed commit, with `following --json`'s `signed_by_keys`. |
@@ -58,6 +59,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho61"></a>[HO61](HO61-A-Purged-Persons-Matrix-Account-Taken-Off.md) | - | - | A purged person's account on the host's own Matrix homeserver is taken off or named, not left without a word when the transport refused to clear it. |
 | <a id="ho58"></a>[HO58](HO58-The-Services-Podman-Kept-Small.md) | - | - | Once a day, and after a missed day, each service account's Podman loses the images and volumes no container used for a set time. |
 | <a id="ho54"></a>[HO54](HO54-The-Host-Helpers-Hardened.md) | - | - | The stop's certificate and path checks, the people's SSH drop-in read first, a project registration retried after a forge timeout, and the password helper held to the project helper's checks. |
 | <a id="ho51"></a>[HO51](HO51-Down-Names-What-A-Transport-Left.md) | - | - | Where `down` cleared the vault past a transport, its protocol names that transport and project in Porelo's words. |
