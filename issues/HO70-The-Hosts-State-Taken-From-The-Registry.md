@@ -63,8 +63,8 @@ admin's Porelo brings it, never from the central forge itself.
   same before the forge.
 - Answer: `{"commit", "pinned", "projects", "dropped", "revoked", "refused", "unchanged"}`, no key.
 - Not here: `authorized_keys`, the KRL and ending sessions ([HO68](README.md#ho68), [HO75](README.md#ho75)); they read
-  `persons` and `revoked` from `applied.json`. Wiring the pin into the setup's role run comes with HO68's seeding of the
-  host admin's key.
+  `persons` and `revoked` from `applied.json`. Wiring the pin into the setup's role run comes with
+  [HO68](README.md#ho68)'s seeding of the host admin's key.
 - Red first: unit tests with a fake `porelo` behind `systemd-run`, in `test_porelo_host_person.py` (refused whole on 65
   with nothing recorded; `--since` passed; dropped project named and kept; re-admitted revoked login refused alone
   while a new revocation applies; handover advances the pin; the pin set once, root alone; sync refuses an unnamed
@@ -72,7 +72,8 @@ admin's Porelo brings it, never from the central forge itself.
 
 ## To be checked
 
-- B340 names no `--since`; descent is checked by Porelo as `project verify --since` does. Core adds it, or the host
-  checks ancestry another way.
-- B340 does not say who signed the host card; the handover reads `host_card.signed_by` (a `SHA256:` fingerprint).
+- Porelo's registry verify names no `--since`; descent is checked by Porelo as `project verify --since` does. Core adds
+  it, or the host checks ancestry another way.
+- Porelo's registry verify does not say who signed the host card; the handover reads `host_card.signed_by` (a `SHA256:`
+  fingerprint).
 - What `admins` holds; the host records it as answered and does not read it.

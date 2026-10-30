@@ -1414,7 +1414,7 @@ class Host:
         return path, {"admin": lines[0][6:], "key": lines[1][4:]}
 
     def applied_registry(self):
-        """Read the registry state last applied, as the sync, HO68's keys and HO75's persons read it."""
+        """Read the registry state last applied, as the sync, the SSH keys and the persons read it."""
         path = self.path("/etc/porelo-host/registry/applied.json")
         self.check(path.parent, directory=True, mode=0o700)
         if not path.exists() and not path.is_symlink():
