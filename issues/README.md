@@ -57,6 +57,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho58"></a>[HO58](HO58-The-Services-Podman-Kept-Small.md) | - | - | Once a day, and after a missed day, each service account's Podman loses the images and volumes no container used for a set time. |
 | <a id="ho54"></a>[HO54](HO54-The-Host-Helpers-Hardened.md) | - | - | The stop's certificate and path checks, the people's SSH drop-in read first, a project registration retried after a forge timeout, and the password helper held to the project helper's checks. |
 | <a id="ho51"></a>[HO51](HO51-Down-Names-What-A-Transport-Left.md) | - | - | Where `down` cleared the vault past a transport, its protocol names that transport and project in Porelo's words. |
 | <a id="ho40"></a>[HO40](HO40-The-Build-Runs-On-The-Hosts-Forge-As-On-GitHub.md) | - | - | The move's builds on the host's forge: `build.yml` green on the host's Forgejo and on GitHub unchanged, with task branches built, the tools without `podman run`, snapshots by variable and Molecule on a machine with KVM. |
