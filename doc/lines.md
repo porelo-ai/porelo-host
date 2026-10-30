@@ -60,7 +60,8 @@ with one line in place of a failure:
     {"v": 1, "state": "waiting", "needs": ["vault-new", "keys"]}
 
 `needs` names what is missing: `vault-new` with `keys` when the account has no vault yet, `vault` when its vault is
-shut, and `wireguard` while the host has neither the VPN's key nor its running interface. `up` installs agents without stopping for
+shut, and `forge-central-token` while a `bring` waits for repositories from the central forge. `up` installs
+agents without stopping for
 their sign-ins and starts no task. `ansible-playbook` itself exits 2 on a waiting stop, as on any failure, so a program
 tells the stop from a failure by this line, never by the exit code. A second `up` after the person's step runs both
 plays from the top; what is done is done, so it goes on where it stopped.
@@ -90,9 +91,7 @@ with the needs as `up` names them. Standard input holds one line per secret, `<n
 | `vault-new` | `vault-new <passphrase>` | `porelo vault init --passphrase-stdin`, as the account |
 | `vault` | `vault <passphrase>` | `porelo vault unlock --passphrase-stdin`, as the account |
 | `keys` | `key <name> <key>`, one per key of the machine, none or more | `porelo vault put <name>`, as the account, once the vault is open |
-| `wireguard` | `wireguard <private key>` | the VPN's key file, root's with mode `0600`, kept for the host's life |
-| `forge-central-token` | `forge-central-token <token>` | `/run/porelo-host/forge-central.token`, root's with mode `0600`, until the migration |
-| `matrix-token` | `matrix-token <token>` | `~/.config/porelo/matrix/host-registration-token` of the account, the account's own with mode `0600` in a `0700` directory, written as the account; `down` removes it |
+| `forge-central-token` | `forge-central-token <token>` | `porelo-host-push --migrate <project>` on a pipe, as the account, for the repositories the waiting `bring` listed; the token lies in no file |
 
 Every line is checked before any is used: a need not named, an unknown need, a line given twice, a key name other than
 letters, digits, `.`, `_` and `-`, or a value that is not base64 is refused, naming the line and never the value, and so
@@ -105,10 +104,9 @@ the transport's Unix socket gate and asks for no machine or registration token a
 
 It exits 0 when every line is used, printing "The host's stop is done; run up again."; 64 for a wrong call or a wrong
 line, with nothing used; 65 when the vault refuses a value (`vault-new`, `vault`, a key), naming it; 69 when a required
-command is missing, or `/etc/porelo-host/stop.conf`, `vpn.conf` or `forge.conf`, which `up` writes, or the forge's
-settings, are missing, not root's alone, or name root or an unknown account; and 73 when a file cannot be written, or
-its directory or the file in its place is not root's alone or not plain (for `matrix-token`, the account's own: a
-link, or anything but a directory or plain file, on its way in the account's home).
+command is missing, or `/etc/porelo-host/stop.conf`, `forge.conf`, which `up` writes, or the forge's
+waiting key, is missing, not root's alone, or names root or an unknown account; and 73 when a file cannot be written, or
+its directory or the file in its place is not root's alone or not plain.
 
 **The version.** `v` is the contract's version. An added field or state keeps it; a field that changes or goes away
 raises it. A reader skips a `state` it does not know, as it skips a field.

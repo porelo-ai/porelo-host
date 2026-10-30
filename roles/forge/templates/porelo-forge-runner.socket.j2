@@ -1,0 +1,15 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=The host's forge runner gate
+
+[Socket]
+ListenStream=/run/porelo-forge/runner.sock
+Accept=yes
+SocketUser={{ forge_account }}
+SocketGroup={{ __forge_users.results[1].group }}
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target

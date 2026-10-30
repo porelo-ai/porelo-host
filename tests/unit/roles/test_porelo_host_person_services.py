@@ -527,6 +527,26 @@ def test_the_persons_login_may_run_the_bring_and_the_gate_only_its_branches(serv
     }
 
 
+def test_matrix_expels_the_login_as_the_service_account_without_credentials(services):
+    """Prevent purge leaving person and task accounts active or issuing a reusable host credential."""
+    hook(services, "matrix_expel_revoke", "alice")
+    assert len(services.recorder.calls) == 1
+    assert services.recorder.calls[0][-3:] == ["/usr/bin/porelo-message-transport-matrix", "expel", "alice"]
+    assert services.recorder.inputs == [None]
+    assert not services.host.path("/etc/porelo-host/matrix-admin.token").exists()
+
+
+@pytest.mark.parametrize("code", [1, 78])
+def test_failed_matrix_expulsion_blocks_removal_without_repeating_output(services, code):
+    """Prevent a failed account deactivation from being treated as successful purge."""
+    services.recorder.transport_exit = code
+    services.recorder.transport_error = MATRIX_ADMIN
+    with pytest.raises(services.scope["Refusal"]) as error:
+        hook(services, "matrix_expel_revoke", "alice")
+    assert error.value.code == 69
+    assert MATRIX_ADMIN not in str(error.value)
+
+
 def test_forge_admin_uses_only_the_private_socket_without_a_ca(services):
     """Keep administrative credentials off TCP and remove dependency on a forge CA."""
     services.host.path("/etc/porelo-host/forge/ca.pem").unlink()

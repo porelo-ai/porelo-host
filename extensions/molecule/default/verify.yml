@@ -241,42 +241,6 @@
         that: verify_tresorit.stdout_lines | length == 0
         fail_msg: "asked for nothing of Tresorit or a drive on the host, found {{ verify_tresorit.stdout_lines }}"
 
-    # The vpn role: a service bound to every address is reached through the VPN on 10.73.7.1, from a peer at 10.73.7.2
-    # in a network namespace of its own, and refused on the public address, from where Molecule itself connects.
-    - name: Start a service bound to every address
-      ansible.builtin.command:
-        argv: [systemd-run, --unit, verify-listener, --collect, python3, -m, http.server, --bind, "::", "8080"]
-        creates: /run/systemd/transient/verify-listener.service
-
-    - name: Make the test peer in a network namespace of its own, linked to the host on 10.73.7.0/24
-      ansible.builtin.shell:
-        cmd: |
-          set -eu
-          ip netns add verify-peer
-          ip link add verify-host type veth peer name verify-ns netns verify-peer
-          ip address add 10.250.0.1/30 dev verify-host && ip link set verify-host up
-          ip -n verify-peer address add 10.250.0.2/30 dev verify-ns
-          ip -n verify-peer link set verify-ns up && ip -n verify-peer link set lo up
-          ip -n verify-peer link add wg0 type wireguard
-          ip netns exec verify-peer wg set wg0 private-key /etc/wireguard/verify-peer.key \
-              peer "$(cat /root/vpn-host.pub)" endpoint 10.250.0.1:51820 allowed-ips 10.73.7.1/32
-          ip -n verify-peer address add 10.73.7.2/24 dev wg0 && ip -n verify-peer link set wg0 up
-        executable: /bin/bash
-        creates: /run/netns/verify-peer
-
-    - name: Reach the service through the VPN from the test peer
-      ansible.builtin.command:
-        cmd: ip netns exec verify-peer curl -fsS --max-time 10 -o /dev/null -w '%{http_code}' http://10.73.7.1:8080/
-      register: verify_vpn_reach
-      changed_when: false
-      failed_when: false
-
-    - name: Assert the service answers through the VPN on 10.73.7.1
-      ansible.builtin.assert:
-        that: verify_vpn_reach.rc == 0 and verify_vpn_reach.stdout == '200'
-        fail_msg: >-
-          asked http://10.73.7.1:8080/ through the VPN for 200;
-          got rc {{ verify_vpn_reach.rc }}, {{ verify_vpn_reach.stdout }} {{ verify_vpn_reach.stderr }}
 
     - name: Read where Forgejo's ports listen
       ansible.builtin.command:

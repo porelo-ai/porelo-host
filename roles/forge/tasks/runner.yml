@@ -110,60 +110,13 @@
     - {path: "{{ __forge_runner_home }}/.config/containers", mode: "0755"}
     - {path: "{{ __forge_runner_home }}/.config/containers/systemd", mode: "0755"}
     - {path: "{{ __forge_runner_home }}/runner", mode: "0700"}
-    - {path: "{{ __forge_runner_home }}/tls", mode: "0755"}
   loop_control:
     label: "{{ item.path }}"
 
-- name: runner | Give the runner the system's CA bundle, for itself and its jobs
-  ansible.builtin.copy:
-    src: /etc/ssl/certs/ca-certificates.crt
-    dest: "{{ __forge_runner_home }}/tls/ca-bundle.pem"
-    remote_src: true
-    owner: "{{ forge_runner_account }}"
-    group: "{{ forge_runner_account }}"
-    mode: "0644"
-  notify: Restart Forgejo's runner
-
-- name: runner | Read OpenSSL's version before making Java's trust store
-  ansible.builtin.command:
-    argv: [openssl, version]
-  register: __forge_openssl
-  changed_when: false
-  check_mode: false
-
-- name: runner | Refuse OpenSSL without support for Java's trusted certificates
-  ansible.builtin.assert:
-    that:
-      - __forge_openssl.stdout is match('^OpenSSL [0-9]+[.][0-9]+[.][0-9]+ ')
-      - __forge_openssl_version is version('3.2.0', '>=')
-    fail_msg: >-
-      asked for OpenSSL 3.2.0 or newer to export Java's trusted certificates with -jdktrust;
-      got {{ __forge_openssl.stdout }}
-  vars:
-    __forge_openssl_version: "{{ (__forge_openssl.stdout | regex_findall('[0-9]+[.][0-9]+[.][0-9]+') | first)
-      | default('0.0.0') }}"
-
-# JDK 18+ reads trusted certificates without a password when neither certificate encryption nor a MAC is used.
-- name: runner | Make Java's trust store from the runner's bundle whenever it changes
-  ansible.builtin.shell:
-    cmd: |
-      set -euo pipefail
-      tls={{ (__forge_runner_home ~ '/tls') | quote }}
-      if [ -f "$tls/ca-bundle.p12" ] && ! [ "$tls/ca-bundle.pem" -nt "$tls/ca-bundle.p12" ]; then
-          echo unchanged; exit 0
-      fi
-      store=$(mktemp "$tls/ca-bundle.p12.XXXXXX")
-      trap 'rm -f "$store"' EXIT
-      openssl pkcs12 -export -nokeys -jdktrust anyExtendedKeyUsage -certpbe NONE -nomac -passout pass: \
-          -in "$tls/ca-bundle.pem" -out "$store"
-      chown {{ (forge_runner_account ~ ':' ~ forge_runner_account) | quote }} "$store"
-      chmod 0644 "$store"
-      mv -f "$store" "$tls/ca-bundle.p12"
-      echo made
-    executable: /bin/bash
-  register: __forge_runner_java_trust
-  changed_when: __forge_runner_java_trust.stdout == 'made'
-  notify: Restart Forgejo's runner
+- name: runner | Remove the old forge trust bundles
+  ansible.builtin.file:
+    path: "{{ __forge_runner_home }}/tls"
+    state: absent
 
 # Made before the runner's configuration mounts it into jobs, since vm_pool runs after the forge.
 - name: runner | Make the VM pool's directory before the runner mounts it
@@ -217,24 +170,71 @@
   when: __forge_runner_image_there.rc == 1
   changed_when: true
 
+- name: runner | Ask podman whether the runner's proxy image is there
+  ansible.builtin.command:
+    argv: [podman, image, exists, "{{ __forge_runner_proxy_image }}"]
+  become: true
+  become_user: "{{ forge_runner_account }}"
+  environment: "{{ __forge_runner_environment }}"
+  register: __forge_runner_proxy_image_there
+  changed_when: false
+  failed_when: __forge_runner_proxy_image_there.rc not in [0, 1]
+  check_mode: false
+
+- name: runner | Pull the runner's proxy image by its digest
+  ansible.builtin.command:
+    argv: [podman, pull, --quiet, "{{ __forge_runner_proxy_image }}"]
+  become: true
+  become_user: "{{ forge_runner_account }}"
+  environment: "{{ __forge_runner_environment }}"
+  when: __forge_runner_proxy_image_there.rc == 1
+  changed_when: true
+
+- name: runner | Write the runner's proxy quadlet unit
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/forgejo-runner-proxy.container.j2"
+    dest: "{{ __forge_runner_home }}/.config/containers/systemd/forgejo-runner-proxy.container"
+    owner: "{{ forge_runner_account }}"
+    group: "{{ forge_runner_account }}"
+    mode: "0644"
+  notify: Restart Forgejo's runner proxy
+
+- name: runner | Run the proxy before registration joins its network namespace
+  ansible.builtin.systemd_service:
+    name: forgejo-runner-proxy.service
+    scope: user
+    state: "{{ 'restarted' if __forge_gate_units.changed else 'started' }}"
+    daemon_reload: true
+  become: true
+  become_user: "{{ forge_runner_account }}"
+  environment: "{{ __forge_runner_environment }}"
+
 - name: runner | Register the runner once, its token piped from Forgejo into the registration
   ansible.builtin.shell:
     cmd: |
       set -euo pipefail
       cd /
       {
-          printf '%s\n' https://{{ forge_address }}:{{ forge_http_port }}
+          printf '%s\n' http://127.0.0.1:{{ forge_http_port }}
           runuser -u {{ forge_account }} -- env XDG_RUNTIME_DIR=/run/user/{{ __forge_uid }} \
               podman exec forgejo forgejo actions generate-runner-token
           printf '%s\n' {{ forge_runner_name | quote }}
       } | runuser -u {{ forge_runner_account }} -- env XDG_RUNTIME_DIR=/run/user/{{ __forge_runner_uid }} \
           podman run --rm -i --userns keep-id:uid=1000,gid=1000 \
-          -v {{ __forge_runner_home }}/runner:/data -v {{ __forge_runner_home }}/tls:/tls:ro \
-          -e SSL_CERT_FILE=/tls/ca-bundle.pem {{ __forge_runner_image }} \
+          --network container:forgejo-runner-proxy \
+          -v {{ __forge_runner_home }}/runner:/data {{ __forge_runner_image }} \
           /bin/forgejo-runner register --config /data/config.yml > /dev/null
     creates: "{{ __forge_runner_home }}/runner/.runner"
     executable: /bin/bash
   no_log: true
+
+- name: runner | Move an existing registration to the proxy without replacing its token
+  ansible.builtin.replace:
+    path: "{{ __forge_runner_home }}/runner/.runner"
+    regexp: '("address"\s*:\s*")[^"]*(")'
+    replace: '\g<1>http://127.0.0.1:{{ forge_http_port }}\g<2>'
+  no_log: true
+  notify: Restart Forgejo's runner
 
 - name: runner | Write the runner's quadlet unit
   ansible.builtin.template:

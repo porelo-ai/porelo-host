@@ -1,5 +1,8 @@
 # Role `forge`
 
+Project removal also deletes `/etc/porelo-host/matrix/<project>.admins` after checking its ownership and path, so
+a removed project retains no Matrix room administration. See [Matrix access](../../doc/matrix.md).
+
 The host's forge: Forgejo with its package registry in rootless podman under `porelo-forge`, serving HTTP on a
 private Unix socket. The account's runtime directory `porelo-forge/` has mode `0700` and `http.sock` has mode `0600`;
 keep-id maps the container's socket owner to the account. Forgejo publishes no TCP port and runs no SSH server.
@@ -55,8 +58,20 @@ rents. Before its configuration is written, the role
 checks one budget with the VM pool: capacity × `forge_job_cpus` stays within half the host's processors, and capacity
 × `forge_job_memory` plus the pool's VMs within half its `MemTotal`, so Forgejo, the runner and Porelo's own tasks keep
 the other half. A refusal names both sides; the `capacity` entry point runs this check alone. A job's `actions/cache`
-reaches the runner's cache on the forge's address, its server on `forge_runner_cache_port` (4000) and its proxy on
-`forge_runner_cache_proxy_port` (4001), both published there alone.
+reaches the runner's cache on `127.0.0.1`, its server on `forge_runner_cache_port` (4000) and its proxy on
+`forge_runner_cache_proxy_port` (4001), inside the shared container network namespace. No cache port is published.
+
+The third gate socket, `/run/porelo-forge/runner.sock`, uses the same token-only gate as `git.sock`: no identity
+header, cookies removed, and `401 Basic` without credentials. Its system socket unit uses the runner account's
+primary group and mode `0660` in the existing `0755` directory. The runner account's
+`forgejo-runner-proxy.container` mounts only this socket and runs two socat listeners on loopback at the web and Git
+ports. Its image is pinned by digest. The proxy owns the network namespace; the runner depends on its service and
+joins `container:forgejo-runner-proxy`, as do registration and every job. Registration uses
+`http://127.0.0.1:<forge_http_port>`; existing registrations keep their token and move to that address.
+
+Jobs map `<host>.localhost` to `127.0.0.1` with `--add-host`, so Forgejo's canonical URL, checkout and package registry
+reach the token gate on loopback. Jobs receive no gate socket or forge CA trust mounts. External HTTPS uses each
+image's own certificate authorities.
 
 Forgejo's `ROOT_URL` is `http://<host>.localhost:<forge_http_port>/`, with browser port `3000` by default.
 `forge_git_port` defaults to `3001`. These are the person's local forwarded ports, not listeners on the host.

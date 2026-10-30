@@ -9,6 +9,16 @@
   become_user: "{{ forge_account }}"
   environment: "{{ __forge_environment }}"
 
+- name: Restart Forgejo's runner proxy
+  ansible.builtin.systemd_service:
+    name: forgejo-runner-proxy.service
+    scope: user
+    state: restarted
+    daemon_reload: true
+  become: true
+  become_user: "{{ forge_runner_account }}"
+  environment: "{{ __forge_runner_environment }}"
+
 - name: Restart Forgejo's runner
   ansible.builtin.systemd_service:
     name: forgejo-runner.service
@@ -24,4 +34,4 @@
     name: "{{ item }}"
     state: restarted
     daemon_reload: true
-  loop: [porelo-forge-web.socket, porelo-forge-git.socket]
+  loop: [porelo-forge-web.socket, porelo-forge-git.socket, porelo-forge-runner.socket]

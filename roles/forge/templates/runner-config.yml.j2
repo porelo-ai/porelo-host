@@ -5,33 +5,26 @@ runner:
   file: /data/.runner
   capacity: {{ forge_runner_capacity }}
   labels: {{ forge_runner_labels | to_json }}
-# A job reaches the cache on the forge's address, where the runner's unit publishes both ports; the address the runner
-# would detect itself is the host's public one, which a job's container cannot reach.
+# The runner, proxy and jobs share loopback; no cache port is published on the host.
 cache:
   enabled: true
   dir: /data/cache
-  host: {{ forge_address }}
+  host: 127.0.0.1
   port: {{ forge_runner_cache_port }}
   proxy_port: {{ forge_runner_cache_proxy_port }}
 container:
+  network: container:forgejo-runner-proxy
   # Jobs get no socket of the runner's podman, so a job cannot start containers beside itself.
   docker_host: "-"
-  # Jobs trust the host's CA as the forge does, to reach its registry, whichever bundle their image's tools name.
-  # Where the host has a VM pool, its file too, read-only: what porelo-machines --pool reads.
-  # The trust store alone, with no space, so no quoting rests on how the runner splits these; PKCS12 is the default.
+  # Where the host has a VM pool, its file is read-only: what porelo-machines --pool reads.
   options: >-
     --cpus={{ forge_job_cpus }} --memory={{ forge_job_memory }} --pids-limit={{ forge_job_pids_limit }}
     --env=OMP_NUM_THREADS={{ forge_job_omp_num_threads }}
-    --volume={{ __forge_runner_home }}/tls/ca-bundle.pem:/etc/ssl/certs/ca-certificates.crt:ro
-    --env=SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-    --env=CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
-    --volume={{ __forge_runner_home }}/tls/ca-bundle.p12:/etc/ssl/certs/porelo-host-java.p12:ro
-    --env=JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=/etc/ssl/certs/porelo-host-java.p12
+    --add-host={{ forge_name }}:127.0.0.1
     --volume={{ __forge_runner_jdk_dir }}:{{ __forge_runner_jdk_job_dir }}:ro
     --env=JAVA_HOME_25_X64={{ __forge_runner_jdk_job_dir }}
 {% if porelo_host_vm_pool is defined %}
     --volume=/etc/porelo-host/pool:/etc/porelo-host/pool:ro
 {% endif %}
-  valid_volumes: {{ ([__forge_runner_home ~ '/tls/ca-bundle.pem', __forge_runner_home ~ '/tls/ca-bundle.p12',
-    __forge_runner_jdk_dir]
+  valid_volumes: {{ ([__forge_runner_jdk_dir]
     + (['/etc/porelo-host/pool'] if porelo_host_vm_pool is defined else [])) | to_json }}

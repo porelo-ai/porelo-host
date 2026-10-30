@@ -15,7 +15,18 @@ Git and API clients use `git.sock` with a token. The first unauthenticated Git r
 `WWW-Authenticate: Basic`, so Git can ask its credential helper. The gate drops cookies and identity headers and
 passes Basic or token Authorization to Forgejo. Porelo must set remotes to the local `git_port`; Forgejo's clone URLs
 use its browser `ROOT_URL`. Tasks receive neither socket nor a person's token; their host task gate supplies the
-task's token. The runner's connection and package-registry access need a socket-capable transport as well.
+task's token.
+
+The runner uses a third system socket, `/run/porelo-forge/runner.sock`, owned by the forge account and the runner
+account's primary group, mode `0660` in the same `0755` directory. It applies the same token-only rules as `git.sock`.
+The runner account's `forgejo-runner-proxy.container` mounts only `runner.sock` and forwards two loopback listeners,
+on the web and Git ports, to that socket. The runner starts after and requires this proxy; its container,
+registration container and jobs all join `container:forgejo-runner-proxy`.
+
+Registration uses `http://127.0.0.1:<web_port>`. Jobs get `--add-host=<host>.localhost:127.0.0.1`, so checkout and the
+package registry use the canonical forge URL with their tokens. The Actions cache uses `127.0.0.1` on its existing
+ports, `4000` and `4001` by default, in this shared namespace. Neither forge nor cache ports are published on the
+host's VPN address. Jobs receive no forge socket or forge CA trust mounts.
 
 The local forge is the host's private Forgejo: it holds task branches, runs independent builds and supplies snapshots
 through its local registry. The central forge holds the work the person sends outward and runs the central publication
@@ -80,17 +91,18 @@ sets the local forge's values only.
 |---|---|---|
 | `vars.PORELO_PUBLISH` | `false` | `true` |
 | `vars.PORELO_DEPLOY_PROFILE` | `forge-release` | `central-sonatype-release` |
-| `vars.MAVEN_SNAPSHOTS_URL` | `http://localhost/api/packages/<forge_owner>/maven` over the Unix socket | `https://central.sonatype.com/repository/maven-snapshots/` |
+| `vars.MAVEN_SNAPSHOTS_URL` | Forge Maven URL below | [Sonatype snapshots][snapshots] |
 | `secrets.PORELO_PUBLISHER_TOKEN` | The local publisher's package token; private registry reads need authentication too | A placeholder for anonymous Sonatype snapshot reads; central deployment uses its own credentials |
 | `vars.JF_URL` | `https://jfrog.invalid`, a placeholder: the variables API takes no empty value, and no real service answers it | The Artifactory instance that `PORELO_PUBLISH` uploads go to |
 | `secrets.JF_ACCESS_TOKEN` | `porelo-host-placeholder`, created only when the secret is absent; an existing value is kept | The Artifactory access token for those uploads |
 
-The default organization is `porelo`. The forge's browser address is `http://<host>.localhost:<web_port>/`.
-Registry clients require an authenticated Unix-socket transport. The runner's bundle and JVM trust store contain the
-system's certificate authorities for external services.
+[snapshots]: https://central.sonatype.com/repository/maven-snapshots/
 
-Two differences from GitHub reach a job. The JVM trust store comes through `JAVA_TOOL_OPTIONS`, so every JVM a job
-starts announces it on stderr; a test that reads a child JVM's stderr together with its output must keep them apart.
+The default organization is `porelo`. The forge's browser address is `http://<host>.localhost:<web_port>/`.
+The Forge Maven URL is `http://<host>.localhost:<web_port>/api/packages/<forge_owner>/maven`.
+Registry clients in jobs use the shared loopback proxy with token authentication. External HTTPS uses the job image's
+own certificate authorities; no forge CA bundle or JVM trust store is injected.
+
 The organization and its repositories are private, so a step that fetches again after a checkout without credentials
 fails, where GitHub's public repository needs none.
 

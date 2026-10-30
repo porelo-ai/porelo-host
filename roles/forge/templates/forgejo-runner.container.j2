@@ -3,6 +3,9 @@
 [Unit]
 Description=Forgejo's runner, its jobs in the runner account's containers
 StartLimitIntervalSec=0
+After=forgejo-runner-proxy.service
+Requires=forgejo-runner-proxy.service
+PartOf=forgejo-runner-proxy.service
 
 [Container]
 Image={{ __forge_runner_image }}
@@ -11,17 +14,13 @@ PidsLimit={{ forge_runner_pids_limit }}
 Memory={{ forge_runner_memory }}
 PodmanArgs=--cpus={{ forge_runner_cpus }}
 UserNS=keep-id:uid=1000,gid=1000
-PublishPort={{ forge_address }}:{{ forge_runner_cache_port }}:{{ forge_runner_cache_port }}
-PublishPort={{ forge_address }}:{{ forge_runner_cache_proxy_port }}:{{ forge_runner_cache_proxy_port }}
+Network=container:forgejo-runner-proxy
 Volume=%h/runner:/data
-Volume=%h/tls:/tls:ro
 Volume=%t/podman/podman.sock:/run/podman/podman.sock
-Environment=SSL_CERT_FILE=/tls/ca-bundle.pem
 Environment=DOCKER_HOST=unix:///run/podman/podman.sock
 Exec=/bin/forgejo-runner daemon --config /data/config.yml
 
 [Service]
-# After a boot the VPN may come up after the unit; it tries again until its address is there.
 Restart=always
 RestartSec=10
 

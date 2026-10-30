@@ -1,8 +1,8 @@
 #!/bin/bash
 # The person's step at up's stop, run in their terminal on the host: each passphrase asked again in place until it is
 # done or cancelled, so a typo never costs a whole up run. The vault reads the secrets.
-# With --stdin, run as root by the host admin's desktop from their secrets file: one line per secret, each checked
-# before any is used, then each decoded on a pipe straight into what uses it; nothing is asked.
+# With --stdin, run in the person's account from their secrets file: one line per secret, each checked before any is
+# used, then each decoded on a pipe straight into what uses it; nothing is asked.
 set -u
 
 stdin_forge_conf=/etc/porelo-host/forge.conf
@@ -33,132 +33,16 @@ stdin_decode() {
     printf '%s' "$1" | base64 -d
 }
 
-# Written beside the target and moved over it, so a reader never sees a half-written key; only into a directory of
-# root's alone, and never through a link or into a directory standing where the file belongs. The value is base64, or
-# with a third argument the path of a file to copy, and a fourth its mode, 0600 by default.
-stdin_write_root_file() {
-    local value=$1 target=$2 source=${3-} mode=${4:-0600} dir tmp owner_mode
-    stdin_check_target "$target"
-    dir=$(dirname -- "$target")
-    if [ ! -e "$dir" ] && [ ! -L "$dir" ]; then
-        install -d -m 0700 -o root -g root -- "$dir" || stdin_refuse "cannot make $dir" 73
-    fi
-    [ -d "$dir" ] && [ ! -L "$dir" ] || stdin_refuse "$dir is no directory" 73
-    owner_mode=$(stat -c '%u %a' -- "$dir") || stdin_refuse "cannot read $dir" 73
-    case "$owner_mode" in
-        '0 '[0-7][0145][0145]|'0 '[0-7][0-7][0145][0145]) ;;
-        *) stdin_refuse "$dir is not root's alone to write ($owner_mode)" 73 ;;
-    esac
-    if [ -L "$target" ] || { [ -e "$target" ] && [ ! -f "$target" ]; }; then
-        stdin_refuse "$target is no plain file" 73
-    fi
-    tmp=$(umask 077 && mktemp -- "$dir/.porelo-host-stop.XXXXXX") || stdin_refuse "cannot write in $dir" 73
-    if [ -n "$source" ]; then
-        cat -- "$source" > "$tmp" || { rm -f -- "$tmp"; stdin_refuse "cannot write $target" 73; }
-    elif ! stdin_decode "$value" > "$tmp"; then
-        rm -f -- "$tmp"; stdin_refuse "cannot write $target" 73
-    fi
-    if ! chmod "$mode" -- "$tmp" || ! mv -fT -- "$tmp" "$target"; then
-        rm -f -- "$tmp"
-        stdin_refuse "cannot write $target" 73
-    fi
-}
 
-# A file to be written must not stand as a link or anything but a plain file of root's alone, nor lie in a directory
-# anybody but root can write; checked for every target before anything is written.
-stdin_check_target() {
-    local dir owner_mode
-    dir=$(dirname -- "$1")
-    if [ -e "$dir" ] || [ -L "$dir" ]; then
-        [ -d "$dir" ] && [ ! -L "$dir" ] || stdin_refuse "$dir is no directory" 73
-        owner_mode=$(stat -c '%u %a' -- "$dir") || stdin_refuse "cannot read $dir" 73
-        case "$owner_mode" in
-            '0 '[0-7][0145][0145]|'0 '[0-7][0-7][0145][0145]) ;;
-            *) stdin_refuse "$dir is not root's alone to write ($owner_mode)" 73 ;;
-        esac
-    fi
-    if [ -L "$1" ] || { [ -e "$1" ] && [ ! -f "$1" ]; }; then
-        stdin_refuse "$1 is no plain file" 73
-    fi
-    if [ -e "$1" ]; then
-        owner_mode=$(stat -c '%u %a' -- "$1") || stdin_refuse "cannot read $1" 73
-        case "$owner_mode" in
-            '0 '[0-7][0145][0145]|'0 '[0-7][0-7][0145][0145]) ;;
-            *) stdin_refuse "$1 is not root's alone to write ($owner_mode)" 73 ;;
-        esac
-    fi
-}
-
-# Only the host admin's root act: the host's VPN key. A person's own secrets go into their own account.
+# The host takes no secret as root any more: SSH replaced the VPN's key, and the forge's gate the certificates.
 stdin_stop() {
-    local -A named=() given=()
-    local need line count=0 rest value
-    [ "$#" -gt 0 ] || stdin_refuse 'at least one need is required: wireguard'
-    for need in "$@"; do
-        case "$need" in
-            wireguard) ;;
-            drive) stdin_refuse 'drive is no need of the host any more' ;;
-            vault-new|vault|keys|forge-central-token)
-                stdin_refuse "$need is no need of the host's root act; the person gives it in their own account" ;;
-            *) stdin_refuse "unknown need or option: $need" ;;
-        esac
-        [ -z "${named[$need]+x}" ] || stdin_refuse "need named twice: $need"
-        named[$need]=1
-    done
-    # Run as root by sudo: nothing of the caller's search path or locale decides what runs or what a pattern matches.
-    # Set after the needs are read with builtins alone, so a wrong call refuses before any command is looked up.
-    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C
-    [ "$(id -u)" = 0 ] || stdin_refuse '--stdin runs only as root'
-    require_command base64
-
-    # Every line is checked before any is used, so a bad line never leaves half the needs done.
-    while IFS= read -r line || [ -n "$line" ]; do
-        count=$((count + 1))
-        [ "$count" -le "$stdin_max_lines" ] || stdin_refuse "more than $stdin_max_lines lines"
-        need=${line%% *}
-        rest=${line#* }
-        [ "$rest" != "$line" ] || stdin_refuse "line $count holds no value"
-        case "$need" in
-            wireguard)
-                [ -n "${named[$need]+x}" ] || stdin_refuse "line $count gives $need, which is not named"
-                value=$rest
-                ;;
-            *) stdin_refuse "line $count gives an unknown need" ;;
-        esac
-        # The value is never echoed: a refusal names the line and the need alone.
-        if ! [[ $value =~ ^[A-Za-z0-9+/]+={0,2}$ ]] || [ $(( ${#value} % 4 )) != 0 ] \
-            || ! stdin_decode "$value" > /dev/null 2>&1; then
-            stdin_refuse "line $count holds no base64 value"
-        fi
-        [ -z "${given[$need]+x}" ] || stdin_refuse "line $count gives $need a second time"
-        given[$need]=$value
-    done
-    for need in wireguard; do
-        if [ -n "${named[$need]+x}" ] && [ -z "${given[$need]+x}" ]; then
-            stdin_refuse "no line gives $need"
-        fi
-    done
-
-    if [ -n "${named[wireguard]+x}" ]; then
-        stdin_key_path=$(stdin_conf_value "$stdin_vpn_conf" key '^/[A-Za-z0-9._/-]+$') || exit $?
-        case "$stdin_key_path/" in */../*|*/./*|*//*) stdin_refuse "$stdin_vpn_conf names no valid key" 69 ;; esac
-        stdin_check_target "$stdin_key_path"
-    fi
-
-    if [ -n "${named[wireguard]+x}" ]; then
-        stdin_write_root_file "${given[wireguard]}" "$stdin_key_path"
-    fi
-    printf '%s\n' "The host's stop is done; run up again."
-    exit 0
+    stdin_refuse 'the host takes no secret as root any more; give each need in your own account' 64
 }
 
 # --stdin run by a person, not root: their own needs into their own account, from the host admin's desktop or their own
 # act. Nothing here runs as anyone else, so the caller's search path stays; each line is still checked before any is
 # used, and no value is ever echoed.
 own_people_dir=/run/porelo-host/people
-
-# The vault names Porelo reads (Agent Core, room 2026-10-29): the gate's token by the forge's host as its push URL
-# names it, the git fallback of doc/credentials.md; the person's own login under a name only the host's acts read.
 own_identity_name() {
     local identity=$1 user=$2 forge=$3
     case "$identity" in
@@ -178,7 +62,7 @@ own_stop() {
     for need in "$@"; do
         case "$need" in
             vault-new|vault|keys|forge-central-token|identities) ;;
-            wireguard) stdin_refuse "$need is the host admin's root act; it runs by sudo as root" ;;
+            wireguard|forge-certificate) stdin_refuse "$need is no need of the host any more" ;;
             drive) stdin_refuse 'drive is no need of the host any more' ;;
             *) stdin_refuse "unknown need or option: $need" ;;
         esac

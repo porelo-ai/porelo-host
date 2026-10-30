@@ -57,7 +57,7 @@ forge_variables:
   JF_URL: https://jfrog.invalid
   # Snapshots go to the forge's own Maven registry, at the address a job reaches; GitHub's names Sonatype's.
   PORELO_DEPLOY_PROFILE: forge-release
-  MAVEN_SNAPSHOTS_URL: "http://localhost/api/packages/{{ forge_owner }}/maven"
+  MAVEN_SNAPSHOTS_URL: "http://{{ forge_name }}:{{ forge_http_port }}/api/packages/{{ forge_owner }}/maven"
 
 forge_placeholder_secrets: [JF_ACCESS_TOKEN]
 

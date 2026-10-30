@@ -101,6 +101,9 @@
     - porelo-forge-web@.service
     - porelo-forge-git.socket
     - porelo-forge-git@.service
+    - porelo-forge-runner.socket
+    - porelo-forge-runner@.service
+  register: __forge_gate_units
   notify: Restart the forge's gate sockets
 
 - name: service | Enable and start the gate sockets after Forgejo answers
@@ -109,7 +112,7 @@
     enabled: true
     state: started
     daemon_reload: true
-  loop: [porelo-forge-web.socket, porelo-forge-git.socket]
+  loop: [porelo-forge-web.socket, porelo-forge-git.socket, porelo-forge-runner.socket]
 
 - name: service | Apply changed gate units before the forge is used
   ansible.builtin.meta: flush_handlers

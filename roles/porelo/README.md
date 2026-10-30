@@ -4,7 +4,7 @@ Porelo's packages and person records on the host: `tasks_from: install` adds Por
 installs `porelo` (and `porelo-adapter-forgejo`, providing `/usr/libexec/porelo/builds/forgejo`, when
 `porelo_host_forge` is true), makes `/etc/porelo-host`, and installs `/usr/local/bin/porelo-host-stop`, running no
 setup script for an account. `tasks_from: person` installs `/usr/local/sbin/porelo-host-person` (`add`, `lock`,
-`purge` and `sync <project>`), root's VPN-restricted SSH key lookup and the `porelo-people` sudoers rules for
+`purge` and `sync <project>`), private return-socket directories and the `porelo-people` sudoers rules for
 `porelo-host-person sync *` (checked by the helper to the project's
 unlocked recorded admin); `/etc/porelo-host/people/<user>.conf` records each person's `member=hand` and
 `member=<project> project-admin|developer` memberships, `locked=` state and `laptop=` entries. `tasks_from: people`

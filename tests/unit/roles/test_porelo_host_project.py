@@ -1125,6 +1125,22 @@ def test_remove_refuses_incomplete_duplicate_or_malformed_sync_lines(memory_host
     assert record.exists()
 
 
+def test_remove_deletes_only_its_matrix_admins_file(memory_host, monkeypatch, capsys):
+    """Prevent a removed project retaining room administration or deleting another project's admins."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    directory = host["etc"] / "matrix"
+    directory.mkdir(mode=0o750)
+    for name in ("alpha", "beta"):
+        path = directory / f"{name}.admins"
+        path.write_text("alice\n")
+        path.chmod(0o640)
+    code, _, err = project(host, monkeypatch, capsys, "remove", "alpha")
+    assert code == 0, err
+    assert not (directory / "alpha.admins").exists()
+    assert (directory / "beta.admins").read_text() == "alice\n"
+
+
 def test_project_admin_transport_connects_only_to_a_unix_socket(monkeypatch):
     """Keep the project administrator's token from reaching a TCP endpoint."""
     scope = runpy.run_path(str(SCRIPT), run_name="unix_transport_test")

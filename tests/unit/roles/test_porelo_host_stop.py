@@ -197,7 +197,7 @@ def test_unlock_retries_a_wrong_passphrase(terminal_home):
         (("--stdin", "vault-new"), "pipe"),
         (("--stdin", "matrix-token"), "matrix-token"),
         (("--stdin", "identities", "identities"), "twice"),
-        (("--stdin", "wireguard", "wireguard"), "unknown need"),
+        (("--stdin", "wireguard", "wireguard"), "no need of the host any more"),
         (("matrix-token",), "matrix-token"),
     ],
 )
@@ -331,12 +331,25 @@ def test_the_central_token_without_a_waiting_bring_is_refused(own_account):
     assert not (home / "push-calls").exists()
 
 
-@pytest.mark.parametrize("need", ["wireguard"])
-def test_the_host_admins_needs_are_refused_in_a_persons_account(own_account, need):
-    """Prevent a person from believing they gave the host's key or certificates, which only root writes."""
+def test_a_refused_migration_fails_the_stop(own_account):
+    """Prevent the interface from running the bring again as if the repositories had come."""
+    home = own_account
+    waiting_bring(home)
+    result = own_stop(
+        home,
+        "forge-central-token",
+        lines=f"forge-central-token {b64('central-token')}\n",
+        extra={"PUSH_STUB_EXIT": "65"},
+    )
+    assert result.returncode == 65 and "alpha" in result.stderr
+
+
+@pytest.mark.parametrize("need", ["wireguard", "forge-certificate"])
+def test_the_needs_that_went_are_refused_in_a_persons_account(own_account, need):
+    """Prevent a person from believing they gave the VPN's key or the forge's certificates, which the host no longer takes."""
     home = own_account
     result = own_stop(home, need, lines=f"{need} {b64('x')}\n")
-    assert result.returncode == 64 and "root" in result.stderr and need in result.stderr
+    assert result.returncode == 64 and "no need of the host any more" in result.stderr and need in result.stderr
     assert calls(home) == []
 
 

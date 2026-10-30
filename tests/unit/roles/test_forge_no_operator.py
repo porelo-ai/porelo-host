@@ -117,6 +117,7 @@ def test_teardown_stops_the_previous_https_listener_without_an_upgrade():
     assert set(units) == {
         "porelo-forge-web.socket",
         "porelo-forge-git.socket",
+        "porelo-forge-runner.socket",
         "porelo-forge-https.socket",
         "porelo-forge-https.service",
     }

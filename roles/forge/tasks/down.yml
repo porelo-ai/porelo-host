@@ -10,7 +10,12 @@
 - name: down | Read which gate sockets up installed
   ansible.builtin.stat:
     path: "/etc/systemd/system/{{ item }}"
-  loop: [porelo-forge-web.socket, porelo-forge-git.socket, porelo-forge-https.socket, porelo-forge-https.service]
+  loop:
+    - porelo-forge-web.socket
+    - porelo-forge-git.socket
+    - porelo-forge-runner.socket
+    - porelo-forge-https.socket
+    - porelo-forge-https.service
   register: __forge_down_gate_units
 
 - name: down | Stop and disable the gate sockets before Forgejo
@@ -24,7 +29,12 @@
 
 - name: down | Stop active gate connections
   ansible.builtin.command:
-    argv: [systemctl, stop, "porelo-forge-web@*.service", "porelo-forge-git@*.service"]
+    argv:
+      - systemctl
+      - stop
+      - porelo-forge-web@*.service
+      - porelo-forge-git@*.service
+      - porelo-forge-runner@*.service
   changed_when: true
   when: __forge_down_gate_units['results'] | selectattr('stat.exists') | list | length > 0
 
@@ -37,6 +47,8 @@
     - porelo-forge-git.socket
     - porelo-forge-web@.service
     - porelo-forge-git@.service
+    - porelo-forge-runner.socket
+    - porelo-forge-runner@.service
     - porelo-forge-https.socket
     - porelo-forge-https.service
 
@@ -67,7 +79,8 @@
       as() { runuser -u "$account" -- env XDG_RUNTIME_DIR=/run/user/$uid "$@"; }
       changed=
       if [ -d /run/user/$uid ]; then
-          as systemctl --user stop forgejo.service forgejo-runner.service podman.socket 2>/dev/null || true
+          as systemctl --user stop forgejo.service forgejo-runner.service forgejo-runner-proxy.service \
+              podman.socket 2>/dev/null || true
           if [ -n "$(as podman ps -aq)" ]; then as podman rm --all --force > /dev/null; changed=yes; fi
           for volume in forgejo-data forgejo-config; do
               if as podman volume exists "$volume"; then as podman volume rm "$volume" > /dev/null; changed=yes; fi
@@ -75,7 +88,7 @@
       fi
       for path in "$home/.config/containers/systemd/forgejo.container" \
           "$home/.config/containers/systemd/forgejo-runner.container" "$home/.config/porelo-forge" "$home/runner" \
-          "$home/tls"; do
+          "$home/.config/containers/systemd/forgejo-runner-proxy.container" "$home/tls"; do
           if [ -e "$path" ]; then rm -rf "$path"; changed=yes; fi
       done
       if [ -e "/var/lib/systemd/linger/$account" ]; then loginctl disable-linger "$account"; changed=yes; fi

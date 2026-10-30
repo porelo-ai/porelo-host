@@ -56,25 +56,6 @@
     - name: Install the collection before up runs
       ansible.builtin.meta: flush_handlers
 
-    # Stands in for the host admin's secrets file: the host's VPN key, made for the run under /root, reaches the host
-    # only through the stop's --stdin; the test peer's is used by verify from a network namespace of its own.
-    - name: Install WireGuard's tools to make the run's VPN keys
-      ansible.builtin.apt:
-        name: wireguard-tools
-        state: present
-
-    - name: Make the run's VPN keys, the host's and the test peer's
-      ansible.builtin.shell:
-        cmd: >-
-          umask 077 && mkdir -p /etc/wireguard && wg genkey > {{ item }}.key
-          && wg pubkey < {{ item }}.key > {{ item }}.pub
-        creates: "{{ item }}.key"
-      loop: [/root/vpn-host, /etc/wireguard/verify-peer]
-
-    - name: Read the test peer's public WireGuard key
-      ansible.builtin.slurp:
-        src: /etc/wireguard/verify-peer.pub
-      register: converge_peer_public
 
     - name: Write the v2 inventory host up writes for host alpha on network 7
       ansible.builtin.copy:
@@ -109,13 +90,13 @@
               vm_pool_memory: 1024
           {% endif %}
 
-    # Once, before the host admin's root stop: neither signed certificates are on the host yet.
+    # Once: the first up, before Porelo's handed-over packages are installed over the published ones.
     - name: Read whether the first up ran
       ansible.builtin.stat:
         path: /root/porelo-host-first-up.lines
       register: converge_first_seen
 
-    - name: Run the first up before the root stop supplies the certificates
+    - name: Run the first up
       # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.
       ansible.builtin.shell:
         cmd: >-
@@ -130,15 +111,14 @@
       failed_when: false
       when: not converge_first_seen.stat.exists
 
-    - name: Assert the first up stopped with rc 2 waiting for wireguard alone
+    - name: Assert the first up ran to its end, with no stop of the host admin's left
       ansible.builtin.assert:
         that:
-          - converge_first_up.rc == 2
-          - converge_first_waiting | length == 1
-          - converge_first_waiting[0].needs == ['wireguard']
+          - converge_first_up.rc == 0
+          - converge_first_waiting | length == 0
           - converge_first_failed | length == 0
         fail_msg: >-
-          asked the first up for rc 2 and waiting needs ['wireguard'] with no failed step;
+          asked the first up for rc 0 with no waiting and no failed step;
           got rc {{ converge_first_up.rc }} and lines {{ converge_first_up.stdout }}
       vars:
         converge_first_lines: "{{ converge_first_up.stdout_lines | select | map('from_json') | list }}"
@@ -170,7 +150,7 @@
     - name: Install the handed-over packages before the next up
       ansible.builtin.meta: flush_handlers
 
-    - name: Ask porelo-host-stop --stdin to refuse every person need removed from the root act
+    - name: Ask porelo-host-stop --stdin as root to refuse every need
       ansible.builtin.shell:
         cmd: |
           set -uo pipefail
@@ -182,44 +162,23 @@
           done
           printf 'rc=%s written=%s\n' "$rc" "$written"
         executable: /bin/bash
-      loop: [vault-new, vault, keys, matrix-token, forge-central-token]
+      loop: [vault-new, vault, keys, matrix-token, forge-central-token, wireguard, forge-certificate]
       register: converge_need_refusals
       changed_when: false
 
-    - name: Assert porelo-host-stop --stdin refused each person need with rc 64 and wrote nothing
+    - name: Assert porelo-host-stop --stdin as root refused each need with rc 64 and wrote nothing
       ansible.builtin.assert:
         that:
           - item.stdout_lines == ['rc=64 written=none']
-          - item.stderr is search("no need of the host's root act")
+          - item.stderr is search("takes no secret as root any more")
         fail_msg: >-
-          asked porelo-host-stop --stdin {{ item.item }} for rc 64, "no need of the host's root act" and nothing
+          asked porelo-host-stop --stdin {{ item.item }} for rc 64, "takes no secret as root any more" and nothing
           written to /etc/porelo-host/forge/{ca,forge,matrix}.pem; got {{ item.stdout_lines }} and '{{ item.stderr }}'
       loop: "{{ converge_need_refusals.results }}"
       loop_control:
         label: "{{ item.item }}"
 
-    # The host admin supplies the VPN key as a base64 line.
-    - name: Give the host's VPN key on porelo-host-stop --stdin
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          {
-              printf 'wireguard %s\n' "$(base64 -w0 < /root/vpn-host.key)"
-          } | porelo-host-stop --stdin wireguard
-        executable: /bin/bash
-      register: converge_good_stop
-      changed_when: true
-      failed_when: false
-      no_log: true
-
-    - name: Assert porelo-host-stop accepted wireguard with rc 0
-      ansible.builtin.assert:
-        that: converge_good_stop.rc == 0
-        fail_msg: >-
-          asked porelo-host-stop --stdin wireguard for rc 0,
-          got rc {{ converge_good_stop.rc }}: {{ converge_good_stop.stderr }}
-
-    - name: Run up on the host itself after the stop, its steps as JSON lines
+    - name: Run up on the host itself again, its steps as JSON lines
       # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.
       ansible.builtin.shell:
         cmd: >-

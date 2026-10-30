@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Matrix clients use the transport's system socket gate as `porelo-matrix`, restricted to `porelo-people`.
+  The homeserver uses a private Unix socket, with gate preparation before startup and no role-managed TLS or TCP
+  publication. Project sync atomically publishes verified room admins, project removal deletes them, and purge
+  expels the login through the transport. Admission no longer issues Matrix machine or registration tokens.
 - Separate Unix socket gates for browser and token-authenticated Git/API access to Forgejo. Browser identity comes
   from the admitted host account; caller identity headers are removed and browser credential-setting routes refused.
   Forgejo uses a private Unix socket with no TLS or SSH listener; certificate requests and the password helper go.
@@ -52,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Porelo's message filter with rootless networking; a repository publishing no agent stops `up`.
 
 ### Changed
+
+- The forge runner, registration and jobs share a loopback proxy to a dedicated token-only gate socket. Checkout,
+  package access and the Actions cache no longer depend on the VPN address or published runner ports; jobs no longer
+  receive forge CA trust mounts. Existing runner registrations keep their token and use the loopback web port.
 
 - `porelo-host-push <project> [<repository>...]` runs in any project developer's own account (refusing root and `sudo`
   with `77`), reading `~/.config/porelo-host/push/<project>.conf` (`0600` plain file in a `0700` directory of the

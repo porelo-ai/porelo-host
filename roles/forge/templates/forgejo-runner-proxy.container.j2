@@ -1,0 +1,24 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=The runner's loopback path to the forge's token gate
+StartLimitIntervalSec=0
+
+[Container]
+Image={{ __forge_runner_proxy_image }}
+ContainerName=forgejo-runner-proxy
+GroupAdd=keep-groups
+Volume=/run/porelo-forge/runner.sock:/run/porelo-forge/runner.sock
+Entrypoint=/bin/sh
+# Exit if either listener ends, so systemd restarts the namespace owner; busybox's wait has no -n.
+Exec=-ec 'socat TCP-LISTEN:{{ forge_http_port }},bind=127.0.0.1,reuseaddr,fork \
+    UNIX-CONNECT:/run/porelo-forge/runner.sock & web=$$!; \
+    socat TCP-LISTEN:{{ forge_git_port }},bind=127.0.0.1,reuseaddr,fork \
+    UNIX-CONNECT:/run/porelo-forge/runner.sock & git=$$!; \
+    while kill -0 $$web 2>/dev/null && kill -0 $$git 2>/dev/null; do sleep 5; done; exit 1'
+
+[Service]
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

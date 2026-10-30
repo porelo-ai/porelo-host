@@ -18,9 +18,14 @@
     - /home/porelo-forge/.config/containers/systemd/forgejo-runner.container
     - /home/porelo-runner/.config/containers/systemd/forgejo.container
     - /home/porelo-runner/.config/containers/systemd/forgejo-runner.container
+    - /home/porelo-runner/.config/containers/systemd/forgejo-runner-proxy.container
     - /home/porelo-runner/.config/systemd/user/sockets.target.wants/podman.socket
     - /var/lib/systemd/linger/porelo-forge
     - /var/lib/systemd/linger/porelo-runner
+    - /run/porelo-forge/runner.sock
+    - /etc/systemd/system/porelo-forge-runner.socket
+    - /etc/systemd/system/porelo-forge-runner@.service
+    - /etc/systemd/system/sockets.target.wants/porelo-forge-runner.socket
     - /etc/systemd/system/porelo-forge-https.socket
     - /etc/systemd/system/porelo-forge-https.service
     - /etc/systemd/system/sockets.target.wants/porelo-forge-https.socket
@@ -59,7 +64,7 @@
 
 - name: Read whether any forge port listens
   ansible.builtin.command:
-    cmd: ss -Hltn '( sport = :3000 or sport = :2222 or sport = :443 )'
+    cmd: ss -Hltn '( sport = :3000 or sport = :3001 or sport = :4000 or sport = :4001 or sport = :443 )'
   register: forge_absent_ports
   changed_when: false
 
