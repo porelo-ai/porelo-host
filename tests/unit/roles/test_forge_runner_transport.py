@@ -32,7 +32,7 @@ def test_runner_socket_uses_token_gate_and_runner_primary_group():
     ):
         assert line in socket.splitlines()
     service = template("porelo-forge-runner@.service")
-    assert "ExecStart=/usr/local/libexec/porelo-forge-gate --git --upstream {{ __forge_socket }}" in service
+    assert "ExecStart=/usr/local/libexec/porelo-forge-gate --runner --upstream {{ __forge_socket }}" in service
     assert "--web" not in service
     installed = next(t["loop"] for t in tasks("service") if t.get("ansible.builtin.template") and "loop" in t)
     assert {"porelo-forge-runner.socket", "porelo-forge-runner@.service"} <= set(installed)

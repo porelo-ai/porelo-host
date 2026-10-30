@@ -18,7 +18,8 @@ use its browser `ROOT_URL`. Tasks receive neither socket nor a person's token; t
 task's token.
 
 The runner uses a third system socket, `/run/porelo-forge/runner.sock`, owned by the forge account and the runner
-account's primary group, mode `0660` in the same `0755` directory. It applies the same token-only rules as `git.sock`.
+account's primary group, mode `0660` in the same `0755` directory. It applies the same token-only rules as `git.sock`,
+except for the runner's own protocol under `/api/actions/`, which Forgejo authenticates by the runner's tokens.
 The runner account's `forgejo-runner-proxy.container` mounts only `runner.sock` and forwards two loopback listeners,
 on the web and Git ports, to that socket. The runner starts after and requires this proxy; its container,
 registration container and jobs all join `container:forgejo-runner-proxy`.

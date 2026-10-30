@@ -220,3 +220,32 @@ def test_host_card_names_the_distinct_local_gate_ports():
         "forge": {"web_port": 3100, "git_port": 3101}
     }
     assert template.render(porelo_host_forge=False) == {}
+
+
+def test_runner_protocol_passes_without_a_token_but_nothing_else_does(gate):
+    """Prevent the runner's own protocol being refused, or its exemption opening any other route without a token."""
+    ping = "/api/actions/ping.v1.PingService/Ping"
+    response, calls = request(
+        gate, "runner", path=ping, method="POST", headers=[("x-runner-uuid", "fixture"), ("Cookie", "s=fixture")]
+    )
+    assert response.startswith(b"HTTP/1.1 200")
+    assert calls[0][1] == ping and calls[0][3]["x-runner-uuid"] == "fixture"
+    assert "cookie" not in {key.lower() for key in calls[0][3]}
+    for path in (
+        "/api/v1/user",
+        "/owner/repo.git/info/refs",
+        "/api/actions/../v1/user",
+        "/api/actions/%2e%2e/v1/user",
+        "/api/actionsx/ping",
+        "/api/actions/",
+    ):
+        response, calls = request(gate, "runner", path=path)
+        assert response.startswith((b"HTTP/1.1 401", b"HTTP/1.1 400")) and calls == [], path
+    response, calls = request(gate, "git", path=ping, method="POST")
+    assert response.startswith(b"HTTP/1.1 401") and calls == []
+
+
+def test_runner_forwards_job_tokens_as_git_does(gate):
+    """Prevent a job's checkout token failing on the runner's path."""
+    response, calls = request(gate, "runner", path="/owner/repo.git/info/refs", headers=[("Authorization", "token t")])
+    assert response.startswith(b"HTTP/1.1 200") and calls[0][3]["Authorization"] == "token t"

@@ -17,6 +17,13 @@ HOP_HEADERS = {"connection", "keep-alive", "proxy-authenticate", "proxy-authoriz
                "transfer-encoding", "upgrade"}
 
 
+def runner_route(target):
+    """Forgejo authenticates its runners' own protocol itself, by their registration and runner tokens."""
+    path = urlsplit(target).path
+    return (target.startswith("/api/actions/") and "%" not in path and
+            posixpath.normpath(path) == path and not path.endswith("/"))
+
+
 class UnixConnection(http.client.HTTPConnection):
     def __init__(self, path):
         super().__init__("localhost", timeout=60)
@@ -120,10 +127,11 @@ class Handler(BaseHTTPRequestHandler):
         if len(authorizations) > 1:
             self.reply(400)
             return
-        if self.server.mode == "git" and not authorizations:
+        tokens = self.server.mode in ("git", "runner")
+        if tokens and not authorizations and not (self.server.mode == "runner" and runner_route(self.path)):
             self.reply(401, challenge=True)
             return
-        if self.server.mode == "git" and not re.fullmatch(r"(?i:Basic|token) [A-Za-z0-9+/=_\-.]+", authorizations[0]):
+        if tokens and authorizations and not re.fullmatch(r"(?i:Basic|token) [A-Za-z0-9+/=_\-.]+", authorizations[0]):
             self.reply(401, challenge=True)
             return
         lengths = self.headers.get_all("Content-Length", [])
@@ -144,7 +152,7 @@ class Handler(BaseHTTPRequestHandler):
         headers = {key: value for key, value in self.headers.items()
                    if key.lower() not in omitted and not key.lower().startswith("x-webauth-")
                    and key.lower() not in {"host", "expect"}
-                   and not (self.server.mode == "git" and key.lower() == "cookie")}
+                   and not (tokens and key.lower() == "cookie")}
         headers["Host"] = "localhost"
         headers["Connection"] = "close"
         if not chunked:
@@ -187,13 +195,14 @@ def main():
     modes = parser.add_mutually_exclusive_group(required=True)
     modes.add_argument("--web", action="store_true")
     modes.add_argument("--git", action="store_true")
+    modes.add_argument("--runner", action="store_true")
     parser.add_argument("--upstream", required=True)
     args = parser.parse_args()
     # Accept=yes hands one connected descriptor to each process, with no listening socket to inherit.
     with socket.socket(fileno=3) as connection:
         connection.settimeout(60)
         _, uid, _ = struct.unpack("3i", connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")))
-        server = argparse.Namespace(mode="web" if args.web else "git", uid=uid,
+        server = argparse.Namespace(mode="web" if args.web else "runner" if args.runner else "git", uid=uid,
                                     upstream=lambda: UnixConnection(args.upstream))
         try:
             Handler(connection, ("local", 0), server)

@@ -63,7 +63,8 @@ reaches the runner's cache on `127.0.0.1`, its server on `forge_runner_cache_por
 `forge_runner_cache_proxy_port` (4001), inside the shared container network namespace. No cache port is published.
 
 The third gate socket, `/run/porelo-forge/runner.sock`, uses the same token-only gate as `git.sock`: no identity
-header, cookies removed, and `401 Basic` without credentials. Its system socket unit uses the runner account's
+header, cookies removed, and `401 Basic` without credentials, except the runner's own protocol under `/api/actions/`,
+which Forgejo authenticates by the registration and runner tokens it carries. Its system socket unit uses the runner account's
 primary group and mode `0660` in the existing `0755` directory. The runner account's
 `forgejo-runner-proxy.container` mounts only this socket and runs two socat listeners on loopback at the web and Git
 ports. Its image is pinned by digest. The proxy owns the network namespace; the runner depends on its service and
