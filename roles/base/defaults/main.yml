@@ -13,7 +13,6 @@ base_packages:
 
 # Where tasks_from: host reads the host's summary fields and writes the JSON file at the end of up.
 base_ssh_host_key_path: /etc/ssh/ssh_host_ed25519_key.pub
-base_ca_path: /etc/porelo-host/forge/ca.pem
 base_matrix_name: "{{ matrix_name | default('matrix.' ~ porelo_host_name ~ '.porelo.internal') }}"
 base_host_path: /etc/porelo-host/host.json
 

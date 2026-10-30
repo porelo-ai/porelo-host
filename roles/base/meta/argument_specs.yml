@@ -41,10 +41,6 @@ argument_specs:
         type: path
         default: /etc/ssh/ssh_host_ed25519_key.pub
         description: The host's ed25519 public ssh key file, whose first two fields are reported.
-      base_ca_path:
-        type: path
-        default: /etc/porelo-host/forge/ca.pem
-        description: The host CA's PEM certificate, whose DER SHA-256 digest is reported.
       base_matrix_name:
         type: str
         description: The Matrix homeserver's DNS name, matrix.<porelo_host_name>.porelo.internal by default.

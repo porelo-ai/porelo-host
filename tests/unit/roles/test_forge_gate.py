@@ -258,3 +258,10 @@ def test_runner_forwards_a_jobs_bearer_token_but_git_does_not(gate):
     assert response.startswith(b"HTTP/1.1 200") and calls[0][3]["Authorization"] == "Bearer job.fixture-token"
     response, calls = request(gate, "git", path=path, headers=[("Authorization", "Bearer job.fixture-token")])
     assert response.startswith(b"HTTP/1.1 401") and calls == []
+
+
+def test_host_card_names_no_certificate_authority():
+    """Prevent up failing on, or the summary naming, a host CA that SSH-only access no longer makes."""
+    text = (ROOT / "roles/base/tasks/host.yml").read_text()
+    assert "ca_sha256" not in text and "base_ca_path" not in text
+    assert "base_ca_path" not in (ROOT / "roles/base/defaults/main.yml").read_text()
