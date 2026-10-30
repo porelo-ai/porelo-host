@@ -17,3 +17,13 @@ host without hand patches.
 - `doc/guides/6-host.md` and its scripts without the VPN, the CA and the stops that went, tried once on a rented host.
   The preparation checks that the host runs the porelo-host collection and helpers of the commit under test, so what
   [HO67](README.md#ho67) asked of a rented host stays.
+
+## Notes
+
+- Forwarding differs from [HO68](README.md#ho68), accepted for the 6m test (Coordinator, 2026-10-30, for the
+  operator to see): `porelo-people` gets `AllowTcpForwarding yes` and `PermitListen none` besides socket forwarding.
+  OpenSSH 10.2 opens no Unix-socket forward while TCP forwarding is off, and `PermitOpen none` refuses socket paths
+  too, as a debug `sshd` on the test VM showed. Residual risk: a person's local TCP forward reaches every address the
+  host reaches, such as the homeserver's empty loopback port, other hosts on its networks and the internet, which is
+  what their login shell reaches already; remote TCP listeners stay refused. The narrower way is
+  [HO78](README.md#ho78).
