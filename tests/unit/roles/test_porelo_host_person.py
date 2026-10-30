@@ -848,6 +848,31 @@ def test_purge_refuses_when_the_vault_kept_more_than_a_transports_account(host, 
     assert not any(args[0] == "userdel" for args in host.calls)
 
 
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {
+            "items": [
+                {"kind": "conversation", "status": "NOT_REMOVED", "transport": "matrix", "project": "alpha"},
+                {"kind": "vault", "status": "NOT_REMOVED", "transport": "", "project": ""},
+            ],
+            "refused": False,
+        },
+        {"items": [{"kind": "conversation", "status": "NOT_REMOVED", "transport": "matrix"}], "refused": True},
+        {"items": [], "refused": False},
+    ],
+    ids=["a-transport-and-the-vault-kept", "refused", "nothing-kept-yet-exit-1"],
+)
+def test_purge_refuses_unless_only_a_transports_account_was_kept(host, capsys, answer):
+    """Prevent a transport's kept account from letting purge delete an account whose vault kept more."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    capsys.readouterr()
+    host.fail = ["runuser", "-u", "alice", "--", "env", "XDG_RUNTIME_DIR=/run/user/1000", "porelo", "vault", "clear"]
+    host.failed_output = json.dumps(answer)
+    assert host.invoke("purge", "alice", data=b"") == 69
+    assert not any(args[0] == "userdel" for args in host.calls)
+
+
 def test_failed_vault_clear_keeps_the_locked_account_and_record_for_retry(host, capsys):
     """Prevent account deletion before the person's vault has been cleared successfully."""
     assert host.invoke("add", "alice", "--role", "project-admin") == 0

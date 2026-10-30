@@ -1,8 +1,5 @@
 ---
-# Two projects on one host, each brought by its own project admin, and one developer with two laptops in both,
-# admitted by each bring's sync, joining each in his own account, then taken off: one project removed, then dropped
-# from the other's signed access file. Remove leaves his push config and Porelo's follow of the removed project in his
-# account until remove takes the person's push and sync away; nothing here asks for them gone.
+# Remove does not yet take a person's push config and Porelo's follow away, so nothing here asks for them gone.
 - name: Verify two brought projects sharing a developer with two laptops, joined and taken off
   block:
     - name: Copy the two projects' act and its cleanup onto the host
@@ -14,6 +11,7 @@
         mode: "0600"
       loop: [two_projects.py, two_projects_cleanup.py]
 
+    # One script, since the act runs as three people in turn and keeps every secret it sees out of Ansible's output.
     - name: Bring gamma-one as ga and gamma-two as gb, join both as gd, remove gamma-two and drop gd from gamma-one
       ansible.builtin.command:
         argv: [python3, -I, /root/two_projects.py]
@@ -58,6 +56,7 @@
       vars:
         verify_two: "{{ verify_two_act.stdout_lines | last | from_json }}"
   always:
+    # A script, since each removal must run even when one before it failed.
     - name: Remove gamma-one, gamma-two, their central stand-ins and reader, and purge ga, gb and gd
       ansible.builtin.command:
         argv: [python3, -I, /root/two_projects_cleanup.py]
@@ -76,7 +75,7 @@
       ansible.builtin.assert:
         that:
           - verify_two_cleanup.rc == 0
-          - (verify_two_cleanup.stdout_lines | last | from_json).cleaned | default(false)
+          - (verify_two_cleanup.stdout_lines | last | default('{}') | from_json).cleaned | default(false)
         fail_msg: >-
           asked the two projects' cleanup to run to its end; got rc {{ verify_two_cleanup.rc }} and
           {{ verify_two_cleanup.stdout_lines | last | default('no answer') }}

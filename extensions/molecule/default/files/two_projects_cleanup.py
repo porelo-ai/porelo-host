@@ -34,6 +34,9 @@ def delete(path):
         error.close()
         if error.code != 404:
             failures[path] = error.code
+    except (OSError, ValueError) as error:
+        # A forge that cannot be reached must not keep the steps after this one from running.
+        failures[path] = type(error).__name__
 
 
 def tool(*argv):
@@ -42,40 +45,49 @@ def tool(*argv):
         failures[" ".join(argv[:3])] = ((done.stderr or "").strip().splitlines() or [""])[-1][:300]
 
 
+def forge_user_gone(name):
+    done = subprocess.run(
+        [
+            "/usr/sbin/runuser",
+            "-u",
+            "porelo-forge",
+            "--",
+            "/usr/bin/env",
+            f"XDG_RUNTIME_DIR=/run/user/{forge_uid}",
+            "/usr/bin/podman",
+            "exec",
+            "forgejo",
+            "forgejo",
+            "admin",
+            "user",
+            "delete",
+            "--username",
+            name,
+        ],
+        capture_output=True,
+        text=True,
+        cwd="/",
+    )
+    # Forgejo's console logger writes its errors to either stream.
+    if done.returncode != 0 and "user does not exist" not in (done.stdout + done.stderr).lower():
+        failures[f"delete {name}"] = done.returncode
+
+
 for project in PROJECTS:
     delete(f"/repos/{project}/app")
     delete(f"/repos/central-{project}/app")
     delete(f"/orgs/central-{project}")
     if pathlib.Path(f"/etc/porelo-host/projects/{project}.conf").exists():
         tool("/usr/local/sbin/porelo-host-project", "remove", project)
+    else:
+        # An add stopped before its record was written may have left its organization and publisher.
+        delete(f"/orgs/{project}")
+        forge_user_gone(f"porelo-publisher-{project}")
 
 for person in PEOPLE:
     if pathlib.Path(f"/etc/porelo-host/people/{person}.conf").exists():
         tool("/usr/local/sbin/porelo-host-person", "purge", person)
 # Forgejo's own command, since the role's token administers no users; it takes the reader's tokens with it.
-gone = subprocess.run(
-    [
-        "/usr/sbin/runuser",
-        "-u",
-        "porelo-forge",
-        "--",
-        "/usr/bin/env",
-        f"XDG_RUNTIME_DIR=/run/user/{forge_uid}",
-        "/usr/bin/podman",
-        "exec",
-        "forgejo",
-        "forgejo",
-        "admin",
-        "user",
-        "delete",
-        "--username",
-        "central-gr",
-    ],
-    capture_output=True,
-    text=True,
-    cwd="/",
-)
-if gone.returncode != 0 and "user does not exist" not in gone.stderr.lower():
-    failures["delete central-gr"] = gone.returncode
+forge_user_gone("central-gr")
 shutil.rmtree("/root/verify-two", ignore_errors=True)
 print(json.dumps({"cleaned": not failures, "failures": failures}))
