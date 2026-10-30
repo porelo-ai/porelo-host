@@ -1,3 +1,11 @@
 ---
-# No handlers: libvirt is started by its own task, and nothing this role writes needs a restart.
-[]
+- name: Reload the host's SSH policy
+  ansible.builtin.service:
+    name: ssh
+    state: reloaded
+
+- name: Load the firewall again
+  ansible.builtin.systemd_service:
+    name: porelo-host-firewall.service
+    state: restarted
+    daemon_reload: true

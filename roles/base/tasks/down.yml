@@ -1,11 +1,10 @@
 ---
-# Last at down: the person's key taken off the account, so nothing of theirs is left on a host that is given back. A
-# failed up may have stopped before the account was there; down then has nothing of it to take.
 - name: down | Read the account, if up got as far as Porelo's setup script
   ansible.builtin.getent:
     database: passwd
     key: "{{ base_account }}"
     fail_key: false
+  when: base_account is defined
 
 - name: down | Take the person's key off the account
   ansible.builtin.lineinfile:
@@ -13,5 +12,14 @@
     line: "{{ base_authorized_key }}"
     state: absent
   when:
+    - base_account is defined
     - base_authorized_key | length > 0
     - ansible_facts['getent_passwd'][base_account] is not none
+
+- name: down | Remove the VPN left by an earlier setup
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/legacy_vpn.yml"
+
+- name: down | Remove the host summary
+  ansible.builtin.file:
+    path: /etc/porelo-host/host.json
+    state: absent

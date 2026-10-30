@@ -21,3 +21,12 @@
 
 - name: Run libvirt
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/kvm.yml"
+
+- name: Remove the VPN left by an earlier setup
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/legacy_vpn.yml"
+
+- name: Restrict SSH and seed the host admin's access before reloading
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/ssh.yml"
+
+- name: Leave only SSH on the public interfaces
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/firewall.yml"

@@ -45,7 +45,7 @@
       changed_when: false
       failed_when: false
 
-    - name: Assert the service accounts, linger files, host.json, /etc/hosts blocks and wg-porelo exist before down
+    - name: Assert the service accounts, linger files, host.json and hosts blocks exist, wg-porelo absent, before down
       ansible.builtin.assert:
         that:
           - side_effect_service_uids | length == (side_effect_expected_accounts | length)
@@ -54,7 +54,7 @@
           - "'matrix.alpha.porelo.internal' in side_effect_hosts_text"
           - side_effect_forge != 'on' or 'porelo-host forge name' in side_effect_hosts_text
           - side_effect_forge != 'on' or 'forge.alpha.porelo.internal' in side_effect_hosts_text
-          - side_effect_vpn_before.rc == 0
+          - side_effect_vpn_before.rc != 0
         fail_msg: >-
           asked for accounts {{ side_effect_expected_accounts }}, paths, /etc/hosts blocks and wg-porelo before down;
           got uids {{ side_effect_service_uids }}, missing paths

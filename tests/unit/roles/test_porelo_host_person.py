@@ -122,9 +122,14 @@ class Host:
 
 
 @pytest.fixture
-def host(tmp_path):
+def host(tmp_path, monkeypatch):
     namespace = runpy.run_path(str(SCRIPT), run_name="person_unit_tests")
     h = Host(tmp_path, namespace["_test_entry"])
+    monkeypatch.setattr(
+        namespace["pwd"],
+        "getpwnam",
+        lambda user: SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid(), pw_dir=str(tmp_path / "home" / user)),
+    )
     h.write("/etc/porelo-host/forge.conf", "address=10.73.7.1\n")
     h.write("/etc/porelo-host/vpn.conf", "admin_address=10.73.7.2\n")
     h.write("/etc/subuid", "existing:100000:65536\n", 0o644)
@@ -275,13 +280,10 @@ def test_reserved_or_invalid_addresses_cannot_redirect_vpn_traffic(host, capsys,
         ("/etc/porelo-host/forge.conf", "missing", 69),
         ("/etc/porelo-host/forge.conf", "writable", 69),
         ("/etc/porelo-host/forge.conf", "link", 69),
-        ("/etc/porelo-host/vpn.conf", "missing", 69),
-        ("/etc/porelo-host/vpn.conf", "writable", 69),
         ("/etc/porelo-host", "writable", 69),
         ("/etc/ssh/authorized_keys/alice", "directory", 73),
         ("/etc/ssh/authorized_keys/alice", "link", 73),
         ("/etc/ssh/authorized_keys", "writable", 73),
-        ("/etc/wireguard/porelo-host-peers/alice.conf", "directory", 73),
         ("/etc/porelo-host/people/alice.conf", "link", 69),
         ("/etc/subuid", "writable", 69),
         ("/etc/subgid", "missing", 69),
@@ -312,8 +314,6 @@ def test_untrusted_or_unwritable_paths_cannot_be_used_by_root(host, capsys, file
         ("forge.conf", "address=10.73.999.1\n"),
         ("forge.conf", "address=10.73.7.3\n"),
         ("forge.conf", "address=10.73.7.1\naddress=10.73.8.1\n"),
-        ("vpn.conf", "key=/etc/wireguard/key\n"),
-        ("vpn.conf", "admin_address=10.73.8.2\n"),
     ],
 )
 def test_bad_host_configuration_cannot_choose_the_network(host, capsys, file, text):
@@ -322,7 +322,7 @@ def test_bad_host_configuration_cannot_choose_the_network(host, capsys, file, te
     refused(host, capsys, 69, "add", "alice", "--role", "project-admin")
 
 
-@pytest.mark.parametrize("command", ["useradd", "usermod", "loginctl", "groupadd", "wg"])
+@pytest.mark.parametrize("command", ["useradd", "usermod", "loginctl", "groupadd", "systemctl"])
 def test_missing_dependencies_cannot_leave_a_partial_account(host, capsys, command):
     """Prevent discovering a missing required program after access or an account has been created."""
     host.commands.remove(command)
@@ -337,16 +337,14 @@ def test_add_orders_account_keys_peers_hooks_and_record(host, capsys):
 
     def inspect(args):
         assert not record.exists(), "the record must be published last"
-        if args[0] == "wg":
-            assert keys.read_text() == f'from="10.73.7.3" {ssh_key(1)}\nfrom="10.73.7.4" {ssh_key(2)}\n'
-        else:
-            assert not keys.exists() and not peers.exists()
+        assert not keys.exists() and not peers.exists()
 
     host.inspect = inspect
 
     def inspect_hook(name, values):
         assert not record.exists(), "the record must follow both admission hooks"
-        assert peers.is_file(), "both hooks must follow persistent VPN admission"
+        assert keys.read_text() == f"{ssh_key(1)}\n{ssh_key(2)}\n"
+        assert host.path("/run/porelo-host/people/alice").stat().st_mode & 0o777 == 0o700
 
     host.hook_inspect = inspect_hook
     assert host.invoke("add", "alice", "--role", "project-admin", data=(laptop() + laptop("second", 2)).encode()) == 0
@@ -377,14 +375,9 @@ def test_add_orders_account_keys_peers_hooks_and_record(host, capsys):
         ["usermod", "--add-subgids", "265536-331071", "alice"],
         ["groupadd", "--system", "porelo-people"],
         ["usermod", "--append", "--groups", "kvm,libvirt,porelo-people", "alice"],
-        ["wg", "set", "wg-porelo", "peer", wg_key(1), "allowed-ips", "10.73.7.3/32"],
-        ["wg", "set", "wg-porelo", "peer", wg_key(2), "allowed-ips", "10.73.7.4/32"],
     ]
     assert [event[0] for event in host.events[-2:]] == ["forge_admit", "matrix_issue"]
-    assert peers.read_text() == (
-        f"[Peer]\nPublicKey = {wg_key(1)}\nAllowedIPs = 10.73.7.3/32\n\n"
-        f"[Peer]\nPublicKey = {wg_key(2)}\nAllowedIPs = 10.73.7.4/32\n\n"
-    )
+    assert not peers.exists()
     assert record.read_text() == (
         "member=hand\nlocked=false\n"
         f"laptop=laptop {ssh_key(1)} {wg_key(1)} 10.73.7.3\n"
@@ -392,10 +385,8 @@ def test_add_orders_account_keys_peers_hooks_and_record(host, capsys):
     )
     for path, mode in [
         (record, 0o600),
-        (peers, 0o600),
         (keys, 0o644),
         (record.parent, 0o700),
-        (peers.parent, 0o700),
         (keys.parent, 0o755),
     ]:
         assert stat.S_IMODE(path.stat().st_mode) == mode
@@ -484,11 +475,11 @@ def test_lock_removes_access_before_stopping_tasks_and_is_idempotent(host, capsy
     assert host.invoke("lock", "alice", data=b"") == 0
     assert json.loads(capsys.readouterr().out) == {"person": "alice", "locked": True}
     assert host.events == [
-        ["wg", "set", "wg-porelo", "peer", wg_key(1), "remove"],
         ["forge_lock", "alice"],
         ["matrix_expel_revoke", "alice"],
         ["runuser", "-u", "alice", "--", "env", "XDG_RUNTIME_DIR=/run/user/1000", "porelo", "task", "stop", "--all"],
         ["loginctl", "terminate-user", "alice"],
+        ["systemctl", "stop", "user@1000.service"],
         ["usermod", "--lock", "--expiredate", "1", "alice"],
     ]
     assert "locked=true\n" in host.path("/etc/porelo-host/people/alice.conf").read_text()
@@ -496,7 +487,8 @@ def test_lock_removes_access_before_stopping_tasks_and_is_idempotent(host, capsy
     host.calls.clear()
     host.events.clear()
     assert host.invoke("lock", "alice", data=b"") == 0
-    assert snapshot(host.root) == before and host.events == []
+    assert snapshot(host.root) == before
+    assert host.events == [["loginctl", "terminate-user", "alice"], ["systemctl", "stop", "user@1000.service"]]
     capsys.readouterr()
     # Locked is not admitted: only purge and a new add give the person access again.
     refused(host, capsys, 65, "add", "alice", "--role", "project-admin", diagnostic="locked")
@@ -582,7 +574,7 @@ def test_missing_porelo_skips_only_its_optional_commands(host, capsys):
 
 @pytest.mark.parametrize(
     "command",
-    [["useradd"], ["wg", "set", "wg-porelo", "peer", wg_key(1), "allowed-ips"], ["loginctl", "enable-linger"]],
+    [["useradd"], ["usermod", "--add-subuids"], ["loginctl", "enable-linger"]],
 )
 def test_failed_admission_never_publishes_a_record_or_command_output(host, capsys, command):
     """Prevent a failed privileged command from claiming admission or printing keys or service output."""
@@ -611,7 +603,7 @@ def test_a_failed_admission_after_the_account_is_locked_and_recorded_for_purge(h
     assert not output.out and "service unavailable" in output.err and "purge" in output.err
     assert not host.path("/etc/ssh/authorized_keys/alice").exists()
     assert not host.path("/etc/wireguard/porelo-host-peers/alice.conf").exists()
-    assert ["wg", "set", "wg-porelo", "peer", wg_key(1), "remove"] in host.calls
+    assert not any(args[0] == "wg" for args in host.calls)
     assert ["usermod", "--lock", "--expiredate", "1", "alice"] in host.calls
     assert "locked=true" in host.path("/etc/porelo-host/people/alice.conf").read_text()
     host.hook_inspect = lambda name, values: None
@@ -681,7 +673,6 @@ def test_keys_are_kept_only_in_the_access_files_and_record(host, capsys):
     allowed = {
         "etc/porelo-host/people/alice.conf",
         "etc/ssh/authorized_keys/alice",
-        "etc/wireguard/porelo-host-peers/alice.conf",
     }
     found = {
         str(path.relative_to(host.root))
@@ -729,9 +720,8 @@ def test_paths_owned_by_another_account_are_refused(host, capsys):
 
 def test_auto_allocation_skips_other_people_and_the_admin_and_exhaustion_refuses(host, capsys):
     """Prevent duplicate routes when addresses are occupied or the VPN subnet is full."""
-    host.write("/etc/porelo-host/vpn.conf", "admin_address=10.73.7.4\n")
     data = "".join(laptop(f"device-{n}", n, f"10.73.7.{n + 4}") for n in range(1, 251))
-    data += laptop("device-251", 251, "10.73.7.2")
+    data += laptop("device-251", 251, "10.73.7.4")
     data += laptop("device-252", 252, "10.73.7.3")
     assert host.invoke("add", "alice", "--role", "project-admin", data=data.encode()) == 0
     capsys.readouterr()
@@ -740,13 +730,12 @@ def test_auto_allocation_skips_other_people_and_the_admin_and_exhaustion_refuses
 
 def test_new_people_take_the_lowest_free_address_after_existing_reservations(host, capsys):
     """Prevent a later person's automatic allocation from displacing an existing laptop or the admin."""
-    host.write("/etc/porelo-host/vpn.conf", "admin_address=10.73.7.4\n")
-    assert host.invoke("add", "alice", "--role", "project-admin", data=laptop(address="10.73.7.2").encode()) == 0
+    assert host.invoke("add", "alice", "--role", "project-admin", data=laptop(address="10.73.7.3").encode()) == 0
     capsys.readouterr()
     data = (laptop(number=2) + laptop("second", 3)).encode()
     assert host.invoke("add", "bob", "--role", "project-admin", data=data) == 0
     addresses = [item["vpn_address"] for item in json.loads(capsys.readouterr().out)["laptops"]]
-    assert addresses == ["10.73.7.3", "10.73.7.5"]
+    assert addresses == ["10.73.7.4", "10.73.7.5"]
 
 
 @pytest.mark.parametrize(
@@ -785,7 +774,7 @@ def test_a_record_never_authorizes_root_or_a_system_uid(host, capsys):
 
 @pytest.mark.parametrize(
     "verb,missing",
-    [("lock", "wg"), ("lock", "usermod"), ("lock", "runuser"), ("purge", "userdel"), ("purge", "runuser")],
+    [("lock", "systemctl"), ("lock", "usermod"), ("lock", "runuser"), ("purge", "userdel"), ("purge", "runuser")],
 )
 def test_teardown_dependencies_are_checked_before_removing_access(host, capsys, verb, missing):
     """Prevent missing teardown programs from causing partial revocation or account loss."""
@@ -795,12 +784,12 @@ def test_teardown_dependencies_are_checked_before_removing_access(host, capsys, 
     refused(host, capsys, 69, verb, "alice", data=b"")
 
 
-def test_failed_peer_removal_still_disables_the_account_and_allows_retry(host, capsys):
+def test_failed_manager_stop_still_disables_the_account_and_allows_retry(host, capsys):
     """Prevent a VPN failure from leaving SSH sessions enabled or being hidden by an idempotent lock."""
     assert host.invoke("add", "alice", "--role", "project-admin") == 0
     capsys.readouterr()
     host.calls.clear()
-    host.fail = ["wg"]
+    host.fail = ["systemctl", "stop"]
     assert host.invoke("lock", "alice", data=b"") == 69
     assert ["usermod", "--lock", "--expiredate", "1", "alice"] in host.calls
     assert "locked=false" in host.path("/etc/porelo-host/people/alice.conf").read_text()
@@ -1415,21 +1404,15 @@ def test_sync_admits_a_developer_with_two_laptops_records_commits_and_updates_fo
         f"laptop=l1 {ssh_key(1)} {wg_key(1)} 10.73.7.10\n"
         f"laptop=l2 {ssh_key(2)} {wg_key(2)} 10.73.7.11\n"
     )
-    assert host.path("/etc/ssh/authorized_keys/dan").read_text() == (
-        f'from="10.73.7.10" {ssh_key(1)}\nfrom="10.73.7.11" {ssh_key(2)}\n'
-    )
-    assert host.path("/etc/wireguard/porelo-host-peers/dan.conf").read_text() == (
-        f"[Peer]\nPublicKey = {wg_key(1)}\nAllowedIPs = 10.73.7.10/32\n\n"
-        f"[Peer]\nPublicKey = {wg_key(2)}\nAllowedIPs = 10.73.7.11/32\n\n"
-    )
-    assert ["wg", "set", "wg-porelo", "peer", wg_key(1), "allowed-ips", "10.73.7.10/32"] in host.calls
-    assert ["wg", "set", "wg-porelo", "peer", wg_key(2), "allowed-ips", "10.73.7.11/32"] in host.calls
+    assert host.path("/etc/ssh/authorized_keys/dan").read_text() == (f"{ssh_key(1)}\n{ssh_key(2)}\n")
+    assert not host.path("/etc/wireguard/porelo-host-peers/dan.conf").exists()
+    assert not any(args[0] == "wg" for args in host.calls)
     assert any(event[:2] == ["forge_admit", "dan"] for event in host.events)
     assert ["matrix_issue", "dan"] in host.events
     assert forge_developers(state, "alpha") == ["dan"]
     assert host.path("/etc/porelo-host/projects/alpha.conf").read_text() == (
         f"admin=ada\nsigned_by={SIGNER_ONE}\npublisher=porelo-publisher-alpha\n"
-        f"commit={'1' * 40}\naccess_commit={'2' * 40}\nsigner={SIGNER_ONE}\n"
+        f"commit={"1" * 40}\naccess_commit={"2" * 40}\nsigner={SIGNER_ONE}\n"
     )
     assert list(host.path("/run/porelo-host/sync").iterdir()) == []
 
@@ -1465,12 +1448,10 @@ def test_sync_dropping_one_laptop_removes_only_that_laptops_access(sync_host, ca
     assert verify_args[verify_args.index("--since") + 1] == "1" * 40
     assert verify_args[verify_args.index("--access-since") + 1] == "2" * 40
     wg_mutations = [args for args in host.calls if args[:3] == ["wg", "set", "wg-porelo"]]
-    assert wg_mutations == [["wg", "set", "wg-porelo", "peer", wg_key(1), "remove"]]
+    assert wg_mutations == []
     assert not any(event[0] in ("forge_lock", "matrix_expel_revoke", "useradd", "usermod") for event in host.events)
-    assert host.path("/etc/ssh/authorized_keys/dan").read_text() == f'from="10.73.7.11" {ssh_key(2)}\n'
-    assert host.path("/etc/wireguard/porelo-host-peers/dan.conf").read_text() == (
-        f"[Peer]\nPublicKey = {wg_key(2)}\nAllowedIPs = 10.73.7.11/32\n\n"
-    )
+    assert host.path("/etc/ssh/authorized_keys/dan").read_text() == f"{ssh_key(2)}\n"
+    assert not host.path("/etc/wireguard/porelo-host-peers/dan.conf").exists()
     assert host.path("/etc/porelo-host/people/dan.conf").read_text() == (
         f"member=alpha developer\nlocked=false\nlaptop=l2 {ssh_key(2)} {wg_key(2)} 10.73.7.11\n"
     )
@@ -1505,7 +1486,7 @@ def test_sync_dropping_a_developer_with_no_other_membership_locks_them(sync_host
     assert forge_developers(state, "alpha") == []
     assert not host.path("/etc/ssh/authorized_keys/dan").exists()
     assert not host.path("/etc/wireguard/porelo-host-peers/dan.conf").exists()
-    assert ["wg", "set", "wg-porelo", "peer", wg_key(1), "remove"] in host.calls
+    assert not any(args[0] == "wg" for args in host.calls)
     assert ["forge_lock", "dan"] in host.events
     assert ["matrix_expel_revoke", "dan"] in host.events
     assert ["usermod", "--lock", "--expiredate", "1", "dan"] in host.calls
@@ -1554,7 +1535,7 @@ def test_sync_dropping_a_developer_still_in_another_project_keeps_their_host_acc
     assert not any(event[0] in ("forge_lock", "matrix_expel_revoke") for event in host.events)
     assert not any(args[:3] == ["wg", "set", "wg-porelo"] for args in host.calls)
     assert host.path("/etc/ssh/authorized_keys/dan").is_file()
-    assert host.path("/etc/wireguard/porelo-host-peers/dan.conf").is_file()
+    assert not host.path("/etc/wireguard/porelo-host-peers/dan.conf").exists()
     assert host.path("/etc/porelo-host/people/dan.conf").read_text() == (
         f"member=beta developer\nlocked=false\nlaptop=l1 {ssh_key(1)} {wg_key(1)} 10.73.7.10\n"
     )
@@ -1609,7 +1590,7 @@ def test_sync_adds_project_membership_to_a_hand_admitted_person_without_a_second
     assert forge_developers(state, "alpha") == []
     assert not any(event[0] in ("forge_lock", "matrix_expel_revoke") for event in host.events)
     assert host.path("/etc/ssh/authorized_keys/cy").is_file()
-    assert host.path("/etc/wireguard/porelo-host-peers/cy.conf").is_file()
+    assert not host.path("/etc/wireguard/porelo-host-peers/cy.conf").exists()
     assert host.path("/etc/porelo-host/people/cy.conf").read_text() == (
         f"member=hand\nlocked=false\nlaptop=cy-laptop {ssh_key(12)} {wg_key(12)} 10.73.7.12\n"
     )
@@ -1677,16 +1658,14 @@ def test_sync_refuses_with_73_when_a_stopped_syncs_copies_cannot_be_removed(sync
 @pytest.mark.parametrize(
     "override,expected_fields",
     [
-        ({"network": "10.73.99.0/24"}, ["network"]),
-        ({"wireguard_public_key": wg_key(250)}, ["wireguard_public_key"]),
         ({"ca_sha256": "0" * 64}, ["ca_sha256"]),
         (
             {"network": "10.73.99.0/24", "wireguard_public_key": wg_key(250), "ca_sha256": "0" * 64},
-            ["network", "wireguard_public_key", "ca_sha256"],
+            ["ca_sha256"],
         ),
         (None, ["host"]),
     ],
-    ids=["wrong-network", "wrong-wg-key", "wrong-ca", "all-three-wrong", "missing-host"],
+    ids=["wrong-ca", "all-three-wrong", "missing-host"],
 )
 def test_sync_refuses_a_host_block_for_another_host_naming_every_differing_field(
     sync_host, capsys, override, expected_fields
@@ -1863,3 +1842,35 @@ def test_sync_via_sudo_allows_only_the_projects_unlocked_admin_and_checks_bundle
     state.verify_reply["alpha"]["access_commit"] = "9" * 40
     assert host.invoke("sync", "alpha", data=b"", sudo_user="ada") == 65
     assert not capsys.readouterr().out
+
+
+def test_person_cannot_prevent_lock_by_changing_the_return_directory_mode(host, capsys):
+    """Prevent a person's writable runtime directory mode from defeating host revocation."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    capsys.readouterr()
+    directory = host.path("/run/porelo-host/people/alice")
+    directory.chmod(0o755)
+    host.calls.clear()
+    assert host.invoke("lock", "alice", data=b"") == 0
+    assert not host.path("/etc/ssh/authorized_keys/alice").exists()
+    assert not directory.exists()
+    assert ["loginctl", "terminate-user", "alice"] in host.calls
+    assert ["systemctl", "stop", "user@1000.service"] in host.calls
+
+
+def test_install_restores_boot_rules_for_existing_admitted_people(host, capsys):
+    """Prevent an upgrade or reboot from leaving recorded people without private return-socket directories."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    capsys.readouterr()
+    directory = host.path("/run/porelo-host/people/alice")
+    directory.rmdir()
+    rule = host.path("/etc/tmpfiles.d/porelo-person-alice.conf")
+    rule.unlink()
+    assert host.invoke("restore-runtime", data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {"changed": 1}
+    assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+    assert rule.read_text() == "d /run/porelo-host/people/alice 0700 alice alice -\n"
+    before = snapshot(host.root)
+    assert host.invoke("restore-runtime", data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {"changed": 0}
+    assert snapshot(host.root) == before

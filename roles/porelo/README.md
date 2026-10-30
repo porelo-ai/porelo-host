@@ -4,7 +4,7 @@ Porelo's packages and person records on the host: `tasks_from: install` adds Por
 installs `porelo` (and `porelo-adapter-forgejo`, providing `/usr/libexec/porelo/builds/forgejo`, when
 `porelo_host_forge` is true), makes `/etc/porelo-host`, and installs `/usr/local/bin/porelo-host-stop`, running no
 setup script for an account. `tasks_from: person` installs `/usr/local/sbin/porelo-host-person` (`add`, `lock`,
-`purge` and `sync <project>`), root's VPN-restricted SSH key lookup and the `porelo-people` sudoers rules for
+`purge` and `sync <project>`), private return-socket directories and the `porelo-people` sudoers rules for
 no-argument `porelo-host-forge-password` and `porelo-host-person sync *` (checked by the helper to the project's
 unlocked recorded admin); `/etc/porelo-host/people/<user>.conf` records each person's `member=hand` and
 `member=<project> project-admin|developer` memberships, `locked=` state and `laptop=` entries. `tasks_from: people`
@@ -50,3 +50,9 @@ and the packages stay with the host.
 ## License
 
 GPL-3.0-or-later.
+
+SSH policy and initial key/KRL installation belong to `base`. The person helper creates
+`/run/porelo-host/people/<login>` (0700, owned by the person) and a per-person tmpfiles rule at admission;
+lock and purge remove both. Lock terminates sessions and stops the user manager even if a service hook refuses.
+The verified registry reader supplies key/expiry and host-wide revocation inputs through the callable methods
+in [SSH access](../../doc/ssh.md). Legacy laptop records remain readable without configuring VPN peers.

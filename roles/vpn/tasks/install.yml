@@ -1,7 +1,0 @@
----
-- name: install | Install WireGuard's tools and nftables
-  ansible.builtin.apt:
-    name: [wireguard-tools, nftables]
-    state: present
-    update_cache: true
-    cache_valid_time: 3600

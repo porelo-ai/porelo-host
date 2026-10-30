@@ -5,14 +5,14 @@
   ansible.builtin.command:
     cmd: ip -json {{ item }} route show default
   loop: ["-4", "-6"]
-  register: __vpn_routes
+  register: __base_routes
   changed_when: false
   check_mode: false
 
 - name: firewall | Stop if the host has no default route to tell its public interface by
   ansible.builtin.assert:
-    that: __vpn_public | length > 0
-    fail_msg: "no default route, so no public interface to close: {{ __vpn_routes.results | map(attribute='stdout') }}"
+    that: __base_public | length > 0
+    fail_msg: "no default route, so no public interface to close: {{ __base_routes.results | map(attribute='stdout') }}"
     quiet: true
 
 - name: firewall | Make the directory the rules are kept in

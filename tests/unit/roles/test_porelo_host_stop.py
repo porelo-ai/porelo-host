@@ -197,7 +197,7 @@ def test_unlock_retries_a_wrong_passphrase(terminal_home):
         (("--stdin", "vault-new"), "pipe"),
         (("--stdin", "matrix-token"), "matrix-token"),
         (("--stdin", "identities", "identities"), "twice"),
-        (("--stdin", "wireguard", "wireguard"), "root"),
+        (("--stdin", "wireguard", "wireguard"), "unknown need"),
         (("matrix-token",), "matrix-token"),
     ],
 )
@@ -344,7 +344,7 @@ def test_a_refused_migration_fails_the_stop(own_account):
     assert result.returncode == 65 and "alpha" in result.stderr
 
 
-@pytest.mark.parametrize("need", ["wireguard", "forge-certificate"])
+@pytest.mark.parametrize("need", ["forge-certificate"])
 def test_the_host_admins_needs_are_refused_in_a_persons_account(own_account, need):
     """Prevent a person from believing they gave the host's key or certificates, which only root writes."""
     home = own_account
@@ -359,7 +359,7 @@ def test_the_host_admins_needs_are_refused_in_a_persons_account(own_account, nee
         (f"vault {b64('p')}\nvault {b64('p')}\n", "second time"),
         ("vault not-base64!\n", "base64"),
         (f"key ../escape {b64('k')}\n", "valid key"),
-        (f"wireguard {b64('k')}\n", "not named"),
+        (f"wireguard {b64('k')}\n", "not named here"),
         ("", "no line gives vault"),
     ],
 )

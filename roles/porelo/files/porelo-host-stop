@@ -5,7 +5,6 @@
 # before any is used, then each decoded on a pipe straight into what uses it; nothing is asked.
 set -u
 
-stdin_vpn_conf=/etc/porelo-host/vpn.conf
 stdin_forge_conf=/etc/porelo-host/forge.conf
 # Where up's requests leave the forge's and the homeserver's keys and requests, and where their signed certificates and
 # the CA's wait.
@@ -175,10 +174,10 @@ IP:$net/255.255.255.0" ] \
 stdin_stop() {
     local -A named=() given=()
     local need line count=0 rest value
-    [ "$#" -gt 0 ] || stdin_refuse 'at least one need is required: wireguard, forge-certificate'
+    [ "$#" -gt 0 ] || stdin_refuse 'at least one need is required: forge-certificate'
     for need in "$@"; do
         case "$need" in
-            wireguard|forge-certificate) ;;
+            forge-certificate) ;;
             drive) stdin_refuse 'drive is no need of the host any more' ;;
             vault-new|vault|keys|forge-central-token|matrix-token)
                 stdin_refuse "$need is no need of the host's root act; the person gives it in their own account" ;;
@@ -201,7 +200,7 @@ stdin_stop() {
         rest=${line#* }
         [ "$rest" != "$line" ] || stdin_refuse "line $count holds no value"
         case "$need" in
-            wireguard|forge-certificate)
+            forge-certificate)
                 [ -n "${named[$need]+x}" ] || stdin_refuse "line $count gives $need, which is not named"
                 value=$rest
                 ;;
@@ -215,17 +214,12 @@ stdin_stop() {
         [ -z "${given[$need]+x}" ] || stdin_refuse "line $count gives $need a second time"
         given[$need]=$value
     done
-    for need in wireguard forge-certificate; do
+    for need in forge-certificate; do
         if [ -n "${named[$need]+x}" ] && [ -z "${given[$need]+x}" ]; then
             stdin_refuse "no line gives $need"
         fi
     done
 
-    if [ -n "${named[wireguard]+x}" ]; then
-        stdin_key_path=$(stdin_conf_value "$stdin_vpn_conf" key '^/[A-Za-z0-9._/-]+$') || exit $?
-        case "$stdin_key_path/" in */../*|*/./*|*//*) stdin_refuse "$stdin_vpn_conf names no valid key" 69 ;; esac
-        stdin_check_target "$stdin_key_path"
-    fi
     if [ -n "${named[forge-certificate]+x}" ]; then
         require_command openssl
         stdin_work=$(umask 077 && mktemp -d) || stdin_refuse 'cannot make a working directory' 73
@@ -233,9 +227,6 @@ stdin_stop() {
         stdin_check_forge_certificate "${given[forge-certificate]}"
     fi
 
-    if [ -n "${named[wireguard]+x}" ]; then
-        stdin_write_root_file "${given[wireguard]}" "$stdin_key_path"
-    fi
     if [ -n "${named[forge-certificate]+x}" ]; then
         stdin_write_root_file '' "$stdin_forge_dir/ca.pem" "$stdin_work/ca.pem" 0644
         stdin_write_root_file '' "$stdin_forge_dir/forge.pem" "$stdin_work/forge.pem" 0644
@@ -271,7 +262,7 @@ own_stop() {
     for need in "$@"; do
         case "$need" in
             vault-new|vault|keys|forge-central-token|identities) ;;
-            wireguard|forge-certificate) stdin_refuse "$need is the host admin's root act; it runs by sudo as root" ;;
+            forge-certificate) stdin_refuse "$need is the host admin's root act; it runs by sudo as root" ;;
             drive) stdin_refuse 'drive is no need of the host any more' ;;
             matrix-token) stdin_refuse 'matrix-token is no need any more; admission leaves the token in your home' ;;
             *) stdin_refuse "unknown need or option: $need" ;;

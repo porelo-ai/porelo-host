@@ -9,7 +9,11 @@ argument_specs:
         type: list
         elements: str
         description: Packages every host gets beside KVM's and podman's.
-        default: [acl, ca-certificates, curl, git]
+        default: [acl, ca-certificates, curl, git, nftables, openssh-server]
+      base_host_admin_key_file:
+        type: path
+        default: /root/.ssh/authorized_keys
+        description: The root-owned pinned host admin key file seeded before SSH reloads.
   account:
     short_description: Porelo's account in KVM's and libvirt's groups.
     description:
@@ -33,15 +37,6 @@ argument_specs:
   host:
     short_description: Write /etc/porelo-host/host.json and print the host's summary line at the end of up.
     options:
-      base_vpn_port:
-        type: int
-        description: The UDP port the VPN listens on, 51820 by default.
-      base_vpn_private_key_path:
-        type: path
-        description: The file holding the host's private WireGuard key, /etc/wireguard/porelo-host.key by default.
-      base_network:
-        type: str
-        description: The host's VPN network in CIDR notation, 10.73.<porelo_host_network>.0/24 by default.
       base_ssh_host_key_path:
         type: path
         default: /etc/ssh/ssh_host_ed25519_key.pub
@@ -58,13 +53,19 @@ argument_specs:
         default: /etc/porelo-host/host.json
         description: Where the host's summary JSON is written, root's with mode 0644.
   down:
-    short_description: The person's key taken off the account, last at down.
+    short_description: Remove legacy VPN files and the host summary, with optional account key cleanup.
     options:
       base_account:
         type: str
-        required: true
         description: The account Porelo's tasks run as.
       base_authorized_key:
         type: str
         default: ""
         description: The person's public ssh key, as up added it.
+  ssh:
+    short_description: Seed host admin access and restrict SSH forwarding.
+    options:
+      base_host_admin_key_file:
+        type: path
+        default: /root/.ssh/authorized_keys
+        description: The root-owned pinned host admin key file seeded before SSH reloads.

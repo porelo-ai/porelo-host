@@ -10,15 +10,15 @@ Zero or more unique member lines appear in fixed order (hand first, then by
 project name with project-admin before developer), followed by locked=true|false
 and one laptop line per laptop in admission order. An older record with
 role=project-admin, projects= and no member line is read as member=hand and
-rewritten on its next write. Keys never go to output. The VPN role must load
-porelo-host-peers/*.conf at wg-porelo startup.
+rewritten on its next write. Keys never go to output. Legacy laptop fields are
+retained until card reconciliation replaces this input; no VPN peers are configured.
 
 sync <project> runs for root or sudo -n from <project>'s unlocked recorded admin.
 It copies the admin's plain private project.bundle and access.bundle into a fresh
 0700 directory under /run/porelo-host/sync/, after removing what a sync that was
 stopped or killed left there, verifies them through porelo project
 verify --json under a DynamicUser unit without home or network, checks host:
-against this host's VPN network, wg-porelo public key and forge/ca.pem DER
+against this host's forge/ca.pem DER
 SHA-256, validates the whole developer diff before acting, reconciles accounts,
 laptops, <project> developer memberships and the forge's developers team, and
 records commit=, access_commit= and signer= lines in projects/<project>.conf.
@@ -56,6 +56,7 @@ or hook overrides from arguments, stdin or the environment.
 
 import base64
 import binascii
+import datetime
 import fcntl
 import grp
 import hashlib
@@ -369,9 +370,7 @@ class Host:
         if not re.fullmatch(r"10\.73\.[0-9]{1,3}\.1", str(host)):
             refuse("forge.conf names no host VPN address at 10.73.<n>.1", 69)
         network = ipaddress.IPv4Network(f"{host}/24", strict=False)
-        admin = ipv4(self.setting("/etc/porelo-host/vpn.conf", "admin_address"), 69)
-        if admin not in network or admin in (host, network.network_address, network.broadcast_address):
-            refuse("vpn.conf names no usable admin_address in the host network", 69)
+        admin = network.network_address + 2
         return network, {str(host), str(admin), str(network.network_address), str(network.broadcast_address)}
 
     def records(self):
@@ -904,12 +903,116 @@ class Host:
         """Check all publication/removal paths without creating directories."""
         paths = [
             self.path(f"/etc/ssh/authorized_keys/{user}"),
-            self.path(f"/etc/wireguard/porelo-host-peers/{user}.conf"),
             self.path(f"/etc/porelo-host/people/{user}.conf"),
         ]
         for path in paths:
             self.check(path, 73)
+        self.check(self.path(f"/etc/tmpfiles.d/porelo-person-{user}.conf"), 73)
+        self.forge_tokens_directory(user, private=False)
         return paths
+
+    def write_authorized_key(self, user, key, expires=None):
+        """Publish the verified registry's single card key; root's pinned key has no expiry."""
+        if not isinstance(user, str) or not re.fullmatch(USER, user) or not valid_ssh_key(key):
+            refuse("invalid SSH account or public key", 65)
+        options = ""
+        if expires is not None:
+            if not isinstance(expires, str) or not re.fullmatch(r"[0-9]{14}Z", expires):
+                refuse("invalid SSH expiry", 65)
+            try:
+                datetime.datetime.strptime(expires, "%Y%m%d%H%M%SZ")
+            except ValueError:
+                refuse("invalid SSH expiry", 65)
+            options = f'expiry-time="{expires}" '
+        path = self.path(f"/etc/ssh/authorized_keys/{user}")
+        self.check(path, 73)
+        self.write(path, options + key + "\n", 0o644)
+
+    def write_krl(self, keys):
+        """Atomically publish only host-wide revocations supplied by the verified registry."""
+        if not isinstance(keys, list) or any(not valid_ssh_key(key) for key in keys):
+            refuse("invalid SSH revocation keys", 65)
+        target = self.path("/etc/ssh/porelo-revoked.krl")
+        self.check(target, 73)
+        self.require(["ssh-keygen"])
+        self.directories(target.parent)
+        with tempfile.TemporaryDirectory(prefix=".porelo-krl-", dir=target.parent) as directory:
+            source, output = Path(directory) / "keys", Path(directory) / "revoked.krl"
+            self.write(source, "".join(key + "\n" for key in keys), 0o600)
+            self.command(["ssh-keygen", "-q", "-k", "-f", str(output), str(source)])
+            with output.open("rb") as stream:
+                if stream.read(8) != b"SSHKRL\n\x00":
+                    refuse("ssh-keygen produced no valid KRL", 69)
+                os.fchown(stream.fileno(), self.owner, self.group)
+                os.fchmod(stream.fileno(), 0o644)
+                os.fsync(stream.fileno())
+            os.replace(output, target)
+
+    def apply_ssh_revocations(self, keys, users):
+        """Apply verified host-wide KRL entries and end the affected accounts' existing tunnels."""
+        if not isinstance(users, list) or any(
+            not isinstance(user, str) or not re.fullmatch(USER, user) or user == "root" for user in users
+        ):
+            refuse("invalid SSH revocation accounts", 65)
+        for user in users:
+            if self.accounts is not None and user not in self.accounts:
+                refuse("a revoked SSH account is missing", 65)
+            self.uid(user)
+        self.require(["loginctl", "systemctl"])
+        self.write_krl(keys)
+        errors = []
+        for user in dict.fromkeys(users):
+            try:
+                self.end_sessions(user)
+            except Refusal as error:
+                errors.append(error)
+        if errors:
+            refuse("; ".join(str(error) for error in errors), errors[0].code)
+
+    def admit_runtime(self, user):
+        """Create a private return-socket directory and its persistent boot rule."""
+        if not isinstance(user, str) or not re.fullmatch(USER, user):
+            refuse("invalid SSH account", 65)
+        entry = self.account(user)
+        directory = self.forge_tokens_directory(user)
+        rule = self.path(f"/etc/tmpfiles.d/porelo-person-{user}.conf")
+        self.check(rule, 73)
+        self.directories(directory.parent)
+        changed = False
+        if not directory.exists():
+            directory.mkdir(mode=0o700)
+            os.chown(directory, entry.pw_uid, entry.pw_gid)
+            changed = True
+        content = f"d /run/porelo-host/people/{user} 0700 {user} {user} -\n"
+        if not rule.exists() or self.read(rule) != content or stat.S_IMODE(rule.stat().st_mode) != 0o644:
+            self.write(rule, content, 0o644)
+            changed = True
+        return changed
+
+    def remove_runtime(self, user):
+        """Remove the return socket without following links in the person's writable directory."""
+        if not isinstance(user, str) or not re.fullmatch(USER, user):
+            refuse("invalid SSH account", 65)
+        rule = self.path(f"/etc/tmpfiles.d/porelo-person-{user}.conf")
+        self.check(rule, 73)
+        rule.unlink(missing_ok=True)
+        self.remove_forge_tokens(user)
+
+    def end_sessions(self, user):
+        """End every SSH tunnel and wait for the user's manager to stop."""
+        if not isinstance(user, str) or not re.fullmatch(USER, user) or user == "root":
+            refuse("invalid SSH session account", 65)
+        errors = []
+        for args, accepted in (
+            (["loginctl", "terminate-user", user], (0, 1)),
+            (["systemctl", "stop", f"user@{self.uid(user)}.service"], (0,)),
+        ):
+            try:
+                self.command(args, accepted=accepted)
+            except Refusal as error:
+                errors.append(error)
+        if errors:
+            refuse("; ".join(str(error) for error in errors), errors[0].code)
 
     def directories(self, directory):
         """Create missing root directories privately; preserve safe existing directories."""
@@ -1002,7 +1105,7 @@ class Host:
         self.command(["usermod", "--append", "--groups", ",".join(names), user])
 
     def add(self, user, laptops, groups, uid_range, gid_range, members=("hand",)):
-        """Apply validated admission in account, SSH, VPN, hook and record order.
+        """Apply validated admission in account, SSH, hook and record order.
 
         Once the account exists, a failure takes back what was given and records the person locked, so that purge
         can remove the account; unrecorded, every verb would refuse it as an account outside the people records.
@@ -1026,17 +1129,11 @@ class Host:
         self.enable_linger(user)
         self.subordinate_ids(user, uid_range, gid_range)
         self.join_groups(user, groups)
+        self.admit_runtime(user)
         self.write(
             self.path(f"/etc/ssh/authorized_keys/{user}"),
-            "".join(f'from="{item["address"]}" {item["ssh"]}\n' for item in laptops),
+            "".join(f'{item["ssh"]}\n' for item in laptops),
             0o644,
-        )
-        for item in laptops:
-            self.command(["wg", "set", "wg-porelo", "peer", item["wg"], "allowed-ips", item["address"] + "/32"])
-        self.write(
-            self.path(f"/etc/wireguard/porelo-host-peers/{user}.conf"),
-            "".join(f'[Peer]\nPublicKey = {item["wg"]}\nAllowedIPs = {item["address"]}/32\n\n' for item in laptops),
-            0o600,
         )
         self.hooks["forge_admit"](user, laptops)
         self.hooks["matrix_issue"](user)
@@ -1047,11 +1144,10 @@ class Host:
         self.path(f"/etc/ssh/authorized_keys/{user}").unlink(missing_ok=True)
         self.path(f"/etc/wireguard/porelo-host-peers/{user}.conf").unlink(missing_ok=True)
         errors = []
-        for item in record["laptops"]:
-            try:
-                self.command(["wg", "set", "wg-porelo", "peer", item["wg"], "remove"])
-            except Refusal as error:
-                errors.append(error)
+        try:
+            self.remove_runtime(user)
+        except Refusal as error:
+            errors.append(error)
         for name in ("forge_lock", "matrix_expel_revoke"):
             try:
                 self.hooks[name](user)
@@ -1062,6 +1158,7 @@ class Host:
         # Without linger or a session logind may already have let the person go, and knows nobody to end.
         for args, accepted in (
             (["loginctl", "terminate-user", user], (0, 1)),
+            (["systemctl", "stop", f"user@{self.uid(user)}.service"], (0,)),
             (["usermod", "--lock", "--expiredate", "1", user], (0,)),
         ):
             try:
@@ -1096,7 +1193,7 @@ class Host:
         """Lock before clearing the vault, deleting the account and releasing recorded IDs."""
         if not record["locked"]:
             self.lock(user, record, porelo)
-        self.remove_forge_tokens(user)
+        self.remove_runtime(user)
         if account_exists:
             lifted = False
             try:
@@ -1322,7 +1419,7 @@ class Host:
         return verified, commit, access_commit, signers
 
     def check_host_block(self, host_block, network):
-        """Require access.yml's host block to match this host's VPN network, WireGuard key and CA digest."""
+        """Require access.yml's host block to match this host's CA digest."""
         ca_path = self.path("/etc/porelo-host/forge/ca.pem")
         blocks = re.findall(r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", self.read(ca_path), re.DOTALL)
         if len(blocks) != 1:
@@ -1331,14 +1428,9 @@ class Host:
             ca_sha256 = hashlib.sha256(ssl.PEM_cert_to_DER_cert(blocks[0])).hexdigest()
         except ValueError:
             refuse(f"{ca_path} holds no valid PEM certificate", 69)
-        wg_public_key = self.command(["wg", "show", "wg-porelo", "public-key"]).stdout.strip()
-        if not valid_wg_key(wg_public_key):
-            refuse("wg-porelo reported no valid WireGuard public key", 69)
         if not isinstance(host_block, dict):
             refuse("access.yml has no host block for this host", 65)
         expected = {
-            "network": str(network),
-            "wireguard_public_key": wg_public_key,
             "ca_sha256": ca_sha256,
         }
         mismatches = [
@@ -1350,23 +1442,12 @@ class Host:
             refuse("access.yml host does not match this host: " + "; ".join(mismatches), 65)
 
     def update_person_laptops(self, user, laptops, added_laptops, dropped_laptops):
-        """Bring an existing person's SSH keys and WireGuard peers to the desired laptop list."""
-        for item in dropped_laptops:
-            self.command(["wg", "set", "wg-porelo", "peer", item["wg"], "remove"])
+        """Bring an existing person's SSH keys to the desired legacy laptop list."""
         if added_laptops or dropped_laptops:
             self.write(
                 self.path(f"/etc/ssh/authorized_keys/{user}"),
-                "".join(f'from="{item["address"]}" {item["ssh"]}\n' for item in laptops),
+                "".join(f'{item["ssh"]}\n' for item in laptops),
                 0o644,
-            )
-            for item in added_laptops:
-                self.command(["wg", "set", "wg-porelo", "peer", item["wg"], "allowed-ips", item["address"] + "/32"])
-            self.write(
-                self.path(f"/etc/wireguard/porelo-host-peers/{user}.conf"),
-                "".join(
-                    f'[Peer]\nPublicKey = {item["wg"]}\nAllowedIPs = {item["address"]}/32\n\n' for item in laptops
-                ),
-                0o600,
             )
 
     def sync(self, project, network, reserved, records, accounts):
@@ -1384,7 +1465,7 @@ class Host:
         ):
             refuse(f"project {project}'s recorded admin {admin} has no unlocked host access", 65)
         self.check(self.path("/etc/porelo-host/forge/ca.pem"), required=True)
-        self.require(["systemd-run", "porelo", "wg"])
+        self.require(["systemd-run", "porelo"])
         verified, commit, access_commit, next_signers = self.verify_bundles(project, admin, project_record)
         self.check_host_block(verified.get("host"), network)
         if project_record["commit"] == commit and project_record["access_commit"] == access_commit:
@@ -1515,11 +1596,11 @@ class Host:
         ]
         programs = []
         if new_plans:
-            programs.extend(["useradd", "loginctl", "usermod", "wg"])
+            programs.extend(["useradd", "loginctl", "usermod", "systemctl"])
             if "porelo-people" not in groups:
                 programs.append("groupadd")
         if users_to_lock:
-            programs.extend(["wg", "loginctl", "usermod", "runuser"])
+            programs.extend(["loginctl", "usermod", "systemctl", "runuser"])
         self.require(list(dict.fromkeys(programs)))
         for user, _ in new_plans:
             self.prepare_services(user, "add")
@@ -1559,6 +1640,16 @@ class Host:
         """Validate the complete request under the configuration lock before applying it."""
         if self.euid != 0:
             refuse("runs only as root", 69)
+        if arguments == ["restore-runtime"]:
+            changed = 0
+            conf = self.path("/etc/porelo-host/forge.conf")
+            self.check(conf, required=True)
+            with conf.open("rb") as mutex:
+                fcntl.flock(mutex, fcntl.LOCK_EX)
+                for login, record in self.records().items():
+                    if record["members"] and not record["locked"]:
+                        changed += self.admit_runtime(login)
+            return {"changed": changed}
         project = None
         if len(arguments) == 4 and arguments[0] == "add" and arguments[2:] == ["--role", "project-admin"]:
             verb, user = arguments[:2]
@@ -1623,18 +1714,21 @@ class Host:
                     refuse("the name belongs to an existing group", 65)
                 self.targets(user)
                 self.require(
-                    ["useradd", "loginctl", "usermod", "wg"] + ([] if "porelo-people" in groups else ["groupadd"])
+                    ["useradd", "loginctl", "usermod", "systemctl"] + ([] if "porelo-people" in groups else ["groupadd"])
                 )
                 self.prepare_services(user, verb)
                 self.add(user, laptops, groups, uid_range, gid_range)
                 return self.add_answer(user, laptops)
             if verb == "lock" and record["locked"]:
-                self.remove_forge_tokens(user)
+                if uid is not None:
+                    self.require(["loginctl", "systemctl"])
+                    self.end_sessions(user)
+                self.remove_runtime(user)
                 return {"person": user, "locked": True}
             if uid is None and not record["locked"]:
                 refuse("the unlocked person has no account", 65)
             self.targets(user)
-            programs = [] if record["locked"] else ["wg", "loginctl", "usermod"]
+            programs = [] if record["locked"] else ["loginctl", "usermod", "systemctl"]
             porelo = self.available("porelo")
             if porelo and uid is not None:
                 programs.append("runuser")

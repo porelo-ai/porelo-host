@@ -56,21 +56,6 @@
     - name: Install the collection before up runs
       ansible.builtin.meta: flush_handlers
 
-    # Stands in for the host admin's secrets file: the host's VPN key, made for the run under /root, reaches the host
-    # only through the stop's --stdin; the test peer's is used by verify from a network namespace of its own.
-    - name: Install WireGuard's tools to make the run's VPN keys
-      ansible.builtin.apt:
-        name: wireguard-tools
-        state: present
-
-    - name: Make the run's VPN keys, the host's and the test peer's
-      ansible.builtin.shell:
-        cmd: >-
-          umask 077 && mkdir -p /etc/wireguard && wg genkey > {{ item }}.key
-          && wg pubkey < {{ item }}.key > {{ item }}.pub
-        creates: "{{ item }}.key"
-      loop: [/root/vpn-host, /etc/wireguard/verify-peer]
-
     # Stands in for the host admin's lasting CA on the desktop, constrained critically to alpha.porelo.internal and
     # 10.73.7.0/24 with its key never in /etc/porelo-host, plus a wider CA constrained only to porelo.internal that the
     # stop must refuse.
@@ -94,11 +79,6 @@
         executable: /bin/bash
       no_log: true
 
-    - name: Read the test peer's public WireGuard key
-      ansible.builtin.slurp:
-        src: /etc/wireguard/verify-peer.pub
-      register: converge_peer_public
-
     - name: Write the v2 inventory host up writes for host alpha on network 7
       ansible.builtin.copy:
         dest: /root/porelo-host-inventory.yml
@@ -114,8 +94,6 @@
               porelo_host_name: alpha
               porelo_host_network: 7
               porelo_host_distribution: snapshots
-              porelo_host_vpn_peer_public_key: {{ converge_peer_public.content | b64decode | trim }}
-              porelo_host_vpn_peer_address: 10.73.7.2/32
               porelo_host_forge: {{ (converge_forge == 'on') | lower }}
           {% if converge_forge == 'on' %}
               porelo_host_forge_agents: [probe]
@@ -134,13 +112,13 @@
               vm_pool_memory: 1024
           {% endif %}
 
-    # Once, before the host admin's root stop: neither VPN key nor signed certificates are on the host yet.
+    # Once, before the host admin's root stop: neither signed certificates are on the host yet.
     - name: Read whether the first up ran
       ansible.builtin.stat:
         path: /root/porelo-host-first-up.lines
       register: converge_first_seen
 
-    - name: Run the first up before the root stop supplies the VPN key and certificates
+    - name: Run the first up before the root stop supplies the certificates
       # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.
       ansible.builtin.shell:
         cmd: >-
@@ -155,15 +133,15 @@
       failed_when: false
       when: not converge_first_seen.stat.exists
 
-    - name: Assert the first up stopped with rc 2 waiting for wireguard and forge-certificate alone
+    - name: Assert the first up stopped with rc 2 waiting for forge-certificate alone
       ansible.builtin.assert:
         that:
           - converge_first_up.rc == 2
           - converge_first_waiting | length == 1
-          - converge_first_waiting[0].needs == ['wireguard', 'forge-certificate']
+          - converge_first_waiting[0].needs == ['forge-certificate']
           - converge_first_failed | length == 0
         fail_msg: >-
-          asked the first up for rc 2 and waiting needs ['wireguard', 'forge-certificate'] with no failed step;
+          asked the first up for rc 2 and waiting needs ['forge-certificate'] with no failed step;
           got rc {{ converge_first_up.rc }} and lines {{ converge_first_up.stdout }}
       vars:
         converge_first_lines: "{{ converge_first_up.stdout_lines | select | map('from_json') | list }}"
@@ -316,15 +294,14 @@
         label: "{{ item.item }}"
       when: not converge_ca_placed.stat.exists
 
-    # The pipeline the host admin's interface runs as root: the VPN key and the three certificates, base64 on two lines.
-    - name: Give the host's VPN key and the three certificates on porelo-host-stop --stdin
+    # The pipeline the host admin's interface runs as root: the three certificates, base64 on two lines.
+    - name: Give the host's three certificates on porelo-host-stop --stdin
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
           {
-              printf 'wireguard %s\n' "$(base64 -w0 < /root/vpn-host.key)"
               printf 'forge-certificate %s\n' "$(base64 -w0 < /root/desktop-ca/bundle-good.pem)"
-          } | porelo-host-stop --stdin wireguard forge-certificate
+          } | porelo-host-stop --stdin forge-certificate
         executable: /bin/bash
       register: converge_good_stop
       changed_when: true
@@ -332,11 +309,11 @@
       no_log: true
       when: not converge_ca_placed.stat.exists
 
-    - name: Assert porelo-host-stop accepted wireguard and forge-certificate with rc 0
+    - name: Assert porelo-host-stop accepted forge-certificate with rc 0
       ansible.builtin.assert:
         that: converge_good_stop.rc == 0
         fail_msg: >-
-          asked porelo-host-stop --stdin wireguard forge-certificate for rc 0,
+          asked porelo-host-stop --stdin forge-certificate for rc 0,
           got rc {{ converge_good_stop.rc }}: {{ converge_good_stop.stderr }}
       when: not converge_ca_placed.stat.exists
 

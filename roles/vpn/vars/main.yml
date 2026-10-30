@@ -1,3 +1,0 @@
----
-__vpn_public: "{{ __vpn_routes.results | map(attribute='stdout') | map('from_json') | flatten
-  | map(attribute='dev') | unique | list }}"

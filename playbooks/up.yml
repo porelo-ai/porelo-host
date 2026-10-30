@@ -58,17 +58,6 @@
           text: Installing Porelo
           seconds: 50
 
-    # Through the role, so its defaults name the key's path the stop writes.
-    - name: Ask whether the host's VPN key is there
-      ansible.builtin.include_role:
-        name: porelo.host.vpn
-        tasks_from: needs
-      vars:
-        porelo_host_step:
-          text: Checking the VPN's key
-          seconds: 5
-
-    # Both certificates are signed on the desktop, and the homeserver runs on every host, so requests always run here.
     - name: Ask whether the forge's and the homeserver's certificates hold, and request them where they do not
       ansible.builtin.include_role:
         name: porelo.host.forge
@@ -89,15 +78,7 @@
       when: porelo_host_needs | default([]) | length > 0
       tags: [porelo_host_waiting]
 
-    - name: Let the host admin reach the host through the VPN
-      ansible.builtin.include_role:
-        name: porelo.host.vpn
-      vars:
-        porelo_host_step:
-          text: Opening the VPN
-          seconds: 10
-
-    - name: Run the host's forge on the VPN's address, where the host asks for one
+    - name: Run the host's forge, where the host asks for one
       ansible.builtin.include_role:
         name: porelo.host.forge
       vars:
@@ -115,7 +96,7 @@
           seconds: 10
       when: porelo_host_vm_pool is defined
 
-    - name: Run the host's Matrix homeserver on the VPN's address
+    - name: Run the host's Matrix homeserver
       ansible.builtin.include_role:
         name: porelo.host.matrix
       vars:

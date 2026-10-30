@@ -16,34 +16,8 @@
     mode: "0440"
     validate: /usr/sbin/visudo -cf %s
 
-- name: person | Create root's authorized key directory
-  ansible.builtin.file:
-    path: /etc/ssh/authorized_keys
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
-- name: person | Create the SSH daemon's drop-in directory
-  ansible.builtin.file:
-    path: /etc/ssh/sshd_config.d
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
-- name: person | Let SSH read the person's VPN-restricted keys
-  ansible.builtin.copy:
-    content: |
-      Match Group porelo-people
-          AuthorizedKeysFile /etc/ssh/authorized_keys/%u
-      Match all
-    dest: /etc/ssh/sshd_config.d/porelo-host-person.conf
-    owner: root
-    group: root
-    mode: "0644"
-  notify: Reload SSH to read the people's keys
-
-# A later failure in up would leave the drop-in on disk, and a rerun that changes nothing would never reload.
-- name: person | Reload SSH before the play goes on
-  ansible.builtin.meta: flush_handlers
+- name: person | Restore private runtime directories and boot rules for recorded people
+  ansible.builtin.command:
+    argv: [/usr/local/sbin/porelo-host-person, restore-runtime]
+  register: __porelo_restored_runtime
+  changed_when: (__porelo_restored_runtime.stdout | from_json).changed > 0

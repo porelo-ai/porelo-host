@@ -1,0 +1,22 @@
+---
+- name: legacy_vpn | Read whether an earlier setup left its VPN
+  ansible.builtin.stat:
+    path: /etc/wireguard/wg-porelo.conf
+  register: __base_legacy_vpn
+
+- name: legacy_vpn | Stop the legacy VPN
+  ansible.builtin.systemd_service:
+    name: wg-quick@wg-porelo.service
+    state: stopped
+    enabled: false
+  when: __base_legacy_vpn.stat.exists
+
+- name: legacy_vpn | Remove the legacy VPN's files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/wireguard/wg-porelo.conf
+    - /etc/wireguard/porelo-host.key
+    - /etc/wireguard/porelo-host-peers
+    - /etc/porelo-host/vpn.conf

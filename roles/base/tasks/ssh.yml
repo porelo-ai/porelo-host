@@ -1,0 +1,107 @@
+---
+- name: ssh | Create the root-owned SSH key directory
+  ansible.builtin.file:
+    path: /etc/ssh/authorized_keys
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: ssh | Read the pinned host admin key file's metadata
+  ansible.builtin.stat:
+    path: "{{ base_host_admin_key_file }}"
+  register: __base_admin_keys
+
+- name: ssh | Refuse an unsafe or empty host admin key file
+  ansible.builtin.assert:
+    that:
+      - __base_admin_keys.stat.isreg | default(false)
+      - not (__base_admin_keys.stat.islnk | default(false))
+      - __base_admin_keys.stat.uid | default(-1) == 0
+      - __base_admin_keys.stat.mode | default('') in ['0600', '0644']
+      - __base_admin_keys.stat.size | default(0) > 0
+    fail_msg: The pinned host admin key file must be a nonempty plain root-owned file.
+    quiet: true
+
+- name: ssh | Validate the pinned public key without reading it into Ansible
+  ansible.builtin.shell:
+    # No pipe runs here, but the awk pattern holds a bar; pipefail keeps the shell's answer honest either way.
+    cmd: >-
+      set -o pipefail &&
+      awk 'NF && $1 !~ /^#/ {
+        if ($0 !~ /(^|[[:space:]])ssh-ed25519 [A-Za-z0-9+\/=]+([[:space:]]|$)/) exit 1;
+        keys++
+      } END { if (keys != 1) exit 1 }' {{ base_host_admin_key_file | quote }}
+      && ssh-keygen -l -f {{ base_host_admin_key_file | quote }} > /dev/null
+    executable: /bin/bash
+  changed_when: false
+  check_mode: false
+
+- name: ssh | Seed or replace the host admin's key before enabling its lookup
+  ansible.builtin.copy:
+    src: "{{ base_host_admin_key_file }}"
+    remote_src: true
+    dest: /etc/ssh/authorized_keys/root
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: ssh | Seed a valid empty KRL before enabling revocation checks
+  ansible.builtin.shell:
+    cmd: |
+      set -eu
+      work=$(mktemp -d /etc/ssh/.porelo-krl.XXXXXX)
+      trap 'rm -rf -- "$work"' EXIT HUP INT TERM
+      ssh-keygen -q -k -f "$work/revoked.krl" /dev/null
+      chmod 0644 "$work/revoked.krl"
+      mv -fT "$work/revoked.krl" /etc/ssh/porelo-revoked.krl
+    executable: /bin/bash
+    creates: /etc/ssh/porelo-revoked.krl
+
+- name: ssh | Create the SSH daemon's drop-in directory
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: ssh | Remove the superseded person drop-in
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d/porelo-host-person.conf
+    state: absent
+  notify: Reload the host's SSH policy
+
+- name: ssh | Restrict forwarding before cloud-init's SSH configuration
+  ansible.builtin.copy:
+    content: |
+      Port 22
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      AuthorizedKeysFile /etc/ssh/authorized_keys/%u
+      RevokedKeys /etc/ssh/porelo-revoked.krl
+      AllowTcpForwarding no
+      AllowAgentForwarding no
+      X11Forwarding no
+      PermitTunnel no
+      AllowStreamLocalForwarding no
+      Match Group porelo-people
+          AllowStreamLocalForwarding all
+          StreamLocalBindUnlink yes
+      Match all
+    dest: /etc/ssh/sshd_config.d/10-porelo-host.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload the host's SSH policy
+
+- name: ssh | Validate the complete daemon configuration
+  ansible.builtin.command:
+    argv: [/usr/sbin/sshd, -t]
+  changed_when: false
+  check_mode: false
+
+# A later failure must not leave a rerun with unchanged policy and no pending reload.
+- name: ssh | Reload SSH before the play goes on
+  ansible.builtin.meta: flush_handlers

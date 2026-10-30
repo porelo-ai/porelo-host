@@ -34,11 +34,11 @@
         reboot_timeout: 600
         msg: Molecule reboots the host to see it come back
 
-    - name: Read the firewall's and the VPN's state after the reboot
+    - name: Read the firewall's state after the reboot
       ansible.builtin.command:
         cmd: "{{ item }}"
       loop:
-        - systemctl is-active porelo-host-firewall.service wg-quick@wg-porelo.service
+        - systemctl is-active porelo-host-firewall.service
         - nft list table inet porelo_host
         - journalctl --boot _PID=1 --grep 'ordering cycle' --no-pager --quiet
       register: verify_reboot_state
@@ -46,10 +46,10 @@
       # systemd's own lines alone, not this command's in the journal; its grep ends with 1 when nothing matches.
       failed_when: verify_reboot_state.rc not in [0, 1]
 
-    - name: Assert the reboot brought the firewall and the VPN back
+    - name: Assert the reboot brought the firewall back
       ansible.builtin.assert:
         that:
-          - verify_reboot_state.results[0].stdout_lines == ['active', 'active']
+          - verify_reboot_state.results[0].stdout_lines == ['active']
           - verify_reboot_state.results[1].stdout is search('tcp dport 22 accept')
           - verify_reboot_state.results[2].stdout == ''
         fail_msg: >-

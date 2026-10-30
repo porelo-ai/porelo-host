@@ -12,7 +12,6 @@ says why.
 | The order of `up` and `down` | Every need of the stop is known in the first play, before the VPN, around one stop for the person; the store's last copy is to come before `vault clear`. | [Why](#the-order-of-up-and-down) |
 | How the stop's secrets reach the host | On the stop's standard input, from the person's secrets file on the desktop, each passed straight to its user; the drive holds none. | [Why](#how-the-stops-secrets-reach-the-host) |
 | The forge's CA on the desktop | One lasting CA of the person's, name-constrained to `porelo.internal` and the VPN's network, signs every host's forge; its key never reaches a host. | [Why](#the-forges-ca-on-the-desktop) |
-| The host's VPN key on its disk | An accepted risk: the key lies in the clear in `/etc/wireguard`, root's alone, for the host's life. | [Why](#the-hosts-vpn-key-on-its-disk) |
 | Where the VM test runs | On a libvirt VM per run everywhere: here, in the GitHub Build and in the Forgejo build. | [Why](#where-the-vm-test-runs) |
 | `ansible-test sanity` | Not run yet, though the collection holds Python; it comes in its own pinned container. | [Why](#ansible-test-sanity) |
 | Ubuntu's `ansible-core` and CVE-2026-89091 | An accepted risk: the one tarball the host installs is the collection's own. | [Why](#ubuntus-ansible-core-and-cve-2026-89091) |
@@ -167,26 +166,13 @@ and the repositories are private.
 
 ## How the stop's secrets reach the host
 
-The vault's passphrase, the machine's keys, the VPN's key and the central forge's token are kept in the person's
+The vault's passphrase, the machine's keys and the central forge's token are kept in the person's
 `secrets.kdbx` on the desktop, which only `keepassxc-cli` unlocks, and the interface holds none of them. At the stop a
 terminal on the desktop pipes them, one base64 line each, into `porelo-host-stop --stdin` on the host, run as root over
 the admin's ssh as `up` itself is run, and the script passes each through a pipe straight into what uses it: the vault
-as the account, or a file of root's for the VPN's key and the central token. So no secret passes through a drive, an
+as the account, or a file of root's for the central token. So no secret passes through a drive, an
 inventory, a variable, a command line or Ansible. Every line is checked before any is used, so a wrong line leaves
 nothing half done.
-
-## The host's VPN key on its disk
-
-**The exposure.** The host's WireGuard private key lies in the clear in `/etc/wireguard/porelo-host.key`, root's with
-mode `0600`, from the stop until `down`. The host's root and whoever reads the provider's disk images or snapshots can
-read it, as on any WireGuard server.
-
-**Why it stays.** `wg` reads the key at every start of the interface, so a restart or a reboot brings the VPN back on
-its own. Once ssh answers only through the VPN, a key lost at a reboot would lock the person out of their own host.
-The key is the host's alone, made for it, and is given back with it.
-
-**What would change the answer.** WireGuard taking its key from a sealed store such as a TPM, or a reboot no longer
-needing the VPN to reach the host.
 
 ## The forge's CA on the desktop
 

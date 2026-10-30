@@ -8,12 +8,14 @@ base_packages:
   - ca-certificates
   - curl
   - git
+  - nftables
+  - openssh-server
 
 # Where tasks_from: host reads the host's summary fields and writes the JSON file at the end of up.
-base_vpn_port: "{{ vpn_port | default(51820) }}"
-base_vpn_private_key_path: "{{ vpn_private_key_path | default('/etc/wireguard/porelo-host.key') }}"
-base_network: "10.73.{{ porelo_host_network }}.0/24"
 base_ssh_host_key_path: /etc/ssh/ssh_host_ed25519_key.pub
 base_ca_path: /etc/porelo-host/forge/ca.pem
 base_matrix_name: "{{ matrix_name | default('matrix.' ~ porelo_host_name ~ '.porelo.internal') }}"
 base_host_path: /etc/porelo-host/host.json
+
+# Setup pins the host admin's key here before up enables the root-owned SSH key source.
+base_host_admin_key_file: /root/.ssh/authorized_keys

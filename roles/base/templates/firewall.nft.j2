@@ -1,17 +1,16 @@
 #!/usr/sbin/nft -f
 {{ ansible_managed | comment }}
-# On the public interfaces only ssh and the VPN's port; everything else the host offers, only through the VPN.
+# Only SSH is reachable on the public interfaces.
 table inet porelo_host
 delete table inet porelo_host
 table inet porelo_host {
     chain input {
         type filter hook input priority filter; policy accept;
-        iifname != { {{ __vpn_public | map('to_json') | join(', ') }} } accept
+        iifname != { {{ __base_public | map('to_json') | join(', ') }} } accept
         ct state established,related accept
         ct state invalid drop
         meta l4proto { icmp, ipv6-icmp } accept
-        tcp dport {{ vpn_ssh_port }} accept
-        udp dport {{ vpn_port }} accept
+        tcp dport 22 accept
         drop
     }
 }

@@ -57,10 +57,10 @@ tell.
 **The stop.** `up`'s second play begins with the step only the person can take. When something is missing it stops
 with one line in place of a failure:
 
-    {"v": 1, "state": "waiting", "needs": ["vault-new", "keys", "wireguard"]}
+    {"v": 1, "state": "waiting", "needs": ["vault-new", "keys"]}
 
 `needs` names what is missing: `vault-new` with `keys` when the account has no vault yet, `vault` when its vault is
-shut, `wireguard` while the host has neither the VPN's key nor its running interface, and `forge-certificate` where the
+shut, and `forge-certificate` where the
 host runs a forge and no certificate signed by the person's CA holds for it. `up` installs agents without stopping for
 their sign-ins and starts no task. `ansible-playbook` itself exits 2 on a waiting stop, as on any failure, so a program
 tells the stop from a failure by this line, never by the exit code. A second `up` after the person's step runs both
@@ -91,7 +91,6 @@ with the needs as `up` names them. Standard input holds one line per secret, `<n
 | `vault-new` | `vault-new <passphrase>` | `porelo vault init --passphrase-stdin`, as the account |
 | `vault` | `vault <passphrase>` | `porelo vault unlock --passphrase-stdin`, as the account |
 | `keys` | `key <name> <key>`, one per key of the machine, none or more | `porelo vault put <name>`, as the account, once the vault is open |
-| `wireguard` | `wireguard <private key>` | the VPN's key file, root's with mode `0600`, kept for the host's life |
 | `forge-central-token` | `forge-central-token <token>` | `porelo-host-push --migrate <project>` on a pipe, as the account, for the repositories the waiting `bring` listed; the token lies in no file |
 | `forge-certificate` | `forge-certificate <the forge's certificate, then the CA's, as PEM>` | `/etc/porelo-host/forge/forge.pem` and `ca.pem`, once every check below holds |
 | `matrix-token` | `matrix-token <token>` | `~/.config/porelo/matrix/host-registration-token` of the account, the account's own with mode `0600` in a `0700` directory, written as the account; `down` removes it |
@@ -116,7 +115,7 @@ Otherwise it is refused with 64, naming the check that failed, before anything i
 
 It exits 0 when every line is used, printing "The host's stop is done; run up again."; 64 for a wrong call or a wrong
 line, with nothing used; 65 when the vault refuses a value (`vault-new`, `vault`, a key), naming it; 69 when a required
-command is missing, or `/etc/porelo-host/stop.conf`, `vpn.conf` or `forge.conf`, which `up` writes, or the forge's
+command is missing, or `/etc/porelo-host/stop.conf`, `forge.conf`, which `up` writes, or the forge's
 waiting key, is missing, not root's alone, or names root or an unknown account; and 73 when a file cannot be written, or
 its directory or the file in its place is not root's alone or not plain (for `matrix-token`, the account's own: a
 link, or anything but a directory or plain file, on its way in the account's home).

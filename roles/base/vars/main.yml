@@ -5,3 +5,6 @@ __base_account_groups:
   - libvirt
 # The file the CPU check reads its flags from; the unit tests name others in its place.
 __base_cpuinfo: /proc/cpuinfo
+
+__base_public: "{{ __base_routes.results | map(attribute='stdout') | map('from_json') | flatten
+  | map(attribute='dev') | unique | list }}"
