@@ -17,7 +17,7 @@ PORELO = """#!/bin/bash
 printf '%s\\n' "$*" >> "$PORELO_LOG"
 case "$1 $2" in
     "setup "*) echo "daemon   running" ;;
-    "vault status") exit "${PORELO_VAULT_STATUS:-0}" ;;
+    "vault status") [ "${PORELO_VAULT_STATUS:-0}" != 70 ] || echo "not a vault" >&2; exit "${PORELO_VAULT_STATUS:-0}" ;;
     "vault list") [ -n "${PORELO_VAULT_EMPTY:-}" ] || printf 'deploy-key\\n' ;;
     "project inventory") cat "$PORELO_INVENTORY" ;;
     "project following") echo '{"follows": []}' ;;
@@ -188,13 +188,15 @@ def test_a_key_the_open_vault_does_not_hold_waits_for_the_stop_that_gives_the_ke
     assert not any(c.startswith("project follow ") for c in calls)
 
 
-def test_any_other_vault_answer_is_refused_with_porelos_words_and_no_wait(home):
-    done, calls = run(home, callback="porelo.host.lines", PORELO_VAULT_STATUS="70")
+@pytest.mark.parametrize("act", ["bring", "join"])
+def test_any_other_vault_answer_is_refused_with_porelos_words_and_no_wait(home, act):
+    done, calls = run(home, act, callback="porelo.host.lines", PORELO_VAULT_STATUS="70")
     lines = [json.loads(line) for line in done.stdout.splitlines()]
     assert done.returncode != 0
     assert not [line for line in lines if line["state"] == "waiting"], done.stdout
     failed = [line for line in lines if line["state"] == "failed"]
-    assert len(failed) == 1 and "porelo vault status answered 70" in failed[0]["msg"], done.stdout
+    assert len(failed) == 1 and "porelo vault status answered 70: not a vault" in failed[0]["msg"], done.stdout
+    assert f"run {act} again" in failed[0]["msg"], done.stdout
     assert not any(c.startswith("project follow ") for c in calls)
 
 

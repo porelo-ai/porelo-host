@@ -66,6 +66,11 @@ their sign-ins and starts no task. `ansible-playbook` itself exits 2 on a waitin
 tells the stop from a failure by this line, never by the exit code. A second `up` after the person's step runs both
 plays from the top; what is done is done, so it goes on where it stopped.
 
+`bring` and `join`, run in the person's own account, stop the same way: `vault-new` with `keys` when the account has
+no vault, `vault` when it is shut, `keys` when the open vault lacks a key the machine file names, and, in a `bring`,
+`identities` while the vault holds no forge token of the person's and `forge-central-token` while a repository is still
+to migrate and no token for the central forge is given. Any other answer about the vault is a failure with words.
+
 A person at the host's terminal may instead run `porelo-host-stop NEED...` as the account, with `vault-new` or
 `vault`: `vault-new` asks for a new vault passphrase twice, `vault` for the existing one to unlock it. A failed attempt
 shows the command's error and asks `Try again? [Y/n]`. `drive` is no need any more and is refused with 64.
@@ -96,9 +101,8 @@ letters, digits, `.`, `_` and `-`, or a value that is not base64 is refused, nam
 is a named need no line gives; only `keys` beside `vault-new` may come with no line, for a machine without keys. `drive`
 is refused, as is a call not made as root. The values then go in the table's order, each decoded on a pipe into its
 user, and nothing is asked. A key the vault lacks later, or the central token, is given by another call with that need
-alone: `forge-central-token` is never named by the stop, since only the running forge knows whether a repository is
-still to migrate; `up` fails there with a message beginning `forge-central-token:`, with `keys:` for a missing key, and
-with `matrix-token:` where the followed project names `registration_token_file` for its room and the account holds no
+alone: `forge-central-token` is named only by a `bring`'s own stop, since only the running forge knows whether a
+repository is still to migrate; `up` fails with a message beginning `keys:` for a missing key, and with `matrix-token:` where the followed project names `registration_token_file` for its room and the account holds no
 such token, then the call is made and `up` runs again. The token is one line of 1 to 1024 graphic ASCII characters (`!`
 to `~`, no space, no NUL); a project naming another path than `~/.config/porelo/matrix/host-registration-token` is
 refused with a message beginning `registration_token_file:`, naming it, and no token is asked for it.
