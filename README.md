@@ -1,9 +1,8 @@
 # porelo-host
 
-<img src="doc/images/early-bird.svg" width="350" alt="Early bird - work in progress">
+<img src="doc/images/crazy-chicken.svg" width="350" alt="Crazy chicken - just hatched">
 
-> **Early bird - work in progress.** Porelo is not stable yet: until release 1.0.0, its code, commands
-> and file formats can change without notice.
+> **Crazy chicken - just hatched.** Interfaces, formats and even the purpose may change any day. Use it only to try ideas, never to build on.
 
 Brings a Porelo project up on a server and takes it down again, owned or rented by the hour: an Ansible
 collection. From the project's `project.yml`, its repositories' own files and the person's file for the machine,
