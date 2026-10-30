@@ -1,6 +1,6 @@
 # HO71 — A Task Recorded And Given Its Forge Token By The Host
 
-**Status:** Accepted (operator, 2026-10-30, with the project's one-click joining).
+**Status:** Implementing.
 **Size:** M - two verbs of `porelo-host-person`, the sweep's timer and unit tests, with a VM run; measured M median 63
 min, from three M builds (47, 63, 75).
 **Blocked by:** [HO70](README.md#ho70); Porelo's task certificate check.
