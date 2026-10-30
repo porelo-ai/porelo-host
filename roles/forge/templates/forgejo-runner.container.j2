@@ -26,4 +26,5 @@ Restart=always
 RestartSec=10
 
 [Install]
-WantedBy=default.target
+# Started again with the proxy, since a stop through BindsTo= is not one Restart= answers.
+WantedBy=default.target forgejo-runner-proxy.service

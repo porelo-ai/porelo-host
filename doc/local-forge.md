@@ -24,10 +24,10 @@ The runner account's `forgejo-runner-proxy.container` mounts only `runner.sock` 
 on the web and Git ports, to that socket. The runner starts after this proxy and is bound to it; its container,
 registration container and jobs all join `container:forgejo-runner-proxy`.
 
-Registration uses `http://127.0.0.1:<web_port>`. Jobs inherit the proxy's `/etc/hosts`, which maps `<host>.localhost` to
-`127.0.0.1`, so checkout and the package registry use the canonical forge URL with their tokens. The Actions cache uses
+Registration uses `http://127.0.0.1:<web_port>`. Jobs get a read-only `/etc/hosts` owned by root, which maps `<host>.localhost`
+to `127.0.0.1`, so checkout and the package registry use the canonical forge URL with their tokens. The Actions cache uses
 `127.0.0.1` on its existing ports, `4000` and `4001` by default, in this shared namespace. Neither forge nor cache ports
-are published on the host's VPN address. Jobs receive no forge socket or forge CA trust mounts.
+are published on the host. Jobs receive no forge socket or forge CA trust mounts.
 
 The local forge is the host's private Forgejo: it holds task branches, runs independent builds and supplies snapshots
 through its local registry. The central forge holds the work the person sends outward and runs the central publication

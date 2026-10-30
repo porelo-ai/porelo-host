@@ -8,7 +8,8 @@ Image={{ __forge_runner_proxy_image }}
 ContainerName=forgejo-runner-proxy
 GroupAdd=keep-groups
 Volume=/run/porelo-forge/runner.sock:/run/porelo-forge/runner.sock
-# Jobs join this namespace and inherit its /etc/hosts; podman refuses extra hosts on a container that joins one.
+# The runner joins this namespace and inherits its /etc/hosts; podman refuses extra hosts on a container that joins
+# one. Jobs get a read-only one of their own, as the runner's configuration says.
 AddHost={{ forge_name }}:127.0.0.1
 Entrypoint=/bin/sh
 # Exit if either listener ends, so systemd restarts the namespace owner; busybox's wait has no -n.
@@ -21,6 +22,8 @@ Exec=-ec 'socat TCP-LISTEN:{{ forge_http_port }},bind=127.0.0.1,reuseaddr,fork \
 [Service]
 # A job left behind depends on this container, and podman would refuse to replace it.
 ExecStartPre=-/usr/bin/podman rm -v -f -i --depend forgejo-runner-proxy
+# Quadlet's own stop fails while such a job still holds the namespace.
+ExecStopPost=-/usr/bin/podman rm -v -f -i --depend forgejo-runner-proxy
 Restart=always
 RestartSec=10
 

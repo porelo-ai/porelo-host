@@ -45,6 +45,7 @@ __forge_runner_jdk:
     OpenJDK25U-jdk_x64_linux_hotspot_25.0.5_8.tar.gz"
   sha256: 68982529869257d0ee6b824ec5aa270ff8b118bb438670da0b97ebdab178d7fb
 __forge_runner_jdk_dir: "/opt/porelo-host/jdk-{{ __forge_runner_jdk.version }}"
+__forge_runner_job_hosts: /opt/porelo-host/runner-job-hosts
 __forge_runner_jdk_job_dir: /opt/porelo-jdk-25
 
 # The project's teams the bring makes in its organization, with no members: sync puts people into developers, and each

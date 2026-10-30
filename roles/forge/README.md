@@ -67,7 +67,7 @@ the other half. A refusal names both sides; the `capacity` entry point runs this
 reaches the runner's cache on `127.0.0.1`, its server on `forge_runner_cache_port` (4000) and its proxy on
 `forge_runner_cache_proxy_port` (4001), inside the shared container network namespace. No cache port is published.
 
-The third gate socket, `/run/porelo-forge/runner.sock`, uses the same token-only gate as `git.sock`: no identity
+The third gate socket, `/run/porelo-forge/runner.sock`, accepts Basic, token and Bearer credentials: no identity
 header, cookies removed, and `401 Basic` without credentials, except the runner's own protocol under `/api/actions/`,
 which Forgejo authenticates by the registration and runner tokens it carries. Its system socket unit uses the runner account's
 primary group and mode `0660` in the existing `0755` directory. The runner account's
@@ -76,8 +76,14 @@ ports. Its image is pinned by digest. The proxy owns the network namespace; the 
 joins `container:forgejo-runner-proxy`, as do registration and every job. Registration uses
 `http://127.0.0.1:<forge_http_port>`; existing registrations keep their token and move to that address.
 
-Jobs inherit the proxy's `/etc/hosts`, where `AddHost=` maps `<host>.localhost` to `127.0.0.1`, so Forgejo's canonical
-URL, checkout and package registry reach the token gate on loopback. Jobs receive no gate socket or forge CA trust
+Artifact v4 uploads and downloads are not passed by the runner gate. Their signed-URL blob transfers use
+`/twirp/github.actions.results.api.v1.ArtifactService/UploadArtifact` and
+`/twirp/github.actions.results.api.v1.ArtifactService/DownloadArtifact`, outside `/api/actions/`, without an
+Authorization header. The gate returns `401` for those transfers; the `/api/actions/` exemption stays limited to
+the runner protocol. Bearer-authenticated artifact control calls can pass, but do not make the blob transfers work.
+
+Jobs get `/opt/porelo-host/runner-job-hosts`, owned by root, read-only as their `/etc/hosts`. It maps `<host>.localhost`
+to `127.0.0.1`, so Forgejo's canonical URL, checkout and package registry reach the token gate on loopback. Jobs receive no gate socket or forge CA trust
 mounts. External HTTPS uses each image's own certificate authorities.
 
 Forgejo's `ROOT_URL` is `http://<host>.localhost:<forge_http_port>/`, with browser port `3000` by default.

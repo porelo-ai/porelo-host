@@ -131,6 +131,7 @@ def test_jobs_share_loopback_for_checkout_registry_and_cache():
         forge_job_omp_num_threads=1,
         __forge_runner_jdk_dir="/opt/jdk",
         __forge_runner_jdk_job_dir="/opt/job-jdk",
+        __forge_runner_job_hosts="/opt/job-hosts",
     )
     config = yaml.safe_load(env.from_string(template("runner-config.yml")).render(**values))
     assert config["container"]["network"] == "container:forgejo-runner-proxy"
@@ -138,7 +139,7 @@ def test_jobs_share_loopback_for_checkout_registry_and_cache():
     assert config["cache"]["host"] == "127.0.0.1"
     assert (config["cache"]["port"], config["cache"]["proxy_port"]) == (4000, 4001)
     assert "tls/" not in config["container"]["options"]
-    assert config["container"]["valid_volumes"] == ["/opt/jdk"]
+    assert config["container"]["valid_volumes"] == ["/opt/jdk", "/opt/job-hosts"]
     defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())
     assert defaults["forge_variables"]["MAVEN_SNAPSHOTS_URL"] == (
         "http://{{ forge_name }}:{{ forge_http_port }}/api/packages/{{ forge_owner }}/maven"
@@ -171,6 +172,31 @@ def test_socket_replacement_refreshes_the_proxy_bind_mount():
         "{{ 'restarted' if __forge_gate_units.changed else 'started' }}"
     )
     assert "PartOf=forgejo-runner-proxy.service" in template("forgejo-runner.container")
+
+
+def test_jobs_get_a_name_table_of_roots_they_cannot_rewrite():
+    """Prevent a job rewriting the shared namespace's /etc/hosts to take the forge's name for later jobs."""
+    config = template("runner-config.yml")
+    assert "--volume={{ __forge_runner_job_hosts }}:/etc/hosts:ro" in config
+    task = next(t for t in tasks("runner") if "__forge_runner_job_hosts" in str(t.get("ansible.builtin.copy", {})))
+    copy = task["ansible.builtin.copy"]
+    assert (copy["owner"], copy["group"], copy["mode"]) == ("root", "root", "0644")
+    assert "127.0.0.1 localhost {{ forge_name }}" in copy["content"]
+
+
+def test_proxy_start_pulls_in_the_runner_after_a_dependency_stop():
+    """Prevent a proxy failure leaving the runner permanently inactive."""
+    runner = template("forgejo-runner.container")
+    install = runner.split("[Install]\n", 1)[1]
+    wanted_by = next(line.split("=", 1)[1].split() for line in install.splitlines() if line.startswith("WantedBy="))
+    assert set(wanted_by) == {"default.target", "forgejo-runner-proxy.service"}
+
+
+def test_proxy_stop_removes_dependent_jobs_even_after_execstop_fails():
+    """Prevent orphaned jobs surviving the removal of their network namespace owner."""
+    proxy = template("forgejo-runner-proxy.container")
+    service = proxy.split("[Service]\n", 1)[1].split("[Install]\n", 1)[0]
+    assert "ExecStopPost=-/usr/bin/podman rm -v -f -i --depend forgejo-runner-proxy" in service.splitlines()
 
 
 def test_every_runuser_reaches_the_accounts_own_user_manager():
