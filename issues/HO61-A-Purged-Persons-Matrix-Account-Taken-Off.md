@@ -1,6 +1,9 @@
 # HO61 — A Purged Person's Matrix Account Taken Off
 
-**Status:** Idea.
+**Status:** Backlog (operator, 2026-10-30).
+**Size:** S - finding and deactivating, or naming, the person's account on the host's homeserver at purge, with a
+unit test and a VM run; measured S 54 min, from one S build only, so nearly a guess. The homeserver's admin
+interface is the open part and could make it M.
 
 **What must be true.** When `porelo-host-person purge` removes a person, their account on the host's own Matrix
 homeserver goes too, or the purge names it as left. Today it may stay without a word.

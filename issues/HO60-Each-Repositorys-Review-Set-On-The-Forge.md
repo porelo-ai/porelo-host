@@ -1,12 +1,13 @@
 # HO60 — Each Repository's Review Set On The Forge
 
-**Status:** Accepted (operator, 2026-10-30).
+**Status:** Backlog (operator, 2026-10-30).
 **Size:** M - the protection per repository from one value, a dismissed approval, the value read from the project
 file in force at bring and at each sync, and Molecule steps for both values and a change between them, with a VM run;
-measured M median 63 min.
+measured M median 63 min, from three M builds (47, 63, 75).
 
 **What must be true.** The host's local forge protects each repository's `main` according to the value the project
-file in force gives that repository under `repositories.<name>.review`:
+file in force gives that repository under `repositories.<name>.review`, and the project's own repository's `main`
+according to `project.review`, with the same meaning:
 
 - **`required`**, also when the key is left out: a pull request is merged only after one approval by a person other
   than its author, and a commit pushed after an approval dismisses it.
@@ -33,16 +34,20 @@ name keeps `required`.
 - The forge's readback compares every field the host sets, including the dismissed approval, so a protection changed
   by hand on the forge is set back at the next sync.
 
-## Contract with Porelo (proposed, for Agent Core)
+## Contract with Porelo (agreed with Agent Core)
 
-- A Porelo command answers, as JSON, the repositories of the project file in force for a followed project with each
-  one's `review`, already checked to be `required` or `optional`. The host reads it there instead of parsing the
-  project file itself.
+- `porelo project verify --json`, which root's `sync` already runs on the admin's bundles in its isolated unit,
+  answers beside its fields of today:
+  - `"repositories": {"<name>": {"review": "required" | "optional"}, ...}`: every repository the project file names,
+    in the order written, a missing key answered as `"required"`; `{}` for a project without repositories;
+  - `"project_review": "required" | "optional"` for the project's own repository, a missing key answered as
+    `"required"`. The string field `"project"` stays as it is.
+- A value other than the two is refused by verify with exit 65 before anything is answered, naming the key.
+- `porelo project following --json` stays as it is; the host never parses the project file itself.
 
 ## To be checked
 
-- Which command answers it, and whether root's `sync` reads it as the project admin, as it reads the access file
-  today.
+- Whether the bring takes the value from the same verify answer, or from the follow it has just made.
 - That the forge's `dismiss_stale_approvals` dismisses an approval on a push to the pull request's branch, and that
   `required_approvals: 0` with the merge whitelist still keeps the agents' and gates' teams from merging.
 - Whether a pull request open while the value changes from `optional` to `required` keeps its merge button.
