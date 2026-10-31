@@ -118,6 +118,7 @@ def test_teardown_stops_the_previous_https_listener_without_an_upgrade():
         "porelo-forge-web.socket",
         "porelo-forge-git.socket",
         "porelo-forge-runner.socket",
+        "porelo-host-verify.socket",
         "porelo-forge-https.socket",
         "porelo-forge-https.service",
     }

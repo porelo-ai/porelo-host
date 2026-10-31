@@ -14,6 +14,7 @@
     - porelo-forge-web.socket
     - porelo-forge-git.socket
     - porelo-forge-runner.socket
+    - porelo-host-verify.socket
     - porelo-forge-https.socket
     - porelo-forge-https.service
   register: __forge_down_gate_units
@@ -35,6 +36,7 @@
       - porelo-forge-web@*.service
       - porelo-forge-git@*.service
       - porelo-forge-runner@*.service
+      - porelo-host-verify@*.service
   changed_when: true
   when: __forge_down_gate_units['results'] | selectattr('stat.exists') | list | length > 0
 
@@ -49,6 +51,8 @@
     - porelo-forge-git@.service
     - porelo-forge-runner.socket
     - porelo-forge-runner@.service
+    - porelo-host-verify.socket
+    - porelo-host-verify@.service
     - porelo-forge-https.socket
     - porelo-forge-https.service
 
@@ -124,6 +128,8 @@
     state: absent
   loop:
     - /usr/local/libexec/porelo-forge-gate
+    - /usr/local/libexec/porelo-forge-pre-receive
+    - /var/lib/porelo-host/arrivals
     - /etc/sudoers.d/porelo-host-push
     - /usr/local/sbin/porelo-host-push
     - /usr/local/sbin/porelo-host-forge-password

@@ -34,12 +34,17 @@ def test_runner_socket_uses_token_gate_and_runner_primary_group():
     service = template("porelo-forge-runner@.service")
     assert "ExecStart=/usr/local/libexec/porelo-forge-gate --runner --upstream {{ __forge_socket }}" in service
     assert "--web" not in service
-    installed = next(t["loop"] for t in tasks("service") if t.get("ansible.builtin.template") and "loop" in t)
+    installed = next(
+        t["loop"]
+        for t in tasks("service")
+        if t.get("ansible.builtin.template") and "porelo-forge-git.socket" in t.get("loop", [])
+    )
     assert {"porelo-forge-runner.socket", "porelo-forge-runner@.service"} <= set(installed)
     started = next(t["loop"] for t in tasks("service") if t.get("ansible.builtin.systemd_service") and "loop" in t)
     assert "porelo-forge-runner.socket" in started
     handlers = yaml.safe_load((ROLE / "handlers/main.yml").read_text())
-    assert "porelo-forge-runner.socket" in handlers[-1]["loop"]
+    gates = next(handler for handler in handlers if handler["name"] == "Restart the forge's gate sockets")
+    assert "porelo-forge-runner.socket" in gates["loop"]
     down = tasks("down")
     units = next(t["loop"] for t in down if "__forge_down_gate_units" == t.get("register"))
     assert "porelo-forge-runner.socket" in units
@@ -161,7 +166,11 @@ def test_existing_registration_moves_to_loopback_without_reissuing_its_token():
 
 def test_socket_replacement_refreshes_the_proxy_bind_mount():
     """Prevent a stale socket inode disconnecting runners after gate units change."""
-    installed = next(t for t in tasks("service") if t.get("ansible.builtin.template") and "loop" in t)
+    installed = next(
+        t
+        for t in tasks("service")
+        if t.get("ansible.builtin.template") and "porelo-forge-git.socket" in t.get("loop", [])
+    )
     assert installed.get("register") == "__forge_gate_units"
     proxy = next(
         t

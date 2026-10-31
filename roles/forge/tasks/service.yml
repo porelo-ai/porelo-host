@@ -36,6 +36,42 @@
   when: __forge_image_there.rc == 1
   changed_when: true
 
+- name: service | Create the directory of the hook that has the host judge each push
+  ansible.builtin.file:
+    path: /usr/local/libexec
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Forgejo's container mounts the file itself, so a new hook reaches it only when the container starts again.
+- name: service | Install the hook that has the host judge each push
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/porelo-forge-pre-receive"
+    dest: /usr/local/libexec/porelo-forge-pre-receive
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart Forgejo
+
+- name: service | Write the push judge's socket units
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [porelo-host-verify.socket, porelo-host-verify@.service]
+  notify: Restart the push judge's socket
+
+# Forgejo's container mounts the socket's directory, so the socket listens before the container starts.
+- name: service | Listen for the forge's pushes before Forgejo starts
+  ansible.builtin.systemd_service:
+    name: porelo-host-verify.socket
+    enabled: true
+    state: started
+    daemon_reload: true
+
 - name: service | Write Forgejo's quadlet unit
   ansible.builtin.template:
     src: "{{ role_path }}/templates/forgejo.container.j2"

@@ -25,6 +25,9 @@ The helper also provides `forge-token`, `task <task>`, `task --end <task>`, `tas
 `sweep`. The person role installs their sudo rules and the daily persistent `porelo-host-task-sweep.timer`.
 Certificates stay in root's private task records; token answers leave through stdout alone. See the
 [task certificate contract](../../doc/task-certificates.md) for validation, Porelo's own check and token scopes.
+`verify-push` answers the forge's pre-receive hook through its socket unit alone, and `arrivals <project>
+<repository>`, through sudo for a person of the project, reads the verdicts in `/var/lib/porelo-host/arrivals`; see
+[each push judged](../../doc/local-forge.md#each-push-judged-when-it-arrives).
 
 The account-bound entry points (`main`, `project`, `tasks`, `down`) remain on disk for an explicit `porelo_account`
 when called directly; `up` and `down` do not call them.

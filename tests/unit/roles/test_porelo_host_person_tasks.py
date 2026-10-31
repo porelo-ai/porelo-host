@@ -97,6 +97,10 @@ class Forge:
         self.api_failure = None
         self.checks = []
         self.check_answer = None
+        self.verifies = []
+        self.verify_answer = None
+        self.gitea = None
+        self.timeouts = []
 
     def secret(self):
         value = hashlib.sha1(f"fixture-token-{self.next}".encode()).hexdigest()
@@ -109,14 +113,19 @@ class Forge:
     def secrets(self):
         return [item["secret"] for tokens in self.tokens.values() for item in tokens.values()]
 
-    def run(self, args, input=None):
+    def run(self, args, input=None, timeout=60):
         self.calls.append(args)
+        self.timeouts.append(timeout)
         if args[:3] == ["env", "TZ=UTC", "ssh-keygen"]:
             return self.scope["run_command"](args)
+        if args[:1] == ["systemd-run"] and "commit" in args:
+            return self.commit_verify(args, input)
         if args[:1] == ["systemd-run"]:
             return self.check_certificate(args, input)
         assert args[:2] == ["runuser", "-u"] and args[2] == "porelo-forge", args
         offset = args.index("podman")
+        if args[offset : offset + 5] == ["podman", "exec", "forgejo", "sh", "-c"]:
+            return self.forge_shell(args, args[offset + 5], args[offset + 7 :])
         if args[offset:] == ["podman", "exec", "forgejo", "forgejo", "admin", "user", "list"]:
             return subprocess.CompletedProcess(
                 args,
@@ -145,6 +154,41 @@ class Forge:
         tokens[self.next] = {"name": name, "scopes": args[args.index("--scopes") + 1], "secret": secret}
         self.next += 1
         return subprocess.CompletedProcess(args, 0, secret + "\n", "")
+
+    def commit_verify(self, args, input):
+        """Porelo's commit verify as the contract answers: what it was given is kept, its answer is the test's."""
+        staged = dict(item.split("=", 1)[1].split(":", 1) for item in args if item.startswith("LoadCredential="))
+        unit = next(item for item in args if item.startswith("--unit=")).removeprefix("--unit=")
+        inside = {f"/run/credentials/{unit}.service/{name}": path for name, path in staged.items()}
+        given = {
+            option: Path(inside[args[args.index(option) + 1]]).read_bytes()
+            for option in ("--signers", "--certifiers", "--krl", "--certificates")
+        }
+        self.verifies.append({"args": args, "input": input, "given": given})
+        if self.verify_answer is not None:
+            return self.verify_answer(args)
+        commits = [
+            {
+                "commit": line.split()[1],
+                "ref": line.split()[2],
+                "verdict": "accepted",
+                "signer": {"kind": "person", "fingerprint": "SHA256:" + "B" * 43},
+            }
+            for line in input.splitlines()
+        ]
+        answer = {"checked_at": "2026-10-30T12:00:00Z", "accepted": True, "commits": commits}
+        return subprocess.CompletedProcess(args, 0, json.dumps(answer) + "\n", "")
+
+    def forge_shell(self, args, script, arguments):
+        """The forge container's shell, run for real on a stand-in of its data, with a git that lists a file."""
+        bin_dir = self.gitea / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        git = bin_dir / "git"
+        git.write_text('#!/bin/sh\nhistory="${1#--git-dir=}/history"\n[ -f "$history" ] || exit 128\ncat "$history"\n')
+        git.chmod(0o755)
+        script = script.replace("/var/lib/gitea/", str(self.gitea) + "/")
+        environment = {"PATH": f"{bin_dir}:/usr/bin:/bin", "LC_ALL": "C"}
+        return subprocess.run(["sh", "-c", script, "sh", *arguments], capture_output=True, text=True, env=environment)
 
     def check_certificate(self, args, input):
         """Porelo's task check-certificate as its contract answers, judging the signer with the real ssh-keygen."""
@@ -288,7 +332,9 @@ def tasks(tmp_path, monkeypatch):
         host.sudo_user = caller
         return namespace["entry"](host, list(arguments), data)
 
-    return SimpleNamespace(host=host, forge=forge, keys=keys, call=call, root=root, applied=applied, scope=scope)
+    return SimpleNamespace(
+        host=host, forge=forge, keys=keys, call=call, root=root, applied=applied, scope=scope, entries=entries
+    )
 
 
 def snapshot(root):
@@ -764,3 +810,435 @@ def test_no_porelo_on_the_host_refuses_the_task_as_unprepared(tasks, capsys, com
     assert tasks.call("task", "t1", data=task_certificate(tasks).encode()) == 69
     capsys.readouterr()
     assert tasks.forge.checks == [] and not (records(tasks) / "t1.json").exists()
+
+
+REPOSITORY = "/var/lib/gitea/git/repositories/alpha/app.git"
+QUARANTINE = REPOSITORY + "/objects/tmp_objdir-incoming-AbC123"
+VOLUME = "/home/porelo-forge/.local/share/containers/storage/volumes/forgejo-data/_data"
+HOOK_LINES = "a" * 40 + " " + "c" * 40 + " refs/heads/main\n"
+
+
+def judged_project(tasks):
+    """Project alpha registered, alice's key in force as its one signer, the push's quarantine in the forge's volume."""
+    write(
+        tasks.root,
+        "/etc/porelo-host/projects/alpha.conf",
+        f"admin=alice\nsigned_by={tasks.applied['persons'][0]['ssh']}\npublisher=porelo-publisher-alpha\n",
+    )
+    current = {"alice": {"ssh": tasks.applied["persons"][0]["ssh"], "expires": None}}
+    write(tasks.root, "/etc/porelo-host/signers/alpha.json", json.dumps({"current": current, "history": []}))
+    # The forge's volume is the test's own, so the forge account is the test's uid.
+    tasks.entries["porelo-forge"].pw_uid = os.getuid()
+    bus = tasks.root / f"run/user/{os.getuid()}/bus"
+    bus.parent.mkdir(parents=True, exist_ok=True)
+    os.mknod(bus, stat.S_IFSOCK | 0o600)
+    (tasks.root / (VOLUME + QUARANTINE.removeprefix("/var/lib/gitea")).lstrip("/")).mkdir(parents=True)
+
+
+def push_request(fields=None, lines=HOOK_LINES, headers=None, extra=""):
+    values = {
+        "repository": REPOSITORY,
+        "quarantine": QUARANTINE,
+        "objects": QUARANTINE,
+        "alternates": REPOSITORY + "/objects",
+        **(fields or {}),
+    }
+    body = "".join(f"{key} {value}\n" for key, value in values.items()) + "\n" + lines
+    data = body.encode()
+    head = (headers if headers is not None else f"Content-Length: {len(data)}\r\n") + extra
+    return f"POST /verify HTTP/1.1\r\nHost: localhost\r\n{head}\r\n".encode() + data
+
+
+class Hook:
+    """The forge hook's end of the socket: what it sent, what it was answered, and whose peer it is."""
+
+    def __init__(self, request, uid=None):
+        self.request, self.answer, self.timeout = request, b"", None
+        self.uid = os.getuid() if uid is None else uid
+
+    def settimeout(self, timeout):
+        self.timeout = timeout
+
+    def recv(self, size):
+        assert self.timeout == 30, "a read of the hook's request is never without a bound"
+        chunk, self.request = self.request[:size], self.request[size:]
+        return chunk
+
+    def getsockopt(self, level, option, size):
+        return struct.pack("iII", 4242, self.uid, self.uid)
+
+    def sendall(self, data):
+        self.answer += data
+
+    def status(self):
+        return int(self.answer.split(b" ", 2)[1])
+
+    def text(self):
+        return self.answer.partition(b"\r\n\r\n")[2].decode()
+
+
+def arrivals(tasks, repository="app"):
+    path = tasks.root / f"var/lib/porelo-host/arrivals/alpha/{repository}.jsonl"
+    return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+def judge(tasks, request=None, uid=None):
+    hook = Hook(push_request() if request is None else request, uid=uid)
+    assert tasks.call("verify-push", data=hook, caller=None) == 0
+    return hook
+
+
+def test_a_push_porelo_accepts_is_recorded_with_its_signer_and_answered_200(tasks, capsys):
+    """Prevent a push judged on what the hook claims, or an accepted commit left without its verdict."""
+    judged_project(tasks)
+    hook = judge(tasks)
+    capsys.readouterr()
+    assert hook.status() == 200, hook.text()
+    [verify] = tasks.forge.verifies
+    args = verify["args"]
+    host = str(tasks.root) + VOLUME + "/git/repositories/alpha/app.git"
+    for setting in (
+        f"User=porelo-forge",
+        "PrivateNetwork=yes",
+        "PrivateTmp=yes",
+        "ProtectHome=tmpfs",
+        "ProtectSystem=strict",
+        "NoNewPrivileges=yes",
+        "RuntimeMaxSec=270",
+        f"BindReadOnlyPaths={host}",
+        "Environment=HOME=/tmp",
+        f"Environment=GIT_QUARANTINE_PATH={host}/objects/tmp_objdir-incoming-AbC123",
+        f"Environment=GIT_OBJECT_DIRECTORY={host}/objects/tmp_objdir-incoming-AbC123",
+        f"Environment=GIT_ALTERNATE_OBJECT_DIRECTORIES={host}/objects",
+    ):
+        assert args[args.index(setting) - 1] == "-p", setting
+    assert args[args.index("porelo") : args.index("porelo") + 5] == ["porelo", "commit", "verify", "--repository", host]
+    assert tasks.forge.timeouts[-1] == 280
+    assert verify["input"] == HOOK_LINES
+    key = tasks.applied["persons"][0]["ssh"]
+    assert verify["given"]["--signers"] == f'alice namespaces="git" {key}\n'.encode()
+    assert verify["given"]["--certifiers"] == f'task:alpha:* cert-authority,namespaces="git" {key}\n'.encode()
+    assert verify["given"]["--krl"] == b"fixture KRL"
+    assert arrivals(tasks) == [
+        {
+            "commit": "c" * 40,
+            "ref": "refs/heads/main",
+            "verdict": "accepted",
+            "arrived": "2026-10-30T12:00:00Z",
+            "signer": {"kind": "person", "fingerprint": "SHA256:" + "B" * 43},
+        }
+    ]
+    record = tasks.root / "var/lib/porelo-host/arrivals/alpha/app.jsonl"
+    assert stat.S_IMODE(record.stat().st_mode) == 0o600
+    assert list((tasks.root / "run/porelo-host/push").iterdir()) == []
+
+
+def test_an_expired_card_signs_nothing_and_certifies_no_task(tasks, capsys):
+    """Prevent a person whose card has ended from signing a commit the host takes."""
+    judged_project(tasks)
+    current = {
+        "alice": {"ssh": tasks.applied["persons"][0]["ssh"], "expires": "2026-10-29"},
+        "bob": {"ssh": tasks.applied["persons"][1]["ssh"], "expires": None},
+    }
+    write(tasks.root, "/etc/porelo-host/signers/alpha.json", json.dumps({"current": current, "history": []}))
+    judge(tasks)
+    given = tasks.forge.verifies[-1]["given"]
+    assert given["--signers"] == f'bob namespaces="git" {tasks.applied["persons"][1]["ssh"]}\n'.encode()
+    assert tasks.applied["persons"][0]["ssh"].encode() not in given["--certifiers"]
+
+
+def test_only_the_projects_task_certificates_valid_now_reach_porelo(tasks, capsys):
+    """Prevent a plain task key of another project, or one whose certificate ended, from signing for this one."""
+    judged_project(tasks)
+    assert tasks.call("task", "t1", data=task_certificate(tasks).encode()) == 0
+    capsys.readouterr()
+    assert tasks.call("task", "--show", tasks.keys.fingerprint("task"), caller=None) == 0
+    shown = capsys.readouterr().out
+    directory = records(tasks)
+    entry = json.loads((directory / "t1.json").read_text())
+    for name, changes in (
+        ("t2", {"principals": ["task:beta:t2"]}),
+        ("t3", {"valid_before": "2026-10-30T11:59:59Z"}),
+        ("t4", {"valid_after": "2026-10-30T12:00:01Z"}),
+    ):
+        path = directory / f"{name}.json"
+        path.write_text(json.dumps({**entry, **changes, "task": name}))
+        path.chmod(0o600)
+    judge(tasks)
+    assert tasks.forge.verifies[-1]["given"]["--certificates"] == shown.encode()
+
+
+def test_a_push_porelo_refuses_is_answered_403_with_its_lines_and_recorded_nowhere(tasks, capsys):
+    """Prevent a refused commit reaching the forge, or its reason being lost to the pusher."""
+    judged_project(tasks)
+    tasks.forge.verify_answer = lambda args: subprocess.CompletedProcess(
+        args, 65, "", "c" * 40 + " signed by a revoked key\n\x1b[31mcolour\n"
+    )
+    hook = judge(tasks)
+    capsys.readouterr()
+    assert hook.status() == 403
+    assert hook.text() == "porelo: " + "c" * 40 + " signed by a revoked key\n"
+    assert arrivals(tasks) == []
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        lambda args: subprocess.CompletedProcess(args, 1, "", "crash"),
+        lambda args: subprocess.CompletedProcess(args, 0, "not json", ""),
+        lambda args: subprocess.CompletedProcess(args, 0, json.dumps({"accepted": False, "commits": []}), ""),
+        lambda args: subprocess.CompletedProcess(
+            args, 0, json.dumps({"checked_at": "x", "accepted": True, "commits": [{"commit": "nope"}]}), ""
+        ),
+        lambda args: subprocess.CompletedProcess(
+            args,
+            0,
+            json.dumps(
+                {
+                    "checked_at": "x",
+                    "accepted": True,
+                    "commits": [{"commit": "c" * 40, "verdict": "refused", "signer": {}}],
+                }
+            ),
+            "",
+        ),
+    ],
+    ids=["crash", "no json", "not accepted", "broken commit", "a refused verdict"],
+)
+def test_any_other_answer_of_porelo_refuses_the_push(tasks, capsys, answer):
+    """Prevent a push from passing when Porelo did not say every commit holds."""
+    judged_project(tasks)
+    tasks.forge.verify_answer = answer
+    hook = judge(tasks)
+    capsys.readouterr()
+    assert hook.status() == 500 and arrivals(tasks) == []
+
+
+@pytest.mark.parametrize(
+    "missing, setup",
+    [
+        ("porelo", lambda tasks: tasks.host.commands.discard("porelo")),
+        ("systemd-run", lambda tasks: tasks.host.commands.discard("systemd-run")),
+        ("KRL", lambda tasks: (tasks.root / "etc/ssh/porelo-revoked.krl").unlink()),
+        ("KRL", lambda tasks: (tasks.root / "etc/ssh/porelo-revoked.krl").chmod(0o200)),
+        ("signers", lambda tasks: (tasks.root / "etc/porelo-host/signers/alpha.json").unlink()),
+    ],
+    ids=["no porelo", "no systemd-run", "no KRL", "unreadable KRL", "no signers"],
+)
+def test_a_host_unready_to_judge_refuses_the_push_unjudged(tasks, capsys, missing, setup):
+    """Prevent a push from passing, or Porelo from running, without everything a judgement needs."""
+    judged_project(tasks)
+    setup(tasks)
+    hook = judge(tasks)
+    capsys.readouterr()
+    assert hook.status() == 500, missing
+    assert tasks.forge.verifies == [] and arrivals(tasks) == []
+
+
+def test_a_push_that_only_deletes_refs_passes_unjudged_and_unrecorded(tasks, capsys):
+    """Prevent a branch deletion, which brings no quarantine, from being refused or recorded as a commit."""
+    judged_project(tasks)
+    deletion = push_request(
+        {"quarantine": "", "objects": "", "alternates": ""}, lines="c" * 40 + " " + "0" * 40 + " refs/heads/old\n"
+    )
+    hook = judge(tasks, deletion)
+    capsys.readouterr()
+    assert hook.status() == 200 and tasks.forge.verifies == [] and arrivals(tasks) == []
+    (tasks.root / "etc/porelo-host/projects/alpha.conf").unlink()
+    assert judge(tasks, deletion).status() == 403, "a deletion in an unregistered project's repository passes"
+
+
+@pytest.mark.parametrize(
+    "fields, uid",
+    [
+        ({}, os.getuid() + 1),
+        ({"repository": "/var/lib/gitea/git/repositories/alice/app.git"}, None),
+        (
+            {
+                "repository": "/var/lib/gitea/git/repositories/beta/app.git",
+                "quarantine": "/var/lib/gitea/git/repositories/beta/app.git/objects/incoming-x",
+                "objects": "/var/lib/gitea/git/repositories/beta/app.git/objects/incoming-x",
+                "alternates": "/var/lib/gitea/git/repositories/beta/app.git/objects",
+            },
+            None,
+        ),
+        ({"repository": "/var/lib/gitea/git/repositories/alpha/../beta/app.git"}, None),
+        ({"quarantine": "/var/lib/gitea/git/repositories/beta/app.git/objects/incoming-x"}, None),
+        ({"objects": REPOSITORY + "/objects"}, None),
+        ({"alternates": "/var/lib/gitea/git/repositories/beta/app.git/objects"}, None),
+        ({"quarantine": REPOSITORY + "/objects/incoming-Gone", "objects": REPOSITORY + "/objects/incoming-Gone"}, None),
+        ({"extra": "1"}, None),
+    ],
+    ids=[
+        "another peer",
+        "other quarantine of a project",
+        "unregistered project",
+        "dot dot",
+        "other quarantine",
+        "objects",
+        "other alternates",
+        "no such quarantine",
+        "extra field",
+    ],
+)
+def test_a_request_not_from_the_forge_or_not_of_one_project_repository_is_refused_unjudged(tasks, capsys, fields, uid):
+    """Prevent anyone but the forge's hook, or a path outside the pushed repository, from reaching Porelo or a record."""
+    judged_project(tasks)
+    write(
+        tasks.root,
+        "/etc/porelo-host/projects/alice.conf",
+        f"admin=alice\nsigned_by={tasks.applied['persons'][0]['ssh']}\npublisher=porelo-publisher-alpha\n",
+    )
+    hook = judge(tasks, push_request(fields), uid=uid)
+    capsys.readouterr()
+    assert hook.status() == 403, hook.text()
+    assert tasks.forge.verifies == [] and arrivals(tasks) == []
+
+
+@pytest.mark.parametrize("link", ["git", "repositories", "alpha", "app.git", "objects", "tmp_objdir-incoming-AbC123"])
+def test_a_link_on_the_way_to_the_quarantine_is_refused_unjudged(tasks, capsys, link):
+    """Prevent a link in the forge's volume from turning the judged objects into others the hook did not name."""
+    judged_project(tasks)
+    path = tasks.root / (VOLUME + QUARANTINE.removeprefix("/var/lib/gitea")).lstrip("/")
+    while path.name != link:
+        path = path.parent
+    moved = path.with_name(path.name + ".real")
+    path.rename(moved)
+    path.symlink_to(moved)
+    hook = judge(tasks)
+    capsys.readouterr()
+    assert hook.status() == 403 and tasks.forge.verifies == []
+
+
+@pytest.mark.parametrize(
+    "request_",
+    [
+        push_request(extra="Transfer-Encoding: chunked\r\n"),
+        push_request(extra=f"Content-Length: {len(push_request().partition(b'\r\n\r\n')[2])}\r\n"),
+        push_request(headers="Content-Length: +5\r\n"),
+        push_request(headers="Content-Length: 0\r\n"),
+        push_request(headers="Broken header\r\n"),
+        push_request(lines=""),
+        push_request(lines="not an update\n"),
+        push_request(lines=HOOK_LINES + "\n"),
+        push_request().replace(b"\n\n" + HOOK_LINES.encode(), b"\n" + HOOK_LINES.encode()),
+        b"GET /verify HTTP/1.1\r\n\r\n",
+        b"POST /verify HTTP/1.1\r\n",
+    ],
+    ids=[
+        "chunked",
+        "two lengths",
+        "signed length",
+        "no body",
+        "broken header",
+        "no update",
+        "bad update",
+        "empty update",
+        "no separator",
+        "another request",
+        "cut short",
+    ],
+)
+def test_a_malformed_request_is_refused_unjudged(tasks, capsys, request_):
+    """Prevent a request the judge could read otherwise than the hook meant from reaching Porelo."""
+    judged_project(tasks)
+    hook = judge(tasks, request_)
+    capsys.readouterr()
+    assert hook.status() == 403 and tasks.forge.verifies == []
+
+
+def test_verify_push_runs_for_the_socket_alone_never_through_sudo(tasks, capsys):
+    """Prevent a person from writing a verdict through sudo."""
+    assert tasks.call("verify-push", data=Hook(push_request())) == 65
+    capsys.readouterr()
+
+
+def forge_repository(tasks, name, history, project="alpha", hook=True):
+    """A bare repository in the stand-in forge's data, Forgejo's own pre-receive hook in it and its history listed."""
+    tasks.forge.gitea = tasks.root.parent / "gitea"
+    repository = tasks.forge.gitea / f"git/repositories/{project}/{name}.git"
+    (repository / "hooks").mkdir(parents=True)
+    if hook:
+        (repository / "hooks/pre-receive").write_text("#!/bin/sh\n")
+        (repository / "hooks/pre-receive").chmod(0o755)
+    if history is not None:
+        (repository / "history").write_text("".join(commit + "\n" for commit in history))
+    return repository
+
+
+def test_sync_arms_each_repository_and_records_its_history_as_migrated_once(tasks, capsys):
+    """Prevent migrated history judged as an arrival, a repository left unjudged, or its history recorded twice."""
+    app = forge_repository(tasks, "app", ["d" * 40, "e" * 40, "d" * 40])
+    dot = forge_repository(tasks, ".hidden", ["f" * 40])
+    assert tasks.host.arm_pushes("alpha") == [".hidden", "app"]
+    for repository in (app, dot):
+        assert os.readlink(repository / "hooks/pre-receive.d/porelo") == "/usr/local/libexec/porelo/pre-receive"
+    assert arrivals(tasks) == [
+        {"commit": "d" * 40, "verdict": "migrated", "arrived": "2026-10-30T12:00:00Z"},
+        {"commit": "e" * 40, "verdict": "migrated", "arrived": "2026-10-30T12:00:00Z"},
+        {"verdict": "armed", "arrived": "2026-10-30T12:00:00Z"},
+    ]
+    assert tasks.host.arm_pushes("alpha") == []
+    assert len(arrivals(tasks)) == 3
+
+
+def test_a_repository_armed_but_unrecorded_is_listed_again_and_its_arrivals_kept_once(tasks, capsys):
+    """Prevent a sync that stopped after linking from leaving history unrecorded, or recording an arrival again."""
+    forge_repository(tasks, "app", ["d" * 40, "c" * 40])
+    (tasks.forge.gitea / "git/repositories/alpha/app.git/hooks/pre-receive.d").mkdir()
+    os.symlink(
+        "/usr/local/libexec/porelo/pre-receive",
+        tasks.forge.gitea / "git/repositories/alpha/app.git/hooks/pre-receive.d/porelo",
+    )
+    judged_project(tasks)
+    assert judge(tasks).status() == 200
+    assert tasks.host.arm_pushes("alpha") == ["app"]
+    assert [(item.get("commit"), item["verdict"]) for item in arrivals(tasks)] == [
+        ("c" * 40, "accepted"),
+        ("d" * 40, "migrated"),
+        (None, "armed"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        lambda tasks: forge_repository(tasks, "app", None),
+        lambda tasks: forge_repository(tasks, "app", ["d" * 40], hook=False),
+        lambda tasks: forge_repository(tasks, "App", ["d" * 40]),
+        lambda tasks: forge_repository(tasks, "app", ["not a commit"]),
+    ],
+    ids=["history unreadable", "no forge hook", "upper case", "bad history"],
+)
+def test_arming_stops_on_what_it_cannot_read_and_records_nothing(tasks, capsys, broken):
+    """Prevent a repository armed with its history unrecorded, or armed where Forgejo's own hook is missing."""
+    broken(tasks)
+    with pytest.raises(tasks.scope["Refusal"]) as refused:
+        tasks.host.arm_pushes("alpha")
+    assert refused.value.code == 69
+    assert arrivals(tasks) == [] and arrivals(tasks, "App") == []
+
+
+def test_a_projects_person_reads_its_arrivals_and_no_one_else(tasks, capsys):
+    """Prevent the verdicts of one project from being read by a person of another."""
+    forge_repository(tasks, "app", ["d" * 40])
+    tasks.host.arm_pushes("alpha")
+    assert tasks.call("arrivals", "alpha", "app") == 0
+    assert json.loads(capsys.readouterr().out.splitlines()[0])["commit"] == "d" * 40
+    write(tasks.root, "/etc/porelo-host/people/bob.conf", record(member="beta developer"))
+    assert tasks.call("arrivals", "alpha", "app", caller="bob") == 65
+    assert capsys.readouterr().out == ""
+
+
+def test_a_hand_admitted_person_reads_no_project_named_hand(tasks, capsys):
+    """Prevent the hand admission's marker from passing for membership of a project spelt like it."""
+    write(tasks.root, "/etc/porelo-host/people/bob.conf", record(member="hand"))
+    assert tasks.call("arrivals", "hand", "app", caller="bob") == 65
+    capsys.readouterr()
+
+
+def test_reading_arrivals_of_an_unknown_project_makes_no_directory(tasks, capsys):
+    """Prevent a reader from leaving directories behind for projects that have none."""
+    assert tasks.call("arrivals", "alpha", "app") == 0
+    assert capsys.readouterr().out == ""
+    assert not (tasks.root / "var/lib/porelo-host/arrivals/alpha").exists()

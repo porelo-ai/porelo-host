@@ -1,0 +1,11 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=The host's judgement of one push to its forge
+
+[Service]
+ExecStart=/usr/local/sbin/porelo-host-person verify-push
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+TimeoutStartSec=310
+RuntimeMaxSec=310

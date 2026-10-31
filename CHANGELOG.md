@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Each push to the host's forge is judged when it arrives: a pre-receive hook asks root's `porelo-host-person
+  verify-push`, which has Porelo's `commit verify` judge every new commit against the project's keys in force, their
+  certifiers of the project's own tasks, the KRL and the project's task certificates valid now, refuses the push
+  otherwise, and appends each accepted
+  commit's verdict to `/var/lib/porelo-host/arrivals/<project>/<repository>.jsonl`. Sync arms each new repository after
+  the migration and records its history as `migrated`; `arrivals <project> <repository>` reads the record.
 - Push, pull and migrate put the person's new forge token into their vault as `<forge>.person`, so it stays the one in
   force; a task certificate with any principal beside `task:<project>:<task>` is refused by the host itself; a missing
   or unsafe KRL at a task start is 69.

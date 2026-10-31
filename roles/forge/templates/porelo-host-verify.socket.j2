@@ -1,0 +1,17 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=The host's judge of each push to its forge
+Before=sockets.target
+
+[Socket]
+# Mounted into Forgejo's container, whose git user is the forge account; the helper answers that peer alone.
+ListenStream=/run/porelo-host/verify/verify.sock
+Accept=yes
+SocketUser={{ forge_account }}
+SocketMode=0600
+RemoveOnStop=true
+DirectoryMode=0755
+MaxConnections=16
+
+[Install]
+WantedBy=sockets.target

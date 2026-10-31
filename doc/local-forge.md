@@ -276,6 +276,38 @@ gets no project, no `sync` and no `add`. A host card without its signer refuses 
 runs as root alone, never through `sudo`. Success prints
 `{"commit":"<commit>","pinned":"SHA256:...","projects":[...],"dropped":[...],"revoked":[...],"refused":[...],"unchanged":false}`.
 
+## Each push judged when it arrives
+
+The first accepted push of a commit to the host's forge is its arrival, and there it is judged. Each repository of a
+project's organization links `hooks/pre-receive.d/porelo` to the hook mounted read-only into Forgejo's container,
+which runs it after Forgejo's own pre-receive hook. The hook sends the push's lines, the repository and its quarantine
+to `/run/porelo-verify/verify.sock` in the container, the host's `/run/porelo-host/verify/verify.sock` mounted
+read-only, and shows the answer to the pusher; no answer, or any answer but 200, refuses the push. A push that only
+deletes refs brings no commit and passes unjudged.
+
+Behind the socket, which only the forge account may connect to, root's `porelo-host-person verify-push` answers only
+that account's peer. It maps the paths into the forge volume, refuses one outside the pushed repository, of an
+organization no project registered or through a link on the way, and runs
+`porelo commit verify --json` in a throwaway unit as the forge account, with no network and no home but that
+repository read-only. Porelo gets the project's keys in force without a `valid-before` (`--signers`), their
+`cert-authority` lines for the project's own tasks (`--certifiers`), the KRL and each task certificate the host
+recorded for the project and valid now, as `task --show` answers it (`--certificates`). Pushes are judged side by
+side, each with its own staging directory; a sync waits for them and they for it. Every new commit, merges too, must be signed so that it holds now: by a person's key, by a task
+certificate valid now, or by a task key whose recorded certificate holds now. Porelo's 65 refuses the push with its
+lines; any other failure refuses it too.
+
+Each accepted commit's verdict, with the arrival time Porelo read and the signer's fingerprint, is appended to root's
+`/var/lib/porelo-host/arrivals/<project>/<repository>.jsonl` (0600). A person of the project reads it with
+`sudo -n porelo-host-person arrivals <project> <repository>`. A verdict records what Porelo accepted when the push
+arrived, not that the forge kept it: a push the forge refuses after both hooks leaves its verdict there, and the same
+commit pushed again is judged again.
+
+The bring's migration is not an arrival. Sync arms each repository right after the migration: it links the hook first,
+then records the history the repository holds as `migrated`, not judged here, since the central forge took those
+commits, and last an `armed` line. A commit pushed between the link and the listing is judged and kept once. Only
+later pushes are arrivals. A repository made on the forge another way is armed by the next sync, and is not judged
+before; one whose history was not recorded is listed again at each sync until it is.
+
 ## The person's two decisions
 
 **First, accept the work by merging `porelo/<task>` into local `main`.** The person reads the pull request and its local
