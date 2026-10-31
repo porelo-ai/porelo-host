@@ -36,6 +36,13 @@
     __matrix_home: "{{ __matrix_user.home }}"
 
 # Podman keeps to the systemd cgroup manager only through the account's bus; without it crun fails on cgroup.procs.
+# Linger starts the manager once; one stopped since then is started again, so a repeated up converges.
+- name: Start the homeserver account's user manager
+  ansible.builtin.systemd_service:
+    name: "user@{{ __matrix_uid }}.service"
+    state: started
+  when: not ansible_check_mode
+
 - name: Wait for the homeserver account's user manager and its session bus
   ansible.builtin.wait_for:
     path: "/run/user/{{ __matrix_uid }}/bus"

@@ -34,9 +34,10 @@
     key: "{{ matrix_account }}"
     fail_key: false
 
-- name: down | Read whether the homeserver account's runtime directory is up
+# Its user manager answers only on its bus; a runtime directory without one has no manager to stop the unit.
+- name: down | Read whether the homeserver account's user manager is up
   ansible.builtin.stat:
-    path: "/run/user/{{ ansible_facts['getent_passwd'][matrix_account][1] }}"
+    path: "/run/user/{{ ansible_facts['getent_passwd'][matrix_account][1] }}/bus"
   register: __matrix_down_runtime
   when: ansible_facts['getent_passwd'][matrix_account] is not none
 
@@ -59,7 +60,7 @@
     DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ ansible_facts['getent_passwd'][matrix_account][1] }}/bus"
   when:
     - ansible_facts['getent_passwd'][matrix_account] is not none
-    - __matrix_down_runtime.stat.isdir | default(false)
+    - __matrix_down_runtime.stat.issock | default(false)
     - __matrix_down_unit.stat.exists | default(false)
 
 # Rootless podman's containers, database volume and user manager must exit before userdel removes the account and home.

@@ -565,7 +565,7 @@ def test_forge_lock_deletes_its_temporary_admin_token(services, monkeypatch, fai
 
 
 @pytest.mark.parametrize("account, uid", [("porelo-forge", 1200), ("porelo-matrix", 1201)])
-def test_a_service_account_without_its_session_bus_is_refused_by_name(services, account, uid):
+def test_a_service_accounts_podman_without_its_session_bus_is_refused_by_name(services, account, uid):
     """Prevent podman running as a service account with no user manager bus, which crun answers with a cgroup error."""
     (services.host.root / f"run/user/{uid}/bus").unlink()
     with pytest.raises(services.scope["Refusal"]) as refused:
@@ -581,3 +581,13 @@ def test_a_service_accounts_call_names_its_runtime_and_bus(services):
     [call] = services.recorder.calls
     assert "XDG_RUNTIME_DIR=/run/user/1200" in call
     assert "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1200/bus" in call
+
+
+def test_the_matrix_transport_runs_without_its_accounts_bus(services):
+    """Prevent a stopped homeserver manager from blocking expel, which needs no podman, during a lock or purge."""
+    (services.host.root / "run/user/1201/bus").unlink()
+    services.host.as_account(
+        "porelo-matrix", ["/usr/libexec/porelo/transports/porelo-message-transport-matrix", "expel", "alice"]
+    )
+    [call] = services.recorder.calls
+    assert "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1201/bus" in call

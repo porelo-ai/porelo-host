@@ -16,6 +16,16 @@
   loop: ["{{ forge_account }}", "{{ forge_runner_account }}"]
 
 # Podman keeps to the systemd cgroup manager only through each account's bus; without it crun fails on cgroup.procs.
+# Linger starts the manager once; one stopped since then is started again, so a repeated up converges.
+- name: accounts | Start each account's user manager
+  ansible.builtin.systemd_service:
+    name: "user@{{ item.uid }}.service"
+    state: started
+  loop: "{{ __forge_users.results }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: not ansible_check_mode
+
 - name: accounts | Wait for each account's user manager and its session bus
   ansible.builtin.wait_for:
     path: "/run/user/{{ item.uid }}/bus"

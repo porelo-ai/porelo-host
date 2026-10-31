@@ -493,7 +493,11 @@ class Host:
 
     def porelo(self, user, *arguments):
         """Porelo as the person, with their own user manager's runtime, which rootless podman needs."""
-        return ["runuser", "-u", user, "--", "env", f"XDG_RUNTIME_DIR=/run/user/{self.uid(user)}", "porelo", *arguments]
+        runtime = f"/run/user/{self.uid(user)}"
+        return [
+            "runuser", "-u", user, "--", "env", f"XDG_RUNTIME_DIR={runtime}",
+            f"DBUS_SESSION_BUS_ADDRESS=unix:path={runtime}/bus", "porelo", *arguments,
+        ]
 
     def uid_min(self):
         """The first UID of a person's account, as useradd takes it from /etc/login.defs."""
@@ -515,7 +519,8 @@ class Host:
         self.require(["runuser", "env"])
         entry = self.account(user)
         runtime = f"/run/user/{entry.pw_uid}"
-        self.session_bus(user, runtime)
+        if arguments[:1] == ["podman"]:
+            self.session_bus(user, runtime)
         return self.command(
             [
                 "runuser", "-u", user, "--", "env", f"HOME={entry.pw_dir}", f"XDG_RUNTIME_DIR={runtime}",
