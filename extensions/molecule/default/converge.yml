@@ -90,6 +90,40 @@
               vm_pool_memory: 1024
           {% endif %}
 
+    # Stands in for the host admin: Molecule's own key is pinned for root, as `host up` pins the card's key. Once SSH
+    # reads only /etc/ssh/authorized_keys/%u, the VM's own login keeps its key there, as an admitted login would.
+    - name: Make root's SSH directory for the pinned host admin key
+      ansible.builtin.file:
+        path: /root/.ssh
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Make the directory SSH reads each login's keys from
+      ansible.builtin.file:
+        path: /etc/ssh/authorized_keys
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Pin Molecule's key as the host admin's, and keep it for the VM's own login
+      ansible.builtin.shell:
+        cmd: |
+          set -eu
+          key=$(awk '$1 == "ssh-ed25519" { print $1 " " $2; exit }' ~{{ ansible_user }}/.ssh/authorized_keys)
+          [ -n "$key" ]
+          for target in /root/.ssh/authorized_keys /etc/ssh/authorized_keys/{{ ansible_user }}; do
+              if [ "$(cat "$target" 2>/dev/null)" != "$key" ]; then
+                  printf '%s\n' "$key" > "$target.new" && chmod 0644 "$target.new" && mv -f "$target.new" "$target"
+                  echo changed
+              fi
+          done
+        executable: /bin/bash
+      register: converge_admin_key
+      changed_when: "'changed' in converge_admin_key.stdout"
+
     # Once: the first up, before Porelo's handed-over packages are installed over the published ones.
     - name: Read whether the first up ran
       ansible.builtin.stat:
