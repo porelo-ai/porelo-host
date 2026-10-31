@@ -31,5 +31,4 @@ account's and the mount as the directory's.
   root's plain file.
 - The push judge's socket handler runs before Forgejo's; `/usr/local/libexec` is made by one task.
 - Tests: each arming refusal by a real `sh` run, a mixed push, sync calling the arming, the removal, the lock, the
-  verdict fields; each check's removal is noticed, except the KRL's and the record's `fstat`, which the path checks
-  before them already refuse.
+  verdict fields. Checks a reading found unpinned are gathered in [HO86](README.md#ho86).

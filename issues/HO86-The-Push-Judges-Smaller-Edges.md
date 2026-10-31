@@ -1,0 +1,18 @@
+# HO86 — The Push Judge's Smaller Edges
+
+**Status:** Idea; blocked by [HO85](README.md#ho85).
+
+**What must be true.** The smaller edges a reading of the push judge found are closed, each with a test seen red then
+green:
+
+- the arming stops on a linked repository or a linked `git` directory instead of passing over it, requires the
+  mounted hook and the link's target to be executable plain files before linking, and leaves no link behind when it
+  stops;
+- a project's removal checks the arrivals directory itself root's alone and decides once whether there is anything to
+  remove, so a later look cannot remove through a link;
+- two first pushes of a project, side by side, both make or find its arrivals directory, neither answered 500;
+- a verdict never records Git's null object name as a commit, and the stand-in judges no deleted ref;
+- each field check of Porelo's answer is pinned by a case that fails it alone (time without `Z`, a commit that is no
+  string, no signer, a signer without a fingerprint);
+- each mode, link and unknown-entry check of the arrivals and of the forge's repositories directory is pinned by a
+  case, and the texts claim no more than the tests show.
