@@ -922,7 +922,10 @@ def test_a_purge_failing_after_the_vault_expires_the_account_again(host, capsys)
     host.calls.clear()
     host.fail = ["userdel"]
     assert host.invoke("purge", "alice", data=b"") == 69
-    assert host.calls[-1] == ["usermod", "--expiredate", "1", "alice"], "the account left must be expired again"
+    assert host.calls[-2:] == [
+        ["usermod", "--expiredate", "1", "alice"],
+        ["systemctl", "stop", "user@1000.service"],
+    ], "the account left must be expired and its manager stopped"
     assert "locked=true" in host.path("/etc/porelo-host/people/alice.conf").read_text()
 
 
@@ -1036,7 +1039,7 @@ def test_failed_manager_stop_still_disables_the_account_and_allows_retry(host, c
     host.fail = ["systemctl", "stop"]
     assert host.invoke("lock", "alice", data=b"") == 69
     assert ["usermod", "--lock", "--expiredate", "1", "alice"] in host.calls
-    assert "locked=true" in host.path("/etc/porelo-host/people/alice.conf").read_text()
+    assert "lock=pending" in host.path("/etc/porelo-host/people/alice.conf").read_text()
     assert not host.path("/etc/ssh/authorized_keys/alice").exists()
     assert not capsys.readouterr().out
     host.fail = None
@@ -1256,7 +1259,7 @@ def test_purge_locks_first_clears_vault_then_removes_account_and_ranges(host, ca
     assert host.calls.index(["usermod", "--lock", "--expiredate", "1", "alice"]) < next(
         index for index, args in enumerate(host.calls) if args[0] == "runuser"
     )
-    assert host.calls[-8:] == [
+    assert host.calls[-10:] == [
         # A locked account is expired, which PAM refuses to runuser and to the user manager; its password stays locked.
         ["usermod", "--expiredate", "", "alice"],
         ["systemctl", "start", "user@1000.service"],
@@ -1275,6 +1278,8 @@ def test_purge_locks_first_clears_vault_then_removes_account_and_ranges(host, ca
             "--force",
             "--json",
         ],
+        ["usermod", "--expiredate", "1", "alice"],
+        ["systemctl", "stop", "user@1000.service"],
         ["loginctl", "disable-linger", "alice"],
         ["loginctl", "terminate-user", "alice"],
         # terminate-user returns before the manager ends; userdel refuses an account still running anything.
@@ -1389,7 +1394,10 @@ def test_failed_vault_clear_keeps_the_locked_account_and_record_for_retry(host, 
     host.fail = ["runuser", "-u", "alice", "--", "env", "XDG_RUNTIME_DIR=/run/user/1000", "porelo", "vault", "clear"]
     assert host.invoke("purge", "alice", data=b"") == 69
     assert not any(args[0] == "userdel" for args in host.calls)
-    assert host.calls[-1] == ["usermod", "--expiredate", "1", "alice"], "the account left must be expired again"
+    assert host.calls[-2:] == [
+        ["usermod", "--expiredate", "1", "alice"],
+        ["systemctl", "stop", "user@1000.service"],
+    ], "the account left must be expired and its manager stopped"
     assert "locked=true" in host.path("/etc/porelo-host/people/alice.conf").read_text()
     assert "alice" in host.accounts
     host.fail = None
@@ -1412,7 +1420,7 @@ def test_failed_write_does_not_leave_a_record_or_staged_key_file(host, capsys):
     output = capsys.readouterr()
     assert not output.out and "not a plain file" in output.err
     assert not list(host.root.rglob(".porelo-host-person.*"))
-    assert "locked=true" in host.path("/etc/porelo-host/people/alice.conf").read_text()
+    assert "lock=pending" in host.path("/etc/porelo-host/people/alice.conf").read_text()
     assert not any(args[0] == "wg" and "allowed-ips" in args for args in host.calls)
 
 

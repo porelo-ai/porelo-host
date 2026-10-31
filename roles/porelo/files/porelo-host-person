@@ -376,6 +376,9 @@ class Host:
                 refuse("the people directory holds an unknown record", 65)
             self.check(path, required=True, mode=0o600)
             lines = self.read(path).splitlines()
+            pending = bool(lines and lines[-1] == "lock=pending")
+            if pending:
+                lines.pop()
             members, previous, index = [], None, 0
             while index < len(lines) and lines[index].startswith("member="):
                 member = lines[index][7:]
@@ -395,7 +398,8 @@ class Host:
             self.card_expiry(expires)
             records[path.stem] = {"members": members, "locked": lines[index] == "locked=true",
                                   "ssh": key, "expires": expires,
-                                  "reason": lines[index + 3][7:] if len(lines) == index + 4 else "host"}
+                                  "reason": lines[index + 3][7:] if len(lines) == index + 4 else "host",
+                                  **({"lock": "pending"} if pending else {})}
         return records
 
     def purged(self):
@@ -885,6 +889,7 @@ class Host:
         """End every SSH tunnel and wait for the user's manager to stop."""
         if not isinstance(user, str) or not re.fullmatch(USER, user) or user == "root":
             refuse("invalid SSH session account", 65)
+        self.require(["loginctl", "systemctl"])
         errors = []
         for args, accepted in (
             (["loginctl", "terminate-user", user], (0, 1)),
@@ -930,13 +935,15 @@ class Host:
                 Path(temporary).unlink(missing_ok=True)
 
     def record(self, user, record):
-        """Publish admission or completed revocation only after its preceding operations."""
+        """Publish canonical admission and revocation state."""
         members = sorted(set(record["members"]), key=lambda item: member_key(item, 65))
         text = "".join(f"member={item}\n" for item in members)
         text += "locked=" + str(record["locked"]).lower() + "\n"
         text += f'ssh={record["ssh"]}\nexpires={record.get("expires") or ""}\n'
         if record.get("reason"):
             text += f'reason={record["reason"]}\n'
+        if record.get("lock") == "pending":
+            text += "lock=pending\n"
         self.write(self.path(f"/etc/porelo-host/people/{user}.conf"), text, 0o600)
 
     def subids(self, kind):
@@ -1022,7 +1029,7 @@ class Host:
         self.record(user, {"members": list(members), "locked": False, **card})
 
     def lock(self, user, record, porelo):
-        """Remove access first; task-stop failure cannot prevent account revocation."""
+        """Remove access independently; lock=pending means all revocation steps remain owed on retry."""
         try:
             uid = self.uid(user)
         except KeyError:
@@ -1046,6 +1053,9 @@ class Host:
             self.check(authorized, 73)
             authorized.unlink(missing_ok=True)
 
+        # Persist intent before removing access; every retry repeats all revocation steps.
+        record["lock"] = "pending"
+        attempt(lambda: self.record(user, record))
         attempt(remove_key)
         attempt(lambda: local_command(["gpasswd", "--delete", user, "porelo-people"], (0, 3)))
         attempt(lambda: self.remove_runtime(user))
@@ -1055,14 +1065,15 @@ class Host:
             attempt(lambda: local_command(["systemctl", "stop", f"user@{uid}.service"]))
             attempt(lambda: local_command(["usermod", "--lock", "--expiredate", "1", user]))
         local_removed = not errors
-        # A failed local step must not let reconciliation restore the access already removed.
-        record["locked"] = True
+        record["locked"] = local_removed
         attempt(lambda: self.record(user, record))
 
         for name in ("forge_lock", "matrix_expel_revoke"):
             attempt(lambda: self.hooks[name](user))
-        if porelo and uid is not None and local_removed:
+        if porelo is not False and uid is not None and local_removed:
             def stop_tasks():
+                if porelo is None and not self.available("porelo"):
+                    return
                 self.require(["runuser", "env", "porelo", "usermod", "systemctl"])
                 # PAM requires an unexpired account; the password, keys and group access remain revoked.
                 try:
@@ -1070,13 +1081,33 @@ class Host:
                     self.command(["systemctl", "start", f"user@{uid}.service"])
                     self.command(self.porelo(user, "task", "stop", "--all"))
                 finally:
+                    failures = len(errors)
                     attempt(lambda: local_command(["usermod", "--expiredate", "1", user]))
                     attempt(lambda: local_command(["systemctl", "stop", f"user@{uid}.service"]))
+                    if len(errors) != failures:
+                        record["locked"] = False
+                        attempt(lambda: self.record(user, record))
             attempt(stop_tasks)
         attempt(lambda: self.revoke_project_access(user))
         if errors:
             refuse("; ".join(str(error) for error in errors), errors[0].code)
+        record.pop("lock", None)
+        try:
+            self.record(user, record)
+        except (Refusal, OSError):
+            record["lock"] = "pending"
+            raise
 
+    def retry_locks(self, records):
+        """Finish pending revocations before admitting or reconciling anyone; collect per-person failures."""
+        errors = []
+        for user, record in records.items():
+            if record.get("lock") == "pending":
+                try:
+                    self.lock(user, record, None)
+                except (Refusal, OSError) as error:
+                    errors.append(Refusal(f"{user}: {error}", getattr(error, "code", 73)))
+        return errors
 
     def revoke_project_access(self, user):
         """Take a host-locked login out of every known project's teams, rooms and signers."""
@@ -1084,28 +1115,33 @@ class Host:
         self.check(directory, directory=True, mode=0o700)
         errors = []
         for path in sorted(directory.glob("*.people.json")):
-            project = path.name.removesuffix(".people.json")
-            if not re.fullmatch(PROJECT, project):
-                refuse("the projects directory holds an invalid membership record", 65)
-            project_path = directory / f"{project}.conf"
-            self.check(project_path, 73)
-            if not project_path.exists():
-                continue
-            self.check(path, mode=0o600)
             try:
-                people = json.loads(self.read(path))
-            except ValueError:
-                refuse("the project's membership record is malformed", 65)
-            if (not isinstance(people, dict) or any(
-                    not re.fullmatch(USER, login) or not isinstance(entry, dict)
-                    or entry.get("role") not in ("project-admin", "developer")
-                    or not valid_ssh_key(entry.get("ssh")) for login, entry in people.items())):
-                refuse("the project's membership record is malformed", 65)
-            if user not in people:
+                project = path.name.removesuffix(".people.json")
+                if not re.fullmatch(PROJECT, project):
+                    refuse("the projects directory holds an invalid membership record", 65)
+                project_path = directory / f"{project}.conf"
+                self.check(project_path, 73)
+                if not project_path.exists():
+                    continue
+                self.check(path, mode=0o600)
+                try:
+                    people = json.loads(self.read(path))
+                except ValueError:
+                    refuse("the project's membership record is malformed", 65)
+                if (not isinstance(people, dict) or any(
+                        not re.fullmatch(USER, login) or not isinstance(entry, dict)
+                        or entry.get("role") not in ("project-admin", "developer")
+                        or not valid_ssh_key(entry.get("ssh")) for login, entry in people.items())):
+                    refuse("the project's membership record is malformed", 65)
+                # Reconcile even after a failed sync has already removed the person from this cache.
+                records = self.records()
+                people = {login: entry for login, entry in people.items()
+                          if login != user and not records.get(login, {}).get("locked", True)
+                          and records[login].get("lock") != "pending"}
+                admin = self.project_record(project)[1]["admin"]
+            except (Refusal, OSError) as error:
+                errors.append(Refusal(f"{path.name}: {error}", getattr(error, "code", 73)))
                 continue
-            people = {login: entry for login, entry in people.items()
-                      if login != user and not self.records().get(login, {}).get("locked", True)}
-            admin = self.project_record(project)[1]["admin"]
             for apply in (lambda: self.project_signers(project, people),
                           lambda: self.forge_project_apply(project, admin, people),
                           lambda: self.matrix_members(project, sorted(people)),
@@ -1133,38 +1169,56 @@ class Host:
         only the expiry is lifted for this, the password stays locked and no key or peer lets anyone in. Any failure
         expires the account again, as the lock left it.
         """
-        self.command(["usermod", "--expiredate", "", user])
+        record = self.records()[user]
+        pending = record.get("lock") == "pending"
+        record.update(lock="pending", locked=False)
+        self.record(user, record)
         try:
+            self.command(["usermod", "--expiredate", "", user])
             self.command(["systemctl", "start", f"user@{self.uid(user)}.service"])
             self.command(self.porelo(user, "task", "stop", "--all"))
             # Forced, Porelo still exits 1 for a transport's account kept elsewhere; as at down, only that may stay.
             cleared = self.command(self.porelo(user, "vault", "clear", "--yes", "--force", "--json"), accepted=(0, 1))
             if cleared.returncode != 0 and not only_transports_kept(cleared.stdout):
                 refuse("porelo vault clear kept more than the accounts a transport keeps elsewhere", 69)
-        except Refusal:
+        finally:
+            self.finish_cleanup(user)
+        if not pending:
+            record = self.records()[user]
+            record.pop("lock", None)
+            self.record(user, record)
+
+    def finish_cleanup(self, user):
+        """Try both safety restorations even when the first fails."""
+        try:
             self.command(["usermod", "--expiredate", "1", user])
-            raise
+        finally:
+            self.command(["systemctl", "stop", f"user@{self.uid(user)}.service"])
+        record = self.records()[user]
+        record["locked"] = True
+        self.record(user, record)
 
     def purge(self, user, record, porelo, account_exists):
         """Lock before clearing the vault, deleting the account and releasing recorded IDs."""
         self.lock(user, record, porelo)
+        record["lock"] = "pending"
+        self.record(user, record)
         self.remove_runtime(user)
         if account_exists:
-            lifted = False
+            deleted = False
             try:
                 if porelo:
                     self.clear_vault(user)
-                    lifted = True
                 self.command(["loginctl", "disable-linger", user])
                 # Without linger or a session logind may already have let the person go, and knows nobody to end.
                 self.command(["loginctl", "terminate-user", user], accepted=(0, 1))
                 # terminate-user returns before the manager ends; userdel refuses an account still running anything.
                 self.command(["systemctl", "stop", f"user@{self.uid(user)}.service"])
                 self.command(["userdel", "--remove", user])
-            except Refusal:
-                if lifted:
-                    self.command(["usermod", "--expiredate", "1", user])
-                raise
+                deleted = True
+            finally:
+                if not deleted:
+                    self.finish_cleanup(user)
         for kind in ("subuid", "subgid"):
             path = self.path("/etc/" + kind)
             text = self.read(path)
@@ -1546,6 +1600,11 @@ class Host:
         admin = pinned["admin"]
         if self.sudo_user is not None and self.sudo_user != admin:
             refuse("only the pinned host admin may bring the host's registry", 65)
+        records = self.records()
+        retried = {user for user, rec in records.items() if rec.get("lock") == "pending"}
+        retry_errors = self.retry_locks(records)
+        if retry_errors:
+            refuse("unfinished host revocation: " + "; ".join(str(error) for error in retry_errors), 69)
         applied_path, previous = self.applied_registry()
         if self.sudo_user is not None:
             record = self.records().get(admin)
@@ -1648,7 +1707,7 @@ class Host:
             self.write(applied_path, json.dumps(applied, indent=1) + "\n", 0o600)
             if next_pin != pinned:
                 self.write(pin_path, f'admin={next_pin["admin"]}\nkey={next_pin["key"]}\n', 0o600)
-        self.apply_registry_cards(persons, revoked, records, previous)
+        self.apply_registry_cards(persons, revoked, records, previous, retried=retried)
         return {
             "commit": commit,
             "pinned": fingerprint(next_pin["key"]),
@@ -1681,13 +1740,15 @@ class Host:
             )
 
 
-    def apply_registry_cards(self, persons, revoked, records, previous=None):
+    def apply_registry_cards(self, persons, revoked, records, previous=None, retried=()):
         """Apply host revocations and current card keys after recording the verified registry."""
+        retried = set(retried) | {user for user, rec in records.items() if rec.get("lock") == "pending"}
+        errors = self.retry_locks(records)
+        failed = {user for user, rec in records.items() if rec.get("lock") == "pending"}
         prior = previous["persons"] if previous else []
         keys = [entry["ssh"] for entry in [*prior, *persons] if entry["login"] in revoked]
         keys.extend(record["ssh"] for login, record in records.items() if login in revoked)
         self.write_krl(list(dict.fromkeys(keys)))
-        errors = []
         cards = {entry["login"]: entry for entry in persons}
         for login in revoked:
             if login not in cards and login in records:
@@ -1695,13 +1756,14 @@ class Host:
         for entry in cards.values():
             login = entry["login"]
             record = records.get(login)
-            if record is None:
+            if record is None or login in failed:
                 continue
             try:
                 if login in revoked or self.key_revoked(entry["ssh"]):
                     if not record["locked"] or record.get("reason", "host") != "host":
                         record["reason"] = "key"
-                    self.lock(login, record, True)
+                    if login not in retried:
+                        self.lock(login, record, True)
                 elif not record["locked"]:
                     record.update({key: entry[key] for key in ("ssh", "expires")})
                     self.write_authorized_key(login, entry["ssh"], self.card_expiry(entry["expires"]))
@@ -1710,7 +1772,8 @@ class Host:
                 errors.append(f"{login}: {error}")
         self.people_group(records)
         if errors:
-            refuse("the registry is applied; bring it again to retry host revocation: " + "; ".join(errors), 69)
+            refuse("the registry is applied; bring it again to retry host revocation: "
+                   + "; ".join(str(error) for error in errors), 69)
 
 
     def matrix_admins(self, path, admins, group):
@@ -1739,6 +1802,8 @@ class Host:
         admin = project_record["admin"]
         if self.sudo_user is not None and self.sudo_user != admin:
             refuse(f"only project {project}'s recorded admin may run sync", 65)
+        errors = self.retry_locks(records)
+        failed = {user for user, rec in records.items() if rec.get("lock") == "pending"}
         self.person(admin, records)
         if accounts.get(admin) is None:
             refuse(f"project {project}'s admin has no host account", 65)
@@ -1771,6 +1836,8 @@ class Host:
             if not isinstance(user, str) or not re.fullmatch(USER, user) or user in seen:
                 refuse("verified access holds an invalid or duplicate login", 65)
             seen.add(user)
+            if user in failed:
+                continue
             if user in purged:
                 refused.append(f"{user}: purged on this host and never admitted again")
                 continue
@@ -1786,7 +1853,11 @@ class Host:
                 if user in records:
                     if not records[user]["locked"] or records[user].get("reason", "host") != "host":
                         records[user]["reason"] = "key"
-                    self.lock(user, records[user], True)
+                    try:
+                        self.lock(user, records[user], True)
+                    except (Refusal, OSError) as error:
+                        failed.add(user)
+                        errors.append(Refusal(f"{user}: {error}", getattr(error, "code", 73)))
                 continue
             # A project revocation names no key or expiry, so it is taken before the card is compared.
             if entry.get("revoked") is True:
@@ -1812,8 +1883,10 @@ class Host:
             if uid is None and user in records:
                 refused.append(f"{user}: recorded person has no host account")
                 continue
+            current_expiry = self.card_expiry(current.get("expires"))
             if (entry["locked"] or entry["revoked"] or host_name not in entry["hosts"]
-                    or (expires is not None and expires <= self.now().strftime("%Y%m%d%H%M%SZ"))):
+                    or (expires is not None and expires <= self.now().strftime("%Y%m%d%H%M%SZ"))
+                    or (current_expiry is not None and current_expiry <= self.now().strftime("%Y%m%d%H%M%SZ"))):
                 continue
             if records.get(user, {}).get("locked") and records[user].get("reason", "host") == "host":
                 continue
@@ -1831,7 +1904,7 @@ class Host:
                         if not isinstance(previous_people, dict):
                             refuse("the project's membership record is malformed", 65)
                     previous = previous_people.get(user)
-                    if previous is not None:
+                    if user in previous_people:
                         if (not isinstance(previous, dict) or previous.get("role") not in ("project-admin", "developer")
                                 or not valid_ssh_key(previous.get("ssh"))):
                             refuse("the project's membership record is malformed", 65)
@@ -1863,6 +1936,8 @@ class Host:
                 records[user] = {"members": [membership], "locked": False, **card}
             else:
                 if rec["locked"]:
+                    if rec.get("reason") in ("key", "membership"):
+                        self.hooks["forge_drop_tokens"](user)
                     self.require(["usermod"])
                     self.command(["usermod", "--expiredate", "", user])
                     self.hooks["forge_admit"](user, card)
@@ -1874,21 +1949,38 @@ class Host:
                 self.write_authorized_key(user, card["ssh"], self.card_expiry(card["expires"]))
                 self.record(user, rec)
         for user in dropped:
+            if user in failed:
+                continue
             rec = records[user]
-            rec["members"] = [m for m in rec["members"] if m == "hand" or m.split()[0] != project]
-            if not rec["members"] and not rec["locked"]:
+            members = [m for m in rec["members"] if m == "hand" or m.split()[0] != project]
+            if not members and not rec["locked"]:
                 rec["reason"] = "membership"
-                self.lock(user, rec, True)
-            else:
-                self.record(user, rec)
+                try:
+                    self.lock(user, rec, True)
+                except (Refusal, OSError) as error:
+                    failed.add(user)
+                    errors.append(Refusal(f"{user}: {error}", getattr(error, "code", 73)))
+                    continue
+            rec["members"] = members
+            self.record(user, rec)
         active = {user: entry for user, entry in desired.items() if not records[user]["locked"]}
         for user in sorted(deferred & affected):
+            entry = next(entry for entry in entries if entry["login"] == user)
+            if entry["role"] == "developer":
+                rec = records[user]
+                rec["members"] = [f"{project} developer" if m == f"{project} project-admin" else m
+                                  for m in rec["members"]]
+                self.record(user, rec)
             if not records[user]["locked"] and previous_people is not None and user in previous_people:
-                active[user] = previous_people[user]
+                active[user] = dict(previous_people[user])
+                if entry["role"] == "developer":
+                    active[user]["role"] = "developer"
+                bounds = [value for value in (active[user].get("expires"),
+                                             registry_people[user].get("expires")) if value]
+                active[user]["expires"] = min(bounds, key=self.card_expiry) if bounds else None
         self.write(people_path, json.dumps(active) + "\n", 0o600)
         self.project_signers(project, active,
                              preserve={user for user in deferred & affected if not records[user]["locked"]})
-        errors = []
         for apply in (lambda: self.forge_project_apply(project, admin, active),
                       lambda: self.matrix_members(project, sorted(active)),
                       lambda: self.matrix_admins(self.path(f"/etc/porelo-host/matrix/{project}.admins"),
@@ -1908,7 +2000,8 @@ class Host:
 
     def people_group(self, records):
         """Keep socket forwarding and sudo membership equal to the host's unlocked admissions."""
-        desired = {user for user, rec in records.items() if rec["members"] and not rec["locked"]}
+        desired = {user for user, rec in records.items()
+                   if rec["members"] and not rec["locked"] and rec.get("lock") != "pending"}
         try:
             current = set(grp.getgrnam("porelo-people").gr_mem)
         except KeyError:
@@ -2004,6 +2097,10 @@ class Host:
                 or not isinstance(previous.get("history"), list)):
             refuse("the project's signer history is malformed", 65)
         current = {user: {"ssh": entry["ssh"], "expires": entry.get("expires")} for user, entry in persons.items()}
+        registry_cards = {}
+        if preserve:
+            _, applied = self.applied_registry()
+            registry_cards = {entry["login"]: entry for entry in applied["persons"]} if applied else {}
         for user in preserve:
             card = previous["current"].get(user)
             current.pop(user, None)
@@ -2013,7 +2110,13 @@ class Host:
                 expiry = self.card_expiry(card.get("expires"))
                 if (not self.key_revoked(card["ssh"])
                         and (expiry is None or expiry > self.now().strftime("%Y%m%d%H%M%SZ"))):
-                    current[user] = card
+                    card = dict(card)
+                    bounds = [value for value in (card.get("expires"), persons.get(user, {}).get("expires"),
+                                                 registry_cards.get(user, {}).get("expires")) if value]
+                    card["expires"] = min(bounds, key=self.card_expiry) if bounds else None
+                    expiry = self.card_expiry(card["expires"])
+                    if expiry is None or expiry > self.now().strftime("%Y%m%d%H%M%SZ"):
+                        current[user] = card
         history = previous["history"]
         before = self.now().strftime("%Y%m%d%H%M%SZ")
         for user, card in previous["current"].items():
@@ -2048,7 +2151,7 @@ class Host:
     def person(self, user, records):
         """The calling person, recorded, unlocked and holding a membership; anyone else is refused."""
         record = records.get(user)
-        if record is None or record["locked"] or not record["members"]:
+        if record is None or record["locked"] or record.get("lock") == "pending" or not record["members"]:
             refuse(f"{user} is no unlocked person of this host", 65)
         return record
 
@@ -2282,7 +2385,7 @@ class Host:
             with conf.open("rb") as mutex:
                 fcntl.flock(mutex, fcntl.LOCK_EX)
                 for login, record in self.records().items():
-                    if record["members"] and not record["locked"]:
+                    if record["members"] and not record["locked"] and record.get("lock") != "pending":
                         changed += self.admit_runtime(login)
             return {"changed": changed}
         project = user = None
@@ -2376,7 +2479,7 @@ class Host:
                 if self.key_revoked(card["ssh"]):
                     refuse("the person's current key is revoked", 65)
                 if record is not None:
-                    if record["locked"] or uid is None:
+                    if record["locked"] or record.get("lock") == "pending" or uid is None:
                         refuse("the recorded person is locked or has no account", 65)
                     record["members"] = ["hand", *[m for m in record["members"] if m != "hand"]]
                     self.record(user, {**record, **card})
@@ -2392,15 +2495,22 @@ class Host:
                 self.add(user, card, groups, self.next_range(self.subids("subuid")),
                          self.next_range(self.subids("subgid")))
                 return {"person": user, "role": "project-admin"}
-            self.targets(user)
             if verb == "lock":
                 record["reason"] = "host"
-                self.lock(user, record, True)
+                # Executable trust errors must not bypass independent local revocations.
+                try:
+                    porelo = self.available("porelo")
+                except Refusal:
+                    self.lock(user, record, None)
+                    raise
+                self.lock(user, record, porelo)
                 return {"person": user, "locked": True}
+            if record.get("lock") == "pending":
+                self.lock(user, record, None)
             porelo = self.available("porelo")
             programs = ["gpasswd"] + ([] if uid is None else ["loginctl", "usermod", "systemctl"])
             if porelo and uid is not None:
-                programs.append("runuser")
+                programs.extend(["runuser", "env"])
                 if verb == "purge":
                     programs.extend(["usermod", "systemctl"])
             if verb == "purge":

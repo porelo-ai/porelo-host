@@ -695,7 +695,10 @@ def test_lagging_bundle_preserves_membership_and_signers_until_matching_card(car
     assert user not in answer["dropped"]
     assert host.records()[user]["members"] == original["members"]
     assert not host.records()[user]["locked"]
-    assert json.loads(state.read_text())["current"][user] == before["current"][user]
+    expected = dict(before["current"][user])
+    if field == "expires":
+        expected["expires"] = value
+    assert json.loads(state.read_text())["current"][user] == expected
     assert any(user in r and "does not match" in r for r in answer["refused"])
     entry[field] = value
     sync(cards)
@@ -969,3 +972,347 @@ def test_untrusted_porelo_cannot_prevent_local_lock(cards):
         host.execute(["lock", "alice"], None)
     assert not host.path("/etc/ssh/authorized_keys/alice").exists()
     assert host.records()["alice"]["locked"]
+
+
+@pytest.mark.parametrize("retry", ["sync", "registry", "lock", "purge"])
+def test_unfinished_revocation_is_durable_and_retried(cards, retry):
+    """Prevent a failed service revocation from disappearing on subsequent reconciliation."""
+    host = cards.host
+    sync(cards)
+    rec = host.records()["alice"]
+    rec["members"] = ["alpha developer"]
+    host.record("alice", rec)
+    cards.reply["persons"] = cards.reply["persons"][:1]
+    host.hooks["forge_lock"] = lambda user: (_ for _ in ()).throw(cards.scope["Refusal"]("forge unavailable", 69))
+    with pytest.raises(cards.scope["Refusal"]):
+        sync(cards)
+    rec = host.records()["alice"]
+    assert rec.get("lock") == "pending"
+    assert rec["members"] == ["alpha developer"]
+    cards.calls.clear()
+    host.hooks["forge_lock"] = lambda user: cards.calls.append(("retried", user))
+    if retry == "sync":
+        sync(cards)
+    elif retry == "registry":
+        host.write_krl = lambda keys: None
+        host.apply_registry_cards([], [], host.records())
+    elif retry == "lock":
+        host.execute(["lock", "alice"], None)
+    else:
+        host.commands.add("userdel")
+        host.execute(["purge", "alice"], None)
+    assert ("retried", "alice") in cards.calls
+
+
+def test_failed_local_rollback_reports_unfinished_removal(cards):
+    """Prevent reporting a safely locked account when rollback left local access in place."""
+    host = cards.host
+    host.create_account = lambda user: None
+    host.grant = lambda *args: (_ for _ in ()).throw(cards.scope["Refusal"]("grant failed", 69))
+    host.remove_runtime = lambda user: (_ for _ in ()).throw(cards.scope["Refusal"]("runtime unsafe", 73))
+    with pytest.raises(cards.scope["Refusal"], match="local account removal failed; retry lock"):
+        host.add("alice", {"ssh": ssh_key(2), "expires": None}, set(), None, None)
+    assert not host.records()["alice"]["locked"]
+
+
+def test_sync_continues_revoking_after_one_person_fails(cards):
+    """Prevent one unavailable service from preserving another revoked person's access."""
+    host = cards.host
+    sync(cards)
+    for user in ("alice", "bo"):
+        rec = host.records()[user]
+        rec["members"] = ["alpha developer"]
+        host.record(user, rec)
+    cards.reply["persons"] = cards.reply["persons"][:1]
+
+    def failing(user):
+        if user == "alice":
+            raise cards.scope["Refusal"]("forge unavailable", 69)
+
+    host.hooks["forge_lock"] = failing
+    with pytest.raises(cards.scope["Refusal"], match="alice"):
+        sync(cards)
+    assert host.records()["bo"]["locked"]
+    assert ("rooms", ("alpha", ["ada"])) in cards.calls
+
+
+@pytest.mark.parametrize("reason", ["key", "membership"])
+def test_unlock_drops_tokens_before_restoring_access(cards, reason):
+    """Prevent tokens surviving an earlier incomplete or automatic lock from becoming usable again."""
+    host = cards.host
+    sync(cards)
+    rec = host.records()["alice"]
+    rec.update(locked=True, reason=reason)
+    host.record("alice", rec)
+    host.forge_unlock = lambda user: cards.calls.append(("unlock", user))
+    cards.calls.clear()
+    sync(cards)
+    assert cards.calls.index(("forge_drop_tokens", ("alice",))) < cards.calls.index(("unlock", "alice"))
+
+
+@pytest.mark.parametrize("expiry", ["2026-01-01", "2026-11-01"])
+def test_deferred_access_is_bounded_by_registry_expiry(cards, expiry):
+    """Prevent stale cards extending admission or signing authority past the current card."""
+    host = cards.host
+    sync(cards)
+    registry_card(cards, dict(cards.reply["persons"][1], expires=expiry))
+    sync(cards)
+    active = json.loads(host.path("/etc/porelo-host/projects/alpha.people.json").read_text())
+    if expiry == "2026-01-01":
+        assert "alice" not in active
+        assert "alpha developer" not in host.records()["alice"]["members"]
+    else:
+        assert 'valid-before="20261101000000Z"' in host.path("/etc/porelo-host/signers/alpha.allowed").read_text()
+
+
+def test_lagging_demotion_removes_admin_authority(cards):
+    """Prevent a key lag from preserving a role explicitly demoted by verified access."""
+    host = cards.host
+    cards.reply["persons"][1]["role"] = "project-admin"
+    sync(cards)
+    registry_card(cards, dict(cards.reply["persons"][1], ssh=ssh_key(7)))
+    cards.reply["persons"][1]["role"] = "developer"
+    sync(cards)
+    assert "alpha project-admin" not in host.records()["alice"]["members"]
+    assert "alpha developer" in host.records()["alice"]["members"]
+    assert (
+        json.loads(host.path("/etc/porelo-host/projects/alpha.people.json").read_text())["alice"]["role"] == "developer"
+    )
+
+
+@pytest.mark.parametrize("unsafe", ["runtime", "tmpfiles", "key"])
+def test_cli_lock_isolates_unsafe_paths(cards, unsafe):
+    """Prevent one unsafe path from blocking independent root revocation steps."""
+    host = cards.host
+    sync(cards)
+    path = host.path(
+        {
+            "runtime": "/run/porelo-host/people/alice",
+            "tmpfiles": "/etc/tmpfiles.d/porelo-person-alice.conf",
+            "key": "/etc/ssh/authorized_keys/alice",
+        }[unsafe]
+    )
+    if path.is_dir():
+        import shutil
+
+        shutil.rmtree(path)
+    else:
+        path.unlink(missing_ok=True)
+    path.symlink_to(host.root / "outside")
+    with pytest.raises(cards.scope["Refusal"]):
+        host.execute(["lock", "alice"], None)
+    assert (["gpasswd", "--delete", "alice", "porelo-people"], None) in cards.calls
+    assert ("forge_lock", ("alice",)) in cards.calls
+
+
+def test_cli_lock_without_optional_porelo_finishes(cards):
+    """Prevent an absent optional task CLI from making revocation permanently fail."""
+    cards.host.commands.remove("porelo")
+    cards.host.execute(["lock", "alice"], None)
+    assert cards.host.records()["alice"]["locked"]
+
+
+@pytest.mark.parametrize("operation", ["clear", "purge"])
+@pytest.mark.parametrize("failure", [OSError, RuntimeError])
+def test_vault_cleanup_restores_expiry_and_manager_on_any_exception(cards, operation, failure):
+    """Prevent failed vault cleanup leaving an unexpired account or a running user manager."""
+    host = cards.host
+    command = host.command
+    host.lock = lambda *args: None
+
+    def failing(args, **kwargs):
+        if (operation == "clear" and "vault" in args) or (
+            operation == "purge" and args[:2] == ["loginctl", "disable-linger"]
+        ):
+            raise failure("cleanup failed")
+        return command(args, **kwargs)
+
+    host.command = failing
+    with pytest.raises(failure):
+        if operation == "clear":
+            host.clear_vault("alice")
+        else:
+            host.purge("alice", host.records()["alice"], True, True)
+    assert (["usermod", "--expiredate", "1", "alice"], None) in cards.calls
+    assert (["systemctl", "stop", "user@1001.service"], None) in cards.calls
+
+
+@pytest.mark.parametrize("program", ["loginctl", "systemctl"])
+def test_direct_end_sessions_requires_programs(cards, program):
+    """Prevent unchecked privileged commands through the public integration method."""
+    cards.host.commands.remove(program)
+    with pytest.raises(cards.scope["Refusal"], match=program):
+        cards.host.end_sessions("alice")
+    assert not cards.calls
+
+
+def test_purge_checks_env_before_mutation(cards):
+    """Prevent task cleanup dependency failure after starting destructive purge work."""
+    cards.host.commands.add("userdel")
+    cards.host.commands.remove("env")
+    with pytest.raises(cards.scope["Refusal"], match="env"):
+        cards.host.execute(["purge", "alice"], None)
+    assert not cards.calls
+
+
+@pytest.mark.parametrize("malformed", ["{", '{"alice": null}'])
+def test_bad_project_does_not_block_remaining_project_revocations(cards, malformed):
+    """Prevent damaged project state from preserving access in later healthy projects."""
+    host = cards.host
+    sync(cards)
+    host.write(host.path("/etc/porelo-host/projects/aaa.conf"), "admin=ada\n", 0o600)
+    host.write(host.path("/etc/porelo-host/projects/aaa.people.json"), malformed, 0o600)
+    cards.calls.clear()
+    with pytest.raises(cards.scope["Refusal"], match="malformed"):
+        host.revoke_project_access("alice")
+    assert ("rooms", ("alpha", ["ada"])) in cards.calls
+
+
+def test_null_previous_member_is_refused(cards):
+    """Prevent malformed preserved membership from crashing reconciliation after publication."""
+    host = cards.host
+    sync(cards)
+    registry_card(cards, dict(cards.reply["persons"][1], ssh=ssh_key(7)))
+    path = host.path("/etc/porelo-host/projects/alpha.people.json")
+    path.write_text(json.dumps({"alice": None}))
+    with pytest.raises(cards.scope["Refusal"], match="malformed"):
+        sync(cards)
+
+
+def test_pending_local_lock_cannot_readmit_or_authorize_person(cards):
+    """Prevent a failed local removal being mistaken for an unlocked admission."""
+    host = cards.host
+    sync(cards)
+    host.remove_runtime = lambda user: (_ for _ in ()).throw(cards.scope["Refusal"]("unsafe runtime", 73))
+    with pytest.raises(cards.scope["Refusal"]):
+        host.lock("alice", host.records()["alice"], True)
+    cards.calls.clear()
+    with pytest.raises(cards.scope["Refusal"]):
+        host.person("alice", host.records())
+    with pytest.raises(cards.scope["Refusal"], match="alice"):
+        sync(cards)
+    assert not any(
+        args[:2] == ["usermod", "--append"] and args[-1] == "alice" for args, _ in cards.calls if isinstance(args, list)
+    )
+
+
+def test_deferred_demotion_without_membership_file(cards):
+    """Prevent a missing cache from preserving a demoted administrator's local authority."""
+    host = cards.host
+    cards.reply["persons"][1]["role"] = "project-admin"
+    sync(cards)
+    registry_card(cards, dict(cards.reply["persons"][1], ssh=ssh_key(7)))
+    cards.reply["persons"][1]["role"] = "developer"
+    host.path("/etc/porelo-host/projects/alpha.people.json").unlink()
+    sync(cards)
+    assert "alpha project-admin" not in host.records()["alice"]["members"]
+
+
+def test_deferred_signer_without_membership_file_has_registry_bound(cards):
+    """Prevent partial publication bypassing the current card's signing deadline."""
+    host = cards.host
+    sync(cards)
+    registry_card(cards, dict(cards.reply["persons"][1], expires="2026-11-01"))
+    host.path("/etc/porelo-host/projects/alpha.people.json").unlink()
+    sync(cards)
+    lines = host.path("/etc/porelo-host/signers/alpha.allowed").read_text().splitlines()
+    matching = [line for line in lines if ssh_key(2) in line]
+    assert len(matching) == 2
+    assert all('valid-before="20261101000000Z"' in line for line in matching)
+
+
+@pytest.mark.parametrize("operation", ["restore-runtime", "other-project-revocation"])
+def test_pending_local_lock_cannot_regain_runtime_or_project_access(cards, operation):
+    """Prevent maintenance from restoring access while local removal remains unfinished."""
+    host = cards.host
+    sync(cards)
+    host.remove_runtime = lambda user: (_ for _ in ()).throw(cards.scope["Refusal"]("unsafe runtime", 73))
+    with pytest.raises(cards.scope["Refusal"]):
+        host.lock("alice", host.records()["alice"], True)
+    cards.calls.clear()
+    if operation == "restore-runtime":
+        host.admit_runtime = lambda user: cards.calls.append(("admitted", user)) or 1
+        host.execute(["restore-runtime"], None)
+        assert ("admitted", "alice") not in cards.calls
+    else:
+        host.revoke_project_access("ada")
+        assert ("rooms", ("alpha", [])) in cards.calls
+        assert ssh_key(2) not in host.path("/etc/porelo-host/signers/alpha.allowed").read_text()
+
+
+@pytest.mark.parametrize("operation", ["clear", "purge"])
+def test_failed_safety_restoration_stays_pending_until_later_sync(cards, operation):
+    """Prevent a restarted manager or lifted expiry surviving a failed cleanup without retry intent."""
+    host = cards.host
+    sync(cards)
+    host.lock("alice", host.records()["alice"], True)
+    command = host.command
+    damaged = False
+
+    def failing(args, **kwargs):
+        nonlocal damaged
+        if "vault" in args:
+            damaged = True
+            raise cards.scope["Refusal"]("vault unavailable", 69)
+        if damaged and (args[:3] == ["usermod", "--expiredate", "1"] or args[:2] == ["systemctl", "stop"]):
+            raise cards.scope["Refusal"]("restoration unavailable", 69)
+        return command(args, **kwargs)
+
+    host.command = failing
+    with pytest.raises(cards.scope["Refusal"]):
+        if operation == "clear":
+            host.clear_vault("alice")
+        else:
+            host.purge("alice", host.records()["alice"], True, True)
+    record = host.records()["alice"]
+    assert record.get("lock") == "pending"
+    assert not record["locked"]
+    host.command = command
+    cards.calls.clear()
+    sync(cards)
+    assert ("forge_lock", ("alice",)) in cards.calls
+    assert host.records()["alice"]["locked"]
+    assert host.records()["alice"].get("lock") is None
+
+
+def test_retry_does_not_forget_project_after_failed_sync_publication(cards):
+    """Prevent an updated membership cache from hiding a failed remote team revocation on retry."""
+    host = cards.host
+    sync(cards)
+    record = host.records()["alice"]
+    record["members"] = ["alpha developer"]
+    host.record("alice", record)
+    cards.reply["persons"] = cards.reply["persons"][:1]
+    apply = host.forge_project_apply
+    host.forge_project_apply = lambda *args: (_ for _ in ()).throw(cards.scope["Refusal"]("team API unavailable", 69))
+    with pytest.raises(cards.scope["Refusal"]):
+        sync(cards)
+    assert host.records()["alice"].get("lock") == "pending"
+    host.forge_project_apply = apply
+    host.write_krl = lambda keys: None
+    cards.calls.clear()
+    host.apply_registry_cards([], [], host.records())
+    assert ("teams", ("alpha", {"ada": cards.reply["persons"][0]})) in cards.calls
+
+
+def test_task_stop_restoration_failure_records_local_lock_unfinished(cards):
+    """Prevent failed temporary-expiry cleanup claiming that all local access is gone."""
+    host = cards.host
+    sync(cards)
+    command = host.command
+    restarted = False
+
+    def failing(args, **kwargs):
+        nonlocal restarted
+        if args[:2] == ["systemctl", "start"]:
+            restarted = True
+        if restarted and (args[:3] == ["usermod", "--expiredate", "1"] or args[:2] == ["systemctl", "stop"]):
+            raise cards.scope["Refusal"]("restoration unavailable", 69)
+        return command(args, **kwargs)
+
+    host.command = failing
+    with pytest.raises(cards.scope["Refusal"]):
+        host.lock("alice", host.records()["alice"], True)
+    record = host.records()["alice"]
+    assert record.get("lock") == "pending"
+    assert not record["locked"]
