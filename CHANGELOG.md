@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Project sync takes Porelo's verified role `admin` or `developer` and records an admin as the project-admin
+  membership; any other role in the verified access is refused.
 - Root alone brings a registry bundle on stdin with `registry --stdin`, so a fresh host can take its first registry
   before any account holds a setup directory.
 - Gathered push and pull run through sudo for the current project developer. Local API traffic uses the forge gate's

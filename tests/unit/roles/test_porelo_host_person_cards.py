@@ -39,7 +39,7 @@ def cards(tmp_path, monkeypatch):
     host.write(host.path("/etc/login.defs"), "UID_MIN 1000\n", 0o644)
     host.write(host.path("/etc/subuid"), "", 0o644)
     host.write(host.path("/etc/subgid"), "", 0o644)
-    persons = [person("ada", 1, role="project-admin"), person("alice", 2), person("bo", 3)]
+    persons = [person("ada", 1, role="admin"), person("alice", 2), person("bo", 3)]
     host.write(
         host.path("/etc/porelo-host/registry/applied.json"),
         json.dumps(
@@ -419,10 +419,23 @@ def test_lock_skips_membership_files_of_unregistered_projects(cards):
     assert "alice" not in cards.host.records()
 
 
+def test_verified_admin_role_is_recorded_as_the_project_admin_membership(cards):
+    """Prevent Porelo's admin role from being refused or recorded under a name the host's records do not hold."""
+    sync(cards)
+    assert "alpha project-admin" in cards.host.records()["ada"]["members"]
+
+
+def test_verify_answering_the_old_role_name_is_refused(cards):
+    """Prevent a verify answer outside admin and developer from admitting anyone."""
+    cards.reply["persons"][0]["role"] = "project-admin"
+    with pytest.raises(cards.scope["Refusal"], match="invalid verified card"):
+        sync(cards)
+
+
 @pytest.mark.parametrize("failed", [None, "forge", "rooms"])
 def test_lock_preserves_verified_admins_and_attempts_each_service(cards, failed):
     """Prevent role escalation and one service failure from retaining another service's authority."""
-    cards.reply["persons"][1]["role"] = "project-admin"
+    cards.reply["persons"][1]["role"] = "admin"
     cards.reply["admins"] = ["alice"]
     sync(cards)
     attempts = []
@@ -1068,7 +1081,7 @@ def test_deferred_access_is_bounded_by_registry_expiry(cards, expiry):
 def test_lagging_demotion_removes_admin_authority(cards):
     """Prevent a key lag from preserving a role explicitly demoted by verified access."""
     host = cards.host
-    cards.reply["persons"][1]["role"] = "project-admin"
+    cards.reply["persons"][1]["role"] = "admin"
     sync(cards)
     registry_card(cards, dict(cards.reply["persons"][1], ssh=ssh_key(7)))
     cards.reply["persons"][1]["role"] = "developer"
@@ -1199,7 +1212,7 @@ def test_pending_local_lock_cannot_readmit_or_authorize_person(cards):
 def test_deferred_demotion_without_membership_file(cards):
     """Prevent a missing cache from preserving a demoted administrator's local authority."""
     host = cards.host
-    cards.reply["persons"][1]["role"] = "project-admin"
+    cards.reply["persons"][1]["role"] = "admin"
     sync(cards)
     registry_card(cards, dict(cards.reply["persons"][1], ssh=ssh_key(7)))
     cards.reply["persons"][1]["role"] = "developer"

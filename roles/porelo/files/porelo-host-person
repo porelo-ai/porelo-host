@@ -1133,7 +1133,7 @@ class Host:
                     refuse("the project's membership record is malformed", 65)
                 if (not isinstance(people, dict) or any(
                         not re.fullmatch(USER, login) or not isinstance(entry, dict)
-                        or entry.get("role") not in ("project-admin", "developer")
+                        or entry.get("role") not in ("admin", "developer")
                         or not valid_ssh_key(entry.get("ssh")) for login, entry in people.items())):
                     refuse("the project's membership record is malformed", 65)
                 # Reconcile even after a failed sync has already removed the person from this cache.
@@ -1874,7 +1874,7 @@ class Host:
                 refused.append(f"{user}: project card is revoked")
                 continue
             if (not valid_ssh_key(entry.get("ssh")) or entry["ssh"] in keys
-                    or entry.get("role") not in ("project-admin", "developer")
+                    or entry.get("role") not in ("admin", "developer")
                     or any(type(entry.get(field)) is not bool for field in ("revoked", "locked"))
                     or not isinstance(entry.get("hosts"), list)
                     or any(not isinstance(host, str) or not re.fullmatch(HOST, host) for host in entry["hosts"])):
@@ -1916,7 +1916,7 @@ class Host:
                             refuse("the project's membership record is malformed", 65)
                     previous = previous_people.get(user)
                     if user in previous_people:
-                        if (not isinstance(previous, dict) or previous.get("role") not in ("project-admin", "developer")
+                        if (not isinstance(previous, dict) or previous.get("role") not in ("admin", "developer")
                                 or not valid_ssh_key(previous.get("ssh"))):
                             refuse("the project's membership record is malformed", 65)
                         expiry = self.card_expiry(previous.get("expires"))
@@ -1934,7 +1934,8 @@ class Host:
         for user, entry in desired.items():
             card = {key: entry.get(key) for key in ("ssh", "expires")}
             rec = records.get(user)
-            membership = f'{project} {entry["role"]}'
+            # Porelo's verify names the role admin; the host records it as the project-admin membership.
+            membership = f'{project} {"project-admin" if entry["role"] == "admin" else "developer"}'
             if rec is None:
                 if user in groups:
                     refuse("the name belongs to an existing group", 65)
@@ -2051,7 +2052,7 @@ class Host:
                 desired = set()
                 for user, entry in persons.items():
                     identities = self.forge_configuration(user)[1]
-                    if team["name"] == ("Owners" if entry["role"] == "project-admin" else "developers"):
+                    if team["name"] == ("Owners" if entry["role"] == "admin" else "developers"):
                         desired.add(user)
                     # Task gates cannot inherit the person's administrative role.
                     if team["name"] == "developers":
