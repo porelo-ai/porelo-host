@@ -118,9 +118,11 @@ def test_pending_person_format_is_shared_and_preserved(cards, monkeypatch, reaso
     monkeypatch.setitem(scope, "trusted", lambda *args, **kwargs: None)
     path = cards.host.path("/etc/porelo-host/people/alice.conf")
     if reader == "project":
-        members, locked, tail = project["read_person"]("alice", str(path))
-        assert locked
-        path.write_text(project["format_person"](members, locked, tail))
+        members, locked, pending_lock, tail = project["read_person"]("alice", str(path))
+        assert pending_lock and not locked
+        before = path.read_bytes()
+        path.write_text(project["format_person"](members, locked, pending_lock, tail))
+        assert path.read_bytes() == before
         assert "lock=pending\n" in path.read_text()
         assert cards.host.records()["alice"]["lock"] == "pending"
     people = path.parent
@@ -196,3 +198,38 @@ def test_cleanup_requires_its_privileged_programs(cards, operation, program):
     host.commands.remove(program)
     with pytest.raises(cards.scope["Refusal"], match=program):
         getattr(host, operation)("alice")
+
+
+@pytest.mark.parametrize(
+    "locked, pending_lock, retry_fails", [(True, False, False), (True, True, False), (False, True, True)]
+)
+def test_revoked_card_preserves_host_lock_reason(cards, locked, pending_lock, retry_fails):
+    """Prevent key rotation from reopening an administrative lock after a registry retry."""
+    host = cards.host
+    record = host.records()["alice"]
+    record.update(locked=locked, reason="host")
+    if pending_lock:
+        record["lock"] = "pending"
+    host.record("alice", record)
+    if retry_fails:
+        host.commands.remove("gpasswd")
+    host.write_krl = lambda keys: None
+    host.key_revoked = lambda key: True
+    try:
+        host.apply_registry_cards([cards.reply["persons"][1]], [], host.records())
+    except cards.scope["Refusal"]:
+        assert retry_fails
+    assert host.records()["alice"]["reason"] == "host"
+
+
+@pytest.mark.parametrize("program", ["runuser", "env", "porelo"])
+def test_clear_vault_preflights_before_lifting_expiry(cards, program):
+    """Prevent missing cleanup dependencies from lifting expiry on a locked account."""
+    host = cards.host
+    pending(cards, locked=True)
+    host.commands.remove(program)
+    before = host.path("/etc/porelo-host/people/alice.conf").read_bytes()
+    with pytest.raises(cards.scope["Refusal"], match=program):
+        host.clear_vault("alice")
+    assert not cards.calls
+    assert host.path("/etc/porelo-host/people/alice.conf").read_bytes() == before

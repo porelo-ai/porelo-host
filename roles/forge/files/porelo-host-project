@@ -159,7 +159,7 @@ def read_person(user, path):
         and lines[2] in ("locked=false", "locked=true")
         and all(line.startswith("laptop=") and len(line) > 7 for line in lines[3:])
     ):
-        return ["hand"], lines[2] == "locked=true", lines[3:]
+        return ["hand"], lines[2] == "locked=true", False, lines[3:]
     pending = bool(lines and lines[-1] == "lock=pending")
     if pending:
         lines = lines[:-1]
@@ -188,16 +188,17 @@ def read_person(user, path):
         refuse(f"the record for {user} is malformed", 65)
     if lines[index + 1].startswith("ssh="):
         signing_key(lines[index + 1][4:], "person card key", 65)
-    return members, lines[index] == "locked=true" or pending, lines[index + 1 :] + (["lock=pending"] if pending else [])
+    return members, lines[index] == "locked=true", pending, lines[index + 1 :]
 
 
-def format_person(members, locked, laptops):
+def format_person(members, locked, pending, laptops):
     """Serialize a person's record in canonical membership order."""
     ordered = sorted(set(members), key=member_key)
     return (
         "".join(f"member={item}\n" for item in ordered)
         + f"locked={'true' if locked else 'false'}\n"
         + "".join(f"{line}\n" for line in laptops)
+        + ("lock=pending\n" if pending else "")
     )
 
 
@@ -556,11 +557,11 @@ def people_after_removal(project):
             refuse("the people directory holds an unknown record", 65)
         user = entry_name[:-5]
         person_path = os.path.join(people_dir, entry_name)
-        members, locked, laptops = read_person(user, person_path)
+        members, locked, pending, laptops = read_person(user, person_path)
         remaining = [item for item in members if item == "hand" or item.split(" ", 1)[0] != project]
         if remaining != members:
-            affected.append((user, person_path, format_person(remaining, locked, laptops)))
-            if not remaining and not locked:
+            affected.append((user, person_path, format_person(remaining, locked, pending, laptops)))
+            if not remaining and (not locked or pending):
                 to_lock.append(user)
     if to_lock:
         trusted(PERSON)
@@ -687,12 +688,12 @@ def admitted(admin, person):
     """Under the lock, the admin must still hold a membership and not be locked out or purged."""
     if not os.path.lexists(person):
         refuse(f"{admin} is no person on this host", 65)
-    members, locked, laptops = read_person(admin, person)
-    if locked:
+    members, locked, pending, laptops = read_person(admin, person)
+    if locked or pending:
         refuse(f"{admin} is locked on this host", 65)
     if not members:
         refuse(f"{admin} holds no membership on this host", 65)
-    return members, locked, laptops
+    return members, locked, pending, laptops
 
 
 def named_in_registry(project, admin):
@@ -767,9 +768,9 @@ def run():
         if action == "remove" and not os.path.lexists(record):
             refuse(f"unknown project {project}")
         if action == "add":
-            members, locked, laptops = admitted(admin, person)
+            members, locked, pending, laptops = admitted(admin, person)
             named_in_registry(project, admin)
-            person_content = format_person([*members, f"{project} project-admin"], locked, laptops)
+            person_content = format_person([*members, f"{project} project-admin"], locked, pending, laptops)
             affected = None
             publisher = None
         else:

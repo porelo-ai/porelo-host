@@ -760,18 +760,15 @@ class Host:
             if errors:
                 raise errors[0]
             return
-        account, identities = config
-        base, ca = self.forge_endpoint()
-        opener = self.forge_opener(ca)
-        token = self.forge_token(account, ADMIN, "write:admin")
-        users = self.forge_users(account)
-        for identity in identities:
-            if identity not in users:
-                continue
-            try:
-                self.forge_revoke_identity(opener, base, token, identity)
-            except Refusal as error:
-                errors.append(error)
+        with self.forge_session(user) as (account, opener, base, token):
+            users = self.forge_users(account)
+            for identity in config[1]:
+                if identity not in users:
+                    continue
+                try:
+                    self.forge_revoke_identity(opener, base, token, identity)
+                except Refusal as error:
+                    errors.append(error)
         if errors:
             refuse("; ".join(str(error) for error in errors), errors[0].code)
 
@@ -1175,7 +1172,7 @@ class Host:
         only the expiry is lifted for this, the password stays locked and no key or peer lets anyone in. Any failure
         expires the account again, as the lock left it.
         """
-        self.require(["usermod", "systemctl"])
+        self.require(["usermod", "systemctl", "runuser", "env", "porelo"])
         record = self.records()[user]
         pending = record.get("lock") == "pending"
         record.update(lock="pending", locked=False)
@@ -1755,7 +1752,6 @@ class Host:
     def apply_registry_cards(self, persons, revoked, records, previous=None, retried=(), retry_errors=()):
         """Apply host revocations and current card keys after recording the verified registry."""
         already_retried = set(retried)
-        retried = already_retried | {user for user, rec in records.items() if rec.get("lock") == "pending"}
         errors = list(retry_errors) + self.retry_locks({user: rec for user, rec in records.items()
                                                      if user not in already_retried})
         failed = {user for user, rec in records.items() if rec.get("lock") == "pending"}
@@ -1774,7 +1770,8 @@ class Host:
                 continue
             try:
                 if login in revoked or self.key_revoked(entry["ssh"]):
-                    if login in retried or not record["locked"] or record.get("reason", "host") != "host":
+                    if (not record["locked"] and record.get("lock") != "pending"
+                            or record.get("reason", "host") != "host"):
                         record["reason"] = "key"
                     self.lock(login, record, True)
                 elif login not in failed and not record["locked"]:

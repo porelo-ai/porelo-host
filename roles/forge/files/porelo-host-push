@@ -109,7 +109,7 @@ if [ -z "$checking" ]; then
             case "$line" in
                 "member=$project_owner developer" | "member=$project_owner project-admin") member=yes ;;
                 locked=false) locked=no ;;
-                locked=true) fail "the caller is locked" 77 ;;
+                locked=true | lock=pending) fail "the caller is locked" 77 ;;
             esac
         done < "$person_record"
         [ "$member" = yes ] && [ "$locked" = no ] || fail "the caller is no developer of $project_owner" 77

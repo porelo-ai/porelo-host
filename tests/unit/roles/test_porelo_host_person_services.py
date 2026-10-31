@@ -42,6 +42,7 @@ class Services:
         self.requests = []
         self.users = {}
         self.tokens = {}
+        self.admin_tokens = {}
         self.transport_exit = 0
         self.transport_error = "machine was expelled; choose another machine name"
         self.failure = None
@@ -79,6 +80,7 @@ class Services:
                     assert action == "generate-access-token"
                     if user == "porelo-admin":
                         assert args[args.index("--scopes") + 1] == "write:admin"
+                        self.admin_tokens[max(self.admin_tokens, default=0) + 1] = args[args.index("--token-name") + 1]
                         answer = ADMIN_TOKEN + "\n"
                     else:
                         self.tokens.setdefault(user, []).append(len(self.tokens.get(user, [])) + 1)
@@ -109,6 +111,18 @@ class Services:
         if self.api_failure and (isinstance(self.api_failure, int) or self.api_failure == user):
             code = self.api_failure if isinstance(self.api_failure, int) else 500
             raise urllib.error.HTTPError(request.full_url, code, "fixture failure", {}, io.BytesIO(b"secret"))
+        if user == "porelo-admin":
+            if method == "DELETE":
+                del self.admin_tokens[int(path.rsplit("/", 1)[1])]
+                data, status = None, 204
+            else:
+                assert method == "GET"
+                page = int(parse_qs(url.query).get("page", [1])[0])
+                data = [{"id": key, "name": name} for key, name in self.admin_tokens.items()] if page == 1 else []
+                status = 200
+            response = io.BytesIO(json.dumps(data).encode())
+            response.status = status
+            return response
         assert user in IDENTITIES
         if method == "PATCH":
             assert json.loads(request.data)["prohibit_login"] is True
@@ -316,7 +330,8 @@ def test_invalid_or_repeated_forge_token_pages_fail_without_a_loop(services, rep
         hook(services, "forge_lock", "alice")
     assert error.value.code == 69
     assert "secret-token" not in str(error.value)
-    assert len(services.recorder.requests) <= 12
+    assert len([request for request in services.recorder.requests if "/porelo-admin/" not in request[1]]) <= 12
+    assert not services.recorder.admin_tokens
 
 
 def test_admin_api_errors_do_not_echo_credentials_or_response_bodies(services):
@@ -524,3 +539,23 @@ def test_missing_person_account_does_not_skip_forge_revocation(services, linked,
     assert services.recorder.users == dict.fromkeys(IDENTITIES, True)
     assert services.recorder.tokens == dict.fromkeys(IDENTITIES, [])
     assert sentinel.read_text() == "untouched"
+
+
+@pytest.mark.parametrize("failure", [None, "alice", "users"])
+def test_forge_lock_deletes_its_temporary_admin_token(services, monkeypatch, failure):
+    """Prevent lock retries from accumulating permanent administrator credentials."""
+    services.recorder.users = dict.fromkeys(OWN, False)
+    if failure == "users":
+
+        def unavailable(account):
+            raise services.scope["Refusal"]("user list unavailable", 69)
+
+        monkeypatch.setattr(services.host, "forge_users", unavailable)
+    else:
+        services.recorder.api_failure = failure
+    if failure:
+        with pytest.raises(services.scope["Refusal"]):
+            services.host.forge_lock("alice")
+    else:
+        services.host.forge_lock("alice")
+    assert not services.recorder.admin_tokens

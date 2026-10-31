@@ -1242,3 +1242,42 @@ def test_remove_deletes_only_its_membership_and_signer_publications(memory_host,
     assert code == 0, err
     for path in paths:
         assert path.exists() == path.name.startswith("beta")
+
+
+@pytest.mark.parametrize("locked", [False, True])
+@pytest.mark.parametrize("remaining", [False, True])
+def test_remove_preserves_pending_state_and_retries_last_membership_lock(
+    memory_host, monkeypatch, capsys, locked, remaining
+):
+    """Prevent removal from falsifying local revocation state or abandoning the last pending lock."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    path = host["etc"] / "people/bob.conf"
+    tail = f"locked={str(locked).lower()}\nlaptop=laptop ssh-ed25519 AAAA wg= 192.0.2.3\nlock=pending\n"
+    membership = "member=beta developer\n" if remaining else ""
+    path.write_text("member=alpha developer\n" + membership + tail)
+    helper = host["tmp"] / "person-lock"
+    captured = host["tmp"] / "lock-record"
+    helper.write_text(
+        "#!/usr/bin/python3 -I\n"
+        "import pathlib, sys\n"
+        "assert sys.argv[1:] == ['lock', 'bob']\n"
+        f"pathlib.Path({str(captured)!r}).write_bytes(pathlib.Path({str(path)!r}).read_bytes())\n"
+        'print(\'{"person":"bob","locked":true}\')\n'
+    )
+    helper.chmod(0o700)
+    code, out, err = project(host, monkeypatch, capsys, "remove", "alpha", overrides={"PERSON": str(helper)})
+    assert code == 0, err
+    assert path.read_text() == membership + tail
+    assert json.loads(out)["locked"] == ([] if remaining else ["bob"])
+    assert captured.exists() == (not remaining)
+    if not remaining:
+        assert captured.read_text() == tail
+
+
+def test_pending_admin_cannot_add_a_project(memory_host, monkeypatch, capsys):
+    """Prevent pending local revocation from retaining project administration."""
+    path = memory_host["etc"] / "people/alice.conf"
+    path.write_text("member=hand\nlocked=false\nlaptop=laptop ssh-ed25519 AAAA wg= 192.0.2.3\nlock=pending\n")
+    result = project(memory_host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)
+    assert_refused(memory_host, result, "locked", 65)

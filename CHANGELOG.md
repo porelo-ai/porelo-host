@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and validates lock retry dependencies. Local removal survives service failures, and lagging cards honor access
   losses. Unfinished locks retry across runs, and cleanup failures retain their retry state.
   Pending locks preserve new revocations and shared records, while deferred access honors every expiry bound.
+  Cleanup preflights dependencies and deletes temporary admin tokens; host lock reasons and pending access
+  restrictions survive retries and project removal.
 - The runner comes back when its proxy restarts, a stopped proxy removes the jobs left in its namespace, and jobs get a
   read-only name table of root's and the host name localhost, so a job's own container cannot take the forge's name for
   later jobs (`docker://` steps and the shared resolver file still can). The runner gate's Bearer

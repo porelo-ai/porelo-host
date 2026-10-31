@@ -1421,3 +1421,16 @@ def test_completed_namespace_git_does_not_leave_a_helper_holding_output_open(hos
         if process.poll() is None:
             process.kill()
         process.communicate(timeout=5)
+
+
+@pytest.mark.parametrize("locked", [False, True])
+@pytest.mark.parametrize("pending_first", [False, True])
+def test_pending_caller_is_refused_before_configuration_or_credentials(host, locked, pending_first):
+    """Prevent incomplete revocation from letting a sudo caller continue through root push operations."""
+    lines = ["member=porelo developer\n", f"locked={str(locked).lower()}\n"]
+    lines.insert(0 if pending_first else len(lines), "lock=pending\n")
+    (host["etc"] / "people/alice.conf").write_text("".join(lines))
+    (host["etc"] / "people/alice.conf").chmod(0o600)
+    code, output = push(host, "porelo")
+    assert code == 77 and "the caller is locked" in output, (code, output)
+    assert not host["calls"].exists()
