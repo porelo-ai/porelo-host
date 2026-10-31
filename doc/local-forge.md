@@ -274,7 +274,15 @@ recorded admin is named in `dropped` and kept: its next `sync` and a new `porelo
 revoked counts even where it is refused for another fault, its last key stays recorded for the KRL, and a revoked admin
 gets no project, no `sync` and no `add`. A host card without its signer refuses the bundle (`69`), and `registry pin`
 runs as root alone, never through `sudo`. Success prints
-`{"commit":"<commit>","pinned":"SHA256:...","projects":[...],"dropped":[...],"revoked":[...],"refused":[...],"unchanged":false}`.
+`{"commit":"<commit>","pinned":"SHA256:...","projects":[...],"dropped":[...],"revoked":[...],"refused":[...],"unchanged":false,"host":"<host>","persons":[...]}`.
+
+`porelo-host-person registry status`, root's alone and read-only, answers the interface over root's SSH without it
+reading root's files: `{"host":"<host>","commit":"<commit>"|null,"pinned":"SHA256:..."|null,"persons":[...]}`. Each
+person, sorted by login, has `login`, `state`, `hand` (a membership by hand) and `projects` (`project`, `role`). The
+state is `active`, `locked`, `pending` (a lock or purge to retry), `purged`, or `named` for a login the applied
+registry names that the host has not admitted; only `active` is an admission. It reads under the host's shared lock,
+so it never sees a lock, removal or sync half done. `registry` answers `host` and `persons` in the same shape, read
+after the bundle is applied.
 
 ## Each push judged when it arrives
 

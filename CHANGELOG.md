@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `porelo-host-person registry status`, root's alone, answers the host, the applied registry commit, the pinned
+  fingerprint and each person's state (`active`, `locked`, `pending`, `purged` or `named`), memberships by hand and
+  per project; `registry` answers `host` and `persons` the same way.
 - Each push to the host's forge is judged when it arrives: a pre-receive hook asks root's `porelo-host-person
   verify-push`, which has Porelo's `commit verify` judge every new commit against the project's keys in force, their
   certifiers of the project's own tasks, the KRL and the project's task certificates valid now, refuses the push

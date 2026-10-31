@@ -519,6 +519,22 @@ def test_registry_applies_a_verified_bundle_against_the_pin_and_records_it_root_
         "revoked": [],
         "refused": [],
         "unchanged": False,
+        "host": "host",
+        "pinned": fingerprint(SIGNER_ONE),
+        "persons": [
+            {
+                "login": "ada",
+                "state": "active",
+                "hand": True,
+                "projects": [{"project": "alpha", "role": "project-admin"}],
+            },
+            {
+                "login": "bo",
+                "state": "active",
+                "hand": True,
+                "projects": [{"project": "beta", "role": "project-admin"}],
+            },
+        ],
     }
     verify = state.registry_calls[0]
     assert verify[verify.index("--pinned") + 1] == fingerprint(SIGNER_ONE)
@@ -533,6 +549,74 @@ def test_registry_applies_a_verified_bundle_against_the_pin_and_records_it_root_
     assert host.invoke("registry", data=b"") == 0
     assert json.loads(capsys.readouterr().out)["unchanged"] is True
     assert state.registry_calls[1][state.registry_calls[1].index("--since") + 1] == "a" * 40
+
+
+def test_registry_status_answers_the_applied_registry_and_where_each_person_stands(registry_host, capsys):
+    """Prevent the interface from reading root's files, or taking a pending lock, a purge or a name for an admission."""
+    host, state = registry_host
+    assert host.invoke("registry", "status", data=b"") == 0
+    assert json.loads(capsys.readouterr().out)["commit"] is None
+    state.registry_reply["persons"].append(registry_person("fay", ssh_key(95)))
+    assert host.invoke("registry", data=b"") == 0
+    capsys.readouterr()
+    host.write("/etc/porelo-host/people/cy.conf", f"member=alpha developer\nlocked=true\nssh={ssh_key(92)}\nexpires=\n")
+    host.write(
+        "/etc/porelo-host/people/di.conf",
+        f"member=hand\nlocked=false\nssh={ssh_key(93)}\nexpires=\nlock=pending\n",
+    )
+    host.write("/etc/porelo-host/people/purged", "al\n")
+    before = {path: path.read_bytes() for path in host.root.rglob("*") if path.is_file()}
+    assert host.invoke("registry", "status", data=b"") == 0
+    answer = json.loads(capsys.readouterr().out)
+    assert answer == {
+        "host": "host",
+        "commit": "a" * 40,
+        "pinned": fingerprint(SIGNER_ONE),
+        "persons": [
+            {
+                "login": "ada",
+                "state": "active",
+                "hand": True,
+                "projects": [{"project": "alpha", "role": "project-admin"}],
+            },
+            {"login": "al", "state": "purged", "hand": False, "projects": []},
+            {
+                "login": "bo",
+                "state": "active",
+                "hand": True,
+                "projects": [{"project": "beta", "role": "project-admin"}],
+            },
+            {"login": "cy", "state": "locked", "hand": False, "projects": [{"project": "alpha", "role": "developer"}]},
+            {"login": "di", "state": "pending", "hand": True, "projects": []},
+            {"login": "fay", "state": "named", "hand": False, "projects": []},
+        ],
+    }
+    assert {path: path.read_bytes() for path in host.root.rglob("*") if path.is_file()} == before, "status wrote"
+
+
+def test_registry_status_is_roots_alone(registry_host, capsys):
+    """Prevent a person's sudo from reading where every other person stands."""
+    host, _ = registry_host
+    assert host.invoke("registry", "status", data=b"", sudo_user="ada") == 65
+    assert "root's alone" in capsys.readouterr().err
+
+
+def test_registry_status_waits_for_a_writer_holding_the_hosts_lock(registry_host, capsys):
+    """Prevent the interface from reading a lock, a removal or a sync half done."""
+    import fcntl
+    import threading
+
+    host, _ = registry_host
+    done = []
+    with (host.root / "etc/porelo-host/forge.conf").open("rb") as mutex:
+        fcntl.flock(mutex, fcntl.LOCK_EX)
+        reader = threading.Thread(target=lambda: done.append(host.invoke("registry", "status", data=b"")))
+        reader.start()
+        reader.join(0.5)
+        assert done == [], "the reader did not wait for the lock"
+    reader.join(10)
+    assert done == [0]
+    capsys.readouterr()
 
 
 def test_root_brings_the_first_registry_on_stdin_before_any_account_holds_it(registry_host, capsys):

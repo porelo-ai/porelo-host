@@ -1784,6 +1784,37 @@ class Host:
             "revoked": revoked,
             "refused": refused,
             "unchanged": unchanged,
+            **self.registry_status(host),
+        }
+
+    def registry_status(self, host=None):
+        """The host, the applied registry and where each person stands on it, from root's records alone."""
+        if host is None:
+            host = self.setting("/etc/porelo-host/forge.conf", "host")
+            if not re.fullmatch(HOST, host):
+                refuse("forge.conf names no valid host", 69)
+        _, pinned = self.registry_pin()
+        _, applied = self.applied_registry()
+        persons = {}
+        for login, record in self.records().items():
+            state = "pending" if record.get("lock") == "pending" else "locked" if record["locked"] else "active"
+            projects = []
+            for member in record["members"]:
+                if member != "hand":
+                    project, role = member.split()
+                    projects.append({"project": project, "role": role})
+            persons[login] = {"login": login, "state": state, "hand": "hand" in record["members"],
+                              "projects": projects}
+        for login in self.purged():
+            persons.setdefault(login, {"login": login, "state": "purged", "hand": False, "projects": []})
+        for item in [] if applied is None else applied["persons"]:
+            persons.setdefault(item["login"], {"login": item["login"], "state": "named", "hand": False,
+                                               "projects": []})
+        return {
+            "host": host,
+            "commit": None if applied is None else applied["commit"],
+            "pinned": None if pinned is None else fingerprint(pinned["key"]),
+            "persons": [persons[login] for login in sorted(persons)],
         }
 
     def apply_registry_cards(self, persons, revoked, records, previous=None, retried=(), retry_errors=()):
@@ -2977,6 +3008,15 @@ class Host:
             with conf.open("rb") as mutex:
                 fcntl.flock(mutex, fcntl.LOCK_SH)
                 return self.show_arrivals(self.sudo_user, project, repository, self.records())
+        if arguments == ["registry", "status"]:
+            # Read-only, for the interface over root's SSH; a person's sudo reaches none of it.
+            if self.sudo_user is not None:
+                refuse("registry status is root's alone and never runs through sudo", 65)
+            conf = self.path("/etc/porelo-host/forge.conf")
+            self.check(conf, required=True)
+            with conf.open("rb") as mutex:
+                fcntl.flock(mutex, fcntl.LOCK_SH)
+                return self.registry_status()
         if arguments == ["restore-runtime"]:
             changed = 0
             conf = self.path("/etc/porelo-host/forge.conf")
@@ -3011,7 +3051,7 @@ class Host:
         else:
             refuse(
                 "use add <user> --role project-admin, lock <user>, purge <user>, sync <project>, registry [--stdin],"
-                " registry pin <user> <key>, forge-token, task <task>, task --end <task>,"
+                " registry pin <user> <key>, registry status, forge-token, task <task>, task --end <task>,"
                 " task --show <fingerprint>, arrivals <project> <repository>, verify-push"
                 " or sweep"
             )
