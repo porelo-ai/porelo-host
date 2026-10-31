@@ -505,6 +505,7 @@ class Host:
 
     def as_account(self, user, arguments, **kwargs):
         """Pass credentials on stdin only, with a fixed runtime and the account's own home."""
+        self.require(["runuser", "env"])
         entry = self.account(user)
         return self.command(
             [
@@ -981,9 +982,11 @@ class Host:
     def join_groups(self, user, groups):
         """Limit password sudo to people, adding virtualization groups only where installed."""
         if "porelo-people" not in groups:
+            self.require(["groupadd"])
             self.command(["groupadd", "--system", "porelo-people"])
             groups.add("porelo-people")
         names = [name for name in ("kvm", "libvirt") if name in groups] + ["porelo-people"]
+        self.require(["usermod"])
         self.command(["usermod", "--append", "--groups", ",".join(names), user])
 
     def add(self, user, card, groups, uid_range, gid_range, members=("hand",)):
@@ -1000,11 +1003,11 @@ class Host:
             try:
                 self.lock(user, record, False)
             except (Refusal, OSError):
-                record["locked"] = True
                 self.record(user, record)
             words = str(error) if isinstance(error, Refusal) else "cannot read or change the host's files"
             code = error.code if isinstance(error, Refusal) else 73
-            refuse(f"{words}; the account is locked, and purge {user} removes it", code)
+            state = "the account is locked" if record["locked"] else "local account removal failed; retry lock"
+            refuse(f"{words}; {state}, and purge {user} removes it", code)
 
     def grant(self, user, card, groups, uid_range, gid_range, members=("hand",)):
         """Everything of an admission after the account, ending with the record that admits."""
@@ -1022,47 +1025,56 @@ class Host:
             uid = self.uid(user)
         except KeyError:
             uid = None
-        self.require(["gpasswd"] + ([] if uid is None else ["loginctl", "systemctl", "usermod"])
-                     + (["runuser", "porelo"] if porelo and uid is not None else []))
-        self.prepare_services(user, "lock")
-        authorized = self.path(f"/etc/ssh/authorized_keys/{user}")
-        self.check(authorized, 73)
-        authorized.unlink(missing_ok=True)
         errors = []
-        try:
-            self.command(["gpasswd", "--delete", user, "porelo-people"], accepted=(0, 3))
-        except Refusal as error:
-            errors.append(error)
-        try:
-            self.remove_runtime(user)
-        except Refusal as error:
-            errors.append(error)
-        for name in ("forge_lock", "matrix_expel_revoke"):
+
+        def attempt(action):
             try:
-                self.hooks[name](user)
+                action()
             except Refusal as error:
                 errors.append(error)
-        if porelo and uid is not None:
-            self.command(self.porelo(user, "task", "stop", "--all"), required=False)
-        # Without linger or a session logind may already have let the person go, and knows nobody to end.
-        commands = [] if uid is None else [
-            (["loginctl", "terminate-user", user], (0, 1)),
-            (["systemctl", "stop", f"user@{uid}.service"], (0,)),
-            (["usermod", "--lock", "--expiredate", "1", user], (0,)),
-        ]
-        for args, accepted in commands:
-            try:
-                self.command(args, accepted=accepted)
-            except Refusal as error:
-                errors.append(error)
-        try:
-            self.revoke_project_access(user)
-        except Refusal as error:
-            errors.append(error)
+            except OSError:
+                errors.append(Refusal("cannot read or change the host's files during revocation", 73))
+
+        def local_command(args, accepted=(0,)):
+            self.require([args[0]])
+            self.command(args, accepted=accepted)
+
+        def remove_key():
+            authorized = self.path(f"/etc/ssh/authorized_keys/{user}")
+            self.check(authorized, 73)
+            authorized.unlink(missing_ok=True)
+
+        attempt(remove_key)
+        attempt(lambda: local_command(["gpasswd", "--delete", user, "porelo-people"], (0, 3)))
+        attempt(lambda: self.remove_runtime(user))
+        if uid is not None:
+            # logind may already have ended the session when linger is disabled.
+            attempt(lambda: local_command(["loginctl", "terminate-user", user], (0, 1)))
+            attempt(lambda: local_command(["systemctl", "stop", f"user@{uid}.service"]))
+            attempt(lambda: local_command(["usermod", "--lock", "--expiredate", "1", user]))
+        local_removed = not errors
+        # A failed local step must not let reconciliation restore the access already removed.
         record["locked"] = True
-        self.record(user, record)
+        attempt(lambda: self.record(user, record))
+
+        for name in ("forge_lock", "matrix_expel_revoke"):
+            attempt(lambda: self.hooks[name](user))
+        if porelo and uid is not None and local_removed:
+            def stop_tasks():
+                self.require(["runuser", "env", "porelo", "usermod", "systemctl"])
+                # PAM requires an unexpired account; the password, keys and group access remain revoked.
+                try:
+                    self.command(["usermod", "--expiredate", "", user])
+                    self.command(["systemctl", "start", f"user@{uid}.service"])
+                    self.command(self.porelo(user, "task", "stop", "--all"))
+                finally:
+                    attempt(lambda: local_command(["usermod", "--expiredate", "1", user]))
+                    attempt(lambda: local_command(["systemctl", "stop", f"user@{uid}.service"]))
+            attempt(stop_tasks)
+        attempt(lambda: self.revoke_project_access(user))
         if errors:
             refuse("; ".join(str(error) for error in errors), errors[0].code)
+
 
     def revoke_project_access(self, user):
         """Take a host-locked login out of every known project's teams, rooms and signers."""
@@ -1676,7 +1688,7 @@ class Host:
                 if login in revoked or self.key_revoked(entry["ssh"]):
                     if not record["locked"] or record.get("reason", "host") != "host":
                         record["reason"] = "key"
-                    self.lock(login, record, self.available("porelo"))
+                    self.lock(login, record, True)
                 elif not record["locked"]:
                     record.update({key: entry[key] for key in ("ssh", "expires")})
                     self.write_authorized_key(login, entry["ssh"], self.card_expiry(entry["expires"]))
@@ -1731,6 +1743,11 @@ class Host:
         host_name = self.setting("/etc/porelo-host/forge.conf", "host")
         desired, seen, keys, refused = {}, set(), set(), []
         deferred = set()
+        affected = {user for user, rec in records.items()
+                    if any(m != "hand" and m.split()[0] == project for m in rec["members"])}
+        people_path = self.path(f"/etc/porelo-host/projects/{project}.people.json")
+        self.check(people_path, 73)
+        previous_people = None
         purged = self.purged()
         _, registry = self.applied_registry()
         registry_people = {item["login"]: item for item in registry["persons"]}
@@ -1756,15 +1773,11 @@ class Host:
                 if user in records:
                     if not records[user]["locked"] or records[user].get("reason", "host") != "host":
                         records[user]["reason"] = "key"
-                    self.lock(user, records[user], self.available("porelo"))
+                    self.lock(user, records[user], True)
                 continue
             # A project revocation names no key or expiry, so it is taken before the card is compared.
             if entry.get("revoked") is True:
                 refused.append(f"{user}: project card is revoked")
-                continue
-            if any(entry.get(field) != current.get(field) for field in ("login", "ssh", "expires")):
-                refused.append(f"{user}: card key or expiry does not match the host's applied registry")
-                deferred.add(user)
                 continue
             if (not valid_ssh_key(entry.get("ssh")) or entry["ssh"] in keys
                     or entry.get("role") not in ("project-admin", "developer")
@@ -1791,9 +1804,34 @@ class Host:
                 continue
             if records.get(user, {}).get("locked") and records[user].get("reason", "host") == "host":
                 continue
+            if any(entry.get(field) != current.get(field) for field in ("login", "ssh", "expires")):
+                if uid is None:
+                    refused.append(f"{user}: lagging card has no host account")
+                    continue
+                if user in affected and people_path.exists():
+                    if previous_people is None:
+                        self.check(people_path, mode=0o600)
+                        try:
+                            previous_people = json.loads(self.read(people_path))
+                        except ValueError:
+                            refuse("the project's membership record is malformed", 65)
+                        if not isinstance(previous_people, dict):
+                            refuse("the project's membership record is malformed", 65)
+                    previous = previous_people.get(user)
+                    if previous is not None:
+                        if (not isinstance(previous, dict) or previous.get("role") not in ("project-admin", "developer")
+                                or not valid_ssh_key(previous.get("ssh"))):
+                            refuse("the project's membership record is malformed", 65)
+                        expiry = self.card_expiry(previous.get("expires"))
+                        if expiry is not None and expiry <= self.now().strftime("%Y%m%d%H%M%SZ"):
+                            continue
+                        if self.key_revoked(previous["ssh"]):
+                            refused.append(f"{user}: preserved project card key is revoked in the KRL")
+                            continue
+                refused.append(f"{user}: card key or expiry does not match the host's applied registry")
+                deferred.add(user)
+                continue
             desired[user] = entry
-        affected = {user for user, rec in records.items()
-                    if any(m != "hand" and m.split()[0] == project for m in rec["members"])}
         added, dropped = sorted(set(desired) - affected), sorted(affected - set(desired) - deferred)
         groups = self.groups if self.groups is not None else {entry.gr_name for entry in grp.getgrall()}
         for user, entry in desired.items():
@@ -1812,6 +1850,7 @@ class Host:
                 records[user] = {"members": [membership], "locked": False, **card}
             else:
                 if rec["locked"]:
+                    self.require(["usermod"])
                     self.command(["usermod", "--expiredate", "", user])
                     self.hooks["forge_admit"](user, card)
                     self.forge_unlock(user)
@@ -1826,29 +1865,13 @@ class Host:
             rec["members"] = [m for m in rec["members"] if m == "hand" or m.split()[0] != project]
             if not rec["members"] and not rec["locked"]:
                 rec["reason"] = "membership"
-                self.lock(user, rec, self.available("porelo"))
+                self.lock(user, rec, True)
             else:
                 self.record(user, rec)
         active = {user: entry for user, entry in desired.items() if not records[user]["locked"]}
-        people_path = self.path(f"/etc/porelo-host/projects/{project}.people.json")
-        self.check(people_path, 73)
-        if deferred & affected and people_path.exists():
-            self.check(people_path, mode=0o600)
-            try:
-                previous_people = json.loads(self.read(people_path))
-            except ValueError:
-                refuse("the project's membership record is malformed", 65)
-            if not isinstance(previous_people, dict):
-                refuse("the project's membership record is malformed", 65)
-            for user in sorted(deferred & affected):
-                if records[user]["locked"] or user not in previous_people:
-                    continue
-                entry = previous_people[user]
-                if (not isinstance(entry, dict) or entry.get("role") not in ("project-admin", "developer")
-                        or not valid_ssh_key(entry.get("ssh"))):
-                    refuse("the project's membership record is malformed", 65)
-                self.card_expiry(entry.get("expires"))
-                active[user] = entry
+        for user in sorted(deferred & affected):
+            if not records[user]["locked"] and previous_people is not None and user in previous_people:
+                active[user] = previous_people[user]
         self.write(people_path, json.dumps(active) + "\n", 0o600)
         self.project_signers(project, active,
                              preserve={user for user in deferred & affected if not records[user]["locked"]})
@@ -1969,10 +1992,15 @@ class Host:
             refuse("the project's signer history is malformed", 65)
         current = {user: {"ssh": entry["ssh"], "expires": entry.get("expires")} for user, entry in persons.items()}
         for user in preserve:
-            if user in previous["current"]:
-                current[user] = previous["current"][user]
-            else:
-                current.pop(user, None)
+            card = previous["current"].get(user)
+            current.pop(user, None)
+            if card is not None:
+                if not isinstance(card, dict) or not valid_ssh_key(card.get("ssh")):
+                    refuse("the project's signer history holds an invalid current card", 65)
+                expiry = self.card_expiry(card.get("expires"))
+                if (not self.key_revoked(card["ssh"])
+                        and (expiry is None or expiry > self.now().strftime("%Y%m%d%H%M%SZ"))):
+                    current[user] = card
         history = previous["history"]
         before = self.now().strftime("%Y%m%d%H%M%SZ")
         for user, card in previous["current"].items():
@@ -1994,7 +2022,7 @@ class Host:
             bound = self.card_expiry(item.get("before"))
             if bound is None:
                 refuse("the project's historical signer has no time limit", 65)
-            if item["login"] in current:
+            if item["login"] in current and not self.key_revoked(item["ssh"]):
                 lines.extend([f'{item["login"]} namespaces="git",valid-before="{bound}" {item["ssh"]}',
                               f'task:* cert-authority,namespaces="git",valid-before="{bound}" {item["ssh"]}'])
         self.directories(state.parent)
@@ -2344,8 +2372,12 @@ class Host:
                          self.next_range(self.subids("subgid")))
                 return {"person": user, "role": "project-admin"}
             self.targets(user)
-            programs = ["gpasswd"] + ([] if uid is None else ["loginctl", "usermod", "systemctl"])
+            if verb == "lock":
+                record["reason"] = "host"
+                self.lock(user, record, True)
+                return {"person": user, "locked": True}
             porelo = self.available("porelo")
+            programs = ["gpasswd"] + ([] if uid is None else ["loginctl", "usermod", "systemctl"])
             if porelo and uid is not None:
                 programs.append("runuser")
                 if verb == "purge":
@@ -2358,10 +2390,6 @@ class Host:
                 if uid is not None:
                     programs.extend(["loginctl", "systemctl", "userdel"])
             self.require(programs)
-            if verb == "lock":
-                record["reason"] = "host"
-                self.lock(user, record, porelo)
-                return {"person": user, "locked": True}
             self.purge(user, record, porelo, uid is not None)
             return {"person": user, "purged": True}
 

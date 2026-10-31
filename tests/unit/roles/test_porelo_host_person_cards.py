@@ -27,7 +27,7 @@ def cards(tmp_path, monkeypatch):
     host.now = lambda: datetime.datetime(2026, 10, 30, tzinfo=datetime.timezone.utc)
     calls = []
     host.runner = lambda args, input=None: (calls.append((args, input)) or subprocess.CompletedProcess(args, 0, "", ""))
-    host.commands = {"gpasswd", "usermod", "loginctl", "systemctl", "runuser", "porelo", "systemd-run"}
+    host.commands = {"gpasswd", "usermod", "loginctl", "systemctl", "runuser", "env", "porelo", "systemd-run"}
     monkeypatch.setattr(
         scope["pwd"],
         "getpwnam",
@@ -720,7 +720,7 @@ def test_project_revoked_card_with_empty_key_drops_the_member(cards):
 
 @pytest.mark.parametrize("verb", ["lock", "purge", "direct-lock"])
 @pytest.mark.parametrize("program", ["gpasswd", "loginctl", "usermod", "systemctl"])
-def test_retried_lock_requires_every_executable_before_changes(cards, verb, program):
+def test_retried_lock_never_executes_a_missing_program(cards, verb, program):
     """Prevent a lock retry from executing an unchecked or missing privileged program."""
     host = cards.host
     host.commands.update({"gpasswd", "userdel"})
@@ -734,7 +734,9 @@ def test_retried_lock_requires_every_executable_before_changes(cards, verb, prog
             host.lock("alice", record, False)
         else:
             host.execute([verb, "alice"], None)
-    assert cards.calls == []
+    assert not any(isinstance(args, list) and args[0] == program for args, _ in cards.calls)
+    if verb != "purge":
+        assert any(isinstance(args, list) and args[0] != program for args, _ in cards.calls)
 
 
 @pytest.mark.parametrize("membership_state", ["ahead", "missing"])
@@ -763,3 +765,207 @@ def test_lagging_bundle_preserves_signers_after_partial_publication(cards, membe
     assert any("alice" in r and "does not match" in r for r in answer["refused"])
     assert after["current"]["alice"] == before["current"]["alice"]
     assert after["history"] == before["history"]
+
+
+@pytest.mark.parametrize(
+    "loss",
+    ["revoked", "locked", "hosts", "entry-expired", "previous-expired", "entry-krl", "previous-krl", "missing-account"],
+)
+def test_lagging_card_cannot_preserve_ineligible_access(cards, loss):
+    """Prevent stale cards from retaining teams, rooms or signing authority after access ends."""
+    host = cards.host
+    sync(cards)
+    entry = cards.reply["persons"][1]
+    registry_card(cards, dict(entry, ssh=ssh_key(7)))
+    if loss in ("revoked", "locked"):
+        entry[loss] = True
+    elif loss == "hosts":
+        entry["hosts"] = []
+    elif loss == "entry-expired":
+        entry["expires"] = "2026-01-01"
+    elif loss == "previous-expired":
+        path = host.path("/etc/porelo-host/projects/alpha.people.json")
+        previous = json.loads(path.read_text())
+        previous["alice"]["expires"] = "2026-01-01"
+        path.write_text(json.dumps(previous))
+    elif loss == "entry-krl":
+        entry["ssh"] = ssh_key(8)
+        host.key_revoked = lambda key: key == ssh_key(8)
+    elif loss == "previous-krl":
+        entry["ssh"] = ssh_key(8)
+        host.key_revoked = lambda key: key == ssh_key(2)
+    else:
+        host.accounts.pop("alice")
+    cards.calls.clear()
+    answer = sync(cards)
+    assert "alice" in answer["dropped"]
+    assert "alpha developer" not in host.records()["alice"]["members"]
+    assert "alice" not in json.loads(host.path("/etc/porelo-host/projects/alpha.people.json").read_text())
+    assert ("rooms", ("alpha", ["ada"])) in cards.calls
+    assert "alice" not in next(args[1] for name, args in cards.calls if name == "teams")
+    assert ssh_key(2) not in host.path("/etc/porelo-host/signers/alpha.allowed").read_text()
+    if loss in ("entry-krl", "previous-krl", "missing-account"):
+        assert any("alice" in reason for reason in answer["refused"])
+
+
+def test_preserved_signer_does_not_publish_a_revoked_key(cards):
+    """Prevent partial publication from preserving a revoked task CA or historical signer."""
+    host = cards.host
+    sync(cards)
+    host.key_revoked = lambda key: key == ssh_key(2)
+    host.project_signers("alpha", {"alice": person("alice", 7)}, preserve={"alice"})
+    assert ssh_key(2) not in host.path("/etc/porelo-host/signers/alpha.allowed").read_text()
+
+
+@pytest.mark.parametrize("dependency", ["matrix", "forge", "porelo"])
+def test_lock_removes_local_access_before_service_dependencies(cards, dependency):
+    """Prevent a missing external dependency from leaving live SSH access or group membership."""
+    host = cards.host
+    sync(cards)
+    if dependency == "matrix":
+        host.hooks["matrix_expel_revoke"] = host.matrix_expel_revoke
+        host.commands.discard(cards.scope["TRANSPORT"])
+    elif dependency == "forge":
+        host.hooks["forge_lock"] = host.forge_lock
+        host.write(host.path("/etc/porelo-host/forge.conf"), "host=host\naccount=invalid!\n", 0o600)
+    else:
+        host.commands.discard("porelo")
+    cards.calls.clear()
+    with pytest.raises(cards.scope["Refusal"]):
+        host.lock("alice", host.records()["alice"], True)
+    assert not host.path("/etc/ssh/authorized_keys/alice").exists()
+    assert host.records()["alice"]["locked"]
+    commands = [args for args, _ in cards.calls if isinstance(args, list)]
+    assert ["gpasswd", "--delete", "alice", "porelo-people"] in commands
+    assert ["loginctl", "terminate-user", "alice"] in commands
+    assert ["usermod", "--lock", "--expiredate", "1", "alice"] in commands
+    with pytest.raises(cards.scope["Refusal"]):
+        host.lock("alice", host.records()["alice"], True)
+
+
+@pytest.mark.parametrize("program", ["groupadd", "usermod"])
+def test_join_groups_refuses_unchecked_privileged_commands(cards, program):
+    """Prevent group admission through an executable that failed the ownership check."""
+    host = cards.host
+    host.commands.add("groupadd")
+    host.commands.remove(program)
+    with pytest.raises(cards.scope["Refusal"], match=program):
+        host.join_groups("alice", set())
+    assert not any(isinstance(args, list) and args[0] == program for args, _ in cards.calls)
+
+
+@pytest.mark.parametrize("program", ["env", "runuser"])
+def test_service_account_commands_require_their_wrappers(cards, program):
+    """Prevent privileged service commands from executing an unchecked runtime wrapper."""
+    host = cards.host
+    host.commands.add("env")
+    host.commands.remove(program)
+    with pytest.raises(cards.scope["Refusal"], match=program):
+        host.as_account("porelo-matrix", ["service-command"])
+    assert cards.calls == []
+
+
+@pytest.mark.parametrize("admission", ["add", "sync"])
+def test_failed_admission_removes_access_with_missing_revocation_dependency(cards, admission):
+    """Prevent failed admission rollback from leaving a live account in porelo-people."""
+    host = cards.host
+    host.commands.update({"useradd", "groupadd"})
+    host.accounts["carol"] = 1003
+    joined = set()
+    runner = host.runner
+
+    def commands(args, input=None):
+        if args[:3] == ["usermod", "--append", "--groups"]:
+            joined.add(args[-1])
+        elif args[:2] == ["gpasswd", "--delete"]:
+            joined.discard(args[2])
+        return runner(args, input=input)
+
+    host.runner = commands
+    host.create_account = lambda user: host.accounts.__setitem__(user, 1003)
+    host.hooks["matrix_expel_revoke"] = host.matrix_expel_revoke
+    host.commands.discard(cards.scope["TRANSPORT"])
+
+    def failed_grant(*args):
+        raise cards.scope["Refusal"]("admission failed", 69)
+
+    host.hooks["forge_admit"] = failed_grant
+    with pytest.raises(cards.scope["Refusal"], match="admission failed"):
+        if admission == "add":
+            host.add("carol", {"ssh": ssh_key(8), "expires": None}, host.groups, "100000-165535", "100000-165535")
+        else:
+            host.accounts.pop("carol")
+            cards.reply["persons"].append(person("carol", 8))
+            registry_card(cards, person("carol", 8))
+            sync(cards)
+    assert "carol" not in joined
+    assert not host.path("/etc/ssh/authorized_keys/carol").exists()
+    assert host.records()["carol"]["locked"]
+    assert any(args == ["usermod", "--lock", "--expiredate", "1", "carol"] for args, _ in cards.calls)
+
+
+def test_sync_existing_unlock_requires_usermod_before_execution(cards):
+    """Prevent an existing person's unlock from running an unchecked executable."""
+    host = cards.host
+    record = host.records()["alice"]
+    record.update(locked=True, reason="membership")
+    host.record("alice", record)
+    host.commands.remove("usermod")
+    with pytest.raises(cards.scope["Refusal"], match="usermod"):
+        sync(cards)
+    assert not any(isinstance(args, list) and args[0] == "usermod" for args, _ in cards.calls)
+
+
+@pytest.mark.parametrize("task_fails", [False, True])
+def test_task_cleanup_restores_expiry_after_running_with_access_removed(cards, task_fails):
+    """Prevent PAM expiry from blocking cleanup forever or cleanup failure from leaving an unexpired account."""
+    host = cards.host
+    sync(cards)
+    expired, manager_running, task_stops = False, True, []
+    runner = host.runner
+
+    def commands(args, input=None):
+        nonlocal expired, manager_running
+        if args[:2] == ["usermod", "--lock"]:
+            expired = True
+        elif args[:2] == ["usermod", "--expiredate"]:
+            expired = args[2] != ""
+        elif args[:2] == ["systemctl", "stop"]:
+            manager_running = False
+        elif args[:2] == ["systemctl", "start"]:
+            manager_running = True
+        elif args[0] == "runuser":
+            assert not host.path("/etc/ssh/authorized_keys/alice").exists()
+            assert host.records()["alice"]["locked"]
+            assert any(call[0] == ["gpasswd", "--delete", "alice", "porelo-people"] for call in cards.calls)
+            if expired or not manager_running or task_fails:
+                return subprocess.CompletedProcess(args, 1, "", "")
+            task_stops.append(args)
+        return runner(args, input=input)
+
+    host.runner = commands
+    if task_fails:
+        with pytest.raises(cards.scope["Refusal"], match="runuser"):
+            host.lock("alice", host.records()["alice"], True)
+    else:
+        host.lock("alice", host.records()["alice"], True)
+        assert task_stops
+    assert expired and not manager_running
+
+
+def test_untrusted_porelo_cannot_prevent_local_lock(cards):
+    """Prevent executable ownership refusal from aborting removal before SSH access is revoked."""
+    host = cards.host
+    sync(cards)
+    available = host.available
+
+    def checked(program):
+        if program == "porelo":
+            raise cards.scope["Refusal"]("untrusted porelo executable", 69)
+        return available(program)
+
+    host.available = checked
+    with pytest.raises(cards.scope["Refusal"], match="untrusted porelo"):
+        host.execute(["lock", "alice"], None)
+    assert not host.path("/etc/ssh/authorized_keys/alice").exists()
+    assert host.records()["alice"]["locked"]

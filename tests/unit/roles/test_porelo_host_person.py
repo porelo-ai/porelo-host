@@ -87,6 +87,7 @@ class Host:
             "ssh-keygen",
             "gpasswd",
             "runuser",
+            "env",
             "porelo",
             "systemctl",
             "/usr/libexec/porelo/transports/porelo-message-transport-matrix",
@@ -990,7 +991,15 @@ def test_teardown_dependencies_are_checked_before_removing_access(host, capsys, 
     assert host.invoke("add", "alice", "--role", "project-admin") == 0
     capsys.readouterr()
     host.commands.remove(missing)
-    refused(host, capsys, 69, verb, "alice", data=b"")
+    if verb == "purge":
+        refused(host, capsys, 69, verb, "alice", data=b"")
+    else:
+        host.calls.clear()
+        assert host.invoke(verb, "alice", data=b"") == 69
+        assert missing in capsys.readouterr().err
+        assert not host.path("/etc/ssh/authorized_keys/alice").exists()
+        assert ["gpasswd", "--delete", "alice", "porelo-people"] in host.calls
+        assert not any(args[0] == missing for args in host.calls)
 
 
 def test_failed_manager_stop_still_disables_the_account_and_allows_retry(host, capsys):
@@ -1218,8 +1227,10 @@ def test_purge_locks_first_clears_vault_then_removes_account_and_ranges(host, ca
     capsys.readouterr()
     assert host.invoke("purge", "alice", data=b"") == 0
     assert json.loads(capsys.readouterr().out) == {"person": "alice", "purged": True}
-    assert host.calls[-9:] == [
-        ["usermod", "--lock", "--expiredate", "1", "alice"],
+    assert host.calls.index(["usermod", "--lock", "--expiredate", "1", "alice"]) < next(
+        index for index, args in enumerate(host.calls) if args[0] == "runuser"
+    )
+    assert host.calls[-8:] == [
         # A locked account is expired, which PAM refuses to runuser and to the user manager; its password stays locked.
         ["usermod", "--expiredate", "", "alice"],
         ["systemctl", "start", "user@1000.service"],
@@ -1292,7 +1303,7 @@ def test_purge_clears_no_vault_while_a_task_of_the_person_still_runs(host, capsy
     assert host.invoke("purge", "alice", data=b"") == 69
     assert not any("vault" in args for args in host.calls)
     assert not any(args[0] == "userdel" for args in host.calls)
-    assert host.calls[-1] == ["usermod", "--expiredate", "1", "alice"], "the account left must be expired again"
+    assert host.calls[-2:] == [["usermod", "--expiredate", "1", "alice"], ["systemctl", "stop", "user@1000.service"]]
     assert "alice" in host.accounts
     assert host.path("/etc/porelo-host/people/alice.conf").exists()
 
@@ -1367,7 +1378,8 @@ def test_failed_write_does_not_leave_a_record_or_staged_key_file(host, capsys):
 
     def obstruct_after_validation(args):
         if args[0] == "useradd":
-            host.path("/etc/ssh/authorized_keys/alice").mkdir(parents=True)
+            host.path("/etc/ssh/authorized_keys").mkdir(parents=True, mode=0o755)
+            host.path("/etc/ssh/authorized_keys/alice").mkdir()
 
     host.inspect = obstruct_after_validation
     assert host.invoke("add", "alice", "--role", "project-admin") == 73

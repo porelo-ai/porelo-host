@@ -136,7 +136,7 @@ def services(tmp_path, monkeypatch):
     scope = namespace["Host"].__init__.__globals__
     host = namespace["Host"]()
     host.root, host.owner, host.group = tmp_path, os.getuid(), os.getgid()
-    host.commands = {"runuser", "podman", "/usr/libexec/porelo/transports/porelo-message-transport-matrix"}
+    host.commands = {"runuser", "env", "podman", "/usr/libexec/porelo/transports/porelo-message-transport-matrix"}
     home = tmp_path / "home" / "alice"
     home.mkdir(parents=True)
     host.home, host.env = home, namespace["ENV"]
