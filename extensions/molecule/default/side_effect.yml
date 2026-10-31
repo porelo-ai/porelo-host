@@ -23,15 +23,34 @@
           {{ side_effect_expected_accounts | select('in', ansible_facts['getent_passwd'])
           | map('extract', ansible_facts['getent_passwd']) | map(attribute=1) | list }}
 
-    - name: Read host.json, the linger files and any forge HTTPS units before down
+    - name: Read host.json, the linger files and the forge's gate sockets before down
       ansible.builtin.stat:
         path: "{{ item }}"
       loop: >-
         {{ ['/etc/porelo-host/host.json', '/var/lib/systemd/linger/porelo-matrix']
         + (['/var/lib/systemd/linger/porelo-forge', '/var/lib/systemd/linger/porelo-runner',
-            '/etc/systemd/system/porelo-forge-https.socket', '/etc/systemd/system/porelo-forge-https.service']
+            '/etc/systemd/system/porelo-forge-web.socket', '/etc/systemd/system/porelo-forge-git.socket',
+            '/etc/systemd/system/porelo-forge-runner.socket', '/etc/systemd/system/porelo-forge-web@.service',
+            '/etc/systemd/system/porelo-forge-git@.service', '/etc/systemd/system/porelo-forge-runner@.service',
+            '/usr/local/libexec/porelo-forge-gate']
            if side_effect_forge == 'on' else []) }}
       register: side_effect_before_paths
+
+    - name: Ask systemd whether the forge's gate sockets listen before down
+      ansible.builtin.command:
+        argv: [systemctl, is-active, porelo-forge-web.socket, porelo-forge-git.socket, porelo-forge-runner.socket]
+      register: side_effect_gates_before
+      changed_when: false
+      failed_when: false
+      when: side_effect_forge == 'on'
+
+    - name: Assert the forge's three gate sockets are active before down
+      ansible.builtin.assert:
+        that: side_effect_gates_before['stdout_lines'] == ['active'] * 3
+        fail_msg: >-
+          asked for the web, git and runner gate sockets active before down;
+          got {{ side_effect_gates_before['stdout_lines'] }}
+      when: side_effect_forge == 'on'
 
     - name: Read /etc/hosts before down
       ansible.builtin.slurp:
@@ -45,18 +64,16 @@
       changed_when: false
       failed_when: false
 
-    - name: Assert the service accounts, linger files, host.json and hosts blocks exist, wg-porelo absent, before down
+    - name: Assert the service accounts, linger files, host.json and hosts block exist, wg-porelo absent, before down
       ansible.builtin.assert:
         that:
           - side_effect_service_uids | length == (side_effect_expected_accounts | length)
           - side_effect_before_paths.results | rejectattr('stat.exists') | list | length == 0
           - "'porelo-host matrix name' in side_effect_hosts_text"
           - "'matrix.alpha.porelo.internal' in side_effect_hosts_text"
-          - side_effect_forge != 'on' or 'porelo-host forge name' in side_effect_hosts_text
-          - side_effect_forge != 'on' or 'forge.alpha.porelo.internal' in side_effect_hosts_text
           - side_effect_vpn_before.rc != 0
         fail_msg: >-
-          asked for accounts {{ side_effect_expected_accounts }}, paths, /etc/hosts blocks and wg-porelo before down;
+          asked for accounts {{ side_effect_expected_accounts }}, paths, the /etc/hosts block and wg-porelo before down;
           got uids {{ side_effect_service_uids }}, missing paths
           {{ side_effect_before_paths.results | rejectattr('stat.exists') | map(attribute='item') | list }},
           wg rc {{ side_effect_vpn_before.rc }}, hosts {{ side_effect_hosts_text }}
@@ -168,6 +185,13 @@
         - /etc/porelo-host/forge.conf
         - /usr/local/sbin/porelo-host-forge-password
         - /usr/local/sbin/porelo-host-push
+        - /etc/systemd/system/porelo-forge-web.socket
+        - /etc/systemd/system/porelo-forge-git.socket
+        - /etc/systemd/system/porelo-forge-runner.socket
+        - /etc/systemd/system/porelo-forge-web@.service
+        - /etc/systemd/system/porelo-forge-git@.service
+        - /etc/systemd/system/porelo-forge-runner@.service
+        - /usr/local/libexec/porelo-forge-gate
         - /etc/systemd/system/porelo-forge-https.socket
         - /etc/systemd/system/porelo-forge-https.service
       register: side_effect_paths_after
@@ -211,21 +235,28 @@
       vars:
         side_effect_hosts_text: "{{ side_effect_hosts_after.content | b64decode }}"
 
-    - name: Ask systemd whether either forge HTTPS unit is still loaded after down
+    - name: Ask systemd whether any forge gate socket is still loaded after down
       ansible.builtin.command:
-        argv: [systemctl, show, --property=LoadState, --value, porelo-forge-https.socket, porelo-forge-https.service]
-      register: side_effect_forge_https_loaded
+        argv:
+          - systemctl
+          - show
+          - --property=LoadState
+          - --value
+          - porelo-forge-web.socket
+          - porelo-forge-git.socket
+          - porelo-forge-runner.socket
+      register: side_effect_forge_gates_loaded
       changed_when: false
       failed_when: false
       when: side_effect_forge == 'on'
 
-    - name: Assert neither forge HTTPS unit remains loaded after down
+    - name: Assert no forge gate socket remains loaded after down
       ansible.builtin.assert:
-        that: side_effect_forge_https_loaded['stdout_lines'] | select | list == ['not-found', 'not-found']
+        that: side_effect_forge_gates_loaded['stdout_lines'] | select | list == ['not-found'] * 3
         fail_msg: >-
-          asked for neither forge HTTPS unit loaded after down;
-          got rc {{ side_effect_forge_https_loaded['rc'] }}:
-          {{ side_effect_forge_https_loaded['stdout'] }} {{ side_effect_forge_https_loaded['stderr'] }}
+          asked for no forge gate socket loaded after down;
+          got rc {{ side_effect_forge_gates_loaded['rc'] }}:
+          {{ side_effect_forge_gates_loaded['stdout'] }} {{ side_effect_forge_gates_loaded['stderr'] }}
       when: side_effect_forge == 'on'
 
     - name: Read which pool VMs or volumes libvirt still lists, and what of the pool's keys or unit is left

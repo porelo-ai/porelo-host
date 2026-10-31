@@ -84,10 +84,20 @@ def main():
         KEYS.unlink(missing_ok=True)
         if RUNTIME.exists():
             shutil.rmtree(RUNTIME)
-        ended = subprocess.run(["loginctl", "terminate-user", USER], capture_output=True)
-        removed = subprocess.run(["userdel", "--remove", USER], capture_output=True)
+        ended = subprocess.run(["loginctl", "terminate-user", USER], capture_output=True, text=True)
+        # terminate-user returns before the login's user manager has gone, and userdel refuses a user still running.
+        deadline = time.monotonic() + 30
+        while subprocess.run(["pgrep", "-u", USER], capture_output=True).returncode == 0:
+            if time.monotonic() > deadline:
+                break
+            time.sleep(0.2)
+        removed = subprocess.run(["userdel", "--remove", USER], capture_output=True, text=True)
         if ended.returncode not in (0, 1) or removed.returncode != 0:
-            raise RuntimeError("SSH fixture cleanup failed; inspect the fixture account")
+            raise RuntimeError(
+                "SSH fixture cleanup failed; inspect the fixture account: "
+                f"terminate-user {ended.returncode} {ended.stderr.strip()!r}, "
+                f"userdel {removed.returncode} {removed.stderr.strip()!r}"
+            )
 
 
 if __name__ == "__main__":
