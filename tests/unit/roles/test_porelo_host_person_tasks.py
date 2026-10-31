@@ -247,7 +247,7 @@ def records(tasks, login="alice"):
 
 
 def task_certificate(tasks, task="t1", signer="alice", key="task", valid=TODAY, **options):
-    return tasks.keys.certify(signer, key, [f"task:{task}", "person:alice", "project:alpha"], valid, **options)
+    return tasks.keys.certify(signer, key, [f"task:alpha:{task}", "person:alice", "project:alpha"], valid, **options)
 
 
 def no_secret_outside_the_forge(tasks, output):
@@ -278,9 +278,29 @@ def test_a_certificate_signed_by_the_persons_key_is_recorded_and_its_token_answe
     assert recorded["certificate"] == " ".join(certificate.split()[:2])
     assert recorded["fingerprint"] == tasks.keys.fingerprint("task")
     assert recorded["signed_by"] == tasks.keys.fingerprint("alice")
-    assert recorded["principals"] == ["task:t1", "person:alice", "project:alpha"]
+    assert recorded["principals"] == ["task:alpha:t1", "person:alice", "project:alpha"]
     assert (recorded["valid_after"], recorded["valid_before"]) == ("2026-10-30T00:00:00Z", "2026-10-31T00:00:00Z")
     no_secret_outside_the_forge(tasks, output)
+
+
+@pytest.mark.parametrize(
+    "principals, code",
+    [
+        (["task:default:t1"], 0),
+        (["task:t1"], 65),
+        (["task:alpha:t1", "task:beta:t1"], 65),
+        (["task:Alpha:t1"], 65),
+        (["task::t1"], 65),
+        (["task:alpha:t2"], 65),
+    ],
+    ids=["default", "old form", "two", "invalid project", "empty project", "other task"],
+)
+def test_a_task_names_exactly_one_principal_by_its_project(tasks, capsys, principals, code):
+    """Prevent a certificate naming no project, two projects or another task from starting this task."""
+    certificate = tasks.keys.certify("alice", "task", principals, TODAY)
+    assert tasks.call("task", "t1", data=certificate.encode()) == code
+    capsys.readouterr()
+    assert (records(tasks) / "t1.json").exists() == (code == 0)
 
 
 @pytest.mark.parametrize(
@@ -430,7 +450,7 @@ def test_the_sweep_goes_on_past_one_persons_forge_failure_and_names_it(tasks, ca
     """Prevent one broken forge user from keeping every other person's expired task tokens alive."""
     early = "20261030000000Z:20261030130000Z"
     assert tasks.call("task", "t1", data=task_certificate(tasks, valid=early).encode()) == 0
-    bob_task = tasks.keys.certify("bob", "other-task", ["task:b1"], early)
+    bob_task = tasks.keys.certify("bob", "other-task", ["task:alpha:b1"], early)
     assert tasks.call("task", "b1", data=bob_task.encode(), caller="bob") == 0
     capsys.readouterr()
     tasks.host.now = lambda: NOW + datetime.timedelta(hours=1)

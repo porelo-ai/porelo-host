@@ -3,10 +3,10 @@
 The root helper accepts a task certificate through `sudo porelo-host-person task <task>`. Standard input is bounded
 at 16 KiB and contains one Ed25519 SSH user certificate. Task names match `[a-z0-9][a-z0-9._-]{0,63}`.
 OpenSSH reads the certificate from a private temporary file and verifies its signature. Its signing CA must be the
-calling person's current, unrevoked key in `/etc/porelo-host/registry/applied.json`. Its principals include
-`task:<task>`, and its validity must include the current time and have a finite end. The certificate's other
-principals and key ID are retained without interpretation; person, project and repository conventions still require
-agreement with the producer.
+calling person's current, unrevoked key in `/etc/porelo-host/registry/applied.json`. Exactly one of its principals
+is `task:<project>:<task>`, with `default` for a task without a project, and its validity must include the current
+time and have a finite end. The certificate's other principals and key ID are retained without interpretation; person,
+project and repository conventions still require agreement with the producer.
 
 The certificate is recorded once in `/var/lib/porelo-host/tasks/<login>/<task>.json`, owned by root with mode 0600
 inside mode 0700 directories. The record includes its canonical certificate line, task key fingerprint, signer,
