@@ -72,8 +72,8 @@ admin's Porelo brings it, never from the central forge itself.
 
 ## To be checked
 
-- Porelo's registry verify names no `--since`; descent is checked by Porelo as `project verify --since` does. Core adds
-  it, or the host checks ancestry another way.
-- Porelo's registry verify does not say who signed the host card; the handover reads `host_card.signed_by` (a `SHA256:`
-  fingerprint).
+- Settled (2026-10-31): Porelo's pushed registry verify takes `--since` and checks the descent itself. The host
+  passes the previous applied commit there.
+- Settled (2026-10-31): the answer names the host card's signer as `host_card.signed_by` (a `SHA256:` fingerprint),
+  which the handover reads.
 - What `admins` holds; the host records it as answered and does not read it.
