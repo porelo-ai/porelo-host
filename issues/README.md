@@ -39,6 +39,7 @@ it is left out.
 | <a id="ho83"></a>[HO83](HO83-The-Persons-Token-Kept-Where-Each-Tool-Reads-It.md) | S | [HO71](#ho71) | The vault's person token stays the one in force after every remake; each task-start and token-handling check is tested by its absence. |
 | <a id="ho76"></a>[HO76](HO76-Each-Push-Judged-When-It-Arrives.md) | L | [HO71](#ho71), [HO75](#ho75); Porelo's commit verify against signers and KRL | The first accepted push of a commit to the host's forge judges it against the signers and KRL in force, and records the verdict. |
 | <a id="ho85"></a>[HO85](HO85-The-Push-Judge-Armed-Only-Where-It-Holds.md) | S | [HO76](#ho76) | A repository is armed only where the judge's hook holds, a removal takes the arrivals along, and each verdict is recorded only whole. |
+| <a id="ho87"></a>[HO87](HO87-The-Hosts-Registry-State-Answered.md) | S | [HO70](#ho70) | The interface reads, as root over SSH, which registry the host applied and each person's standing on it. |
 
 ## Implementing
 
@@ -50,7 +51,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho87"></a>[HO87](HO87-The-Hosts-Registry-State-Answered.md) | S | [HO70](#ho70) | The interface reads, as root over SSH, which registry the host applied and each person's standing on it. |
 | <a id="ho14"></a>[HO14](HO14-The-Collections-Python-Under-Ansible-Test-Sanity.md) | S | - | `ansible-test sanity` on the collection's Python in the Build, from a pinned image of its own. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | [HO37](#ho37) | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho60"></a>[HO60](HO60-Each-Repositorys-Review-Set-On-The-Forge.md) | M | - | Each repository's `main` on the local forge and the project repository's protected from the signed project file's `review`: one approval by another person, dismissed by a later commit, or none; only owners and developers merge; set again at each sync. |
