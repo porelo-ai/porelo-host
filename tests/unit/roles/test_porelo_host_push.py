@@ -18,7 +18,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "roles/forge/files/porelo-host-push"
 ADMIN_TOKEN = "admin-token-4f1c9e"
-PERSON_TOKEN = "person-token-9a3e1d"
+PERSON_TOKEN = "9a3e1d0c" * 5
 CENTRAL_TOKEN = "central-token-7b2d5a"
 FORGE_NAME = "alpha.localhost"
 LOCAL_BASE = "http://127.0.0.1:3001"
@@ -186,6 +186,15 @@ def host(tmp_path):
         f"if pathlib.Path({str(tmp_path / 'person-token-failed')!r}).exists(): sys.exit(1)\n"
         f"sys.stdout.write({PERSON_TOKEN!r})\n"
     )
+    vault = tmp_path / "vault"
+    (bin_dir / "porelo").write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, pathlib, sys\n"
+        f"if pathlib.Path({str(tmp_path / 'vault-refuses')!r}).exists(): sys.exit(65)\n"
+        "keys = ('HOME', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS')\n"
+        "entry = {'args': sys.argv[1:], 'env': {key: os.environ.get(key) for key in keys}, 'value': sys.stdin.read()}\n"
+        f"pathlib.Path({str(vault)!r}).write_text(json.dumps(entry))\n"
+    )
     (bin_dir / "sudo").write_text(
         f'#!/bin/sh\n[ "$1" = -n ] && [ "$2" = {bin_dir}/porelo-host-person ] || exit 1\nshift 2\n'
         f'exec {bin_dir}/porelo-host-person "$@"\n'
@@ -335,6 +344,7 @@ def host(tmp_path):
         "sudo",
         "curl",
         "git",
+        "porelo",
     ):
         (bin_dir / stub).chmod(0o755)
 
@@ -392,6 +402,7 @@ def host(tmp_path):
         "command": command,
         "temporary": temporary,
         "calls": calls,
+        "vault": vault,
         "local": local,
         "local_two": local_two,
     }
@@ -491,6 +502,37 @@ def test_a_persons_push_reads_the_sudo_callers_config_and_token_ignoring_home(ho
     assert "stand-in: taken" in output, output
     assert_no_token_anywhere(host, output)
     assert list(host["temporary"].iterdir()) == [], "the temporary clone was left behind"
+
+
+def test_the_new_person_token_goes_into_their_vault_on_a_pipe(host):
+    """Prevent the vault's person token from going stale when a push makes the person's one token anew."""
+    commit(host["local"], host["root"] / "work", "B")
+    code, output = push(host, "porelo", "stand-in")
+    assert code == 0, output
+    entry = json.loads(host["vault"].read_text())
+    uid = host["person_uid"]
+    assert entry == {
+        "args": ["vault", "put", f"{FORGE_NAME}.person"],
+        "env": {
+            "HOME": str(host["alice_home"]),
+            "XDG_RUNTIME_DIR": f"/run/user/{uid}",
+            "DBUS_SESSION_BUS_ADDRESS": f"unix:path=/run/user/{uid}/bus",
+        },
+        "value": PERSON_TOKEN,
+    }
+    assert_no_token_anywhere(host, output)
+
+
+def test_a_vault_that_takes_no_token_is_said_and_the_push_goes_on(host):
+    """Prevent a closed vault from stopping a push, or from going stale without a word."""
+    central = host["root"] / "central" / "stand-in.git"
+    approved = commit(host["local"], host["root"] / "work", "B")
+    (host["root"] / "vault-refuses").write_text("")
+    code, output = push(host, "porelo", "stand-in")
+    assert code == 0, output
+    assert head(central) == approved
+    assert f"your vault took no new forge token; {FORGE_NAME}.person works again" in output
+    assert_no_token_anywhere(host, output)
 
 
 def test_without_repository_names_every_configured_repository_is_pushed_in_config_order(host):

@@ -224,10 +224,20 @@ finally:
         done
     fi
 
+    # Read before the token is made anew, so no refusal comes between the old token's end and the vault's new one.
+    forge_name=$(forge_conf_value name '^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$') || exit $?
     # The host refuses a locked person or one no project holds; the forge then bounds the token to what they reach.
     local_token=$(sudo -n "$person_helper" forge-token < /dev/null 2>/dev/null) \
         || fail "the person's forge token could not be made" 69
     [ -n "$local_token" ] || fail "the person's forge token is empty" 69
+    [[ $local_token =~ ^[0-9a-f]{40}$ ]] || fail "the host answered no valid forge token" 69
+    # The host replaced the person's one token: their vault takes the new one, so their own tools keep one that works.
+    printf '%s' "$local_token" \
+        | HOME=$caller_home XDG_RUNTIME_DIR=/run/user/$caller_uid \
+            DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$caller_uid/bus \
+            porelo vault put "$forge_name.person" > /dev/null 2>&1 \
+        || printf 'porelo-host-push: %s\n' "your vault took no new forge token; $forge_name.person works again after \
+your next bring or join" >&2
 else
     declare -A named=()
     for name in "$@"; do

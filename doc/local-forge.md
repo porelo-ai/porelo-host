@@ -359,7 +359,8 @@ person's stop pipes the token into `porelo-host-push --migrate <project>`, which
 repository it lacks, with the token in the request body on a pipe alone, and removes the list; the `bring` run again
 goes on. `/usr/local/sbin/porelo-host-push --pull <project> [repositories...]` brings central `main` locally as
 `central/main`, in the person's own account with the central token on stdin. Local `main` reaches it by a pull
-request. Push, pull and migration each call `sudo -n porelo-host-person forge-token` for the local token.
+request. Push, pull and migration each call `sudo -n porelo-host-person forge-token` for the local token and put it into the
+person's vault as `<forge>.person`, since it replaces the one there.
 No token for the central forge lies on the host.
 
 ## If the host is lost

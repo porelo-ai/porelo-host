@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Push, pull and migrate put the person's new forge token into their vault as `<forge>.person`, so it stays the one in
+  force; a task certificate with any principal beside `task:<project>:<task>` is refused by the host itself; a missing
+  or unsafe KRL at a task start is 69.
 - Each person's runtime directory `/run/porelo-host/people/<login>/` holds the link `porelod.sock` to their daemon's
   socket, restored at boot, so the tunnel's daemon and return sockets (`return.sock`) follow from the login alone.
 - Git reaches the host's forge on `127.0.0.1:<git_port>` through the same token-only gate as `git.sock`, so the gathered

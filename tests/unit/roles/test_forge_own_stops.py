@@ -47,13 +47,18 @@ def test_a_forge_stop_is_a_tagged_failure_whose_message_is_its_needs(name, task,
 
 def test_the_person_s_forge_token_comes_from_the_host_into_their_vault_with_no_stop():
     """Prevent a bring waiting at a stop for a lasting token, or the token reaching the play's file but not the vault."""
-    names = [t.get("name") for t in tasks("own.yml")]
     assert not any("ansible.builtin.fail" in t for t in tasks("own.yml")), "own.yml has no stop left"
     take = next(t for t in tasks("own.yml") if t.get("name", "").startswith("own | Take the person's forge token"))
     cmd = take["ansible.builtin.shell"]["cmd"]
     assert "sudo -n /usr/local/sbin/porelo-host-person forge-token" in cmd
     assert cmd.index("porelo vault put") < cmd.index("mv --"), "the vault holds it before the play's file does"
-    assert "own | Remove the person's forge token from the runtime directory" in names
+    assert take.get("no_log") is True, "the token never reaches a log"
+    acting = next(t for t in tasks("own.yml") if take in t.get("block", []))
+    # In always, so the file goes when any forge call fails too.
+    assert [t.get("name") for t in acting["always"]] == [
+        "own | Remove the person's forge token from the runtime directory"
+    ]
+    assert acting["always"][0]["ansible.builtin.file"] == {"path": "{{ __forge_token }}", "state": "absent"}
 
 
 @pytest.mark.parametrize("name", ["own.yml", "repositories.yml"])

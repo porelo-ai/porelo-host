@@ -3,7 +3,7 @@
 The root helper accepts a task certificate through `sudo porelo-host-person task <task>`. Standard input is bounded
 at 16 KiB and contains one Ed25519 SSH user certificate. Task names match `[a-z0-9][a-z0-9._-]{0,63}`.
 OpenSSH reads the certificate from a private temporary file and verifies its signature. Its signing CA must be the
-calling person's current, unrevoked key in `/etc/porelo-host/registry/applied.json`. Exactly one of its principals
+calling person's current, unrevoked key in `/etc/porelo-host/registry/applied.json`. Its one principal
 is `task:<project>:<task>`, with `default` for a task without a project, and its validity must include the current
 time and have a finite end. The project must be one the person is a member of on this host.
 
@@ -48,7 +48,8 @@ following links.
 Porelo's task start is the consumer: it keeps the answered token in the task's vault entry for its gate, which pushes
 as `porelo-<login>` on the host's loopback. The host keeps no lasting gate token.
 
-bring and join take the person's token from `sudo -n porelo-host-person forge-token` at each run. The vault entry
-`<forge>.person` keeps it at once for the person's own tools, which replaces the one before. For the play's forge calls
+bring and join take the person's token from `sudo -n porelo-host-person forge-token` at each run, and so do push,
+pull and migration. Each puts it into the vault entry `<forge>.person` at once for the person's own tools, since it
+replaces the one before. For the play's forge calls
 it also lies in a 0600 file in the person's runtime directory, on tmpfs, until the play removes it at its end. No stop
 waits for an identity's token any more.

@@ -1758,28 +1758,6 @@ class Host:
             "unchanged": unchanged,
         }
 
-    def drop_revoked_tokens(self, revoked, records):
-        """After the registry is recorded, every revoked person still unlocked here loses every forge token.
-
-        It runs at every intake, so a deletion that failed once is tried again by the next.
-        """
-        errors = []
-        for login in revoked:
-            record = records.get(login)
-            if record is None or record["locked"]:
-                continue
-            try:
-                self.hooks["forge_drop_tokens"](login)
-            except Refusal as error:
-                errors.append(f"{login}: {error}")
-        if errors:
-            refuse(
-                "the registry is applied, but a revoked person's forge tokens are not all deleted; bring it again: "
-                + "; ".join(errors),
-                69,
-            )
-
-
     def apply_registry_cards(self, persons, revoked, records, previous=None, retried=(), retry_errors=()):
         """Apply host revocations and current card keys after recording the verified registry."""
         already_retried = set(retried)
@@ -2289,8 +2267,9 @@ class Host:
         if fields["signed_by"] != fingerprint(key):
             refuse(f"the task certificate is signed by {fields['signed_by']}, not by {user}'s current key", 65)
         # Porelo names a task's principal by its project, or default for a task without one.
-        named = [item for item in fields["principals"] if item.startswith("task:")]
-        project = named[0][len("task:"):-len(":" + task)] if len(named) == 1 and named[0].endswith(":" + task) else None
+        named = fields["principals"]
+        whole = len(named) == 1 and named[0].startswith("task:") and named[0].endswith(":" + task)
+        project = named[0][len("task:") : -len(":" + task)] if whole else None
         if project is None or not (project == "default" or re.fullmatch(PROJECT, project)):
             refuse(f"the task certificate names not exactly one principal task:<project>:{task}", 65)
         if not (fields["valid_after"] is None or fields["valid_after"] <= now) or not now < fields["valid_before"]:
@@ -2332,19 +2311,29 @@ class Host:
         try:
             staged = {"keys": temp_dir / "keys", "revoked.krl": temp_dir / "revoked.krl"}
             krl = self.path("/etc/ssh/porelo-revoked.krl")
-            self.check(krl, 73, required=True)
+            self.check(krl, 69, required=True)
+            # Read by descriptor what was checked, so a link put there after the check is never followed.
+            try:
+                fd = os.open(krl, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            except OSError:
+                refuse(f"cannot read {krl}", 69)
+            try:
+                status = os.fstat(fd)
+                if not stat.S_ISREG(status.st_mode) or status.st_uid != self.owner or status.st_mode & 0o022:
+                    refuse(f"{krl} is not a plain file of root's alone", 69)
+                with os.fdopen(os.dup(fd), "rb") as source:
+                    revocations = source.read()
+            except OSError:
+                refuse(f"cannot read {krl}", 69)
+            finally:
+                os.close(fd)
             try:
                 self.write(staged["keys"], key + "\n", 0o600)
-                # Read by descriptor what was checked, so a link put there after the check is never followed.
-                with os.fdopen(os.open(krl, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as source:
-                    status = os.fstat(source.fileno())
-                    if not stat.S_ISREG(status.st_mode) or status.st_uid != self.owner or status.st_mode & 0o022:
-                        refuse(f"{krl} is not a plain file of root's alone", 73)
-                    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
-                    with os.fdopen(os.open(staged["revoked.krl"], flags, 0o600), "wb") as sink:
-                        os.fchown(sink.fileno(), self.owner, self.group)
-                        os.fchmod(sink.fileno(), 0o600)
-                        shutil.copyfileobj(source, sink)
+                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+                with os.fdopen(os.open(staged["revoked.krl"], flags, 0o600), "wb") as sink:
+                    os.fchown(sink.fileno(), self.owner, self.group)
+                    os.fchmod(sink.fileno(), 0o600)
+                    sink.write(revocations)
             except OSError:
                 refuse("cannot stage the task check's keys and KRL in /run/porelo-host/sync", 73)
             unit = "porelo-host-task-check"

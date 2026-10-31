@@ -353,6 +353,7 @@ def test_a_certificate_signed_by_the_persons_key_is_recorded_and_its_token_answe
         (["task:Alpha:t1"], 65),
         (["task::t1"], 65),
         (["task:alpha:t2"], 65),
+        (["task:alpha:t1", "alice"], 65),
     ],
     ids=[
         "default",
@@ -364,6 +365,7 @@ def test_a_certificate_signed_by_the_persons_key_is_recorded_and_its_token_answe
         "invalid project",
         "empty project",
         "other task",
+        "a second principal",
     ],
 )
 def test_a_task_names_exactly_one_principal_by_its_project(tasks, capsys, principals, code):
@@ -372,6 +374,7 @@ def test_a_task_names_exactly_one_principal_by_its_project(tasks, capsys, princi
     assert tasks.call("task", "t1", data=certificate.encode()) == code
     capsys.readouterr()
     assert (records(tasks) / "t1.json").exists() == (code == 0)
+    assert (tasks.forge.checks != []) == (code == 0), "the host refuses these itself, before Porelo's check"
 
 
 @pytest.mark.parametrize(
@@ -593,23 +596,6 @@ def test_a_task_is_recorded_without_a_token_where_the_host_runs_no_forge(tasks, 
     assert tasks.call("forge-token") == 69
 
 
-def test_registry_revocation_drops_all_tokens_and_retries_a_failed_person(tasks, capsys):
-    """Prevent an applied registry from leaving tokens live when its first deletion fails."""
-    assert tasks.call("forge-token") == 0
-    assert tasks.call("task", "t1", data=task_certificate(tasks).encode()) == 0
-    capsys.readouterr()
-    revoke(tasks)
-    tasks.forge.api_failure = "alice"
-    with pytest.raises(tasks.scope["Refusal"]):
-        tasks.host.drop_revoked_tokens(["alice"], tasks.host.records())
-    assert tasks.forge.named("porelo-alice") == []
-    assert len(tasks.forge.named("alice")) == 1
-    tasks.forge.api_failure = None
-    tasks.host.drop_revoked_tokens(["alice"], tasks.host.records())
-    assert tasks.forge.named("alice") == []
-    assert tasks.forge.named(ADMIN) == []
-
-
 @pytest.mark.parametrize("part", ["root", "person", "record"])
 def test_task_record_links_cannot_redirect_root_writes_or_reads(tasks, tmp_path, capsys, part):
     """Prevent a linked task directory or record from redirecting root into another person's files."""
@@ -726,8 +712,16 @@ def test_a_certificate_porelo_refuses_or_answers_otherwise_starts_no_task(tasks,
     assert not any("generate-access-token" in call for call in tasks.forge.calls)
 
 
-@pytest.mark.parametrize("change", ["missing", "a link", "writable by others"])
-def test_a_missing_krl_refuses_the_task_before_porelo_runs(tasks, capsys, change):
+@pytest.mark.parametrize(
+    "change, words",
+    [
+        ("missing", "is missing"),
+        ("a link", "not a plain file"),
+        ("writable by others", "not a plain file"),
+        ("unreadable", "cannot read"),
+    ],
+)
+def test_a_missing_krl_refuses_the_task_before_porelo_runs(tasks, capsys, change, words):
     """Prevent a certificate judged without the revocations in force, or against a KRL root does not hold alone."""
     krl = tasks.root / "etc/ssh/porelo-revoked.krl"
     if change == "missing":
@@ -735,10 +729,13 @@ def test_a_missing_krl_refuses_the_task_before_porelo_runs(tasks, capsys, change
     elif change == "a link":
         krl.rename(krl.with_name("elsewhere.krl"))
         krl.symlink_to("elsewhere.krl")
-    else:
+    elif change == "writable by others":
         krl.chmod(0o666)
-    assert tasks.call("task", "t1", data=task_certificate(tasks).encode()) == 73
-    capsys.readouterr()
+    else:
+        krl.chmod(0o200)
+    assert tasks.call("task", "t1", data=task_certificate(tasks).encode()) == 69
+    error = capsys.readouterr().err
+    assert words in error and "porelo-revoked.krl" in error
     assert tasks.forge.checks == [] and not (records(tasks) / "t1.json").exists()
 
 
@@ -760,9 +757,10 @@ def test_a_project_admin_starts_a_task_of_their_project(tasks, capsys):
     assert (records(tasks) / "t1.json").exists()
 
 
-def test_no_porelo_on_the_host_refuses_the_task_as_unprepared(tasks, capsys):
+@pytest.mark.parametrize("command", ["porelo", "systemd-run"])
+def test_no_porelo_on_the_host_refuses_the_task_as_unprepared(tasks, capsys, command):
     """Prevent root from running a porelo or systemd-run it has not checked as root's alone."""
-    tasks.host.commands.discard("porelo")
+    tasks.host.commands.discard(command)
     assert tasks.call("task", "t1", data=task_certificate(tasks).encode()) == 69
     capsys.readouterr()
     assert tasks.forge.checks == [] and not (records(tasks) / "t1.json").exists()
