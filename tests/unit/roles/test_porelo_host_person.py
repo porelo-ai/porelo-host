@@ -18,6 +18,7 @@ import os
 import runpy
 
 
+import shutil
 import ssl
 
 
@@ -529,6 +530,31 @@ def test_registry_applies_a_verified_bundle_against_the_pin_and_records_it_root_
     assert host.invoke("registry", data=b"") == 0
     assert json.loads(capsys.readouterr().out)["unchanged"] is True
     assert state.registry_calls[1][state.registry_calls[1].index("--since") + 1] == "a" * 40
+
+
+def test_root_brings_the_first_registry_on_stdin_before_any_account_holds_it(registry_host, capsys):
+    """Prevent a fresh host from having no way to its first registry: add needs it, and the setup directory needs add."""
+    host, state = registry_host
+    shutil.rmtree(host.root / "home/ada/.local/share/porelo-host/setup")
+    capsys.readouterr()
+    assert host.invoke("registry", "--stdin", data=b"registry") == 0
+    assert json.loads(capsys.readouterr().out)["projects"] == ["alpha", "beta"]
+    assert applied(host)["commit"] == "a" * 40
+    assert list(host.path("/run/porelo-host/sync").iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "data,sudo_user",
+    [(b"registry", "ada"), (b"", None), (b"x" * (16 * 1024 * 1024 + 1), None)],
+    ids=["sudo", "empty", "oversized"],
+)
+def test_registry_on_stdin_is_roots_alone_and_bounded(registry_host, capsys, data, sudo_user):
+    """Prevent sudo or an empty or oversized input from bringing a registry past the host admin's setup directory."""
+    host, state = registry_host
+    capsys.readouterr()
+    assert host.invoke("registry", "--stdin", data=data, sudo_user=sudo_user) == 65
+    assert state.registry_calls == []
+    assert not host.path("/etc/porelo-host/registry/applied.json").exists()
 
 
 def test_registry_retries_token_revocation_after_recording_the_revoked_key(registry_host, capsys):

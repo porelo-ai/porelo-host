@@ -11,7 +11,8 @@ current-key revocation and last-membership removal revoke the whole account.
 registry runs for root or sudo -n from the unlocked, unrevoked host admin pinned in
 root's 0600 registry/pin.conf, which root alone, never through sudo, writes once at
 setup with registry pin <user> <key>.
-It copies the admin's plain private setup/registry.bundle as sync does, verifies it
+It copies the admin's plain private setup/registry.bundle as sync does, or with
+--stdin, root's alone, takes the bundle root gives before any account exists; it verifies it
 through porelo registry verify --json against the pinned key's fingerprint and the
 applied commit in the same kind of isolated unit, checks each project and person
 alone, naming bad ones while the rest applies, keeps every revoked login revoked
@@ -95,6 +96,7 @@ SHOWN = r"[!-~]{1,64}"
 TASK = r"[a-z0-9][a-z0-9._-]{0,63}"
 CERTIFICATE = "ssh-ed25519-cert-v01@openssh.com"
 MAX_CERTIFICATE = 16384
+MAX_BUNDLE = 16 * 1024 * 1024
 TASKS = "/var/lib/porelo-host/tasks"
 ADMIN = "porelo-admin"
 TASK_TOKEN = "porelo-task-"
@@ -1536,8 +1538,8 @@ class Host:
                 projects.append({field: item[field] for field in ("name", "admin", "access_repository")})
         return projects
 
-    def registry(self):
-        """Verify the pinned host admin's registry bundle in an isolated unit and record the answer root-only."""
+    def registry(self, bundle=None):
+        """Verify the host admin's registry bundle, or the one root gives, in an isolated unit; record the answer."""
         pin_path, pinned = self.registry_pin()
         if pinned is None:
             refuse("no host admin is pinned; root pins one at setup with registry pin <login> <key>", 69)
@@ -1571,7 +1573,18 @@ class Host:
                 refuse("the applied registry names no signer of its host card", 65)
         temp_dir = self.sync_directory("registry")
         try:
-            copied = self.copy_setup_files(admin, (), ("registry.bundle",), temp_dir, "the host's registry")
+            if bundle is None:
+                copied = self.copy_setup_files(admin, (), ("registry.bundle",), temp_dir, "the host's registry")
+            else:
+                copied = {"registry.bundle": temp_dir / "registry.bundle"}
+                try:
+                    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+                    out_fd = os.open(copied["registry.bundle"], flags, 0o600)
+                    with os.fdopen(out_fd, "wb") as sink:
+                        os.fchown(sink.fileno(), self.owner, self.group)
+                        sink.write(bundle)
+                except OSError:
+                    refuse("cannot stage the given bundle in /run/porelo-host/sync", 73)
             unit = "porelo-host-registry"
             arguments = [
                 "registry",
@@ -2275,8 +2288,8 @@ class Host:
         project = user = None
         if len(arguments) == 4 and arguments[0] == "add" and arguments[2:] == ["--role", "project-admin"]:
             verb, user = arguments[:2]
-        elif arguments == ["registry"]:
-            verb = "registry"
+        elif arguments in (["registry"], ["registry", "--stdin"]):
+            verb, value = "registry", arguments[1:] == ["--stdin"]
         elif len(arguments) == 4 and arguments[:2] == ["registry", "pin"]:
             verb, user, key = "pin", arguments[2], arguments[3]
             if not valid_ssh_key(key):
@@ -2301,7 +2314,7 @@ class Host:
                 refuse("a task must match [a-z0-9][a-z0-9._-]{0,63}, a task key's fingerprint SHA256:<43 base64>")
         else:
             refuse(
-                "use add <user> --role project-admin, lock <user>, purge <user>, sync <project>, registry,"
+                "use add <user> --role project-admin, lock <user>, purge <user>, sync <project>, registry [--stdin],"
                 " registry pin <user> <key>, forge-token [--for <user>], task <task>, task --end <task>,"
                 " task --show <fingerprint>"
                 " or sweep"
@@ -2310,6 +2323,14 @@ class Host:
             refuse("the person name must match [a-z][a-z0-9-]{0,30}")
         if verb == "pin" and self.sudo_user is not None:
             refuse("registry pin is root's alone, at setup, and never runs through sudo", 65)
+        bundle = None
+        if verb == "registry" and value:
+            # Root alone, logged in with the pinned host admin's key, brings the first bundle before any account exists.
+            if self.sudo_user is not None:
+                refuse("registry --stdin is root's alone and never runs through sudo", 65)
+            bundle = sys.stdin.buffer.read(MAX_BUNDLE + 1) if data is None else data
+            if not bundle or len(bundle) > MAX_BUNDLE:
+                refuse(f"registry --stdin takes one bundle of 1 to {MAX_BUNDLE} bytes", 65)
         conf = self.path("/etc/porelo-host/forge.conf")
         self.check(conf, required=True)
         with conf.open("rb") as mutex:
@@ -2317,7 +2338,7 @@ class Host:
             if verb == "pin":
                 return self.pin(user, key)
             if verb == "registry":
-                return self.registry()
+                return self.registry(bundle)
             if verb == "forge-token-for":
                 return self.person_forge_token(value, self.records())
             if verb in ("forge-token", "sweep", "task", "end", "show"):

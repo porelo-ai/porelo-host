@@ -24,10 +24,10 @@ The runner account's `forgejo-runner-proxy.container` mounts only `runner.sock` 
 on the web and Git ports, to that socket. The runner starts after this proxy and is bound to it; its container,
 registration container and jobs all join `container:forgejo-runner-proxy`.
 
-Registration uses `http://127.0.0.1:<web_port>`. Jobs get a read-only `/etc/hosts` owned by root, which maps `<host>.localhost`
-to `127.0.0.1`, so checkout and the package registry use the canonical forge URL with their tokens. The Actions cache uses
-`127.0.0.1` on its existing ports, `4000` and `4001` by default, in this shared namespace. Neither forge nor cache ports
-are published on the host. Jobs receive no forge socket or forge CA trust mounts.
+Registration uses `http://127.0.0.1:<web_port>`. Jobs get a read-only `/etc/hosts` owned by root, which maps
+`<host>.localhost` to `127.0.0.1`, so checkout and the package registry use the canonical forge URL with their tokens.
+The Actions cache uses `127.0.0.1` on its existing ports, `4000` and `4001` by default, in this shared namespace.
+Neither forge nor cache ports are published on the host. Jobs receive no forge socket or forge CA trust mounts.
 
 The local forge is the host's private Forgejo: it holds task branches, runs independent builds and supplies snapshots
 through its local registry. The central forge holds the work the person sends outward and runs the central publication
@@ -232,7 +232,9 @@ the central forge. Root pins the host admin once, at setup, with the key that si
 `admin=` and `key=`, in a `0700` directory) and refuses a second pin.
 
 The host admin's Porelo uploads `registry.bundle` into `~/.local/share/porelo-host/setup/`, and root or the pinned host
-admin (`sudo -n /usr/local/sbin/porelo-host-person registry`, the sudoers rule's bare form alone) runs `registry`. Root
+admin (`sudo -n /usr/local/sbin/porelo-host-person registry`, the sudoers rule's bare form alone) runs `registry`. On a
+fresh host no account holds a setup directory yet: root, logged in with the pinned host admin's key, gives the first
+bundle on stdin with `registry --stdin` (at most 16 MiB, refused through `sudo`). Root
 copies the bundle as `sync` does and runs `porelo registry verify --repository <copy> --host <host> --pinned
 <fingerprint> --json` in the transient unit `porelo-host-registry`, isolated like the sync's, with `--since` and the
 applied commit once one is applied; `<host>` is `forge.conf`'s `host=`. A refusal from Porelo, a bundle signed by
