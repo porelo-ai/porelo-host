@@ -85,7 +85,8 @@ the runner protocol. Bearer-authenticated artifact control calls can pass, but d
 Jobs get `/opt/porelo-host/runner-job-hosts`, owned by root, read-only as their `/etc/hosts`, and the host name
 `localhost`. It maps `<host>.localhost` to `127.0.0.1`, so Forgejo's canonical URL, checkout and package registry reach
 the token gate on loopback. Steps run as `uses: docker://…` get none of the runner's container options and see the
-proxy's own `/etc/hosts`; all containers share its `/etc/resolv.conf`. Jobs receive no gate socket or forge CA trust
+proxy's own `/etc/hosts`; all containers share its `/etc/resolv.conf`. A container's root can rewrite both for
+later jobs until the proxy restarts. Jobs receive no gate socket or forge CA trust
 mounts. External HTTPS uses each image's own certificate authorities.
 
 Forgejo's `ROOT_URL` is `http://<host>.localhost:<forge_http_port>/`, with browser port `3000` by default.
