@@ -44,6 +44,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho80"></a>[HO80](HO80-Git-And-The-API-On-The-Hosts-Loopback-With-A-Token.md) | M | - | Git, the API and the pass-on reach the forge on `127.0.0.1:<git_port>` through the token-only gate; Forgejo never on TCP, the browser on `web.sock`. |
 | <a id="ho14"></a>[HO14](HO14-The-Collections-Python-Under-Ansible-Test-Sanity.md) | S | - | `ansible-test sanity` on the collection's Python in the Build, from a pinned image of its own. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | [HO37](#ho37) | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho60"></a>[HO60](HO60-Each-Repositorys-Review-Set-On-The-Forge.md) | M | - | Each repository's `main` on the local forge and the project repository's protected from the signed project file's `review`: one approval by another person, dismissed by a later commit, or none; only owners and developers merge; set again at each sync. |
@@ -71,7 +72,6 @@ it is left out.
 |---|---|---|---|
 | <a id="ho78"></a>[HO78](HO78-Only-The-Gates-Sockets-Forwarded.md) | - | [HO74](#ho74) | A person's SSH connection forwards only to the gates' sockets and their own return socket, and to no TCP address. |
 | <a id="ho79"></a>[HO79](HO79-A-Persons-SSH-Login-Confirmed-By-A-Second-Factor.md) | - | [HO63](#ho63) | A person's SSH login needs a second factor beside their key: FIDO2 touch, or TOTP through PAM. |
-| <a id="ho80"></a>[HO80](HO80-Git-And-The-API-On-The-Hosts-Loopback-With-A-Token.md) | - | [HO69](#ho69) | Git, the API and the pass-on reach the forge on `127.0.0.1:<git_port>` through the token-only gate; Forgejo never on TCP, the browser on `web.sock`. |
 | <a id="ho77"></a>[HO77](HO77-Each-Job-In-A-Network-Of-Its-Own.md) | - | [HO69](#ho69) | Concurrent jobs on a host cannot reach one another's network, and no host login reaches Forgejo over TCP. |
 | <a id="ho64"></a>[HO64](HO64-The-Collection-Tested-Where-Up-Puts-It.md) | - | - | Once the interface installs the collection for every account, Molecule installs the collection as `up` does and shows a person's account finds it there; the README names the place. |
 | <a id="ho58"></a>[HO58](HO58-The-Services-Podman-Kept-Small.md) | - | - | Once a day, and after a missed day, each service account's Podman loses the images and volumes no container used for a set time. |

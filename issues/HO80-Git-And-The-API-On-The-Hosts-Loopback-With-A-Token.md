@@ -1,7 +1,7 @@
 # HO80 — Git And The API On The Host's Loopback With A Token
 
-**Status:** Idea (operator, 2026-10-31, as an analysis of the middle way for [HO69](README.md#ho69)).
-**Size:** - (M proposed).
+**Status:** Backlog (operator, 2026-10-31), the middle way for [HO69](README.md#ho69).
+**Size:** M.
 
 Part of the project's decision that a person joins with one click: one SSH key per person, no VPN, the state signed in
 Git on the central forge, every service on the host behind a Unix socket.
@@ -87,7 +87,11 @@ within the token's scopes. Brute force of a 40-hex token is no attack.
 - **Today's test:** none. The 07:00 run on walk6m tests today's state. After michi's decision, the steps file's
   push and pull steps lose their `sudo -n`, and Group 3's pass-on is run again with Core's swapped `HostPush`.
 
+## Idea part, not built now
+
+- The nftables `output` rule on `127.0.0.1:<git_port>` by `meta skuid`, for the persons' and the forge's uids, which
+  narrows the port to the circle `git.sock` has today (operator, 2026-10-31).
+
 ## Open questions
 
-- Whether michi takes the middle way, and whether the nftables uid rule comes with it.
 - The walk6m measurement of a task's container.
