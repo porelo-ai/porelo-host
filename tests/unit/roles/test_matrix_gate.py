@@ -148,8 +148,11 @@ def test_a_gate_already_holding_its_token_passes_again():
     env.filters["from_json"] = json.loads
     env.tests["skipped"] = lambda result: result.get("skipped", False)
     until = env.compile_expression(task["until"].strip())
-    # ansible-core's command answers rc 0, no output and no change when the creates file exists.
-    assert until(__matrix_administrator={"rc": 0, "stdout": "", "changed": False})
+    # ansible-core's command answers rc 0, no change and words that are no JSON when the creates file exists.
+    skipped = {"rc": 0, "stdout": "skipped, since /home/porelo-matrix/gate/admin-token exists", "changed": False}
+    assert until(__matrix_administrator=skipped)
+    # A run that answers no administrator stays changed, so it cannot pass.
+    assert "changed_when" not in task
     assert until(__matrix_administrator={"rc": 0, "stdout": '{"gate":true,"administrator":true}', "changed": True})
     assert not until(__matrix_administrator={"rc": 0, "stdout": '{"gate":true,"administrator":false}', "changed": True})
     assert not until(__matrix_administrator={"rc": 1, "stdout": "", "changed": True})

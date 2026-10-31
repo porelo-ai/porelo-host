@@ -226,7 +226,7 @@
   become_user: "{{ matrix_account }}"
   environment: "{{ __matrix_environment }}"
   register: __matrix_administrator
-  # With its token already there the command runs nothing and answers no JSON, unchanged.
+  # With its token already there the command runs nothing, unchanged, and its words are no JSON.
   until: >-
     __matrix_administrator is skipped
     or (__matrix_administrator.rc == 0 and not __matrix_administrator.changed)
