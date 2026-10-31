@@ -577,7 +577,7 @@ def test_registry_retries_token_revocation_after_recording_the_revoked_key(regis
     assert "bo" in applied(host)["revoked"]
     assert host.invoke("registry", data=b"") == 0
     assert json.loads(capsys.readouterr().out)["unchanged"] is True
-    assert attempts == [("bo",), ("bo",)]
+    assert attempts == [("bo",), ("bo",), ("bo",)]
 
 
 @pytest.mark.parametrize(

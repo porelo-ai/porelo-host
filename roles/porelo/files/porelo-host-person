@@ -707,8 +707,11 @@ class Host:
         if config is None:
             return
         errors = []
-        with self.forge_session(user) as (_, opener, base, token):
+        with self.forge_session(user) as (account, opener, base, token):
+            users = self.forge_users(account)
             for identity in config[1]:
+                if identity not in users:
+                    continue
                 try:
                     self.forge_drop_named(opener, base, token, identity)
                 except Refusal as error:
@@ -761,7 +764,10 @@ class Host:
         base, ca = self.forge_endpoint()
         opener = self.forge_opener(ca)
         token = self.forge_token(account, ADMIN, "write:admin")
+        users = self.forge_users(account)
         for identity in identities:
+            if identity not in users:
+                continue
             try:
                 self.forge_revoke_identity(opener, base, token, identity)
             except Refusal as error:
@@ -1169,6 +1175,7 @@ class Host:
         only the expiry is lifted for this, the password stays locked and no key or peer lets anyone in. Any failure
         expires the account again, as the lock left it.
         """
+        self.require(["usermod", "systemctl"])
         record = self.records()[user]
         pending = record.get("lock") == "pending"
         record.update(lock="pending", locked=False)
@@ -1190,10 +1197,16 @@ class Host:
 
     def finish_cleanup(self, user):
         """Try both safety restorations even when the first fails."""
+        self.require(["usermod", "systemctl"])
         try:
-            self.command(["usermod", "--expiredate", "1", user])
-        finally:
-            self.command(["systemctl", "stop", f"user@{self.uid(user)}.service"])
+            uid = self.uid(user)
+        except KeyError:
+            uid = None
+        if uid is not None:
+            try:
+                self.command(["usermod", "--expiredate", "1", user])
+            finally:
+                self.command(["systemctl", "stop", f"user@{uid}.service"])
         record = self.records()[user]
         record["locked"] = True
         self.record(user, record)
@@ -1603,12 +1616,11 @@ class Host:
         records = self.records()
         retried = {user for user, rec in records.items() if rec.get("lock") == "pending"}
         retry_errors = self.retry_locks(records)
-        if retry_errors:
-            refuse("unfinished host revocation: " + "; ".join(str(error) for error in retry_errors), 69)
         applied_path, previous = self.applied_registry()
         if self.sudo_user is not None:
             record = self.records().get(admin)
-            if record is None or record["locked"] or (previous is not None and admin in previous["revoked"]):
+            if (record is None or record["locked"] or record.get("lock") == "pending"
+                    or (previous is not None and admin in previous["revoked"])):
                 refuse(f"the pinned host admin {admin} is locked, revoked or no person on this host", 65)
         host = self.setting("/etc/porelo-host/forge.conf", "host")
         if not re.fullmatch(HOST, host):
@@ -1707,7 +1719,7 @@ class Host:
             self.write(applied_path, json.dumps(applied, indent=1) + "\n", 0o600)
             if next_pin != pinned:
                 self.write(pin_path, f'admin={next_pin["admin"]}\nkey={next_pin["key"]}\n', 0o600)
-        self.apply_registry_cards(persons, revoked, records, previous, retried=retried)
+        self.apply_registry_cards(persons, revoked, records, previous, retried=retried, retry_errors=retry_errors)
         return {
             "commit": commit,
             "pinned": fingerprint(next_pin["key"]),
@@ -1740,10 +1752,12 @@ class Host:
             )
 
 
-    def apply_registry_cards(self, persons, revoked, records, previous=None, retried=()):
+    def apply_registry_cards(self, persons, revoked, records, previous=None, retried=(), retry_errors=()):
         """Apply host revocations and current card keys after recording the verified registry."""
-        retried = set(retried) | {user for user, rec in records.items() if rec.get("lock") == "pending"}
-        errors = self.retry_locks(records)
+        already_retried = set(retried)
+        retried = already_retried | {user for user, rec in records.items() if rec.get("lock") == "pending"}
+        errors = list(retry_errors) + self.retry_locks({user: rec for user, rec in records.items()
+                                                     if user not in already_retried})
         failed = {user for user, rec in records.items() if rec.get("lock") == "pending"}
         prior = previous["persons"] if previous else []
         keys = [entry["ssh"] for entry in [*prior, *persons] if entry["login"] in revoked]
@@ -1756,15 +1770,14 @@ class Host:
         for entry in cards.values():
             login = entry["login"]
             record = records.get(login)
-            if record is None or login in failed:
+            if record is None:
                 continue
             try:
                 if login in revoked or self.key_revoked(entry["ssh"]):
-                    if not record["locked"] or record.get("reason", "host") != "host":
+                    if login in retried or not record["locked"] or record.get("reason", "host") != "host":
                         record["reason"] = "key"
-                    if login not in retried:
-                        self.lock(login, record, True)
-                elif not record["locked"]:
+                    self.lock(login, record, True)
+                elif login not in failed and not record["locked"]:
                     record.update({key: entry[key] for key in ("ssh", "expires")})
                     self.write_authorized_key(login, entry["ssh"], self.card_expiry(entry["expires"]))
                     self.record(login, record)
@@ -1890,7 +1903,8 @@ class Host:
                 continue
             if records.get(user, {}).get("locked") and records[user].get("reason", "host") == "host":
                 continue
-            if any(entry.get(field) != current.get(field) for field in ("login", "ssh", "expires")):
+            if (any(entry.get(field) != current.get(field) for field in ("login", "ssh"))
+                    or expires != current_expiry):
                 if uid is None:
                     refused.append(f"{user}: lagging card has no host account")
                     continue
@@ -1975,12 +1989,13 @@ class Host:
                 active[user] = dict(previous_people[user])
                 if entry["role"] == "developer":
                     active[user]["role"] = "developer"
-                bounds = [value for value in (active[user].get("expires"),
+                bounds = [value for value in (entry.get("expires"), active[user].get("expires"),
                                              registry_people[user].get("expires")) if value]
                 active[user]["expires"] = min(bounds, key=self.card_expiry) if bounds else None
         self.write(people_path, json.dumps(active) + "\n", 0o600)
         self.project_signers(project, active,
-                             preserve={user for user in deferred & affected if not records[user]["locked"]})
+                             preserve={user for user in deferred & affected if not records[user]["locked"]},
+                             entry_expiries={entry["login"]: entry.get("expires") for entry in entries})
         for apply in (lambda: self.forge_project_apply(project, admin, active),
                       lambda: self.matrix_members(project, sorted(active)),
                       lambda: self.matrix_admins(self.path(f"/etc/porelo-host/matrix/{project}.admins"),
@@ -2085,7 +2100,7 @@ class Host:
                 self.forge_api(opener, base, token, "PATCH", identity, 200,
                                {"login_name": identity, "source_id": 0, "prohibit_login": False})
 
-    def project_signers(self, project, persons, preserve=()):
+    def project_signers(self, project, persons, preserve=(), entry_expiries=None):
         """Publish project-local person keys and task CAs, bounding replaced keys to past signatures."""
         state = self.path(f"/etc/porelo-host/signers/{project}.json")
         self.check(state, mode=0o600)
@@ -2111,7 +2126,8 @@ class Host:
                 if (not self.key_revoked(card["ssh"])
                         and (expiry is None or expiry > self.now().strftime("%Y%m%d%H%M%SZ"))):
                     card = dict(card)
-                    bounds = [value for value in (card.get("expires"), persons.get(user, {}).get("expires"),
+                    bounds = [value for value in ((entry_expiries or {}).get(user), card.get("expires"),
+                                                 persons.get(user, {}).get("expires"),
                                                  registry_cards.get(user, {}).get("expires")) if value]
                     card["expires"] = min(bounds, key=self.card_expiry) if bounds else None
                     expiry = self.card_expiry(card["expires"])
@@ -2326,16 +2342,19 @@ class Host:
         """Delete every task token whose recorded certificate has ended; one person's failure stops no other."""
         if self.sudo_user is not None:
             refuse("the sweep is root's alone, from its timer", 65)
+        errors = [str(error) for error in self.retry_locks(records)]
         now = self.now()
         due = {}
         for login, task, entry in self.task_records():
             record = records.get(login)
             ended = certificate_time(entry["valid_before"].removesuffix("Z")) <= now
-            if ended and record is not None and not record["locked"]:
+            if ended and record is not None and (not record["locked"] or record.get("lock") == "pending"):
                 due.setdefault(login, set()).add(TASK_TOKEN + task)
         if not due or self.forge_configuration(min(due)) is None:
+            if errors:
+                refuse("unfinished host revocation: " + "; ".join(errors), 69)
             return {"swept": []}
-        swept, errors = [], []
+        swept = []
         with self.forge_session(min(due)) as (_, opener, base, token):
             for login in sorted(due):
                 try:
@@ -2461,6 +2480,8 @@ class Host:
             if verb != "add" and record is None:
                 refuse("the person is unknown to the people records", 65)
             if verb == "add":
+                if record is not None and record.get("lock") == "pending":
+                    self.lock(user, record, None)
                 if data is None and not sys.stdin.isatty():
                     data = sys.stdin.buffer.read(1)
                 if data not in (None, b""):

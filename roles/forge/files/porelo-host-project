@@ -160,6 +160,9 @@ def read_person(user, path):
         and all(line.startswith("laptop=") and len(line) > 7 for line in lines[3:])
     ):
         return ["hand"], lines[2] == "locked=true", lines[3:]
+    pending = bool(lines and lines[-1] == "lock=pending")
+    if pending:
+        lines = lines[:-1]
     members, previous = [], None
     index = 0
     while index < len(lines) and lines[index].startswith("member="):
@@ -185,7 +188,7 @@ def read_person(user, path):
         refuse(f"the record for {user} is malformed", 65)
     if lines[index + 1].startswith("ssh="):
         signing_key(lines[index + 1][4:], "person card key", 65)
-    return members, lines[index] == "locked=true", lines[index + 1 :]
+    return members, lines[index] == "locked=true" or pending, lines[index + 1 :] + (["lock=pending"] if pending else [])
 
 
 def format_person(members, locked, laptops):

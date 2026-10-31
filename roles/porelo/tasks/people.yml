@@ -55,6 +55,8 @@
                     lines = stream.read().splitlines()
             except (OSError, UnicodeError):
                 fail(f"cannot read {path}")
+            if lines and lines[-1] == "lock=pending":
+                lines = lines[:-1]
             if (
                 len(lines) >= 4
                 and lines[0] == "role=project-admin"

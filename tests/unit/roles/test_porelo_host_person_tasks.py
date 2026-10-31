@@ -112,6 +112,16 @@ class Forge:
             return self.scope["run_command"](args)
         assert args[:2] == ["runuser", "-u"] and args[2] == "porelo-forge", args
         offset = args.index("podman")
+        if args[offset:] == ["podman", "exec", "forgejo", "forgejo", "admin", "user", "list"]:
+            return subprocess.CompletedProcess(
+                args,
+                0,
+                "ID Username Email IsActive IsAdmin\n"
+                "1 alice alice@example.org true false\n"
+                "2 porelo-alice gate@example.org true false\n"
+                "3 porelo-admin admin@example.org true true\n",
+                "",
+            )
         assert args[offset : offset + 7] == [
             "podman",
             "exec",

@@ -336,6 +336,7 @@ def test_a_malformed_http_reply_cannot_escape_with_sensitive_response_text(servi
     def broken(request, timeout):
         raise http.client.BadStatusLine(ADMIN_TOKEN)
 
+    services.recorder.users = dict.fromkeys(OWN, False)
     monkeypatch.setattr(services.recorder, "open", broken)
     with pytest.raises(services.scope["Refusal"]) as error:
         hook(services, "forge_lock", "alice")
@@ -455,7 +456,7 @@ def test_failed_runtime_cleanup_still_revokes_forge_access_and_reports_the_lefto
     with pytest.raises(services.scope["Refusal"]) as error:
         hook(services, "forge_lock", "alice")
     assert error.value.code == 73
-    assert services.recorder.users == dict.fromkeys(IDENTITIES, True)
+    assert services.recorder.users == dict.fromkeys(OWN, True)
     assert token_file(services).parent.exists()
 
 
