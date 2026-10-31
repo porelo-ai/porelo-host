@@ -16,6 +16,7 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho63"></a>[HO63](HO63-Podman-Reached-Through-The-Accounts-Session-Bus.md) | S | - | Every podman call as a service account reaches its user manager's bus, and a missing bus refuses by name. |
+| <a id="ho80"></a>[HO80](HO80-Git-And-The-API-On-The-Hosts-Loopback-With-A-Token.md) | M | - | Git, the API and the pass-on reach the forge on `127.0.0.1:<git_port>` through the token-only gate; Forgejo never on TCP, the browser on `web.sock`. |
 | <a id="ho42"></a>[HO42](HO42-The-Host-Prepared-With-No-Project-Or-Person.md) | L | - | The host admin prepares a host with no project or person: the VPN per host, the shared forge, runner, pool and Matrix homeserver, under the host's names and the host admin's constrained CA. The homeserver's certificate waits on the homeserver serving one made elsewhere. |
 | <a id="ho44"></a>[HO44](HO44-A-Project-Registered-On-The-Host.md) | M | [HO42](#ho42) | `porelo-host-project`: a project's forge organization and publisher with its pinned signing key, deleted once nothing is unpushed. |
 | <a id="ho43"></a>[HO43](HO43-A-Project-Admin-Admitted-By-The-Host-Admin.md) | L | [HO42](#ho42) | `porelo-host-person`: a person admitted from their public keys (account, laptops' ssh keys and VPN peers, forge login and identities, Matrix token), locked and purged. |
@@ -44,7 +45,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho80"></a>[HO80](HO80-Git-And-The-API-On-The-Hosts-Loopback-With-A-Token.md) | M | - | Git, the API and the pass-on reach the forge on `127.0.0.1:<git_port>` through the token-only gate; Forgejo never on TCP, the browser on `web.sock`. |
 | <a id="ho14"></a>[HO14](HO14-The-Collections-Python-Under-Ansible-Test-Sanity.md) | S | - | `ansible-test sanity` on the collection's Python in the Build, from a pinned image of its own. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | [HO37](#ho37) | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho60"></a>[HO60](HO60-Each-Repositorys-Review-Set-On-The-Forge.md) | M | - | Each repository's `main` on the local forge and the project repository's protected from the signed project file's `review`: one approval by another person, dismissed by a later commit, or none; only owners and developers merge; set again at each sync. |

@@ -1,6 +1,6 @@
 # HO80 — Git And The API On The Host's Loopback With A Token
 
-**Status:** Backlog (operator, 2026-10-31), the middle way for [HO69](README.md#ho69).
+**Status:** Review (Backlog: operator, 2026-10-31), the middle way for [HO69](README.md#ho69).
 **Size:** M.
 
 Part of the project's decision that a person joins with one click: one SSH key per person, no VPN, the state signed in
@@ -86,6 +86,45 @@ within the token's scopes. Brute force of a 40-hex token is no attack.
     tests, including Molecule's `push.yml`.
 - **Today's test:** none. The 07:00 run on walk6m tests today's state. After michi's decision, the steps file's
   push and pull steps lose their `sudo -n`, and Group 3's pass-on is run again with Core's swapped `HostPush`.
+
+## Plan
+
+- `porelo-forge-git.socket` listens on `127.0.0.1:<git_port>` beside `git.sock`, `Accept=yes` as before. The gate
+  reads `SO_PEERCRED` only on a Unix socket; its web and runner modes refuse any other connection before reading it.
+- `porelo-host-push`: push, `--pull` and `--migrate` run in the person's own account and refuse root with 77. Each
+  gets the local token through `sudo -n porelo-host-person forge-token`, which refuses a locked person or one no
+  project holds. Local Git takes the token as a header in its environment, as central Git does, with no CA. Root's
+  `--check` stays, now over TCP. The namespace, its forwarder and clean-up watcher, the credential pipe, the reading
+  of the person record and the reading of the config as the caller go.
+- The sudoers rule goes; `up` removes it from a host that has it, and `down` still removes it. `porelo-host-person
+  forge-token --for`, which only the sudo push used, goes.
+- `--task` was never pushed, so nothing of it is in this change.
+- Texts: [HO69](README.md#ho69) and [HO72](README.md#ho72), the forge role's README, `doc/local-forge.md`,
+  `doc/lines.md`, the changelog. The host guide already had the push in the person's own account.
+
+## Tests
+
+- `tests/unit/roles/test_forge_gate.py`: on an accepted loopback TCP connection, git mode answers `401` with
+  `WWW-Authenticate: Basic`; web and runner modes refuse it with no answer (both red against the old gate).
+- `tests/unit/roles/test_porelo_host_push.py`: every push, pull and migration runs as the person with the token from
+  `sudo -n porelo-host-person forge-token`; root is refused with 77; local Git gets the token as a Basic header and no
+  CA; the socket unit has both listeners; no sudoers file, its removal in `up` and `down`, and no `unshare` remain.
+  The namespace, forwarder, sudo-caller, person-record and credential-pipe tests are removed with their code.
+- `tests/unit/roles/test_porelo_host_person_tasks.py`: `forge-token --for` is refused as an unknown call, as root and
+  through sudo.
+
+## Not built here
+
+- Molecule's `push.yml` is still the VPN scenario throughout (WireGuard keys, `10.73.7.1`, identity token files). It is
+  rewritten with the rest of Molecule in [HO74](README.md#ho74), not here.
+
+## Acceptance
+
+- [ ] On a host after `up`: `ss -ltn` shows `127.0.0.1:<git_port>` held by systemd, and nothing of Forgejo's on TCP.
+- [ ] `curl -sI http://127.0.0.1:<git_port>/` answers `401` with `WWW-Authenticate: Basic`.
+- [ ] A person's `porelo-host-push <project>` without sudo pushes local `main`; `--pull` brings `central/main`.
+- [ ] `/etc/sudoers.d/porelo-host-push` is gone after `up` on a host that had it.
+- [ ] The walk6m measurement below.
 
 ## Idea part, not built now
 

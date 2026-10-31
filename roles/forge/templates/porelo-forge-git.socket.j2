@@ -4,6 +4,8 @@ Description=The host's forge git gate
 
 [Socket]
 ListenStream=/run/porelo-forge/git.sock
+# Git has no Unix-socket transport: the same token-only gate on loopback, never Forgejo itself.
+ListenStream=127.0.0.1:{{ forge_git_port }}
 Accept=yes
 SocketUser={{ forge_account }}
 SocketGroup=porelo-people

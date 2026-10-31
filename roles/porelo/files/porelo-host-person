@@ -24,8 +24,7 @@ recorded, unrevoked admin; the host never removes such a project itself.
 With account= in forge.conf, admission creates the login and the porelo-<user>
 gate and no token, since Forgejo keeps only a token's hash; lock also revokes
 each <agent>-<user> a 6j host's agents= names. forge-token, by sudo alone, deletes
-every token of the caller's login and answers one new token alone on stdout.
-Root can request a named person with forge-token --for <login>, never through sudo;
+every token of the caller's login and answers one new token alone on stdout;
 that token is written to no file. Lock prohibits all those logins and deletes all their tokens
 through the forge's private socket API; its temporary admin token stays
 in memory. registry applies card keys and locks every person whose current key it revokes.
@@ -2440,12 +2439,6 @@ class Host:
             verb, project = arguments
             if not re.fullmatch(PROJECT, project):
                 refuse("the project name must match [a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?")
-        elif len(arguments) == 3 and arguments[:2] == ["forge-token", "--for"]:
-            verb, value = "forge-token-for", arguments[2]
-            if self.sudo_user is not None:
-                refuse("forge-token --for is root's alone, never through sudo", 65)
-            if not re.fullmatch(USER, value):
-                refuse("the person name must match [a-z][a-z0-9-]{0,30}")
         elif arguments in (["forge-token"], ["sweep"]):
             verb, value = arguments[0], None
         elif len(arguments) in (2, 3) and arguments[0] == "task" and arguments[1:-1] in ([], ["--end"], ["--show"]):
@@ -2455,7 +2448,7 @@ class Host:
         else:
             refuse(
                 "use add <user> --role project-admin, lock <user>, purge <user>, sync <project>, registry [--stdin],"
-                " registry pin <user> <key>, forge-token [--for <user>], task <task>, task --end <task>,"
+                " registry pin <user> <key>, forge-token, task <task>, task --end <task>,"
                 " task --show <fingerprint>"
                 " or sweep"
             )
@@ -2479,8 +2472,6 @@ class Host:
                 return self.pin(user, key)
             if verb == "registry":
                 return self.registry(bundle)
-            if verb == "forge-token-for":
-                return self.person_forge_token(value, self.records())
             if verb in ("forge-token", "sweep", "task", "end", "show"):
                 return self.tasks_verb(verb, value, data)
             records = self.records()

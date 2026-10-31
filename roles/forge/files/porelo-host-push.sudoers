@@ -1,2 +1,0 @@
-# The helper validates every argument, the sudo caller and their current project membership.
-%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-push *

@@ -79,13 +79,12 @@ The command exits 0 when every named need is done, 75 on `n`, `N` or Ctrl+C, 64 
 required command is missing. Its last line on success is "The host's stop is done; close this terminal, and setup
 goes on." On cancellation it is "Cancelled; the host waits at this stop. Running up again comes back here."
 
-Push and pull are separate sudo verbs: `sudo -n /usr/local/sbin/porelo-host-push [--pull] <project> [repos...]`.
-They read the central token on stdin, validate the sudo caller's current project membership, and read only that
-caller's private push config. Root gets the local token with `porelo-host-person forge-token --for <login>`.
-Each local Git transfer runs in a private network namespace with a loopback forwarder to `git.sock`; API requests
-use the socket directly. No listener opens on the host's loopback, and no local CA or vault token is used.
-`porelo-host-push --migrate <project>` stays in the person's own account, using
-`sudo -n /usr/local/sbin/porelo-host-person forge-token` for its local API token. The stop pipes the central token
+Push and pull run in the person's own account: `/usr/local/sbin/porelo-host-push [--pull] <project> [repos...]`,
+as does `porelo-host-push --migrate <project>`; root running them is refused with 77. They read the central token on
+stdin and only the caller's private push config, and get the local token through
+`sudo -n /usr/local/sbin/porelo-host-person forge-token`, which refuses a locked person or one no project holds.
+Local Git reaches the forge on `127.0.0.1:<git_port>`, the same token-only gate `git.sock` is; API requests use the
+socket directly. No local CA or vault token is used. The stop pipes the central token
 into that migration verb. Neither push nor pull stores the central token.
 
 **The stop on standard input.** Every need is given from the person's secrets file by one pipeline, as the person:

@@ -1,11 +1,12 @@
 #!/usr/bin/env -S -i PATH=/usr/sbin:/usr/bin SUDO_UID=${SUDO_UID} SUDO_USER=${SUDO_USER} /bin/bash --noprofile --norc
 # shellcheck shell=bash
-# The gathered push, run through sudo by a project developer on the host: each repository's approved
+# The gathered push, run by a project developer in their own account on the host: each repository's approved
 # local main goes to the central forge with a plain push. A central forge that moved refuses it, and its commits reach
 # the local forge as central/main. With --check, root compares every local ref of a project against Forgejo's migrated
 # original_url before project removal, writing neither forge. With --migrate, the project admin's bring stop has
 # Forgejo migrate the repositories the bring listed and the forge lacks; with --pull, central main reaches the local
-# forge as central/main. The central token is read from standard input every time and kept in memory alone.
+# forge as central/main. The central token is read from standard input every time and kept in memory alone. Git reaches
+# the host's forge on 127.0.0.1:<git_port>, the token-only gate git.sock has, with the person's own forge token.
 # The line above empties the environment before bash starts: it takes no PATH, HOME, git, proxy or shell setting from
 # its caller.
 set -euo pipefail
@@ -14,7 +15,6 @@ cd / || exit 1
 
 forge_conf=/etc/porelo-host/forge.conf
 local_socket=/run/porelo-forge/git.sock
-people_dir=/etc/porelo-host/people
 person_helper=/usr/local/sbin/porelo-host-person
 central_ca_conf=/etc/porelo-host/forge/central-ca.conf
 default_central_ca=/etc/ssl/certs/ca-certificates.crt
@@ -68,14 +68,7 @@ if [ "$mode" = push ] && [ "${1-}" = --check ]; then
     [[ $project_owner =~ $project_pattern ]] || fail "--check needs a valid project organization" 64
     shift 2
 else
-    if [ "$mode" = migrate ]; then
-        [ "$caller_uid" != 0 ] || fail "--migrate runs in the person's own account" 77
-    else
-        [ "$caller_uid" = 0 ] && [[ ${SUDO_UID:-} =~ ^[1-9][0-9]*$ ]] \
-            && [[ ${SUDO_USER:-} =~ ^[a-z][a-z0-9-]{0,30}$ ]] && [ "$SUDO_USER" != root ] \
-            || fail "push and --pull require sudo from a person's account" 77
-        caller_uid=$SUDO_UID
-    fi
+    [ "$caller_uid" != 0 ] || fail "push, --pull and --migrate run in the person's own account" 77
     [ "$#" -ge 1 ] || fail "name the project, and optionally the repositories to push" 64
     project_owner=$1
     [[ $project_owner =~ $project_pattern ]] || fail "'$project_owner' is not a project name" 64
@@ -99,21 +92,6 @@ if [ -z "$checking" ]; then
     [ "$passwd_uid" = "$caller_uid" ] && [ -n "$caller_user" ] \
         && [[ $caller_home == /* ]] && [ "$caller_home" != / ] \
         || fail "getent passwd gave no home directory for account $caller_uid" 69
-
-    if [ "$mode" != migrate ]; then
-        [ "$caller_user" = "$SUDO_USER" ] || fail "sudo's caller name and uid disagree" 77
-        person_record="$people_dir/$caller_user.conf"
-        trusted_plain "$person_record" || fail "the caller has no trusted person record" 77
-        member= locked=
-        while IFS= read -r line; do
-            case "$line" in
-                "member=$project_owner developer" | "member=$project_owner project-admin") member=yes ;;
-                locked=false) locked=no ;;
-                locked=true | lock=pending) fail "the caller is locked" 77 ;;
-            esac
-        done < "$person_record"
-        [ "$member" = yes ] && [ "$locked" = no ] || fail "the caller is no developer of $project_owner" 77
-    fi
 
     push_dir="$caller_home/.config/porelo-host/push"
     # The bring's list of repositories still to migrate has the push config's form, under a name of its own.
@@ -193,14 +171,8 @@ finally:
     if fd is not None:
         os.close(fd)
 '
-    if [ "$mode" = migrate ]; then
-        config_data=$(timeout 10 python3 -I -c "$config_reader" "$caller_home" "$caller_uid" "${conf##*/}" < /dev/null) \
-            || fail "$conf could not be read" 66
-    else
-        config_data=$(timeout 10 runuser -u "$caller_user" -- python3 -I -c "$config_reader" \
-            "$caller_home" "$caller_uid" "${conf##*/}" < /dev/null) \
-            || fail "$conf could not be read as $caller_user" 66
-    fi
+    config_data=$(timeout 10 python3 -I -c "$config_reader" "$caller_home" "$caller_uid" "${conf##*/}" < /dev/null) \
+        || fail "$conf could not be read" 66
     configured_local=
     config_repos=()
     while read -r key first second extra; do
@@ -252,14 +224,9 @@ finally:
         done
     fi
 
-    if [ "$mode" = migrate ]; then
-        local_token=$(sudo -n "$person_helper" forge-token < /dev/null 2>/dev/null) \
-            || fail "the person's forge token could not be made" 69
-    else
-        local_token=$(env -u SUDO_USER -u SUDO_UID "$person_helper" forge-token --for "$caller_user" \
-            < /dev/null 2>/dev/null) \
-            || fail "the person's forge token could not be made" 69
-    fi
+    # The host refuses a locked person or one no project holds; the forge then bounds the token to what they reach.
+    local_token=$(sudo -n "$person_helper" forge-token < /dev/null 2>/dev/null) \
+        || fail "the person's forge token could not be made" 69
     [ -n "$local_token" ] || fail "the person's forge token is empty" 69
 else
     declare -A named=()
@@ -325,130 +292,16 @@ redact() {
     printf '%s' "$text"
 }
 
-# The token reaches git through its environment alone, never on a redirect to another host; each forge is trusted by
-# its own authority only, so the host's CA can never stand in for the central forge.
+# The token reaches git through its environment alone, never on a redirect to another host; the central forge is trusted
+# by its own authority only, so the host's CA can never stand in for it. The host's forge is plain HTTP on loopback.
 git_as() {
     local header=$1 ca=$2
     shift 2
+    [ -z "$ca" ] || export GIT_SSL_CAINFO="$ca"
     GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=http.extraHeader GIT_CONFIG_VALUE_0="$header" \
-        GIT_CONFIG_KEY_1=http.followRedirects GIT_CONFIG_VALUE_1=false GIT_SSL_CAINFO="$ca" exec setsid git "$@"
+        GIT_CONFIG_KEY_1=http.followRedirects GIT_CONFIG_VALUE_1=false exec setsid git "$@"
 }
-# Git has no HTTP Unix-socket transport; only the child namespace ever opens a TCP listener.
-as_local() {
-    exec setsid unshare --net python3 -I -c '
-import os
-import selectors
-import signal
-import socket
-import socketserver
-import subprocess
-import sys
-import threading
-
-port, upstream = int(sys.argv[1]), sys.argv[2]
-token = sys.stdin.buffer.readline().rstrip(b"\n")
-if not token or b"\r" in token:
-    sys.exit("invalid local credential")
-subprocess.run(["ip", "link", "set", "lo", "up"], check=True, stdin=subprocess.DEVNULL)
-
-# Only this process holds the write end until exit; the watcher then kills any helpers still holding output open.
-watch_read, watch_write = os.pipe()
-watcher = subprocess.Popen([sys.executable, "-I", "-c", """
-import os
-import signal
-import sys
-for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
-    signal.signal(signum, signal.SIG_IGN)
-sys.stdout.buffer.write(b"ready\\n")
-sys.stdout.buffer.flush()
-sys.stdin.buffer.read()
-os.killpg(os.getpgrp(), signal.SIGKILL)
-"""], stdin=watch_read, stdout=subprocess.PIPE)
-os.close(watch_read)
-if watcher.stdout.readline() != b"ready\n":
-    sys.exit("cleanup watcher did not start")
-watcher.stdout.close()
-
-class Forward(socketserver.BaseRequestHandler):
-    def handle(self):
-        with self.request, socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
-            self.request.settimeout(30)
-            peer.settimeout(30)
-            try:
-                peer.connect(upstream)
-            except OSError:
-                return
-            with selectors.DefaultSelector() as ready:
-                ready.register(self.request, selectors.EVENT_READ, peer)
-                ready.register(peer, selectors.EVENT_READ, self.request)
-                while ready.get_map():
-                    events = ready.select(30)
-                    if not events:
-                        break
-                    for key, _ in events:
-                        try:
-                            data = key.fileobj.recv(65536)
-                        except OSError:
-                            data = b""
-                        if data:
-                            try:
-                                key.data.sendall(data)
-                                continue
-                            except OSError:
-                                pass
-                        # A closed request direction must not discard the gate response still waiting to be read.
-                        ready.unregister(key.fileobj)
-                        try:
-                            key.data.shutdown(socket.SHUT_WR)
-                        except OSError:
-                            pass
-
-server = socketserver.ThreadingTCPServer(("127.0.0.1", port), Forward)
-server.daemon_threads = True
-threading.Thread(target=server.serve_forever, daemon=True).start()
-read_fd, write_fd = os.pipe()
-def credentials():
-    try:
-        while True:
-            os.write(write_fd, token + b"\n")
-    except BrokenPipeError:
-        pass
-    finally:
-        os.close(write_fd)
-threading.Thread(target=credentials, daemon=True).start()
-helper = ("!f() { [ \"$1\" = get ] || exit 0; IFS= read -r token <&" + str(read_fd)
-          + "; printf \"username=x-access-token\\npassword=%s\\n\" \"$token\"; }; f")
-env = dict(os.environ, GIT_CONFIG_COUNT="3", GIT_CONFIG_KEY_0="credential.helper", GIT_CONFIG_VALUE_0="",
-           GIT_CONFIG_KEY_1="credential.helper", GIT_CONFIG_VALUE_1=helper,
-           GIT_CONFIG_KEY_2="http.followRedirects", GIT_CONFIG_VALUE_2="false")
-child = None
-def interrupted(signum, frame):
-    raise SystemExit(128 + signum)
-for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
-    signal.signal(signum, interrupted)
-try:
-    child = subprocess.Popen(["git", *sys.argv[3:]], env=env, pass_fds=(read_fd,),
-                             stdin=subprocess.DEVNULL)
-    result = child.wait()
-finally:
-    for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
-        signal.signal(signum, signal.SIG_IGN)
-    if child is not None:
-        try:
-            os.killpg(os.getpgrp(), signal.SIGTERM)
-            try:
-                child.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                os.killpg(os.getpgrp(), signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        child.wait()
-    os.close(read_fd)
-    server.shutdown()
-    server.server_close()
-sys.exit(result if result >= 0 else 128 - result)
-' "$git_port" "$local_socket" "$@"
-}
+as_local() { git_as "$local_header" "" "$@"; }
 as_central() { git_as "$central_header" "$central_ca" "$@"; }
 
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
@@ -490,12 +343,8 @@ capture_git() {
     exec {output_fd}<&"${TRANSFER[0]}" {input_fd}>&"${TRANSFER[1]}"
     active_pid=$transfer_pid
     # EPIPE must fail the transfer without delivering SIGPIPE to this shell.
-    if ! (trap "" PIPE; printf 'ready\n' >&"$input_fd" || exit 1
-        if [ "$1" = as_local ]; then
-            printf "%s\n" "$local_token" >&"$input_fd" || exit 1
-        fi
-    ); then
-        printf 'porelo-host-push: could not send the local credential to Git\n' >&2
+    if ! (trap "" PIPE; printf 'ready\n' >&"$input_fd"); then
+        printf 'porelo-host-push: could not start Git\n' >&2
         status=1
     fi
     exec {input_fd}>&-

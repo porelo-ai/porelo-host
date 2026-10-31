@@ -1,5 +1,5 @@
 ---
-# The gathered push runs through sudo for each developer from ~/.config/porelo-host/push/<project>.conf and asks for
+# The gathered push runs in each developer's own account from ~/.config/porelo-host/push/<project>.conf and asks for
 # the central token each time, so no credential is installed with it. Root runs --check at project removal, trusting
 # the central forge authority recorded here.
 - name: push | Check the central forge's CA is one absolute path before it reaches the settings
@@ -24,11 +24,8 @@
     mode: "0644"
     content: "{{ forge_central_ca }}\n"
 
-- name: push | Allow people to run the validated push and pull verbs as root
-  ansible.builtin.copy:
-    src: "{{ role_path }}/files/porelo-host-push.sudoers"
-    dest: /etc/sudoers.d/porelo-host-push
-    owner: root
-    group: root
-    mode: "0440"
-    validate: /usr/sbin/visudo -cf %s
+# A host prepared before Git reached the forge on loopback had the push and pull run as root.
+- name: push | Remove the rule that ran the push and pull as root
+  ansible.builtin.file:
+    path: /etc/sudoers.d/porelo-host-push
+    state: absent

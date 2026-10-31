@@ -24,7 +24,9 @@ Git on the central forge, every service on the host behind a Unix socket.
   OAuth2 provider is off (`[oauth2] ENABLED=false`), so no grant mints one either.
 - `git.sock`, for Git over HTTP and the API: it sets no user header, removes `Cookie`, answers a request without
   credentials with `401` and `WWW-Authenticate: Basic`, as Git expects before it asks its credential helper, and passes
-  a request with a token on, Basic or `token`, to Forgejo.
+  a request with a token on, Basic or `token`, to Forgejo. Its socket unit also listens on `127.0.0.1:<git_port>` for
+  Git on the host, which has no Unix-socket transport, with the same gate in the same mode
+  ([HO80](README.md#ho80)); the web mode serves its Unix socket alone.
 - A task's container gets neither socket nor a token: the host's task gate passes the task's branch on to `git.sock`
   with the task's own token ([HO71](README.md#ho71)), so nothing that runs as the person's uid gets their forge rights.
   The person's own Git takes their token through Porelo's credential helper, and Porelo sets their remotes to the local

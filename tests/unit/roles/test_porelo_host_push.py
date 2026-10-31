@@ -1,4 +1,4 @@
-"""Exercise the gathered sudo push, person-run migration and root check against local repositories."""
+"""Exercise the person-run push, pull and migration and root's check against local repositories."""
 
 import base64
 import json
@@ -132,17 +132,14 @@ def host(tmp_path):
     script = moved_if_present(script, "/etc/ssl/certs/ca-certificates.crt", str(etc / "system-ca.pem"))
     script = moved_if_present(script, "PATH=/usr/sbin:/usr/bin", f"PATH={bin_dir}:/usr/sbin:/usr/bin")
     script = moved_if_present(script, "work=$(mktemp -d)", f"work=$(mktemp -d -p {temporary})")
-    script = moved_if_present(script, "/etc/porelo-host/people", str(etc / "people"))
     script = moved_if_present(script, "/usr/local/sbin/porelo-host-person", str(bin_dir / "porelo-host-person"))
     script = moved_if_present(script, "ca_owner=0", f"ca_owner={os.getuid()}")
-    (etc / "people").mkdir()
-    (etc / "people/alice.conf").write_text("member=porelo developer\nlocked=false\n")
     command = tmp_path / "porelo-host-push"
     command.write_text(script)
     command.chmod(0o755)
 
     (bin_dir / "id").write_text(f"#!/bin/sh\ncat {tmp_path / 'uid'}\n")
-    (tmp_path / "uid").write_text("0\n")
+    (tmp_path / "uid").write_text(f"{person_uid}\n")
 
     (bin_dir / "getent").write_text(
         f"#!{sys.executable}\n"
@@ -185,35 +182,14 @@ def host(tmp_path):
     (bin_dir / "porelo-host-person").write_text(
         f"#!{sys.executable}\n"
         "import pathlib, sys\n"
-        f"assert sys.argv[1:] == ['forge-token', '--for', 'alice'], sys.argv[1:]\n"
+        f"assert sys.argv[1:] == ['forge-token'], sys.argv[1:]\n"
         f"if pathlib.Path({str(tmp_path / 'person-token-failed')!r}).exists(): sys.exit(1)\n"
         f"sys.stdout.write({PERSON_TOKEN!r})\n"
     )
     (bin_dir / "sudo").write_text(
-        '#!/bin/sh\n[ "$1" = -n ] || exit 1\nshift\n[ -n "$1" ] || exit 1\n'
-        f"exec {bin_dir}/porelo-host-person forge-token --for alice\n"
+        f'#!/bin/sh\n[ "$1" = -n ] && [ "$2" = {bin_dir}/porelo-host-person ] || exit 1\nshift 2\n'
+        f'exec {bin_dir}/porelo-host-person "$@"\n'
     )
-    (bin_dir / "unshare").write_text('#!/bin/sh\n[ "$1" = --net ] || exit 1\nshift\nexport TEST_NETNS=yes\nexec "$@"\n')
-    (bin_dir / "ip").write_text('#!/bin/sh\n[ "$TEST_NETNS" = yes ] && [ "$*" = "link set lo up" ]\n')
-    # The namespace is stubbed: refuse every real TCP bind, and exercise the wrapper without host listeners.
-    (bin_dir / "python3").write_text(
-        f"#!{sys.executable}\n"
-        "import os, sys\n"
-        "if 'class Forward' in ' '.join(sys.argv): assert os.environ.get('TEST_NETNS') == 'yes'\n"
-        "if 'TEST_NETNS' not in os.environ: os.execv(sys.executable, [sys.executable, *sys.argv[1:]])\n"
-        "import socketserver\n"
-        "class Server:\n"
-        "    def __init__(self, address, handler):\n"
-        "        assert os.environ['TEST_NETNS'] == 'yes' and address == ('127.0.0.1', 3001)\n"
-        "    def serve_forever(self): pass\n"
-        "    def shutdown(self): pass\n"
-        "    def server_close(self): pass\n"
-        "socketserver.ThreadingTCPServer = Server\n"
-        "code = sys.argv[sys.argv.index('-c') + 1]\n"
-        "sys.argv = ['-c', *sys.argv[sys.argv.index('-c') + 2:]]\n"
-        "exec(compile(code, '<namespace>', 'exec'))\n"
-    )
-
     repos_json = tmp_path / "forge-repos.json"
     routes_json = tmp_path / "forge-routes.json"
     bodies = tmp_path / "forge-bodies"
@@ -318,16 +294,13 @@ def host(tmp_path):
         "args = sys.argv[1:]\n"
         f"local = any(arg.startswith({LOCAL_BASE!r}) for arg in args)\n"
         "if local:\n"
-        "    assert os.environ.get('TEST_NETNS') == 'yes', 'local git escaped the namespace'\n"
-        "    helper = os.environ['GIT_CONFIG_VALUE_1']\n"
-        "    fd = int(re.search(r'<&([0-9]+)', helper)[1])\n"
-        f"    result = subprocess.run([{GIT!r}, 'credential', 'fill'], pass_fds=(fd,),\n"
-        "                            input='protocol=http\\nhost=127.0.0.1:3001\\n\\n',\n"
-        "                            capture_output=True, text=True)\n"
-        "    assert result.returncode == 0\n"
+        "    import base64\n"
+        "    assert os.environ.get('GIT_CONFIG_KEY_0') == 'http.extraHeader'\n"
+        "    assert 'GIT_SSL_CAINFO' not in os.environ, 'the local forge was given a CA'\n"
         # The forge's admin token as the fixture's user wrote it, so a caller's own fixture token is checked too.
         f"    expected = ({PERSON_TOKEN!r}, pathlib.Path({str(api_token)!r}).read_text().strip())\n"
-        "    assert any('password=' + token + '\\n' in result.stdout for token in expected)\n"
+        "    assert os.environ['GIT_CONFIG_VALUE_0'] in ['Authorization: Basic '\n"
+        "        + base64.b64encode(('x-access-token:' + token).encode()).decode() for token in expected]\n"
         "with calls.open('a') as handle:\n"
         "    handle.write(\n"
         "        f\"{os.environ.get('GIT_SSL_CAINFO', '')}|\"\n"
@@ -336,7 +309,7 @@ def host(tmp_path):
         "    )\n"
         "if 'clone' in args and "
         f"pathlib.Path({str(tmp_path / 'clone-says-header')!r}).exists():\n"
-        "    sys.stderr.write(result.stdout if local else os.environ.get('GIT_CONFIG_VALUE_0', '') + '\\n')\n"
+        "    sys.stderr.write(os.environ.get('GIT_CONFIG_VALUE_0', '') + '\\n')\n"
         "    sys.exit(128)\n"
         "if 'push' in args:\n"
         f"    pathlib.Path({str(tmp_path / 'pushing')!r}).touch()\n"
@@ -360,9 +333,6 @@ def host(tmp_path):
         "runuser",
         "porelo-host-person",
         "sudo",
-        "unshare",
-        "ip",
-        "python3",
         "curl",
         "git",
     ):
@@ -452,9 +422,11 @@ def argv_watched(token):
         watcher.join(timeout=10)
 
 
-def push(host, *arguments, token=CENTRAL_TOKEN, environment=None, interrupt=False, newline=True):
-    if arguments and arguments[0] == "--migrate" and environment != {"TEST_ROOT_MIGRATE": "yes"}:
-        (host["root"] / "uid").write_text(f"{host['person_uid']}\n")
+def push(host, *arguments, token=CENTRAL_TOKEN, environment=None, interrupt=False, newline=True, uid=None):
+    """Runs the helper as root for --check and as the person otherwise, unless uid names the caller."""
+    if uid is None:
+        uid = 0 if arguments and arguments[0] == "--check" else host["person_uid"]
+    (host["root"] / "uid").write_text(f"{uid}\n")
     process = subprocess.Popen(
         [
             "/usr/bin/env",
@@ -469,8 +441,8 @@ def push(host, *arguments, token=CENTRAL_TOKEN, environment=None, interrupt=Fals
         env={
             "PATH": "/usr/bin:/bin",
             "HOME": str(host["decoy_home"]),
-            "SUDO_UID": "" if arguments and arguments[0] == "--check" else str(host["person_uid"]),
-            "SUDO_USER": "" if arguments and arguments[0] == "--check" else "alice",
+            "SUDO_UID": "",
+            "SUDO_USER": "",
             **(environment or {}),
         },
         text=True,
@@ -596,14 +568,14 @@ def test_another_persons_or_untrusted_push_config_is_refused(host, defect, expec
     assert not host["calls"].exists(), f"ran external commands on {defect}"
 
 
-def test_root_running_the_persons_push_is_refused(host):
-    """Prevents a direct root call from choosing a person without a sudo caller."""
-    (host["root"] / "uid").write_text("0\n")
-
-    code, output = push(host, "porelo", "stand-in", environment={"SUDO_UID": "", "SUDO_USER": ""})
+@pytest.mark.parametrize("arguments", [("porelo", "stand-in"), ("--pull", "porelo"), ("--pull", "--check", "porelo")])
+@pytest.mark.parametrize("environment", [None, {"SUDO_UID": "1000", "SUDO_USER": "alice"}])
+def test_root_running_the_persons_push_is_refused(host, arguments, environment):
+    """Prevents root, through sudo or not, from running a person's push or pull, which run in their own account."""
+    code, output = push(host, *arguments, environment=environment, uid=0)
 
     assert code == 77, f"asked for 77 when run as root, got {code}: {output}"
-    assert "sudo" in output, output
+    assert "own account" in output, output
     assert "Token" not in output, output
     assert not host["calls"].exists(), "commands ran when root invoked the person push"
 
@@ -697,11 +669,9 @@ def test_an_interrupted_push_leaves_no_clone_behind_and_pushes_nothing(host):
 def test_check_reads_original_url_as_root_and_refuses_unpushed_or_missing_url(host):
     """Prevents project removal from reading push.conf, running non-root, or deleting unpushed or unmigrated work."""
     # Non-root cannot run --check.
-    (host["root"] / "uid").write_text(f"{host['person_uid']}\n")
-    code, output = push(host, "--check", "porelo", "stand-in")
+    code, output = push(host, "--check", "porelo", "stand-in", uid=host["person_uid"])
     assert code == 77, f"asked for 77 when non-root runs --check, got {code}: {output}"
 
-    (host["root"] / "uid").write_text("0\n")
     # Deleting the person's config and ensuring no root push.conf exists proves --check reads neither.
     host["person_conf"].unlink()
     assert not (host["forge_etc"] / "push.conf").exists()
@@ -760,7 +730,6 @@ def test_check_reads_original_url_as_root_and_refuses_unpushed_or_missing_url(ho
 @pytest.mark.parametrize("token_defect", ["stdin-symlink", "unreadable"])
 def test_check_admin_token_file_defects_stop_before_git(host, token_defect):
     """Prevents --check from reading stdin through a token symlink or proceeding without the admin token."""
-    (host["root"] / "uid").write_text("0\n")
     if token_defect == "stdin-symlink":
         host["api_token"].unlink()
         host["api_token"].symlink_to("/dev/stdin")
@@ -860,11 +829,9 @@ def test_a_migration_the_forge_refuses_names_its_answer_and_keeps_the_list(host)
 def test_migrate_runs_only_in_the_persons_own_account_from_their_own_list(host):
     """Prevents root, or a list another account could write, from deciding what is migrated with the token."""
     migration(host, {})
-    host["root"].joinpath("uid").write_text("0\n")
-    code, output = push(host, "--migrate", "porelo", environment={"TEST_ROOT_MIGRATE": "yes"})
+    code, output = push(host, "--migrate", "porelo", uid=0)
     assert code == 77, output
 
-    host["root"].joinpath("uid").write_text(f"{host['person_uid']}\n")
     (host["alice_push"] / "porelo.migrate").chmod(0o644)
     code, output = push(host, "--migrate", "porelo")
     assert code == 66 and "porelo.migrate" in output, output
@@ -921,66 +888,29 @@ def test_pull_says_when_local_main_is_ahead_and_brings_nothing(host):
     assert not git("--git-dir", str(host["local"]), "for-each-ref", "refs/heads/central/main")
 
 
-@pytest.mark.parametrize(
-    "environment",
-    [
-        {"SUDO_UID": "0"},
-        {"SUDO_UID": "9999"},
-        {"SUDO_USER": "bob"},
-        {"SUDO_UID": "invalid"},
-        {"SUDO_USER": "../alice"},
-    ],
-)
-def test_false_sudo_callers_are_refused_before_credentials(host, environment):
-    """Prevent root rights from being used with a forged or inconsistent caller identity."""
-    code, output = push(host, "porelo", environment=environment)
-    assert code == 77 and "Token" not in output
-    assert not host["calls"].exists()
-
-
-def test_a_removed_developer_cannot_use_an_old_push_config(host):
-    """Prevent a former member from sending work with a stale configuration."""
-    (host["etc"] / "people/alice.conf").write_text("member=other developer\nlocked=false\n")
-    code, output = push(host, "porelo")
-    assert code == 77 and "Token" not in output
-    assert not host["calls"].exists()
-
-
-def test_socket_api_and_sudoers_contract(host):
-    """Prevent local API traffic escaping to TCP and sudo granting unrelated root verbs."""
+def test_socket_api_loopback_git_and_no_sudo_contract(host):
+    """Prevent API traffic leaving the gate's socket, Git reaching Forgejo past the gate, and a root push verb."""
     code, output = push(host, "--check", "porelo", "stand-in")
     assert code == 0, output
     calls = host["calls"].read_text().splitlines()
     api = [line for line in calls if line.startswith("curl|")]
     assert api and all("--unix-socket /run/porelo-forge/git.sock" in line for line in api)
     assert all("http://localhost/api/v1/" in line and "--cacert" not in line for line in api)
-    rules = (ROOT / "roles/forge/files/porelo-host-push.sudoers").read_text().splitlines()
-    assert [line for line in rules if line and not line.startswith("#")] == [
-        "%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-push *"
+    socket_unit = (ROOT / "roles/forge/templates/porelo-forge-git.socket.j2").read_text().splitlines()
+    assert [line for line in socket_unit if line.startswith("ListenStream=")] == [
+        "ListenStream=/run/porelo-forge/git.sock",
+        "ListenStream=127.0.0.1:{{ forge_git_port }}",
     ]
+    assert "Accept=yes" in socket_unit
+    assert not (ROOT / "roles/forge/files/porelo-host-push.sudoers").exists()
     tasks = yaml.safe_load((ROOT / "roles/forge/tasks/push.yml").read_text())
-    installed = [task["ansible.builtin.copy"] for task in tasks if "ansible.builtin.copy" in task]
-    rule = next(task for task in installed if task["dest"] == "/etc/sudoers.d/porelo-host-push")
-    assert rule["owner"] == rule["group"] == "root" and rule["mode"] == "0440"
-    assert rule["validate"] == "/usr/sbin/visudo -cf %s"
-    assert rule["src"] == "{{ role_path }}/files/porelo-host-push.sudoers"
+    assert not any("sudoers" in str(task.get("ansible.builtin.copy", {})) for task in tasks)
+    removed = [task["ansible.builtin.file"] for task in tasks if "ansible.builtin.file" in task]
+    assert {"path": "/etc/sudoers.d/porelo-host-push", "state": "absent"} in removed
     down = yaml.safe_load((ROOT / "roles/forge/tasks/down.yml").read_text())
     assert any("/etc/sudoers.d/porelo-host-push" in task.get("loop", []) for task in down)
-
-
-@pytest.mark.parametrize("stage", ["unshare", "ip"])
-def test_namespace_setup_failure_never_falls_back_to_host_git(host, stage):
-    """Prevent a failed namespace or loopback setup from opening a host listener or sending work."""
-    stub = host["root"] / "bin" / stage
-    stub.write_text("#!/bin/sh\nexit 1\n")
-    before = head(host["root"] / "central/stand-in.git")
-    code, output = push(host, "--pull", "porelo", "stand-in")
-    assert code != 0
-    calls = host["calls"].read_text() if host["calls"].exists() else ""
-    assert LOCAL_BASE not in calls
-    assert head(host["root"] / "central/stand-in.git") == before
-    assert_no_token_anywhere(host, output)
-    assert list(host["temporary"].iterdir()) == []
+    unshare = "unshare" + " --net"
+    assert unshare not in SCRIPT.read_text() and "sudo -n porelo-host-push" not in SCRIPT.read_text()
 
 
 @pytest.mark.parametrize("entry", ["", "local http://127.0.0.1:9999"])
@@ -990,29 +920,6 @@ def test_missing_or_foreign_local_destination_is_refused_before_credentials(host
     conf.write_text(conf.read_text().replace(f"local {LOCAL_BASE}", entry))
     code, output = push(host, "porelo")
     assert code == 65 and "Token" not in output
-    assert not host["calls"].exists()
-
-
-def test_a_config_swapped_after_ownership_checks_is_not_read_with_root_rights(host):
-    """Prevent a caller from racing the config check to expose a root-only file in diagnostics."""
-    conf = host["person_conf"]
-    protected = host["root"] / "protected"
-    protected.write_text("private-fixture-content\n")
-    stat_stub = host["root"] / "bin/stat"
-    stat_stub.write_text(stat_stub.read_text().replace("sys.exit(real.returncode)\n", ""))
-    with stat_stub.open("a") as stream:
-        stream.write(f"if sys.argv[-1] == {str(conf)!r}:\n")
-        stream.write(f"    pathlib.Path({str(conf)!r}).unlink()\n")
-        stream.write(f"    pathlib.Path({str(conf)!r}).symlink_to({str(protected)!r})\n")
-    runuser = host["root"] / "bin/runuser"
-    runuser.write_text(
-        '#!/bin/sh\nwhile [ "$1" != -- ]; do shift; done\nshift\n'
-        f'[ "$1" != cat ] || [ "$3" != "{conf}" ] || exit 1\n'
-        'exec "$@"\n'
-    )
-    code, output = push(host, "porelo")
-    assert code == 66
-    assert "private-fixture-content" not in output
     assert not host["calls"].exists()
 
 
@@ -1051,120 +958,29 @@ def test_oversized_config_is_refused_before_credentials(host):
     assert not host["calls"].exists()
 
 
-def test_config_swapped_to_a_device_is_refused_after_reading(host):
-    """Prevent a path swapped after stat from passing as a regular config file."""
+@pytest.mark.parametrize(
+    ("swap", "refusal"),
+    [
+        ('mkfifo -m 600 "{conf}"', "permissions: not a plain file"),
+        ('cp -p "{conf}.kept" "{conf}.other" && ln -s "{conf}.other" "{conf}"', "Too many levels of symbolic links"),
+    ],
+)
+def test_config_swapped_after_stat_is_refused_on_its_open_descriptor(host, swap, refusal):
+    """Prevent a path swapped after the shell's stat from being read as the caller's plain config file."""
     conf = host["person_conf"]
-    runuser = host["root"] / "bin/runuser"
-    runuser.write_text(
-        '#!/bin/sh\nwhile [ "$1" != -- ]; do shift; done\nshift\n'
-        f'rm -- "{conf}"\nln -s /dev/null "{conf}"\nexec "$@"\n'
-    )
+    reader = host["root"] / "bin/timeout"
+    reader.write_text(f'#!/bin/sh\nshift\nmv -- "{conf}" "{conf}.kept"\n{swap.format(conf=conf)}\nexec "$@"\n')
+    reader.chmod(0o755)
     code, output = push(host, "porelo")
-    assert code == 66 and "plain file" in output, (code, output)
+    assert code == 66 and refusal in output, (code, output)
     assert not host["calls"].exists()
-
-
-def namespace_source():
-    return SCRIPT.read_text().split("unshare --net python3 -I -c '\n", 1)[1].split('\n\' "$git_port"', 1)[0]
-
-
-@pytest.mark.parametrize("failure", ["send", "recv", "shutdown", "idle"])
-def test_forwarder_drains_early_gate_answers_and_closes_sockets(failure):
-    """Prevent early HTTP refusals from being dropped and socket failures from printing tracebacks or hanging."""
-    import ast
-    import selectors
-    import socket
-    import socketserver
-    from types import SimpleNamespace
-
-    class Endpoint:
-        def __init__(self, packets):
-            self.packets = iter(packets)
-            self.sent = b""
-            self.closed = False
-            self.timeout = None
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_):
-            self.close()
-
-        def connect(self, _):
-            pass
-
-        def settimeout(self, value):
-            self.timeout = value
-
-        def recv(self, _):
-            if failure == "recv" and self is request:
-                raise ConnectionResetError()
-            return next(self.packets, b"")
-
-        def sendall(self, data):
-            if failure == "send" and self is peer:
-                raise BrokenPipeError()
-            self.sent += data
-
-        def shutdown(self, _):
-            if failure == "shutdown":
-                raise OSError("not connected")
-
-        def close(self):
-            self.closed = True
-
-    answer = b"HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\nrefused"
-    request = Endpoint([b"unfinished request", b""])
-    peer = Endpoint([answer, b""])
-
-    class Ready:
-        def __init__(self):
-            self.keys = {}
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_):
-            pass
-
-        def register(self, source, events, target):
-            self.keys[source] = SimpleNamespace(fileobj=source, data=target)
-
-        def unregister(self, source):
-            del self.keys[source]
-
-        def get_map(self):
-            return self.keys
-
-        def select(self, timeout=None):
-            if failure == "idle":
-                assert timeout and timeout <= 30, "an idle forwarder must have a finite deadline"
-                return []
-            return [(key, selectors.EVENT_READ) for key in list(self.keys.values())]
-
-    tree = ast.parse(namespace_source())
-    forward = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "Forward")
-    scope = {
-        "socketserver": socketserver,
-        "selectors": SimpleNamespace(DefaultSelector=Ready, EVENT_READ=selectors.EVENT_READ),
-        "socket": SimpleNamespace(
-            socket=lambda *_: peer, AF_UNIX=socket.AF_UNIX, SOCK_STREAM=socket.SOCK_STREAM, SHUT_WR=socket.SHUT_WR
-        ),
-        "upstream": "unused",
-    }
-    exec(compile(ast.Module(body=[forward], type_ignores=[]), "<forwarder>", "exec"), scope)
-    scope["Forward"](request, None, None)
-    if failure != "idle":
-        assert request.sent == answer, "the gate's refusal must still reach git"
-    assert request.closed and peer.closed, "both ends must close after EOF, failure or timeout"
-    assert request.timeout and peer.timeout, "send and recv must have finite timeouts"
 
 
 @pytest.mark.parametrize("transfer", ["local", "central"])
 @pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGINT, signal.SIGHUP])
-def test_signalling_only_the_helper_stops_namespace_git_and_removes_work(host, signum, transfer):
+def test_signalling_only_the_helper_stops_git_and_removes_work(host, signum, transfer):
     """Prevent orphaned git descendants and private clones after the helper alone receives a signal."""
-    marker = host["root"] / "namespace-processes"
+    marker = host["root"] / "git-processes"
     git_stub = host["root"] / "bin/git"
     original_git = host["root"] / "bin/original-git"
     git_stub.rename(original_git)
@@ -1186,7 +1002,7 @@ def test_signalling_only_the_helper_stops_namespace_git_and_removes_work(host, s
         stderr=subprocess.STDOUT,
         text=True,
         start_new_session=True,
-        env={"SUDO_UID": str(host["person_uid"]), "SUDO_USER": "alice"},
+        env={"SUDO_UID": "", "SUDO_USER": ""},
     )
     pids = []
     try:
@@ -1197,14 +1013,11 @@ def test_signalling_only_the_helper_stops_namespace_git_and_removes_work(host, s
             time.sleep(0.02)
         assert marker.exists(), f"{transfer} git never started"
         pids = [int(pid) for pid in marker.read_text().split()]
-        if transfer == "local":
-            parent_pid = int(Path(f"/proc/{pids[0]}/stat").read_text().split()[3])
-            assert os.getpgid(pids[0]) == os.getpgid(parent_pid), "Git escaped the forwarder process group"
         process.send_signal(signum)
         try:
             output, _ = process.communicate(timeout=8)
         except subprocess.TimeoutExpired:
-            pytest.fail("the helper did not stop its namespace after a signal")
+            pytest.fail("the helper did not stop Git after a signal")
         assert process.returncode == 128 + signum, (process.returncode, output)
         assert list(host["temporary"].iterdir()) == [], "the private clone directory survived the signal"
         for pid in pids:
@@ -1220,28 +1033,6 @@ def test_signalling_only_the_helper_stops_namespace_git_and_removes_work(host, s
         if process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)
         process.communicate(timeout=5)
-
-
-def test_large_local_credentials_reach_the_namespace_on_a_pipe(host):
-    """Prevent Bash from spilling a large credential to a here-string temporary file."""
-    large_token = "fixture-" + "x" * 65536
-    helper = host["root"] / "bin/porelo-host-person"
-    helper.write_text(helper.read_text().replace(repr(PERSON_TOKEN), repr(large_token)))
-    marker = host["root"] / "credential-is-pipe"
-    python_stub = host["root"] / "bin/python3"
-    python_stub.write_text(
-        python_stub.read_text().replace(
-            "import socketserver\n",
-            "import pathlib, socketserver, stat\n"
-            f"pathlib.Path({str(marker)!r}).write_text(str(stat.S_ISFIFO(os.fstat(0).st_mode)))\n"
-            "sys.exit(1)\n",
-        )
-    )
-    code, output = push(host, "porelo", "stand-in")
-    assert code != 0, "the namespace test stub must refuse before starting Git"
-    assert marker.read_text() == "True", "the local credential reached a disk-backed stdin"
-    assert large_token not in output
-    assert list(host["temporary"].iterdir()) == []
 
 
 @pytest.mark.parametrize("padding", [b"\n", b"\0"])
@@ -1282,27 +1073,29 @@ def run_capture(setup, command):
     )
 
 
-def test_early_coproc_exit_diagnoses_a_broken_credential_pipe():
-    """Prevent an early namespace failure from killing the parent shell with SIGPIPE."""
-    result = run_capture(
-        "local_token=$(printf '%1000000s' x)\nas_local() { return 42; }",
-        'status=0; capture_git as_local || status=$?; printf "survived:%s" "$status"',
-    )
-    assert result.returncode == 0, (result.returncode, result.stderr)
-    assert b"survived:" in result.stdout and b"survived:0" not in result.stdout
-    assert b"credential" in result.stderr, result.stderr
-    assert b"unbound variable" not in result.stderr
-
-
 def test_reaped_coproc_keeps_its_saved_pid_and_output_descriptors():
     """Prevent a fast exit from discarding Git's refusal or aborting under nounset."""
     result = run_capture(
         "local_token=x\nas_local() { printf refusal; return 42; }\n"
-        "set -T\ntrap 'case $BASH_COMMAND in active_pid=*|local\\ output_fd=*) sleep 0.1;; esac' DEBUG",
+        "set -T\ntrap 'case $BASH_COMMAND in active_pid=*|exec\\ {output_fd}*|said=) sleep 0.1;; esac' DEBUG",
         'status=0; capture_git as_local || status=$?; printf "%s:%s" "$status" "$said"',
     )
     assert result.returncode == 0 and result.stdout == b"42:refusal", (result.returncode, result.stdout, result.stderr)
     assert b"Bad file descriptor" not in result.stderr
+    assert b"could not start Git" not in result.stderr, result.stderr
+
+
+def test_a_transfer_gone_before_its_start_fails_without_killing_the_helper():
+    """Prevent SIGPIPE from ending the helper, and its clean-up, when the transfer dies before it is told to start."""
+    result = run_capture(
+        "as_local() { printf ran; }\n"
+        "set -T\ntrap 'case $BASH_COMMAND in active_pid=?*) kill -KILL \"$TRANSFER_PID\"; sleep 0.2;; esac' DEBUG",
+        'status=0; capture_git as_local || status=$?; printf "%s:%s" "$status" "$said"',
+    )
+    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+    status, said = result.stdout.split(b":", 1)
+    assert status != b"0" and said == b"", result.stdout
+    assert b"could not start Git" in result.stderr, result.stderr
 
 
 def test_coproc_output_is_drained_past_nul_bytes():
@@ -1339,7 +1132,7 @@ def test_cleanup_uses_transfer_pid_before_active_pid_is_assigned(tmp_path):
 def test_config_read_checks_the_open_descriptor_and_ancestor_directories(host, replacement):
     """Prevent a caller racing the path checks from supplying unsafe config bytes."""
     conf = host["person_conf"]
-    runuser = host["root"] / "bin/runuser"
+    reader = host["root"] / "bin/timeout"
     setup = ""
     if replacement == "mode":
         setup = f"os.chmod({str(conf)!r}, 0o644)\n"
@@ -1369,68 +1162,10 @@ def test_config_read_checks_the_open_descriptor_and_ancestor_directories(host, r
             f"subprocess.Popen([sys.executable, '-c', {writer!r}], stdin=subprocess.DEVNULL, "
             "stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
         )
-    runuser.write_text(
-        f"#!{sys.executable}\nimport os, subprocess, sys\n"
-        + setup
-        + "args = sys.argv[sys.argv.index('--') + 1:]\nos.execvp(args[0], args)\n"
+    reader.write_text(
+        f"#!{sys.executable}\nimport os, subprocess, sys\n" + setup + "args = sys.argv[2:]\nos.execvp(args[0], args)\n"
     )
+    reader.chmod(0o755)
     code, output = push(host, "porelo", "stand-in")
     assert code == 66, (replacement, code, output)
     assert not host["calls"].exists(), "unsafe caller config reached the forge"
-
-
-def test_completed_namespace_git_does_not_leave_a_helper_holding_output_open(host):
-    """Prevent a Git helper ignoring TERM from hanging output capture after Git exits."""
-    marker = host["root"] / "helper-group"
-    git_stub = host["root"] / "bin/git"
-    helper = (
-        "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); print('ready', flush=True); time.sleep(60)"
-    )
-    git_stub.write_text(
-        f"#!{sys.executable}\nimport os, pathlib, subprocess, sys\n"
-        f"child = subprocess.Popen([sys.executable, '-c', {helper!r}], stdout=subprocess.PIPE)\n"
-        "assert child.stdout.readline() == b'ready\\n'\n"
-        # Give the helper the captured stderr too, so it can keep the transfer output open.
-        f"pathlib.Path({str(marker)!r}).write_text(str(os.getpgrp()) + ' ' + str(child.pid))\n"
-    )
-    script = "as_local() {\n" + SCRIPT.read_text().split("as_local() {\n", 1)[1].split("\n}\n", 1)[0] + "\n}\n"
-    process = subprocess.Popen(
-        ["bash", "-c", "git_port=3001\nlocal_socket=unused\n" + script + "as_local version"],
-        env={"PATH": f"{host['root'] / 'bin'}:/usr/bin:/bin"},
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
-    try:
-        try:
-            output, _ = process.communicate(b"fixture-token\n", timeout=5)
-        except subprocess.TimeoutExpired:
-            pytest.fail("a helper kept namespace output open after Git completed")
-        assert process.returncode == 0, (process.returncode, output)
-        assert marker.exists(), output
-        helper_pid = marker.read_text().split()[1]
-        status = Path(f"/proc/{helper_pid}/stat")
-        assert not status.exists() or status.read_text().split()[2] == "Z", "Git's helper survived completion"
-    finally:
-        if marker.exists():
-            group = int(marker.read_text().split()[0])
-            try:
-                os.killpg(group, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-        if process.poll() is None:
-            process.kill()
-        process.communicate(timeout=5)
-
-
-@pytest.mark.parametrize("locked", [False, True])
-@pytest.mark.parametrize("pending_first", [False, True])
-def test_pending_caller_is_refused_before_configuration_or_credentials(host, locked, pending_first):
-    """Prevent incomplete revocation from letting a sudo caller continue through root push operations."""
-    lines = ["member=porelo developer\n", f"locked={str(locked).lower()}\n"]
-    lines.insert(0 if pending_first else len(lines), "lock=pending\n")
-    (host["etc"] / "people/alice.conf").write_text("".join(lines))
-    (host["etc"] / "people/alice.conf").chmod(0o600)
-    code, output = push(host, "porelo")
-    assert code == 77 and "the caller is locked" in output, (code, output)
-    assert not host["calls"].exists()

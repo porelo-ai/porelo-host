@@ -40,6 +40,9 @@ issue.
 - Red first: unit tests for `--migrate` and `--pull` with a stand-in forge, asserting the token is in no argv
   (`/proc/*/cmdline` sampled while they run), no file and no output; the stop's tests assert the pipe.
 
+- Superseded by [HO80](README.md#ho80): push and pull run in the person's own account, Git reaches the forge on
+  `127.0.0.1:<git_port>` through the gate, and the sudo rule, the namespace and `forge-token --for` are gone. The two
+  points below are kept as they were built.
 - Push and pull move to sudo: `sudo -n /usr/local/sbin/porelo-host-push [--pull] <project> [repositories...]` validates
   `SUDO_UID` and `SUDO_USER`, current developer or project-admin membership, and the caller's private config as before.
   Root reads that config as the caller after checking it, so a raced path cannot expose root-only files.
@@ -57,8 +60,8 @@ issue.
 
 ## To be checked
 
-- Push and pull have moved to sudo; run installed-host acceptance for both, root's check, and person-run migration.
-  Observe namespace isolation, socket forwarding, credential handling, interrupt cleanup and no host TCP listener.
+- Run installed-host acceptance for push and pull in the person's account, root's check, and person-run migration
+  ([HO80](README.md#ho80)).
 - Run the pinned lint, document checks and full workflow outside the sandbox; podman cannot start here. Obtain the
   required independent model review. Plain touched-file unit tests exercise namespace creation through stubs only.
 

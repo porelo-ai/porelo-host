@@ -265,3 +265,59 @@ def test_host_card_names_no_certificate_authority():
     text = (ROOT / "roles/base/tasks/host.yml").read_text()
     assert "ca_sha256" not in text and "base_ca_path" not in text
     assert "base_ca_path" not in (ROOT / "roles/base/defaults/main.yml").read_text()
+
+
+def loopback_gate(mode, request_bytes):
+    """Run the gate on one accepted loopback TCP connection, as the socket's ListenStream=127.0.0.1 hands it over."""
+    import os
+    import socket
+    import subprocess
+    import sys
+
+    with socket.create_server(("127.0.0.1", 0)) as listener:
+        client = socket.create_connection(listener.getsockname())
+        accepted, _ = listener.accept()
+    with client, accepted:
+        fd = accepted.fileno()
+        gate = subprocess.Popen(
+            [
+                sys.executable,
+                "-I",
+                str(ROOT / "roles/forge/files/porelo-forge-gate"),
+                f"--{mode}",
+                "--upstream",
+                "/nonexistent/forgejo.sock",
+            ],
+            pass_fds=(fd, 3),
+            preexec_fn=lambda: os.dup2(fd, 3),
+            stdin=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        accepted.close()
+        client.settimeout(10)
+        answer = b""
+        try:
+            client.sendall(request_bytes)
+            client.shutdown(socket.SHUT_WR)
+            while chunk := client.recv(65536):
+                answer += chunk
+        except OSError:
+            pass  # A gate that closed before or on the request resets the connection, which is a refusal too.
+        _, stderr = gate.communicate(timeout=10)
+    return gate.returncode, answer, stderr
+
+
+def test_git_on_loopback_tcp_challenges_without_reading_a_peer():
+    """Prevent the loopback port from answering anything but the token challenge to a request without a token."""
+    code, answer, stderr = loopback_gate("git", b"GET /porelo/stand-in.git/info/refs HTTP/1.1\r\nHost: x\r\n\r\n")
+    assert answer.startswith(b"HTTP/1.1 401"), (answer, stderr)
+    assert b"WWW-Authenticate: Basic" in answer
+    assert code == 0, stderr
+
+
+@pytest.mark.parametrize("mode", ["web", "runner"])
+def test_peer_checked_modes_refuse_a_tcp_connection(mode):
+    """Prevent the browser's or runner's gate, which trust the peer's socket, from serving a TCP connection."""
+    code, answer, stderr = loopback_gate(mode, b"GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+    assert answer == b"" and code != 0
+    assert f"{mode} mode serves a Unix socket alone".encode() in stderr

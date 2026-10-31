@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Git reaches the host's forge on `127.0.0.1:<git_port>` through the same token-only gate as `git.sock`, so the gathered
+  push and pull run in the person's own account without sudo, and no private network namespace or forwarder is made per
+  transfer. Forgejo never listens on TCP; the browser's and the runner's gates refuse a TCP connection. `up` removes
+  the push's sudoers rule, and `porelo-host-person forge-token --for` is gone.
+
 ### Fixed
 
 - Person revocation tolerates missing Linux accounts, rejects shared purged keys, preserves lagging project cards,

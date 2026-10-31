@@ -21,7 +21,9 @@ shell. Root, service accounts with a non-login shell, unknown users and nonmembe
 reset routes, browser user administration and API token routes or user credential mutations. Reverse-proxy automatic
 registration and reverse-proxy authentication for the API are disabled.
 
-`git.sock` supplies no identity header and removes cookies. Without `Authorization`, it answers `401` with
+`git.sock` supplies no identity header and removes cookies. Its socket unit also listens on `127.0.0.1:<git_port>`
+for Git on the host, with the same gate in the same git mode; the gate reads no peer there, and the web and runner
+modes refuse a connection that is not a Unix socket. Without `Authorization`, it answers `401` with
 `WWW-Authenticate: Basic`; Basic and token credentials pass to Forgejo, which checks their owner and rights.
 Token issuance and task-token isolation belong to the host's token lifecycle. Tasks receive neither socket nor a
 person's token. `/etc/porelo-host/forge.conf` records `host`, `name`, `port`, `git_port` and `account`, with no secret.
@@ -33,16 +35,16 @@ files; the person's sudoers configuration provides no password-setting command. 
 forge CA trust block and task CA file.
 
 `up` prepares the forge without repositories (`forge_repositories` stays empty on the host) and installs
-`/usr/local/sbin/porelo-host-push` (`0755`, push and `--pull` through `sudo -n` for a current project developer,
-reading `~/.config/porelo-host/push/<project>.conf` from the sudo caller's home, and as root with `--check` by
+`/usr/local/sbin/porelo-host-push` (`0755`, push, `--pull` and `--migrate` in a project developer's own account,
+reading `~/.config/porelo-host/push/<project>.conf` from the caller's home, and as root with `--check` by
 `porelo-host-project remove` against Forgejo's `original_url`) together with `/etc/porelo-host/forge/central-ca.conf`
 (`0644`, holding `forge_central_ca`). `porelo.host.bring` and `porelo.host.join` write each person's
 `~/.config/porelo-host/push/<project>.conf` from the repositories they reach on the forge.
-The helper gets the caller's local token from root's `porelo-host-person forge-token --for <login>`;
-`--migrate` remains in the person's own account and gets it through `sudo -n porelo-host-person forge-token`.
-APIs use `git.sock`; each local Git transfer uses a fresh root network namespace with a loopback-to-socket forwarder
-and a credential pipe. No listener opens on the host's loopback. Central transfers retain HTTPS and their CA.
-The checked sudoers drop-in admits `porelo-people`; the helper validates all arguments and current membership.
+The helper gets the caller's local token through `sudo -n porelo-host-person forge-token`.
+APIs use `git.sock`; local Git uses `127.0.0.1:<git_port>`, a second listener of `porelo-forge-git.socket` with the
+same token-only gate, since Git has no Unix-socket transport. Forgejo itself never listens on TCP, and the browser's
+and the runner's gates serve their Unix sockets alone. Central transfers retain HTTPS and their CA. `up` removes the
+sudoers drop-in an older host had for the push.
 
 `/usr/local/sbin/porelo-host-project`, root's alone, registers an organization with an unlocked member in
 `/etc/porelo-host/people/` (recording `member=<project> project-admin`) whom the applied registry in

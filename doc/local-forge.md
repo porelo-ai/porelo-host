@@ -4,14 +4,16 @@
 
 Forgejo serves HTTP over `/run/user/<forge uid>/porelo-forge/http.sock`, mode `0600` in a `0700` directory of its
 account. It publishes no TCP port, certificate or SSH server. The system's `web.sock` and `git.sock` in
-`/run/porelo-forge/` are owned by that account and `porelo-people`, mode `0660` in a `0755` directory.
+`/run/porelo-forge/` are owned by that account and `porelo-people`, mode `0660` in a `0755` directory. The Git gate
+also listens on `127.0.0.1:<git_port>` for the host's own Git, described below.
 
 Porelo forwards the browser's local web port over SSH to `web.sock`, at `http://<host>.localhost:<web_port>/`.
 The gate takes the login from Unix peer credentials and `porelo-people` membership, removes supplied identity headers,
 and signs the person in without a password when no Authorization header is present. Browser credential settings,
 password reset and user-administration routes, and API token or password mutations are refused.
 
-Git and API clients use `git.sock` with a token. The first unauthenticated Git request receives `401` and
+Git and API clients use `git.sock` with a token; on the host, Git, which has no Unix-socket transport, uses the
+same gate on `127.0.0.1:<git_port>`, which `porelo-forge-git.socket` also listens on. The first unauthenticated Git request receives `401` and
 `WWW-Authenticate: Basic`, so Git can ask its credential helper. The gate drops cookies and identity headers and
 passes Basic or token Authorization to Forgejo. Porelo must set remotes to the local `git_port`; Forgejo's clone URLs
 use its browser `ROOT_URL`. Tasks receive neither socket nor a person's token; their host task gate supplies the
@@ -274,33 +276,32 @@ lifecycle steps are not built:
 - End the task after the person merges its pull request: not built yet.
 
 **Second, start a gathered push of accepted local `main` to the central forge.** This is a separate decision about
-sending the merged work outward. Any developer or admin of the project runs it through sudo on the host over SSH,
-naming the project and optionally the repositories in their order. The helper checks `SUDO_UID` and `SUDO_USER`
-against the account and its current project membership; a direct root call is refused with `77`:
+sending the merged work outward. Any developer or admin of the project runs it in their own account on the host over
+SSH, naming the project and optionally the repositories in their order; a root call is refused with `77`:
 
-    sudo -n /usr/local/sbin/porelo-host-push porelo
-    sudo -n /usr/local/sbin/porelo-host-push porelo porelo-message-sluice
+    /usr/local/sbin/porelo-host-push porelo
+    /usr/local/sbin/porelo-host-push porelo porelo-message-sluice
 
 Without repository names it pushes every repository `~/.config/porelo-host/push/<project>.conf` names, in the config's
 order; with names, those, refusing an unknown or duplicate name before asking for credentials. The config is read only
 from the caller's `getent passwd` home (never `$HOME`): a plain file of theirs, not a link, mode `0600`, in a `0700`
 directory of theirs, written by `porelo.host.bring` and `porelo.host.join` from the repositories the person reaches on
 the forge and their `original_url`; anything else is refused naming what was found. It reads local `main` with the
-person's own local forge token from root's `porelo-host-person forge-token --for <login>` call (a failed token request
-refuses with `69`), asks once on the terminal for their central forge write token without
+person's own local forge token from `sudo -n porelo-host-person forge-token`, which refuses a locked person or one
+no project holds (a failed token request refuses with `69`), asks once on the terminal for their central forge write token without
 showing it (`Token for the central forge (not shown): `) and keeps it only for the run, and pushes local `main` to each
 repository's central address with a plain `git push` without force, the next only once the one before was taken. The
 config's `central-ca` names the authority the central forge is trusted by (`porelo_host_forge_central_ca`, the system's
 CA bundle by default). The local forge uses no TLS or CA. `up` installs `/usr/local/sbin/porelo-host-push`
-(`0755`), its checked sudoers rule for `porelo-people`, and `/etc/porelo-host/forge/central-ca.conf` (`0644`);
-`down` removes them.
+(`0755`) and `/etc/porelo-host/forge/central-ca.conf` (`0644`); `down` removes them.
 
 Every API request goes through `/run/porelo-forge/git.sock` to `http://localhost/api/v1/`, with the token header on a
-pipe. Each local Git transfer runs as root in a fresh private network namespace, with loopback up and a Python
-standard-library forwarder from `127.0.0.1:<git_port>` to that socket. Nothing listens on the host's loopback. Git
-receives the local token through a credential helper reading a pipe, never a URL or argument. Git has no HTTP
-Unix-socket transport, and Ubuntu 26.04 refuses unprivileged user namespaces. Central Git transfers still use HTTPS
-and the configured central CA.
+pipe. Git has no HTTP Unix-socket transport, so local Git reaches the forge on `127.0.0.1:<git_port>`, a second
+listener of `porelo-forge-git.socket` behind the same token-only gate: a request without a token gets `401` and
+nothing reaches Forgejo, which itself never listens on TCP. Every process on the host reaches that port, so the token
+is the bound; a rootless container with pasta's defaults does not reach the host's loopback, and runner jobs see the
+runner proxy's own loopback. Git receives the local token as a header in its environment, never a URL or argument.
+Central Git transfers still use HTTPS and the configured central CA.
 
 When central `main` holds commits local `main` lacks, the push is refused and nothing is lost on either forge. The
 command names those commits and brings central `main` to the local forge as the branch `central/main`. A task joins
@@ -336,9 +337,9 @@ token for the initial repository migration is used the same way, once: a `bring`
 lists it in `~/.config/porelo-host/push/<project>.migrate` (no secret) and waits, naming `forge-central-token`; the
 person's stop pipes the token into `porelo-host-push --migrate <project>`, which has Forgejo migrate each listed
 repository it lacks, with the token in the request body on a pipe alone, and removes the list; the `bring` run again
-goes on. `sudo -n /usr/local/sbin/porelo-host-push --pull <project> [repositories...]` brings central `main` locally as
-`central/main`, using the same sudo caller checks and central token on stdin. Local `main` reaches it by a pull
-request. Migration stays in the person's account and calls `sudo -n porelo-host-person forge-token` for its local token.
+goes on. `/usr/local/sbin/porelo-host-push --pull <project> [repositories...]` brings central `main` locally as
+`central/main`, in the person's own account with the central token on stdin. Local `main` reaches it by a pull
+request. Push, pull and migration each call `sudo -n porelo-host-person forge-token` for the local token.
 No token for the central forge lies on the host.
 
 ## If the host is lost

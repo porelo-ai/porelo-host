@@ -203,8 +203,15 @@ def main():
     # Accept=yes hands one connected descriptor to each process, with no listening socket to inherit.
     with socket.socket(fileno=3) as connection:
         connection.settimeout(60)
-        _, uid, _ = struct.unpack("3i", connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")))
-        server = argparse.Namespace(mode="web" if args.web else "runner" if args.runner else "git", uid=uid,
+        mode = "web" if args.web else "runner" if args.runner else "git"
+        # Only git mode is also on loopback TCP, where the token is the bound and no peer uid is read.
+        if connection.family != socket.AF_UNIX and mode != "git":
+            raise SystemExit(f"porelo-forge-gate: {mode} mode serves a Unix socket alone")
+        uid = None
+        if connection.family == socket.AF_UNIX:
+            _, uid, _ = struct.unpack("3i", connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED,
+                                                                 struct.calcsize("3i")))
+        server = argparse.Namespace(mode=mode, uid=uid,
                                     upstream=lambda: UnixConnection(args.upstream))
         try:
             Handler(connection, ("local", 0), server)

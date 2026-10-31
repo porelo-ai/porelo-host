@@ -11,6 +11,15 @@
       - verify_ssh_listeners.stdout_lines | select('search', ':(2222|3000|443|8448|8080)\\s') | list | length == 0
     fail_msg: "Unexpected TCP service listeners: {{ verify_ssh_listeners.stdout_lines }}"
 
+# The host's own Git reaches the forge's Git gate on loopback alone; nothing else on the host binds its port.
+- name: ssh | Assert the Git gate listens on 127.0.0.1:3001 alone
+  ansible.builtin.assert:
+    that: verify_ssh_git_locals == (['127.0.0.1:3001'] if verify_forge == 'on' else [])
+    fail_msg: "asked for the Git gate on 127.0.0.1:3001 alone, got {{ verify_ssh_listeners.stdout_lines }}"
+  vars:
+    verify_ssh_git_locals: >-
+      {{ verify_ssh_listeners.stdout_lines | map('split') | map(attribute=3) | select('search', ':3001$') | list }}
+
 - name: ssh | Check a person's socket forward using an isolated account and Unix socket
   ansible.builtin.script:
     cmd: "{{ playbook_dir }}/files/verify-ssh.py"
