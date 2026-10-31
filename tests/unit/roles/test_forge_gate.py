@@ -181,6 +181,13 @@ def test_no_caller_gets_a_forge_credential_through_any_socket(gate, mode, creden
         "/api/packages/project/generic/pkg/1.0/a%2f{b}",
         "/project/repo%2fx|/info/refs",
         "/project/repo/src/%zz",
+        "/api/v1/users/alice/tokens/tok%0a",
+        "/api/v1/users/alice/tokens/tok%0D",
+        "/project/repo/info/lfs/objects/0123/file%0a",
+        "/api/packages/project/maven/com/example/app%09/1.0/app-1.0.jar",
+        "/v2/token%0a",
+        "/api/v1/users/alice/tokens/tok%00",
+        "/api/v1/users/alice/tokens/tok%7f",
     ],
 )
 def test_a_path_read_differently_by_forgejo_is_refused(gate, mode, path):
@@ -217,12 +224,51 @@ def test_the_browser_gets_git_and_packages_only_with_a_token(gate, path):
     """Prevent Forgejo taking the gate's sign-in for Git, LFS or packages, yet pass the token their links under
     ROOT_URL bring to web.sock."""
     response, calls = request(gate, path=path, method="POST")
-    assert response.startswith(b"HTTP/1.1 403")
+    assert response.startswith(b"HTTP/1.1 401") and b"WWW-Authenticate: Basic" in response
+    assert calls == []
+    response, calls = request(gate, path=path, method="POST", headers=[("Sec-Fetch-Mode", "navigate")])
+    assert response.startswith(b"HTTP/1.1 403") and b"WWW-Authenticate" not in response
     assert calls == []
     for mode in ("web", "git"):
         response, calls = request(gate, mode, path=path, method="POST", headers=[("Authorization", "token fixture")])
         assert response.startswith(b"HTTP/1.1 200") and calls[0][1] == path, mode
         assert "x-webauth-user" not in {key.lower() for key in calls[0][3]}
+
+
+@pytest.mark.parametrize(
+    "pattern, path",
+    [
+        ("MINTING", "/api/v1/users/alice/tokens/a\nb"),
+        ("TOKEN_EXCHANGE", "/v2/token/a\nb"),
+        ("SIGNED_IN_ONLY_BY_TOKEN", "/api/packages/project/maven/a\nb"),
+        ("SIGNED_IN_ONLY_BY_TOKEN", "/project/repo.git/info/lfs/objects/a\nb"),
+    ],
+)
+def test_a_decoded_newline_never_ends_a_route_match(gate, pattern, path):
+    """Prevent a byte the path check misses later from taking a refused route past its pattern."""
+    assert getattr(gate, pattern).fullmatch(path)
+
+
+@pytest.mark.parametrize("path", ["/user/avatar/head/72", "/user/avatar/objects/72", "/project/repo/src/branch/head"])
+def test_pages_the_browser_shows_are_no_git_route(gate, path):
+    """Prevent an avatar or a page of a person or repository named like a Git route being refused or challenged."""
+    response, calls = request(gate, path=path)
+    assert response.startswith(b"HTTP/1.1 200") and calls[0][1] == path
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/packages/project/maven/org/example/lib/1.0-SNAPSHOT/maven-metadata.xml",
+        "/project/repo.git/info/refs?service=git-upload-pack",
+    ],
+)
+def test_the_browser_socket_challenges_a_client_that_waits_for_one(gate, path):
+    """Prevent Maven or pip stopping at a refusal before they send their token to a link under ROOT_URL."""
+    response, calls = request(gate, path=path)
+    assert response.startswith(b"HTTP/1.1 401")
+    assert b"WWW-Authenticate: Basic" in response
+    assert calls == []
 
 
 @pytest.mark.parametrize("mode", ["web", "git", "runner"])

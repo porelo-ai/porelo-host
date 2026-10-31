@@ -1,8 +1,7 @@
 # HO81 — The Gate's Route Match Holds For Every Decoded Byte
 
-**Status:** Idea (operator's rule for tonight, 2026-10-31: what a third review finds becomes an issue of its own).
-**Size:** XS.
-**Blocked by:** [HO69](README.md#ho69).
+**Status:** Review; blocked by [HO69](README.md#ho69).
+**Size:** XS - one module (the forge gate): a stricter path check, two patterns and one answer, with unit tests.
 
 **What must be true.** No byte a request's path decodes to takes a refused route of the forge gate past its match.
 A package or Git client on `web.sock` that waits for a challenge before it sends its token gets one.
@@ -26,7 +25,9 @@ The fourth reading of [HO69](README.md#ho69)'s gate found two things.
 - `unsafe_path` refuses with `400` a path whose decoded segments hold a control character (`\x00`-`\x1f`, `\x7f`).
 - The route patterns are compiled with `re.DOTALL`, so a decoded byte never ends a match early.
 - `web.sock` answers a Git, LFS or package route without an Authorization header with `401` and
-  `WWW-Authenticate: Basic`, as `git.sock` does, and still never signs it in.
+  `WWW-Authenticate: Basic`, as `git.sock` does, and still never signs it in. A browser, known by its `Sec-Fetch-*`
+  headers, gets `403`, so a page's embedded LFS file or a "View Raw" link never prompts for a password.
+- `user/` is no owner in the Git pattern, so an avatar of a person named `head` or `objects` stays a page.
 - Red first in `tests/unit/roles/test_forge_gate.py`: `%0a` behind a token route and an LFS route, and the challenge
   for an unauthenticated Maven metadata request on `web.sock`.
 

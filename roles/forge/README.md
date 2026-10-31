@@ -17,7 +17,9 @@ and logs no requests. Unsupported transfer encodings, chunk extensions and trail
 
 `web.sock` reads `SO_PEERCRED` and admits a login in `porelo-people` with uid at least 1000 and a supported login
 shell. Root, service accounts with a non-login shell, unknown users and nonmembers receive `403`. Without
-`Authorization`, the gate supplies that person's `X-WEBAUTH-USER`. It blocks all browser user settings and credential
+`Authorization`, the gate supplies that person's `X-WEBAUTH-USER`, except on `/v2`, `/api/packages` and Git's and
+LFS's HTTP routes: those it never signs in, and without `Authorization` it answers `401` with a Basic challenge, or
+`403` to a browser. It blocks all browser user settings and credential
 reset routes, browser user administration and API token routes or user credential mutations. Reverse-proxy automatic
 registration and reverse-proxy authentication for the API are disabled.
 

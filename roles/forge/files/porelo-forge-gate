@@ -55,14 +55,14 @@ def route_parts(target):
 
 def unsafe_path(target):
     """A path Forgejo could read otherwise than the gate: a dot or empty segment, also behind an encoded slash, a bad
-    escape, or an encoded slash beside a character a path does not hold raw, for which Go drops the path as sent and
-    decodes every encoded slash."""
+    escape, a decoded control character, or an encoded slash beside a character a path does not hold raw, for which
+    Go drops the path as sent and decodes every encoded slash."""
     raw = urlsplit(target).path
     if re.search(r"%(?![0-9A-Fa-f]{2})", raw) or (re.search(r"%2[fF]", raw) and
                                                   re.search(r"[^A-Za-z0-9\-._~!$&'()*+,;=:@/%]", raw)):
         return True
     parts = route_parts(target)
-    if "" in parts[:-1]:
+    if "" in parts[:-1] or any(re.search(r"[\x00-\x1f\x7f]", part) for part in parts):
         return True
     for part in parts:
         pieces = part.split("/")
@@ -81,19 +81,23 @@ def route(target):
 MINTING = re.compile(
     r"/(login/oauth|user/recover_account|user/settings|admin/users|admin/actions/runners|api/v1/users/[^/]+/tokens"
     r"|api/v1/(orgs/[^/]+|repos/[^/]+/[^/]+|user|admin)/actions/runners|api/v1/admin/runners"
-    r"|(org/[^/]+|[^/]+/[^/]+)/settings/actions/runners)(/.*)?"
+    r"|(org/[^/]+|[^/]+/[^/]+)/settings/actions/runners)(/.*)?",
+    re.DOTALL,
 )
 # Forgejo signs these in by the gate's X-WEBAUTH-USER even with ENABLE_REVERSE_PROXY_AUTHENTICATION_API=false, so
-# web.sock passes them only with a token, as the LFS and package links under ROOT_URL bring one.
+# web.sock passes them only with a token and challenges a client for one, as the links under ROOT_URL lead clients
+# there. user/ is no owner: its avatars are the browser's.
 SIGNED_IN_ONLY_BY_TOKEN = re.compile(
-    r"/(v2|api/packages)(/.*)?|/[^/]+/[^/]+/(info/refs|git-upload-pack|git-receive-pack|info/lfs|objects|head)(/.*)?"
+    r"/(v2|api/packages)(/.*)?|/(?!user/)[^/]+/[^/]+/(info/refs|git-upload-pack|git-receive-pack|info/lfs(/.*)?|head"
+    r"|objects/(info|pack|[0-9a-f]{2})(/.*)?)",
+    re.DOTALL,
 )
 
 # These turn a token into a signed 24-hour one Forgejo keeps no record of, which a revocation does not end.
-TOKEN_EXCHANGE = re.compile(r"/v2/token(/.*)?|/api/packages/[^/]+/conan/v[12]/users/authenticate")
+TOKEN_EXCHANGE = re.compile(r"/v2/token(/.*)?|/api/packages/[^/]+/conan/v[12]/users/authenticate", re.DOTALL)
 
 
-def blocked_route(target, method, mode, authorized):
+def blocked_route(target, method, mode):
     """A route the gate refuses in this mode before any upstream request."""
     path = route(target)
     if MINTING.fullmatch(path) or path in {"/user/forgot_password", "/user/reset_password", "/user/change_password"}:
@@ -103,9 +107,7 @@ def blocked_route(target, method, mode, authorized):
         return True
     if mode != "runner" and (path == "/api/actions" or path.startswith("/api/actions/")):
         return True
-    if TOKEN_EXCHANGE.fullmatch(path):
-        return True
-    return mode == "web" and not authorized and SIGNED_IN_ONLY_BY_TOKEN.fullmatch(path) is not None
+    return TOKEN_EXCHANGE.fullmatch(path) is not None
 
 
 class RequestBody:
@@ -173,10 +175,17 @@ class Handler(BaseHTTPRequestHandler):
         if unsafe_path(self.path):
             self.reply(400)
             return
-        if blocked_route(self.path, self.command, self.server.mode, bool(self.headers.get_all("Authorization", []))):
+        if blocked_route(self.path, self.command, self.server.mode):
             self.reply(403)
             return
         authorizations = self.headers.get_all("Authorization", [])
+        if self.server.mode == "web" and not authorizations and SIGNED_IN_ONLY_BY_TOKEN.fullmatch(route(self.path)):
+            # A browser sends Sec-Fetch-* on a localhost origin; a challenge would prompt it for a password there.
+            if any(key.lower().startswith("sec-fetch-") for key in self.headers.keys()):
+                self.reply(403)
+            else:
+                self.reply(401, challenge=True)
+            return
         if len(authorizations) > 1:
             self.reply(400)
             return

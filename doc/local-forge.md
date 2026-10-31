@@ -19,13 +19,16 @@ signed-in person grant themselves a lasting token. The runners' own protocol und
 `runner.sock` alone, where the host's runner registers with a registration token from Forgejo's CLI. The gate
 matches routes on the path's segments as Forgejo's router splits them, an encoded slash staying inside its segment.
 A dot segment or an empty segment, also one behind an encoded slash, is refused with `400` before any match. So
-are a bad escape and an encoded slash beside a character a path does not hold raw, such as `^` or `|`; Go then
-reads the path decoded, slash and all.
+are a bad escape, a decoded control character such as `%0a`, and an encoded slash beside a character a path does
+not hold raw, such as `^` or `|`; Go then reads the path decoded, slash and all.
 
 Forgejo signs a request in by the gate's `X-WEBAUTH-USER` for Git, LFS, packages and the container registry even
 with `ENABLE_REVERSE_PROXY_AUTHENTICATION_API=false`. `web.sock` therefore passes `/v2`, `/api/packages` and Git's
-and LFS's HTTP routes only with an Authorization header, never with the gate's sign-in. LFS and package links point
-at `ROOT_URL`, the web port, and bring the token with them. The container registry's `/v2/token` and Conan's
+and LFS's HTTP routes only with an Authorization header, never with the gate's sign-in. Package links under
+`ROOT_URL`, the web port, lead clients there. Without a header the gate answers such a client `401` with a Basic
+challenge, since Maven and pip send their token only once challenged. LFS object links carry the batch call's
+header already. A browser, which sends `Sec-Fetch-*` headers, gets `403` instead and is never prompted for a
+password. The container registry's `/v2/token` and Conan's
 `authenticate` turn a token into a signed 24-hour token Forgejo keeps no record of, which a revocation does not end.
 Every socket refuses them, so no job or person pushes a container image or a Conan package to the host's forge.
 Container, npm, NuGet and other clients that send a Bearer token or their own header do not pass `git.sock`, which
