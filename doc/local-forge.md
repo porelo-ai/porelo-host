@@ -281,7 +281,7 @@ runs as root alone, never through `sudo`. Success prints
 The first accepted push of a commit to the host's forge is its arrival, and there it is judged. Each repository of a
 project's organization links `hooks/pre-receive.d/porelo` to the hook mounted read-only into Forgejo's container,
 which runs it after Forgejo's own pre-receive hook. The hook sends the push's lines, the repository and its quarantine
-to `/run/porelo-verify/verify.sock` in the container, the host's `/run/porelo-host/verify/verify.sock` mounted
+to `/run/porelo-verify/verify.sock` in the container, whose directory is the host's `/run/porelo-host/verify` mounted
 read-only, and shows the answer to the pusher; no answer, or any answer but 200, refuses the push. A push that only
 deletes refs brings no commit and passes unjudged.
 
@@ -306,7 +306,11 @@ The bring's migration is not an arrival. Sync arms each repository right after t
 then records the history the repository holds as `migrated`, not judged here, since the central forge took those
 commits, and last an `armed` line. A commit pushed between the link and the listing is judged and kept once. Only
 later pushes are arrivals. A repository made on the forge another way is armed by the next sync, and is not judged
-before; one whose history was not recorded is listed again at each sync until it is.
+before; one whose history was not recorded is listed again at each sync until it is. The arming stops, recording
+nothing, when the hook link names anything but the mounted hook, the mounted hook is not executable, a link stands
+for the repository's hooks, or Forgejo's own hook is missing. Removing the project takes its arrivals along, so a
+project brought again under the name starts its record anew. A person reads the record under the same shared lock
+the pushes take, never while a sync, a lock or a removal is half done.
 
 ## The person's two decisions
 

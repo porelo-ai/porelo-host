@@ -29,6 +29,8 @@ import urllib.request
 from contextlib import contextmanager
 
 ETC = "/etc/porelo-host"
+# The person helper's record of each push's verdicts, one directory per project.
+ARRIVALS = "/var/lib/porelo-host/arrivals"
 CONF = "/etc/porelo-host/forge.conf"
 RUN_USER = "/run/user"
 PUSH = "/usr/local/sbin/porelo-host-push"
@@ -661,6 +663,14 @@ def remove(forge, project, record, publisher, affected):
         trusted_directory(os.path.dirname(path), missing=True)
         if os.path.lexists(path):
             trusted(path)
+    arrivals = os.path.join(ARRIVALS, project)
+    recorded = []
+    if os.path.lexists(ARRIVALS):
+        trusted_directory(arrivals, private=True, missing=True)
+        if os.path.lexists(arrivals):
+            for name in sorted(os.listdir(arrivals)):
+                trusted(os.path.join(arrivals, name), private=True)
+                recorded.append(os.path.join(arrivals, name))
     staged = []
     try:
         for user, person_path, content in affected:
@@ -684,6 +694,13 @@ def remove(forge, project, record, publisher, affected):
             with writing(path):
                 if os.path.lexists(path):
                     os.unlink(path)
+        # A project brought again under this name starts its verdicts anew, and its history is listed again.
+        for path in recorded:
+            with writing(path):
+                os.unlink(path)
+        if os.path.lexists(arrivals):
+            with writing(arrivals):
+                os.rmdir(arrivals)
         with writing(record):
             os.unlink(record)
     finally:

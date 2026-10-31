@@ -107,7 +107,7 @@ def test_a_new_hook_reaches_forgejo_and_its_directory_is_made_first():
     names = list(by_name)
     install = by_name["service | Install the hook that has the host judge each push"]
     assert install["notify"] == "Restart Forgejo", "Forgejo's container keeps the hook it mounted at its start"
-    directory = by_name["service | Create the directory of the hook that has the host judge each push"]
+    directory = by_name["service | Make the directory of the gate and of the push hook"]
     assert directory["ansible.builtin.file"]["path"] == "/usr/local/libexec"
     assert names.index(directory["name"]) < names.index(install["name"])
 
@@ -128,3 +128,11 @@ def test_a_project_s_persons_read_its_arrivals_through_sudo():
     sudoers = (ROOT / "roles/porelo/files/porelo-host-person.sudoers").read_text()
     assert "%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person arrivals *\n" in sudoers
     assert "verify-push" not in sudoers
+
+
+def test_the_judge_s_socket_restarts_before_forgejo_and_its_directory_is_made_once():
+    handlers = [handler["name"] for handler in yaml.safe_load((FORGE / "handlers/main.yml").read_text())]
+    assert handlers.index("Restart the push judge's socket") < handlers.index("Restart Forgejo")
+    tasks = yaml.safe_load((FORGE / "tasks/service.yml").read_text())
+    made = [task for task in tasks if task.get("ansible.builtin.file", {}).get("path") == "/usr/local/libexec"]
+    assert len(made) == 1

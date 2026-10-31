@@ -186,7 +186,11 @@ class Forge:
         git = bin_dir / "git"
         git.write_text('#!/bin/sh\nhistory="${1#--git-dir=}/history"\n[ -f "$history" ] || exit 128\ncat "$history"\n')
         git.chmod(0o755)
-        script = script.replace("/var/lib/gitea/", str(self.gitea) + "/")
+        hook = self.gitea / "pre-receive-hook"
+        if not hook.exists() and not getattr(self, "no_hook", False):
+            hook.write_text("#!/bin/sh\n")
+            hook.chmod(0o755)
+        script = script.replace("/var/lib/gitea/", str(self.gitea) + "/").replace(PUSH_HOOK, str(hook))
         environment = {"PATH": f"{bin_dir}:/usr/bin:/bin", "LC_ALL": "C"}
         return subprocess.run(["sh", "-c", script, "sh", *arguments], capture_output=True, text=True, env=environment)
 
@@ -812,6 +816,7 @@ def test_no_porelo_on_the_host_refuses_the_task_as_unprepared(tasks, capsys, com
     assert tasks.forge.checks == [] and not (records(tasks) / "t1.json").exists()
 
 
+PUSH_HOOK = "/usr/local/libexec/porelo/pre-receive"
 REPOSITORY = "/var/lib/gitea/git/repositories/alpha/app.git"
 QUARANTINE = REPOSITORY + "/objects/tmp_objdir-incoming-AbC123"
 VOLUME = "/home/porelo-forge/.local/share/containers/storage/volumes/forgejo-data/_data"
@@ -1002,8 +1007,34 @@ def test_a_push_porelo_refuses_is_answered_403_with_its_lines_and_recorded_nowhe
             ),
             "",
         ),
+        lambda args: subprocess.CompletedProcess(
+            args,
+            0,
+            json.dumps(
+                {
+                    "checked_at": "yesterdayZ",
+                    "accepted": True,
+                    "commits": [
+                        {"commit": "c" * 40, "verdict": "accepted", "signer": {"fingerprint": "SHA256:" + "B" * 43}}
+                    ],
+                }
+            ),
+            "",
+        ),
+        lambda args: subprocess.CompletedProcess(
+            args,
+            0,
+            json.dumps(
+                {
+                    "checked_at": "2026-10-30T12:00:00Z",
+                    "accepted": True,
+                    "commits": [{"commit": "c" * 40, "verdict": "accepted", "signer": {"fingerprint": "nope"}}],
+                }
+            ),
+            "",
+        ),
     ],
-    ids=["crash", "no json", "not accepted", "broken commit", "a refused verdict"],
+    ids=["crash", "no json", "not accepted", "broken commit", "a refused verdict", "no time", "no signer"],
 )
 def test_any_other_answer_of_porelo_refuses_the_push(tasks, capsys, answer):
     """Prevent a push from passing when Porelo did not say every commit holds."""
@@ -1046,6 +1077,21 @@ def test_a_push_that_only_deletes_refs_passes_unjudged_and_unrecorded(tasks, cap
     assert hook.status() == 200 and tasks.forge.verifies == [] and arrivals(tasks) == []
     (tasks.root / "etc/porelo-host/projects/alpha.conf").unlink()
     assert judge(tasks, deletion).status() == 403, "a deletion in an unregistered project's repository passes"
+
+
+def test_a_push_mixing_a_deletion_with_an_update_is_judged(tasks, capsys):
+    """Prevent an unsigned update from passing unjudged beside a ref deletion in the same push."""
+    judged_project(tasks)
+    lines = "c" * 40 + " " + "0" * 40 + " refs/heads/old\n" + HOOK_LINES
+    hook = judge(tasks, push_request(lines=lines))
+    capsys.readouterr()
+    assert hook.status() == 200 and [verify["input"] for verify in tasks.forge.verifies] == [lines]
+
+
+def test_the_forge_without_the_organization_s_directory_arms_nothing(tasks, capsys):
+    """Prevent a project whose organization holds no repository yet from failing its sync."""
+    forge_repository(tasks, "app", ["d" * 40], project="beta")
+    assert tasks.host.arm_pushes("alpha") == [] and arrivals(tasks) == []
 
 
 @pytest.mark.parametrize(
@@ -1156,6 +1202,7 @@ def test_verify_push_runs_for_the_socket_alone_never_through_sudo(tasks, capsys)
 def forge_repository(tasks, name, history, project="alpha", hook=True):
     """A bare repository in the stand-in forge's data, Forgejo's own pre-receive hook in it and its history listed."""
     tasks.forge.gitea = tasks.root.parent / "gitea"
+    (tasks.forge.gitea / "git/repositories").mkdir(parents=True, exist_ok=True)
     repository = tasks.forge.gitea / f"git/repositories/{project}/{name}.git"
     (repository / "hooks").mkdir(parents=True)
     if hook:
@@ -1172,7 +1219,7 @@ def test_sync_arms_each_repository_and_records_its_history_as_migrated_once(task
     dot = forge_repository(tasks, ".hidden", ["f" * 40])
     assert tasks.host.arm_pushes("alpha") == [".hidden", "app"]
     for repository in (app, dot):
-        assert os.readlink(repository / "hooks/pre-receive.d/porelo") == "/usr/local/libexec/porelo/pre-receive"
+        assert os.readlink(repository / "hooks/pre-receive.d/porelo") == str(tasks.forge.gitea / "pre-receive-hook")
     assert arrivals(tasks) == [
         {"commit": "d" * 40, "verdict": "migrated", "arrived": "2026-10-30T12:00:00Z"},
         {"commit": "e" * 40, "verdict": "migrated", "arrived": "2026-10-30T12:00:00Z"},
@@ -1187,7 +1234,7 @@ def test_a_repository_armed_but_unrecorded_is_listed_again_and_its_arrivals_kept
     forge_repository(tasks, "app", ["d" * 40, "c" * 40])
     (tasks.forge.gitea / "git/repositories/alpha/app.git/hooks/pre-receive.d").mkdir()
     os.symlink(
-        "/usr/local/libexec/porelo/pre-receive",
+        tasks.forge.gitea / "pre-receive-hook",
         tasks.forge.gitea / "git/repositories/alpha/app.git/hooks/pre-receive.d/porelo",
     )
     judged_project(tasks)
@@ -1200,6 +1247,20 @@ def test_a_repository_armed_but_unrecorded_is_listed_again_and_its_arrivals_kept
     ]
 
 
+def wrong_link(repository, relative):
+    """Put a link at relative inside repository, keeping what was there under the link's target."""
+    path = repository if relative == "." else repository / relative
+    if relative.endswith("porelo"):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.symlink_to("/bin/true")
+        return repository
+    path.mkdir(exist_ok=True)
+    moved = path.with_name(path.name + ".real")
+    path.rename(moved)
+    path.symlink_to(moved)
+    return repository
+
+
 @pytest.mark.parametrize(
     "broken",
     [
@@ -1207,8 +1268,25 @@ def test_a_repository_armed_but_unrecorded_is_listed_again_and_its_arrivals_kept
         lambda tasks: forge_repository(tasks, "app", ["d" * 40], hook=False),
         lambda tasks: forge_repository(tasks, "App", ["d" * 40]),
         lambda tasks: forge_repository(tasks, "app", ["not a commit"]),
+        lambda tasks: (forge_repository(tasks, "app", ["d" * 40]), setattr(tasks.forge, "no_hook", True)),
+        lambda tasks: wrong_link(forge_repository(tasks, "app", ["d" * 40]), "hooks/pre-receive.d/porelo"),
+        lambda tasks: wrong_link(forge_repository(tasks, "app", ["d" * 40]), "hooks/pre-receive.d"),
+        lambda tasks: wrong_link(forge_repository(tasks, "app", ["d" * 40]), "hooks"),
+        lambda tasks: wrong_link(forge_repository(tasks, "app", ["d" * 40]).parent, "."),
+        lambda tasks: shutil.rmtree(forge_repository(tasks, "app", ["d" * 40]).parents[1]),
     ],
-    ids=["history unreadable", "no forge hook", "upper case", "bad history"],
+    ids=[
+        "history unreadable",
+        "no forge hook",
+        "upper case",
+        "bad history",
+        "judge's hook not mounted",
+        "link elsewhere",
+        "linked hook directory",
+        "linked hooks",
+        "linked organization",
+        "no repositories",
+    ],
 )
 def test_arming_stops_on_what_it_cannot_read_and_records_nothing(tasks, capsys, broken):
     """Prevent a repository armed with its history unrecorded, or armed where Forgejo's own hook is missing."""
@@ -1242,3 +1320,22 @@ def test_reading_arrivals_of_an_unknown_project_makes_no_directory(tasks, capsys
     assert tasks.call("arrivals", "alpha", "app") == 0
     assert capsys.readouterr().out == ""
     assert not (tasks.root / "var/lib/porelo-host/arrivals/alpha").exists()
+
+
+def test_reading_arrivals_waits_for_a_writer_holding_the_hosts_lock(tasks, capsys):
+    """Prevent a reader from seeing a lock, a removal or a sync half done."""
+    import fcntl
+    import threading
+
+    forge_repository(tasks, "app", ["d" * 40])
+    tasks.host.arm_pushes("alpha")
+    done = []
+    with (tasks.root / "etc/porelo-host/forge.conf").open("rb") as mutex:
+        fcntl.flock(mutex, fcntl.LOCK_EX)
+        reader = threading.Thread(target=lambda: done.append(tasks.call("arrivals", "alpha", "app", caller=None)))
+        reader.start()
+        reader.join(0.5)
+        assert done == [], "the reader did not wait for the lock"
+    reader.join(10)
+    assert done == [0]
+    capsys.readouterr()

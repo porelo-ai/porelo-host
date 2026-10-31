@@ -10,8 +10,8 @@ The role runs when `porelo_host_forge` is true; `down` stops its gates and remov
 account, `porelo-runner`, apart from the forge and every task.
 
 Each push is judged when it arrives: Forgejo's container mounts the pre-receive hook
-`/usr/local/libexec/porelo-forge-pre-receive` and the directory of root's socket `/run/porelo-host/verify/verify.sock`
-read-only, the socket listening before Forgejo starts. See [each push judged](../../doc/local-forge.md#each-push-judged-when-it-arrives).
+`/usr/local/libexec/porelo-forge-pre-receive` and the directory `/run/porelo-host/verify` read-only. Its socket
+`verify.sock` is the forge account's alone (`0600`) and listens before Forgejo starts; root's helper answers behind it. See [each push judged](../../doc/local-forge.md#each-push-judged-when-it-arrives).
 
 The system sockets `/run/porelo-forge/web.sock` and `git.sock` are owned by the forge account and group
 `porelo-people`, mode `0660`, inside a `0755` directory. Each connection starts the Python standard-library gate as

@@ -1630,6 +1630,20 @@ def test_sync_admits_a_new_card_without_inventing_legacy_agent_accounts(sync_hos
     assert "member=alpha developer" in host.path("/etc/porelo-host/people/eve.conf").read_text()
 
 
+def test_sync_arms_the_projects_repositories_on_its_forge(sync_host, capsys):
+    """Prevent a sync from leaving a brought repository's pushes unjudged."""
+    host, _ = sync_host
+    assert host.invoke("sync", "alpha", data=b"") == 0
+    armed = [
+        args
+        for args in host.calls
+        if "podman" in args
+        and args[args.index("podman") : args.index("podman") + 5] == ["podman", "exec", "forgejo", "sh", "-c"]
+        and "pre-receive.d/porelo" in args[args.index("podman") + 5]
+    ]
+    assert [args[args.index("podman") + 7] for args in armed] == ["alpha"]
+
+
 def test_people_can_reach_their_own_return_socket_directory(host):
     """Prevent a root-private parent hiding each person's own return-socket directory from them."""
     assert not host.path("/run/porelo-host").exists()

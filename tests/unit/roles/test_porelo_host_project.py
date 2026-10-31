@@ -287,6 +287,7 @@ def project(
         TRUST_ANCHOR=str(host["tmp"]),
         PUSH=str(host["push"]["command"]),
         RUN_USER=str(host["tmp"] / "run-user"),
+        ARRIVALS=str(host["tmp"] / "arrivals"),
     )
     values.update(overrides or {})
     bus = host["tmp"] / "run-user/1234/bus"
@@ -1249,10 +1250,31 @@ def test_remove_deletes_only_its_membership_and_signer_publications(memory_host,
             path.write_text("fixture\n")
             path.chmod(0o644 if relative.endswith(".allowed") else 0o600)
             paths.append(path)
+    for name in ("alpha", "beta"):
+        directory = host["tmp"] / "arrivals" / name
+        directory.mkdir(parents=True, mode=0o700)
+        (host["tmp"] / "arrivals").chmod(0o700)
+        (directory / "app.jsonl").write_text('{"verdict":"armed","arrived":"2026-10-30T12:00:00Z"}\n')
+        (directory / "app.jsonl").chmod(0o600)
     code, _, err = project(host, monkeypatch, capsys, "remove", "alpha")
     assert code == 0, err
     for path in paths:
         assert path.exists() == path.name.startswith("beta")
+    assert not (host["tmp"] / "arrivals/alpha").exists(), "a project brought again would find its old verdicts"
+    assert (host["tmp"] / "arrivals/beta/app.jsonl").exists()
+
+
+def test_remove_keeps_everything_when_a_projects_arrivals_are_not_roots_alone(memory_host, monkeypatch, capsys):
+    """Prevent removal from deleting the forge's repositories before it knows it can take their verdicts along."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    directory = host["tmp"] / "arrivals/alpha"
+    directory.mkdir(parents=True, mode=0o700)
+    (host["tmp"] / "arrivals").chmod(0o700)
+    (directory / "app.jsonl").symlink_to(host["tmp"] / "elsewhere")
+    code, _, _ = project(host, monkeypatch, capsys, "remove", "alpha")
+    assert code == 69
+    assert (host["etc"] / "projects/alpha.conf").exists() and (directory / "app.jsonl").is_symlink()
 
 
 @pytest.mark.parametrize("locked", [False, True])

@@ -36,7 +36,7 @@
   when: __forge_image_there.rc == 1
   changed_when: true
 
-- name: service | Create the directory of the hook that has the host judge each push
+- name: service | Make the directory of the gate and of the push hook
   ansible.builtin.file:
     path: /usr/local/libexec
     state: directory
@@ -109,13 +109,6 @@
     name: porelo-people
     state: present
 
-- name: service | Make the gate executable directory
-  ansible.builtin.file:
-    path: /usr/local/libexec
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
 
 - name: service | Install the forge gate
   ansible.builtin.copy:
