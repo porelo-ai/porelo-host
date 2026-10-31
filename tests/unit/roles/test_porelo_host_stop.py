@@ -196,7 +196,6 @@ def test_unlock_retries_a_wrong_passphrase(terminal_home):
         # Run as the person, --stdin reads a pipe: a terminal would wait for lines nobody types.
         (("--stdin", "vault-new"), "pipe"),
         (("--stdin", "matrix-token"), "matrix-token"),
-        (("--stdin", "identities", "identities"), "twice"),
         (("--stdin", "wireguard", "wireguard"), "no need of the host any more"),
         (("matrix-token",), "matrix-token"),
     ],
@@ -344,7 +343,7 @@ def test_a_refused_migration_fails_the_stop(own_account):
     assert result.returncode == 65 and "alpha" in result.stderr
 
 
-@pytest.mark.parametrize("need", ["wireguard", "forge-certificate"])
+@pytest.mark.parametrize("need", ["wireguard", "forge-certificate", "identities"])
 def test_the_needs_that_went_are_refused_in_a_persons_account(own_account, need):
     """Prevent a person from believing they gave the VPN's key or the forge's certificates, which the host no longer takes."""
     home = own_account
@@ -378,11 +377,3 @@ def test_a_refused_passphrase_stops_before_any_key(own_account):
     result = own_stop(home, "vault", "keys", lines=lines, extra={"PORELO_STUB_EXIT": "1"})
     assert result.returncode == 65 and "vault unlock" in result.stderr
     assert [call["args"] for call in calls(home)] == [["vault", "unlock", "--passphrase-stdin"]]
-
-
-def test_identities_without_their_delivery_file_say_what_is_missing(own_account):
-    """Prevent a person who was never admitted, or whose tokens were already taken, from seeing success."""
-    home = own_account
-    result = own_stop(home, "identities")
-    assert result.returncode == 69 and "identities.tokens" in result.stderr
-    assert calls(home) == []

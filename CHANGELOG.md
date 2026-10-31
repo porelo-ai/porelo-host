@@ -41,7 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Project sync takes Porelo's verified role `admin` or `developer` and records an admin as the project-admin
   membership; any other role in the verified access is refused.
 - A task certificate names exactly one principal `task:<project>:<task>`, or `task:default:<task>` for a task
-  without a project.
+  without a project, of a project the person is a member of. Before it is recorded, Porelo's `task
+  check-certificate` judges it against the person's key in force and the KRL in a unit with no home and no network.
+- Bring and join take the person's forge token from `sudo -n porelo-host-person forge-token` at each run into their
+  vault entry `<forge>.person`; the play keeps it in the person's runtime directory until its end.
 - Root alone brings a registry bundle on stdin with `registry --stdin`, so a fresh host can take its first registry
   before any account holds a setup directory.
 - Gathered push and pull run through sudo for the current project developer. Local API traffic uses the forge gate's
@@ -61,6 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Device records, per-device credentials and addresses, and credential stdin for person admission. Project sync no
   longer reads access-file host CA values or grants commit-signing authority to the project's verification key.
 - The VPN role and the WireGuard stop. Up and down remove a legacy WireGuard interface and its files.
+- The `identities` stop and the forge role's lasting gate token (`gate.yml`, `forge_porelo_account`): a person's
+  token is made at each bring and join, a task's at its start.
 
 ### Added
 
@@ -73,9 +78,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Forgejo uses a private Unix socket with no TLS or SSH listener; certificate requests and the password helper go.
 - Host task certificate recording, lookup by task key fingerprint, per-task forge token creation and deletion, and a
   daily expiration sweep. Certificate validation uses OpenSSH and the person's current key in the applied registry;
-  records are private and append-only. The gate consumer migration remains pending.
+  records are private and append-only.
 - On-demand person forge tokens answered directly on stdout, token-free admission, and all-token deletion on registry
-  revocation with retry after an API failure. Bring's earlier token-file consumer still requires migration.
+  revocation with retry after an API failure.
 - `porelo-host-person registry`, run by root or `sudo -n` by the host admin pinned once at setup with `registry pin
   <login> <key>`, takes the host's projects and persons from the registry bundle the host admin uploads into
   `~/.local/share/porelo-host/setup/registry.bundle`: Porelo's `registry verify` checks it in the sync's isolated unit
@@ -99,12 +104,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   makes no forge token. Lock disables the forge identities and deletes their tokens, expels Matrix accounts and revokes registration in one operation, and removes delivered
   credentials and their runtime directory. A separate install task provides the helper, SSH key lookup and a
   no-argument forge-password sudo rule.
-- `porelo.host.bring` and `porelo.host.join` run in the person's own account with no `sudo` but sync's: the setup's
-  files in `~/.local/share/porelo-host/setup/<project>/` checked, Porelo's verify on the project and access bundles
-  and the project followed; the bring migrates the project's repositories with the admin's own forge token, protects
-  `main`, makes the teams `developers`, `gates` and `agents`, sets the Actions variables, runs `sync` with a user
-  timer and makes the room once Porelo can; both write the person's push config. `porelo-host-stop --stdin`, run
-  without `sudo`, gives the caller's own `vault-new`, `vault`, `keys`, `forge-central-token` and `identities`.
+- `porelo.host.bring` and `porelo.host.join` run in the person's own account with no `sudo` but forge-token's and
+  sync's: the setup's files in `~/.local/share/porelo-host/setup/<project>/` checked, Porelo's verify on the project and
+  access bundles and the project followed; the bring migrates the project's repositories with the admin's own forge
+  token, protects `main`, makes the teams `developers`, `gates` and `agents`, sets the Actions variables, runs `sync`
+  with a user timer and makes the room once Porelo can; both write the person's push config. `porelo-host-stop --stdin`,
+  run without `sudo`, gives the caller's own `vault-new`, `vault`, `keys` and `forge-central-token`.
 - `up` installs every agent package the repository publishes, read from the packages providing `porelo-agent`, and
   Porelo's message filter with rootless networking; a repository publishing no agent stops `up`.
 

@@ -32,8 +32,10 @@ in memory. registry applies card keys and locks every person whose current key i
 task <task>, by sudo alone, reads one Ed25519 user certificate of at most 16 KiB
 on stdin from a private temporary file with ssh-keygen -L, which checks its
 signature. Its signing key must be the caller's key in registry/applied.json, not
-revoked; exactly one principal is task:<project>:<task> (or task:default:<task>); it must hold
-now and end. Then root's
+revoked; exactly one principal is task:<project>:<task> (or task:default:<task>) of a project
+the caller is a member of; it must hold now and end. Before any record, Porelo's own
+task check-certificate judges it against that key and the KRL, in a unit with no home and no
+network, and must answer for the same certificate. Then root's
 0600 /var/lib/porelo-host/tasks/<user>/<task>.json records it, never replaced,
 and the gate's token porelo-task-<task> of porelo-<user> is made anew and answered
 alone on stdout. task --end <task> deletes that token; task --show <fingerprint>
@@ -1385,7 +1387,7 @@ class Host:
             refuse("cannot create a private sync directory under /run/porelo-host/sync", 73)
         return temp_dir
 
-    def isolated_porelo(self, unit, staged, arguments, what, refused_words):
+    def isolated_porelo(self, unit, staged, arguments, what, refused_words, input=None):
         """Run porelo in a throwaway unit without home or network, given its staged files as credentials alone."""
         command = [
             "systemd-run",
@@ -1404,7 +1406,8 @@ class Host:
         for name, path in staged.items():
             command.extend(["-p", f"LoadCredential={name}:{path}"])
         try:
-            result = self.runner([*command, "porelo", *arguments])
+            command = [*command, "porelo", *arguments]
+            result = self.runner(command) if input is None else self.runner(command, input=input)
         except (OSError, subprocess.TimeoutExpired, UnicodeError) as error:
             refuse(f"systemd-run failed to complete ({type(error).__name__})", 69)
         if result.returncode != 0:
@@ -2266,7 +2269,7 @@ class Host:
         self.person(user, records)
         line = certificate_line(sys.stdin.buffer.read(MAX_CERTIFICATE + 1) if data is None else data)
         key = self.current_key(user)
-        self.require(["env", "ssh-keygen"])
+        self.require(["env", "ssh-keygen", "systemd-run", "porelo"])
         fields = self.certificate(line)
         now = self.now()
         if fields["type"] != CERTIFICATE + " user certificate":
@@ -2280,6 +2283,13 @@ class Host:
             refuse(f"the task certificate names not exactly one principal task:<project>:{task}", 65)
         if not (fields["valid_after"] is None or fields["valid_after"] <= now) or not now < fields["valid_before"]:
             refuse("the task certificate does not hold now", 65)
+        if project != "default" and not any(m != "hand" and m.split()[0] == project for m in records[user]["members"]):
+            refuse(f"the task certificate names project {project}, of which {user} is no member here", 65)
+        checked = self.check_task_certificate(user, task, line, key)
+        if (checked.get("fingerprint"), checked.get("signed_by"), checked.get("project")) != (
+            fields["fingerprint"], fields["signed_by"], project
+        ):
+            refuse("porelo task check-certificate answered for another certificate than the one given", 69)
         entry = {
             "task": task,
             "login": user,
@@ -2303,6 +2313,44 @@ class Host:
         with self.forge_session(user) as (account, opener, base, token):
             self.forge_drop_named(opener, base, token, "porelo-" + user, {TASK_TOKEN + task})
             return self.forge_token(account, "porelo-" + user, TASK_SCOPES, TASK_TOKEN + task)
+
+    def check_task_certificate(self, user, task, line, key):
+        """Porelo's own judgement of the certificate against the person's key in force and the KRL, before a record."""
+        temp_dir = self.sync_directory("task")
+        try:
+            staged = {"keys": temp_dir / "keys", "revoked.krl": temp_dir / "revoked.krl"}
+            krl = self.path("/etc/ssh/porelo-revoked.krl")
+            self.check(krl, 73, required=True)
+            try:
+                self.write(staged["keys"], key + "\n", 0o600)
+                # Read by descriptor what was checked, so a link put there after the check is never followed.
+                with os.fdopen(os.open(krl, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as source:
+                    status = os.fstat(source.fileno())
+                    if not stat.S_ISREG(status.st_mode) or status.st_uid != self.owner or status.st_mode & 0o022:
+                        refuse(f"{krl} is not a plain file of root's alone", 73)
+                    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+                    with os.fdopen(os.open(staged["revoked.krl"], flags, 0o600), "wb") as sink:
+                        os.fchown(sink.fileno(), self.owner, self.group)
+                        os.fchmod(sink.fileno(), 0o600)
+                        shutil.copyfileobj(source, sink)
+            except OSError:
+                refuse("cannot stage the task check's keys and KRL in /run/porelo-host/sync", 73)
+            unit = "porelo-host-task-check"
+            credentials = f"/run/credentials/{unit}.service"
+            arguments = [
+                "task", "check-certificate", "--task", task, "--login", user,
+                "--keys", f"{credentials}/keys", "--krl", f"{credentials}/revoked.krl", "--json",
+            ]
+            return self.isolated_porelo(
+                unit,
+                staged,
+                arguments,
+                "porelo task check-certificate",
+                "porelo task check-certificate refused the task certificate",
+                input=line + "\n",
+            )
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
     def publish_task(self, user, task, entry):
         """Record a task once with link(2), which fails on a name taken; the same certificate again is a retry."""

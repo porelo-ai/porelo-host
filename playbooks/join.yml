@@ -1,9 +1,9 @@
 ---
-# What a developer of the project runs on the host in their own account, with no sudo, once the interface uploaded the
-# setup's files into their home and their stop filled their vault:
+# What a developer of the project runs on the host in their own account, with no sudo but forge-token's, once the
+# interface uploaded the setup's files into their home and their stop filled their vault:
 #   ansible-playbook -c local porelo.host.join -e porelo_project=<project>
-# Porelo follows the project and the push config is written from the organization the bring made; nothing on the forge
-# changes.
+# Porelo follows the project, the host makes the developer's one forge token anew into their vault, and the push config
+# is written from the organization the bring made; nothing else on the forge changes.
 - name: Join the project on the host in the developer's own account
   hosts: localhost
   connection: local

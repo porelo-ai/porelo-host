@@ -111,10 +111,8 @@ repository is still to migrate; `up` fails with a message beginning `keys:` for 
 the transport's Unix socket gate and asks for no machine or registration token at the stop.
 
 It exits 0 when every line is used, printing "The host's stop is done; run up again."; 64 for a wrong call or a wrong
-line, with nothing used; 65 when the vault refuses a value (`vault-new`, `vault`, a key), naming it; 69 when a required
-command is missing, or `/etc/porelo-host/stop.conf`, `forge.conf`, which `up` writes, or the forge's
-waiting key, is missing, not root's alone, or names root or an unknown account; and 73 when a file cannot be written, or
-its directory or the file in its place is not root's alone or not plain.
+line, with nothing used; 65 when the vault refuses a value (`vault-new`, `vault`, a key), naming it; and 69 when a
+required command is missing, or no single bring waits for the central token.
 
 **The version.** `v` is the contract's version. An added field or state keeps it; a field that changes or goes away
 raises it. A reader skips a `state` it does not know, as it skips a field.

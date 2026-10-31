@@ -92,12 +92,10 @@ role](https://github.com/porelo-ai/porelo-host/blob/main/roles/vm_pool/README.md
 
 Porelo reads build verdicts and failed-job logs through the `forgejo` build reader on the host, outside every task, and
 delivers them into the task's `/porelo/files`. Where the forge is enabled, `up` installs `porelo-adapter-forgejo`, which
-provides `/usr/libexec/porelo/builds/forgejo`. With repositories configured, it creates `porelo-<account>`, where
-`forge_porelo_account` defaults to `porelo_host_account`, in the organization's `gates` team. That team writes code and
-pull requests and reads Actions on every repository. Its generated token is piped directly into the account's vault as
-`git.token.forge.porelo.internal`, only while that entry is missing; no token file is written. The gate and build reader
-use their token through the host's Git gate. Tasks receive no forge socket; the host passes their branch with the
-task token outside the container. No forge-specific `/etc/hosts` block is installed.
+provides `/usr/libexec/porelo/builds/forgejo`. The host keeps no lasting token for it or for the task gates. Each
+task's gate pushes as `porelo-<login>`, a member of the project's `developers` team, with the token the host made for
+that task at its start. The reader uses the person's own forge token. Tasks receive no forge socket; the host passes
+their branch with the task token outside the container. No forge-specific `/etc/hosts` block is installed.
 
 The reader receives its credential from the vault for each call, independently of any task access to declared services.
 The project's build configuration names `forge: forgejo` and a token credential, with its API transport reaching
@@ -245,8 +243,8 @@ Each project's `/etc/porelo-host/signers/<project>.allowed` is root-owned mode `
 It lists only that project's unlocked persons: a plain key for the login and a `cert-authority` line restricted to
 the `git` namespace and `task:*` principals. A replaced key remains with `valid-before` bounded by replacement time
 and the old card's expiry. Locked or removed persons have no lines in that project. Private `.json` history files
-retain the keys needed for later reconciliation. The `task:<task>` principal is the host certificate API's current
-convention; further principal and namespace conventions still require agreement with the certificate producer.
+retain the keys needed for later reconciliation. A task's certificate names the one principal
+`task:<project>:<task>`, which the host and Porelo's `task check-certificate` both hold it to at its start.
 
 ## The host's state taken from the registry
 

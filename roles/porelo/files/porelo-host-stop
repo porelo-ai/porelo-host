@@ -5,28 +5,11 @@
 # used, then each decoded on a pipe straight into what uses it; nothing is asked.
 set -u
 
-stdin_forge_conf=/etc/porelo-host/forge.conf
 stdin_max_lines=256
 
 stdin_refuse() {
     printf '%s\n' "porelo-host-stop: $1" >&2
     exit "${2:-64}"
-}
-
-# A value of root's own configuration, refused where another account could have written it.
-stdin_conf_value() {
-    local file=$1 key=$2 pattern=$3 owner_mode line value=
-    [ -f "$file" ] && [ ! -L "$file" ] || stdin_refuse "$file is missing; run up first" 69
-    owner_mode=$(stat -c '%u %a' -- "$file") || stdin_refuse "cannot read $file" 69
-    case "$owner_mode" in
-        '0 '[0-7][0145][0145]|'0 '[0-7][0-7][0145][0145]) ;;
-        *) stdin_refuse "$file is not root's alone to write ($owner_mode)" 69 ;;
-    esac
-    while IFS= read -r line || [ -n "$line" ]; do
-        case "$line" in "$key="*) value=${line#"$key="} ;; esac
-    done < "$file"
-    [[ $value =~ $pattern ]] || stdin_refuse "$file names no valid $key" 69
-    printf '%s' "$value"
 }
 
 stdin_decode() {
@@ -42,27 +25,18 @@ stdin_stop() {
 # --stdin run by a person, not root: their own needs into their own account, from the host admin's desktop or their own
 # act. Nothing here runs as anyone else, so the caller's search path stays; each line is still checked before any is
 # used, and no value is ever echoed.
-own_people_dir=/run/porelo-host/people
-own_identity_name() {
-    local identity=$1 user=$2 forge=$3
-    case "$identity" in
-        "porelo-$user") printf '%s' "git.token.$forge" ;;
-        "$user") printf '%s' "$forge.person" ;;
-        *) return 1 ;;
-    esac
-}
 
 own_stop() {
     local -A named=() given=()
     local -a key_names=()
-    local need line count=0 rest name value user forge tokens identity token project
+    local need line count=0 rest name value project
     local -a waiting=()
-    local -a identity_names=() identity_tokens=()
-    [ "$#" -gt 0 ] || stdin_refuse 'at least one need is required: vault-new, vault, keys, forge-central-token, identities'
+    [ "$#" -gt 0 ] || stdin_refuse 'at least one need is required: vault-new, vault, keys, forge-central-token'
     for need in "$@"; do
         case "$need" in
-            vault-new|vault|keys|forge-central-token|identities) ;;
-            wireguard|forge-certificate) stdin_refuse "$need is no need of the host any more" ;;
+            vault-new|vault|keys|forge-central-token) ;;
+            # A person's forge token is made at each bring and join, a task's at its start: none waits for a stop.
+            wireguard|forge-certificate|identities) stdin_refuse "$need is no need of the host any more" ;;
             drive) stdin_refuse 'drive is no need of the host any more' ;;
             *) stdin_refuse "unknown need or option: $need" ;;
         esac
@@ -123,27 +97,7 @@ own_stop() {
         project=${project%.migrate}
         require_command porelo-host-push
     fi
-    # The tokens admission left for this person, read whole and checked before the vault is touched.
-    if [ -n "${named[identities]+x}" ]; then
-        user=$(id -un) || stdin_refuse 'cannot read the account name' 69
-        tokens=$own_people_dir/$user/identities.tokens
-        [ -f "$tokens" ] && [ ! -L "$tokens" ] && [ -O "$tokens" ] \
-            || stdin_refuse "no identities wait in $tokens; they are given once, at admission" 69
-        forge=$(stdin_conf_value "$stdin_forge_conf" name '^forge\.[a-z0-9-]+\.porelo\.internal$') || exit $?
-        [ "$(stat -c '%a' -- "$tokens")" = 600 ] || stdin_refuse "$tokens is not private" 69
-        while IFS= read -r line || [ -n "$line" ]; do
-            identity=${line%% *}
-            token=${line#* }
-            [[ $token =~ ^[0-9a-f]{40}$ ]] || stdin_refuse "$tokens holds a line that is no identity and token" 65
-            name=$(own_identity_name "$identity" "$user" "$forge") \
-                || stdin_refuse "$tokens names an identity Porelo does not use: $identity" 65
-            identity_names+=("$name")
-            identity_tokens+=("$token")
-        done < "$tokens"
-        [ "${#identity_names[@]}" -gt 0 ] || stdin_refuse "$tokens holds no identity" 65
-    fi
-    if [ -n "${named[vault-new]+x}" ] || [ -n "${named[vault]+x}" ] || [ -n "${named[keys]+x}" ] \
-        || [ -n "${named[identities]+x}" ]; then
+    if [ -n "${named[vault-new]+x}" ] || [ -n "${named[vault]+x}" ] || [ -n "${named[keys]+x}" ]; then
         require_command porelo
         export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$EUID}
     fi
@@ -160,14 +114,6 @@ own_stop() {
         stdin_decode "${given["key $name"]}" | porelo vault put "$name" > /dev/null \
             || stdin_refuse "porelo vault put refused the key $name" 65
     done
-    for count in "${!identity_names[@]}"; do
-        printf '%s' "${identity_tokens[$count]}" | porelo vault put "${identity_names[$count]}" > /dev/null \
-            || stdin_refuse "porelo vault put refused ${identity_names[$count]}" 65
-    done
-    # Taken once: the file goes as soon as the vault holds every token, so no copy outlives it.
-    if [ -n "${named[identities]+x}" ]; then
-        rm -f -- "$tokens" || stdin_refuse "cannot remove $tokens" 73
-    fi
     # Used once, on a pipe: the token is in no file, and the bring run again finds the repositories there.
     if [ -n "${named[forge-central-token]+x}" ]; then
         if ! stdin_decode "${given["forge-central-token "]}" | porelo-host-push --migrate "$project"; then

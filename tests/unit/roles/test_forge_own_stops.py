@@ -31,11 +31,6 @@ def tasks_in(task):
     "name, task, needs",
     [
         (
-            "own.yml",
-            "own | Wait for the stop that gives the person's forge token while the vault holds none",
-            ["identities"],
-        ),
-        (
             "repositories.yml",
             "repositories | Wait for the stop that gives the person's token while a repository is to migrate",
             ["forge-central-token"],
@@ -48,6 +43,17 @@ def test_a_forge_stop_is_a_tagged_failure_whose_message_is_its_needs(name, task,
     assert "when" in stop
     msg = stop["ansible.builtin.fail"]["msg"]
     assert json.loads(msg.replace("{{ ", "").replace(" | to_json }}", "").replace("'", '"')) == needs
+
+
+def test_the_person_s_forge_token_comes_from_the_host_into_their_vault_with_no_stop():
+    """Prevent a bring waiting at a stop for a lasting token, or the token reaching the play's file but not the vault."""
+    names = [t.get("name") for t in tasks("own.yml")]
+    assert not any("ansible.builtin.fail" in t for t in tasks("own.yml")), "own.yml has no stop left"
+    take = next(t for t in tasks("own.yml") if t.get("name", "").startswith("own | Take the person's forge token"))
+    cmd = take["ansible.builtin.shell"]["cmd"]
+    assert "sudo -n /usr/local/sbin/porelo-host-person forge-token" in cmd
+    assert cmd.index("porelo vault put") < cmd.index("mv --"), "the vault holds it before the play's file does"
+    assert "own | Remove the person's forge token from the runtime directory" in names
 
 
 @pytest.mark.parametrize("name", ["own.yml", "repositories.yml"])

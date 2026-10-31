@@ -5,8 +5,15 @@ at 16 KiB and contains one Ed25519 SSH user certificate. Task names match `[a-z0
 OpenSSH reads the certificate from a private temporary file and verifies its signature. Its signing CA must be the
 calling person's current, unrevoked key in `/etc/porelo-host/registry/applied.json`. Exactly one of its principals
 is `task:<project>:<task>`, with `default` for a task without a project, and its validity must include the current
-time and have a finite end. The certificate's other principals and key ID are retained without interpretation; person,
-project and repository conventions still require agreement with the producer.
+time and have a finite end. The project must be one the person is a member of on this host.
+
+Before anything is recorded, Porelo judges the same certificate by its own rules: `porelo task check-certificate
+--task <task> --login <login> --keys <file> --krl <file> --json`, given the certificate on stdin. It runs in a
+throwaway systemd unit with a dynamic user, no network and no home. Its only files are the person's key in force and
+the host's KRL, staged under `/run/porelo-host/sync` and removed afterwards. It checks the key id `porelo task <task>
+by <login>`, the one principal, the five default extensions and no critical option, and the validity bound of the
+start. A refusal is shown on stderr and refuses the task. An answer for another task key, signer or project than the
+host read is refused with exit 69.
 
 The certificate is recorded once in `/var/lib/porelo-host/tasks/<login>/<task>.json`, owned by root with mode 0600
 inside mode 0700 directories. The record includes its canonical certificate line, task key fingerprint, signer,
@@ -38,6 +45,10 @@ revocation leaves the local record locked, so a project sync cannot restore host
 and purge retain their all-token revocation paths. Lock and purge remove legacy token delivery directories without
 following links.
 
-The collection's gate setup and bring still use their earlier vault and runtime-file credential paths. Their migration
-to this API, removal of the identities stop and its Molecule callers, and the Porelo task-start consumer are pending.
-The host API alone does not establish the complete task-to-gate workflow or the no-token-file guarantee for bring.
+Porelo's task start is the consumer: it keeps the answered token in the task's vault entry for its gate, which pushes
+as `porelo-<login>` on the host's loopback. The host keeps no lasting gate token.
+
+bring and join take the person's token from `sudo -n porelo-host-person forge-token` at each run. The vault entry
+`<forge>.person` keeps it at once for the person's own tools, which replaces the one before. For the play's forge calls
+it also lies in a 0600 file in the person's runtime directory, on tmpfs, until the play removes it at its end. No stop
+waits for an identity's token any more.

@@ -125,11 +125,6 @@ argument_specs:
           MAVEN_SNAPSHOTS_URL: "http://localhost/api/packages/{{ forge_owner }}/maven"
         description: >-
           Nonsecret organization Actions variables; uppercase names and nonempty string values, only with repositories.
-      forge_porelo_account:
-        type: str
-        default: ""
-        description: >-
-          Porelo's account matching ^[a-z][a-z0-9-]{0,30}$ when gate.yml is called directly; unused by up.
       forge_agents:
         type: list
         elements: str

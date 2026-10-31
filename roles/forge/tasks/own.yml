@@ -1,8 +1,8 @@
 ---
 # bring's and join's forge side, in the person's own account after porelo's own side: the host's forge as forge.conf
-# names it, the person's own forge token out of their vault onto their runtime directory for this play alone, and the
-# push config. A bring also gives the project's organization its repositories, main's protection, the teams and the
-# Actions variables; a join changes nothing on the forge.
+# names it, the person's one forge token made anew by the host, kept in their vault and in their runtime directory for
+# this play alone, and the push config. A bring also gives the project's organization its repositories, main's
+# protection, the teams and the Actions variables; a join changes nothing else on the forge.
 - name: own | Read the host's forge as up named it
   ansible.builtin.slurp:
     src: /etc/porelo-host/forge.conf
@@ -37,8 +37,9 @@
 
 - name: own | Act on the forge with the person's own token, and drop it from the runtime directory after
   block:
-    # Only fixed words leave the shell; the token goes from the vault's answer into the file and nowhere else.
-    - name: own | Take the person's forge token out of their vault into their runtime directory
+    # Only fixed words leave the shell. The host makes the person's one token anew, in place of the last; the vault
+    # keeps it for the person's own tools, and the file serves this play's forge calls until the always below.
+    - name: own | Take the person's forge token from the host into their vault and their runtime directory
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
@@ -46,26 +47,28 @@
           mkdir -p -- {{ __forge_own_dir | quote }}
           new=$(mktemp {{ __forge_own_dir | quote }}/forge.token.XXXXXX)
           trap 'rm -f "$new"' EXIT
-          if ! printf 'protocol=https\nhost=%s\n\n' {{ forge_name | quote }} \
-              | porelo vault credential --entry={{ (forge_name ~ '.person') | quote }} get 2> /dev/null \
-              | sed -n 's/^password=//p' > "$new"; then
-              echo missing; exit 0
-          fi
-          [ -s "$new" ] || { echo missing; exit 0; }
+          sudo -n /usr/local/sbin/porelo-host-person forge-token > "$new" 2> /dev/null || { echo refused; exit 0; }
+          [ -s "$new" ] || { echo refused; exit 0; }
+          porelo vault put {{ (forge_name ~ '.person') | quote }} < "$new" > /dev/null 2>&1 || { echo vault; exit 0; }
           mv -- "$new" {{ __forge_token | quote }}
           echo given
         executable: /bin/bash
       environment: "{{ __forge_own_environment }}"
       register: __forge_own_token
-      changed_when: false
+      changed_when: __forge_own_token.stdout | default('') == 'given'
+      failed_when: false
       no_log: true
 
-    # The person's step: the message is the stop's needs as JSON, from which the interface opens the stop.
-    - name: own | Wait for the stop that gives the person's forge token while the vault holds none
-      ansible.builtin.fail:
-        msg: "{{ ['identities'] | to_json }}"
-      when: __forge_own_token.stdout != 'given'
-      tags: [porelo_host_waiting]
+    - name: own | Stop unless the host gave the person's forge token and their vault took it
+      ansible.builtin.assert:
+        that: __forge_own_token.stdout | default('') == 'given'
+        fail_msg: >-
+          {{ {'refused': 'porelo-host-person forge-token gave ' ~ porelo_account ~ ' no forge token; the host admin
+          checks that the person is admitted, unlocked and unrevoked',
+          'vault': 'Porelo\'s vault took no forge token for ' ~ porelo_account ~ '; it must be open'}
+          .get(__forge_own_token.stdout | default(''), 'the forge token could not be put into ' ~ __forge_own_dir
+          ~ ' (exit ' ~ (__forge_own_token.rc | default('none')) ~ ')') }}
+        quiet: true
 
     - name: own | Ask Forgejo whether the person owns the project's organization or belongs to it
       ansible.builtin.shell:

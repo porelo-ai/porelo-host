@@ -24,7 +24,7 @@ including purge after a prior lock. See [Matrix access](../../doc/matrix.md) for
 The helper also provides `forge-token`, `task <task>`, `task --end <task>`, `task --show <fingerprint>` and root's
 `sweep`. The person role installs their sudo rules and the daily persistent `porelo-host-task-sweep.timer`.
 Certificates stay in root's private task records; token answers leave through stdout alone. See the
-[task certificate contract](../../doc/task-certificates.md) for validation, token scopes and the pending gate migration.
+[task certificate contract](../../doc/task-certificates.md) for validation, Porelo's own check and token scopes.
 
 The account-bound entry points (`main`, `project`, `tasks`, `down`) remain on disk for an explicit `porelo_account`
 when called directly; `up` and `down` do not call them.
