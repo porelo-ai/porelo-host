@@ -226,8 +226,10 @@
   become_user: "{{ matrix_account }}"
   environment: "{{ __matrix_environment }}"
   register: __matrix_administrator
+  # With its token already there the command runs nothing and answers no JSON, unchanged.
   until: >-
     __matrix_administrator is skipped
+    or (__matrix_administrator.rc == 0 and not __matrix_administrator.changed)
     or (__matrix_administrator.rc == 0 and (__matrix_administrator.stdout | from_json).administrator | default(false))
   retries: 20
   delay: 3

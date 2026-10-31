@@ -1,5 +1,6 @@
 """Prevent direct homeserver access and socket activation under the caller's identity."""
 
+import json
 from pathlib import Path
 
 import jinja2
@@ -138,3 +139,17 @@ def test_gate_gets_its_administrator_once_the_homeserver_answers():
     assert "administrator" in task["until"] and task["retries"] >= 10
     recorded = names.index("Record the completed Matrix gate preparation")
     assert recorded > admin
+
+
+def test_a_gate_already_holding_its_token_passes_again():
+    """Prevent every later up failing on the empty output the command gives when its creates file exists."""
+    task = next(t for t in tasks() if "admin-token" in str(t.get("ansible.builtin.command", {})))
+    env = jinja2.Environment(undefined=jinja2.StrictUndefined)
+    env.filters["from_json"] = json.loads
+    env.tests["skipped"] = lambda result: result.get("skipped", False)
+    until = env.compile_expression(task["until"].strip())
+    # ansible-core's command answers rc 0, no output and no change when the creates file exists.
+    assert until(__matrix_administrator={"rc": 0, "stdout": "", "changed": False})
+    assert until(__matrix_administrator={"rc": 0, "stdout": '{"gate":true,"administrator":true}', "changed": True})
+    assert not until(__matrix_administrator={"rc": 0, "stdout": '{"gate":true,"administrator":false}', "changed": True})
+    assert not until(__matrix_administrator={"rc": 1, "stdout": "", "changed": True})
