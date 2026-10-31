@@ -28,16 +28,16 @@ it is left out.
 | <a id="ho46"></a>[HO46](HO46-The-Developers-Kept-In-Step-With-The-Signed-Access-File.md) | L | [HO45](#ho45) | `sync`: the developers on the host kept to the signed `access.yml`, verified by Porelo's own check as a throwaway user, added or locked. |
 | <a id="ho47"></a>[HO47](HO47-The-Gathered-Push-Run-By-Any-Developer.md) | S | [HO45](#ho45) | `porelo-host-push` as a user tool with the person's own config and token. |
 | <a id="ho48"></a>[HO48](HO48-Every-Role-Tested-On-One-Host.md) | L | [HO46](#ho46), [HO47](#ho47) | The Molecule scenario with a host admin, two project admins and a developer with two laptops, every act and refusal. |
+| <a id="ho68"></a>[HO68](HO68-SSH-The-Hosts-Only-Way-In.md) | L | [HO70](#ho70) | A person reaches the host only over SSH on port 22, with the one key of their card; nothing listens on TCP for persons. |
+| <a id="ho70"></a>[HO70](HO70-The-Hosts-State-Taken-From-The-Registry.md) | M | Porelo's registry verify | The host takes its project admins and projects from the signed registry state the host admin brings, verified by Porelo. |
+| <a id="ho73"></a>[HO73](HO73-The-Homeserver-Reached-Through-Its-Gate.md) | M | porelo-message-matrix's gate | The homeserver is reached only through the Matrix transport's gate on its socket, and Tuwunel listens on no TCP port. |
+| <a id="ho75"></a>[HO75](HO75-The-Persons-Taken-From-Their-Cards.md) | M | [HO68](#ho68), [HO70](#ho70), [HO71](#ho71); Porelo's verify answering persons by key | Persons, keys, signers and per-project locks come from the cards and access files, with no laptop anywhere. |
 
 ## Implementing
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho75"></a>[HO75](HO75-The-Persons-Taken-From-Their-Cards.md) | M | [HO68](#ho68), [HO70](#ho70), [HO71](#ho71); Porelo's verify answering persons by key | Persons, keys, signers and per-project locks come from the cards and access files, with no laptop anywhere. |
 | <a id="ho72"></a>[HO72](HO72-The-Central-Forge-Reached-Only-On-A-Persons-Word.md) | M | - | No token for the central forge lies on the host: migration, push and pull take the starting person's own on stdin, once. |
-| <a id="ho73"></a>[HO73](HO73-The-Homeserver-Reached-Through-Its-Gate.md) | M | porelo-message-matrix's gate | The homeserver is reached only through the Matrix transport's gate on its socket, and Tuwunel listens on no TCP port. |
-| <a id="ho70"></a>[HO70](HO70-The-Hosts-State-Taken-From-The-Registry.md) | M | Porelo's registry verify | The host takes its project admins and projects from the signed registry state the host admin brings, verified by Porelo. |
-| <a id="ho68"></a>[HO68](HO68-SSH-The-Hosts-Only-Way-In.md) | L | [HO70](#ho70) | A person reaches the host only over SSH on port 22, with the one key of their card; nothing listens on TCP for persons. |
 | <a id="ho69"></a>[HO69](HO69-The-Forge-Behind-Its-Gate-Without-TLS.md) | L | [HO71](#ho71) | The forge has no TLS and no password: a person's browser is signed in through `web.sock`, Git and the API take a token through `git.sock`. |
 | <a id="ho71"></a>[HO71](HO71-A-Task-Recorded-And-Given-Its-Forge-Token-By-The-Host.md) | M | [HO70](#ho70); Porelo's task certificate check | Every forge token on the host is made there and goes with its person or task; each task's certificate is recorded at its start. |
 

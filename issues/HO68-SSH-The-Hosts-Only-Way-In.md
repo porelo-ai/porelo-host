@@ -1,6 +1,6 @@
 # HO68 — SSH The Host's Only Way In
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** L - the vpn role's removal reaches up, down, the firewall, the stops and Molecule's converge and verify,
 beside the sshd settings, the KRL and the person helper; L by the size rule (several modules and an acceptance step), no
 measured L yet.
@@ -74,3 +74,5 @@ machine. Nothing else on the host answers from outside, and nothing on it listen
 - `ssh-keygen -k` with an empty input makes a KRL sshd accepts, on Ubuntu 26.04's OpenSSH 10.2.
 - Whether the host admin, connecting as root for `up`, needs anything of the Match block (they do not forward sockets as
   root).
+- Open from the readings, for after the test: the KRL's own validation, a root key with an options prefix, and the
+  order of locks against a concurrent sync.

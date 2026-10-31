@@ -1,6 +1,6 @@
 # HO73 — The Homeserver Reached Through Its Gate
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** M - the matrix role's socket unit, Tuwunel's socket setting, the admins files written by the sync, and the TLS
 and tokens removed with their Molecule steps; measured M median 63 min, from three M builds (47, 63, 75); grew from S,
 as the TLS removal and the admins files came in.
