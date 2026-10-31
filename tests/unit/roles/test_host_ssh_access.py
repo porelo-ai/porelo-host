@@ -45,15 +45,19 @@ def test_registry_key_has_expiry_and_no_source_address(host, tmp_path):
     assert target.read_bytes() == before
 
 
-def test_runtime_directory_is_private_and_restored_at_boot(host):
+def test_runtime_directory_is_private_and_restored_at_boot(host, monkeypatch):
     """Prevent another person from replacing the return socket, including after reboot."""
+    # The person's uid differs from root's, so a link to root's own daemon would show.
+    host.account = lambda user: SimpleNamespace(pw_uid=4242, pw_gid=4242)
+    monkeypatch.setattr(os, "chown", lambda *args, **kwargs: None)
     host.admit_runtime("alice")
     directory = host.path("/run/porelo-host/people/alice")
     assert stat.S_IMODE(directory.stat().st_mode) == 0o700
-    assert directory.stat().st_uid == os.getuid()
     assert host.path("/etc/tmpfiles.d/porelo-person-alice.conf").read_text() == (
         "d /run/porelo-host/people/alice 0700 alice alice -\n"
+        "L /run/porelo-host/people/alice/porelod.sock - - - - /run/user/4242/porelo/porelod.sock\n"
     )
+    assert os.readlink(directory / "porelod.sock") == "/run/user/4242/porelo/porelod.sock"
     host.remove_runtime("alice")
     assert not directory.exists()
     assert not host.path("/etc/tmpfiles.d/porelo-person-alice.conf").exists()

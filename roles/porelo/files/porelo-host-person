@@ -878,7 +878,7 @@ class Host:
             refuse("; ".join(str(error) for error in errors), errors[0].code)
 
     def admit_runtime(self, user):
-        """Create a private return-socket directory and its persistent boot rule."""
+        """Create a private return-socket directory, the link to the person's daemon and their persistent boot rule."""
         if not isinstance(user, str) or not re.fullmatch(USER, user):
             refuse("invalid SSH account", 65)
         entry = self.account(user)
@@ -891,14 +891,26 @@ class Host:
             directory.mkdir(mode=0o700)
             os.chown(directory, entry.pw_uid, entry.pw_gid)
             changed = True
-        content = f"d /run/porelo-host/people/{user} 0700 {user} {user} -\n"
+        # A fixed name the person's tunnel forwards to, whatever uid the account has: porelod's own socket.
+        daemon = f"/run/user/{entry.pw_uid}/porelo/porelod.sock"
+        link = directory / "porelod.sock"
+        if not os.path.lexists(link):
+            try:
+                os.symlink(daemon, link)
+                changed = True
+            except FileExistsError:
+                pass  # The person put an entry of their own there meanwhile; it stays.
+        content = (
+            f"d /run/porelo-host/people/{user} 0700 {user} {user} -\n"
+            f"L /run/porelo-host/people/{user}/porelod.sock - - - - {daemon}\n"
+        )
         if not rule.exists() or self.read(rule) != content or stat.S_IMODE(rule.stat().st_mode) != 0o644:
             self.write(rule, content, 0o644)
             changed = True
         return changed
 
     def remove_runtime(self, user):
-        """Remove the return socket without following links in the person's writable directory."""
+        """Remove the return socket and the daemon link without following links in the person's writable directory."""
         if not isinstance(user, str) or not re.fullmatch(USER, user):
             refuse("invalid SSH account", 65)
         rule = self.path(f"/etc/tmpfiles.d/porelo-person-{user}.conf")
@@ -2562,6 +2574,7 @@ class Host:
                     record["members"] = ["hand", *[m for m in record["members"] if m != "hand"]]
                     self.record(user, {**record, **card})
                     self.write_authorized_key(user, card["ssh"], self.card_expiry(card["expires"]))
+                    self.admit_runtime(user)
                     return {"person": user, "role": "project-admin"}
                 groups = self.groups if self.groups is not None else {entry.gr_name for entry in grp.getgrall()}
                 if user in groups:

@@ -13,9 +13,11 @@ for `porelo-people`. That group gets local and remote Unix socket forwarding wit
 its login shell. OpenSSH forwards no Unix socket while `AllowTcpForwarding` is `no`, and `PermitOpen none` refuses
 socket paths as well, so the group also gets local TCP forwarding: it reaches only what the person's shell on the host
 reaches anyway. `PermitListen none` refuses every remote TCP listener. sshd keeps the first value it reads, so both
-forwarding keywords stand only in the `Match` blocks. A person's return socket belongs below
-`/run/porelo-host/people/<login>/`, mode 0700, owned by that person. Admission creates the directory and an
-`/etc/tmpfiles.d/porelo-person-<login>.conf` boot rule. The install step restores these for recorded people;
+forwarding keywords stand only in the `Match` blocks. A person's return socket is
+`/run/porelo-host/people/<login>/return.sock`, in a directory of mode 0700 owned by that person. Beside it,
+`porelod.sock` links to the person's daemon at `/run/user/<uid>/porelo/porelod.sock`, so the tunnel forwards to a name
+known from the login alone. Admission creates the directory, the link and an
+`/etc/tmpfiles.d/porelo-person-<login>.conf` boot rule for both; a person's own entry at the link's name stays. The install step restores these for recorded people;
 lock and purge remove both without following links in the person's writable directory.
 
 OpenSSH has no per-path allowlist for Unix socket forwarding. Porelo must request its return socket in the person's
@@ -32,7 +34,8 @@ root-only integration calls; they consume already verified public input, never f
 - `write_authorized_key(login, key, expires=None)` atomically replaces one account's key file with one canonical
   Ed25519 public key, optionally prefixed with `expiry-time="YYYYMMDDHHMMSSZ"`. It accepts no source address
   restriction. The reader converts the card's expiry to UTC and supplies it here.
-- `admit_runtime(login)` creates or validates the private runtime directory and writes its boot rule.
+- `admit_runtime(login)` creates or validates the private runtime directory and the `porelod.sock` link in it, leaving a
+  person's own entry at that name, and writes their boot rule.
 - `apply_ssh_revocations(keys, users)` takes the complete host-wide public-key revocation list and the affected
   account logins. It validates the inputs, atomically replaces the KRL via `write_krl(keys)`, then terminates every
   listed user's sessions and waits for their user manager to stop. All affected users are attempted on failure;

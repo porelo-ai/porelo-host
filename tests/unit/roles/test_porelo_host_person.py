@@ -1089,17 +1089,73 @@ def test_install_restores_boot_rules_for_existing_admitted_people(host, capsys):
     assert host.invoke("add", "alice", "--role", "project-admin") == 0
     capsys.readouterr()
     directory = host.path("/run/porelo-host/people/alice")
+    (directory / "porelod.sock").unlink()
     directory.rmdir()
     rule = host.path("/etc/tmpfiles.d/porelo-person-alice.conf")
     rule.unlink()
     assert host.invoke("restore-runtime", data=b"") == 0
     assert json.loads(capsys.readouterr().out) == {"changed": 1}
     assert stat.S_IMODE(directory.stat().st_mode) == 0o700
-    assert rule.read_text() == "d /run/porelo-host/people/alice 0700 alice alice -\n"
+    uid = directory.stat().st_uid
+    assert rule.read_text() == (
+        "d /run/porelo-host/people/alice 0700 alice alice -\n"
+        f"L /run/porelo-host/people/alice/porelod.sock - - - - /run/user/{uid}/porelo/porelod.sock\n"
+    )
+    assert os.readlink(directory / "porelod.sock") == f"/run/user/{uid}/porelo/porelod.sock"
     before = snapshot(host.root)
     assert host.invoke("restore-runtime", data=b"") == 0
     assert json.loads(capsys.readouterr().out) == {"changed": 0}
     assert snapshot(host.root) == before
+
+
+def test_the_daemon_link_is_made_again_and_a_persons_own_entry_there_stays(host, capsys):
+    """Prevent a tunnel without its fixed daemon name after a restore, and root replacing what the person put there."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    capsys.readouterr()
+    link = host.path("/run/porelo-host/people/alice/porelod.sock")
+    link.unlink()
+    assert host.invoke("restore-runtime", data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {"changed": 1}
+    uid = link.parent.stat().st_uid
+    assert os.readlink(link) == f"/run/user/{uid}/porelo/porelod.sock"
+    link.unlink()
+    link.write_text("the person's own")
+    assert host.invoke("restore-runtime", data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {"changed": 0}
+    assert not link.is_symlink() and link.read_text() == "the person's own"
+    link.unlink()
+    link.symlink_to("nowhere")  # The person's own link, dangling.
+    assert host.invoke("restore-runtime", data=b"") == 0
+    assert json.loads(capsys.readouterr().out) == {"changed": 0}
+    assert os.readlink(link) == "nowhere"
+
+
+def test_a_person_put_there_by_a_race_keeps_their_entry_and_admission_goes_on(host, capsys, monkeypatch):
+    """Prevent a person's entry made between root's look and its link from failing a restore for everyone."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    capsys.readouterr()
+    link = host.path("/run/porelo-host/people/alice/porelod.sock")
+    link.unlink()
+
+    def raced(target, path):
+        Path(path).write_text("the person's own")
+        raise FileExistsError(path)
+
+    monkeypatch.setattr(os, "symlink", raced)
+    assert host.invoke("restore-runtime", data=b"") == 0
+    capsys.readouterr()
+    assert link.read_text() == "the person's own"
+
+
+def test_adding_a_recorded_person_again_restores_their_daemon_link(host, capsys):
+    """Prevent a person from keeping no daemon name when the host admin adds them again."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    capsys.readouterr()
+    link = host.path("/run/porelo-host/people/alice/porelod.sock")
+    link.unlink()
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    capsys.readouterr()
+    assert link.is_symlink()
 
 
 def test_purge_expels_the_login_even_when_already_locked(host, capsys):

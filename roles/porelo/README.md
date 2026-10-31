@@ -4,7 +4,7 @@ Porelo's packages and person records on the host: `tasks_from: install` adds Por
 installs `porelo` (and `porelo-adapter-forgejo`, providing `/usr/libexec/porelo/builds/forgejo`, when
 `porelo_host_forge` is true), makes `/etc/porelo-host`, and installs `/usr/local/bin/porelo-host-stop`, running no setup
 script for an account. `tasks_from: person` installs `/usr/local/sbin/porelo-host-person` (`add`, `lock`, `purge`, `sync
-<project>`, `registry` and `registry pin <login> <key>`), private return-socket directories and the `porelo-people`
+<project>`, `registry` and `registry pin <login> <key>`), private return-socket directories with the daemon link and the `porelo-people`
 sudoers rules for `porelo-host-person sync *` (checked by the helper to the project's unlocked recorded admin) and the
 bare `porelo-host-person registry` (checked to the host admin pinned in `/etc/porelo-host/registry/pin.conf`, whose
 verified registry state lands in `/etc/porelo-host/registry/applied.json`; see
@@ -67,8 +67,9 @@ and the packages stay with the host.
 GPL-3.0-or-later.
 
 SSH policy and initial key/KRL installation belong to `base`. The person helper creates
-`/run/porelo-host/people/<login>` (0700, owned by the person) and a per-person tmpfiles rule at admission;
-lock and purge remove both. Lock terminates sessions and stops the user manager even if a service hook refuses.
+`/run/porelo-host/people/<login>` (0700, owned by the person) with the link `porelod.sock` to the person's
+`/run/user/<uid>/porelo/porelod.sock`, and a per-person tmpfiles rule for both at admission; lock and purge remove
+them. Lock terminates sessions and stops the user manager even if a service hook refuses.
 Registry intake applies card keys and expiries, rebuilds the KRL and locks revoked accounts. Project sync applies
 verified person roles and locks to that project's forge teams, Matrix rooms and allowed signers. Other projects,
 sessions and tokens stay until a host lock or last-membership removal. A project can restore a membership-only lock;
