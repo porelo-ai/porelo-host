@@ -36,6 +36,7 @@ it is left out.
 | <a id="ho81"></a>[HO81](HO81-The-Gates-Route-Match-Holds-For-Every-Decoded-Byte.md) | XS | [HO69](#ho69) | No decoded byte takes a refused route past the forge gate's match, and `web.sock` challenges a client that waits for one. |
 | <a id="ho71"></a>[HO71](HO71-A-Task-Recorded-And-Given-Its-Forge-Token-By-The-Host.md) | M | [HO70](#ho70); Porelo's task certificate check | Every forge token on the host is made there and goes with its person or task; each task's certificate is recorded at its start. |
 | <a id="ho84"></a>[HO84](HO84-The-Persons-Daemon-By-A-Fixed-Name.md) | S | - | A person's tunnel reaches their daemon and binds its return socket by names that follow from the login alone. |
+| <a id="ho83"></a>[HO83](HO83-The-Persons-Token-Kept-Where-Each-Tool-Reads-It.md) | S | [HO71](#ho71) | The vault's person token stays the one in force after every remake; each task-start and token-handling check is tested by its absence. |
 
 ## Implementing
 
@@ -72,7 +73,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho83"></a>[HO83](HO83-The-Persons-Token-Kept-Where-Each-Tool-Reads-It.md) | - | [HO71](#ho71) | The vault's person token stays the one in force after every remake; each task-start and token-handling check is tested by its absence. |
 | <a id="ho82"></a>[HO82](HO82-A-Bring-With-No-Token-File.md) | - | [HO71](#ho71) | bring and join reach the host's forge with the person's token read from the vault per call, never from a file. |
 | <a id="ho78"></a>[HO78](HO78-Only-The-Gates-Sockets-Forwarded.md) | - | [HO74](#ho74) | A person's SSH connection forwards only to the gates' sockets and their own return socket, and to no TCP address. |
 | <a id="ho79"></a>[HO79](HO79-A-Persons-SSH-Login-Confirmed-By-A-Second-Factor.md) | - | [HO63](#ho63) | A person's SSH login needs a second factor beside their key: FIDO2 touch, or TOTP through PAM. |
