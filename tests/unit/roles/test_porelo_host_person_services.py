@@ -150,6 +150,9 @@ def services(tmp_path, monkeypatch):
     scope = namespace["Host"].__init__.__globals__
     host = namespace["Host"]()
     host.root, host.owner, host.group = tmp_path, os.getuid(), os.getgid()
+    for uid in (1200, 1201):  # The service accounts' user managers, each with its session bus.
+        (tmp_path / f"run/user/{uid}").mkdir(parents=True, exist_ok=True)
+        os.mknod(tmp_path / f"run/user/{uid}/bus", stat.S_IFSOCK | 0o600)
     host.commands = {"runuser", "env", "podman", "/usr/libexec/porelo/transports/porelo-message-transport-matrix"}
     home = tmp_path / "home" / "alice"
     home.mkdir(parents=True)
@@ -559,3 +562,22 @@ def test_forge_lock_deletes_its_temporary_admin_token(services, monkeypatch, fai
     else:
         services.host.forge_lock("alice")
     assert not services.recorder.admin_tokens
+
+
+@pytest.mark.parametrize("account, uid", [("porelo-forge", 1200), ("porelo-matrix", 1201)])
+def test_a_service_account_without_its_session_bus_is_refused_by_name(services, account, uid):
+    """Prevent podman running as a service account with no user manager bus, which crun answers with a cgroup error."""
+    (services.host.root / f"run/user/{uid}/bus").unlink()
+    with pytest.raises(services.scope["Refusal"]) as refused:
+        services.host.as_account(account, ["podman", "ps"])
+    assert refused.value.code == 69
+    assert str(refused.value) == f"the user manager of {account} has no session bus at /run/user/{uid}/bus"
+    assert not services.recorder.calls
+
+
+def test_a_service_accounts_call_names_its_runtime_and_bus(services):
+    """Prevent podman from finding no bus where the runtime directory alone is set."""
+    services.host.as_account("porelo-forge", ["podman", "exec", "forgejo", "forgejo", "admin", "user", "list"])
+    [call] = services.recorder.calls
+    assert "XDG_RUNTIME_DIR=/run/user/1200" in call
+    assert "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1200/bus" in call

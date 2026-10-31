@@ -5,6 +5,7 @@ __matrix_packages:
 
 __matrix_environment:
   XDG_RUNTIME_DIR: "/run/user/{{ __matrix_uid }}"
+  DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ __matrix_uid }}/bus"
 
 __matrix_dir: "{{ __matrix_home }}/.config/porelo/matrix"
 __matrix_conf: "{{ __matrix_dir }}/homeserver.conf"

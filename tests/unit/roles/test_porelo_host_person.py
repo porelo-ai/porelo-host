@@ -154,6 +154,9 @@ class Host:
 def host(tmp_path, monkeypatch):
     namespace = runpy.run_path(str(SCRIPT), run_name="person_unit_tests")
     h = Host(tmp_path, namespace["_test_entry"])
+    for uid in (1200, 1201):  # The service accounts' user managers, each with its session bus.
+        (tmp_path / f"run/user/{uid}").mkdir(parents=True, exist_ok=True)
+        os.mknod(tmp_path / f"run/user/{uid}/bus", stat.S_IFSOCK | 0o600)
     monkeypatch.setattr(
         namespace["pwd"],
         "getpwnam",

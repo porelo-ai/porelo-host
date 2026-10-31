@@ -30,6 +30,7 @@ from contextlib import contextmanager
 
 ETC = "/etc/porelo-host"
 CONF = "/etc/porelo-host/forge.conf"
+RUN_USER = "/run/user"
 PUSH = "/usr/local/sbin/porelo-host-push"
 PERSON = "/usr/local/sbin/porelo-host-person"
 ROOT_UID = 0
@@ -239,6 +240,13 @@ def forge_command(account, *arguments):
     number = uid.stdout.strip()
     if uid.returncode or not re.fullmatch(r"[1-9][0-9]*", number):
         refuse(f"the forge's account {account} is not known, or is root", 69)
+    # Podman keeps to the systemd cgroup manager only through the account's bus; crun fails without it.
+    try:
+        bus = stat.S_ISSOCK(os.lstat(f"{RUN_USER}/{number}/bus").st_mode)
+    except OSError:
+        bus = False
+    if not bus:
+        refuse(f"the user manager of {account} has no session bus at /run/user/{number}/bus", 69)
     return subprocess.run(
         [
             "/usr/sbin/runuser",
@@ -247,6 +255,7 @@ def forge_command(account, *arguments):
             "--",
             "/usr/bin/env",
             f"XDG_RUNTIME_DIR=/run/user/{number}",
+            f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{number}/bus",
             "/usr/bin/podman",
             "exec",
             "forgejo",

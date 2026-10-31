@@ -35,6 +35,14 @@
     __matrix_uid: "{{ __matrix_user.uid }}"
     __matrix_home: "{{ __matrix_user.home }}"
 
+# Podman keeps to the systemd cgroup manager only through the account's bus; without it crun fails on cgroup.procs.
+- name: Wait for the homeserver account's user manager and its session bus
+  ansible.builtin.wait_for:
+    path: "/run/user/{{ __matrix_uid }}/bus"
+    timeout: 60
+    msg: "the user manager of {{ matrix_account }} has no session bus at /run/user/{{ __matrix_uid }}/bus"
+  when: not ansible_check_mode
+
 # Base runs before this account exists, so its user manager is checked here before the container starts.
 - name: Check the controllers of the homeserver's account
   ansible.builtin.include_role:

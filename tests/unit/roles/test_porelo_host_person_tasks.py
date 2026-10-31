@@ -192,6 +192,9 @@ def tasks(tmp_path, monkeypatch):
     keys.make("other-task")
     host = namespace["Host"]()
     host.root, host.owner, host.group, host.euid = root, os.getuid(), os.getgid(), 0
+    for uid in (1200, 1201):  # The service accounts' user managers, each with its session bus.
+        (root / f"run/user/{uid}").mkdir(parents=True, exist_ok=True)
+        os.mknod(root / f"run/user/{uid}/bus", stat.S_IFSOCK | 0o600)
     host.sudo_user = "alice"
     host.accounts = {"root": 0, "alice": 1000, "bob": 1001}
     host.groups = set()

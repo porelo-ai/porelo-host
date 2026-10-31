@@ -15,6 +15,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho63"></a>[HO63](HO63-Podman-Reached-Through-The-Accounts-Session-Bus.md) | S | - | Every podman call as a service account reaches its user manager's bus, and a missing bus refuses by name. |
 | <a id="ho42"></a>[HO42](HO42-The-Host-Prepared-With-No-Project-Or-Person.md) | L | - | The host admin prepares a host with no project or person: the VPN per host, the shared forge, runner, pool and Matrix homeserver, under the host's names and the host admin's constrained CA. The homeserver's certificate waits on the homeserver serving one made elsewhere. |
 | <a id="ho44"></a>[HO44](HO44-A-Project-Registered-On-The-Host.md) | M | [HO42](#ho42) | `porelo-host-project`: a project's forge organization and publisher with its pinned signing key, deleted once nothing is unpushed. |
 | <a id="ho43"></a>[HO43](HO43-A-Project-Admin-Admitted-By-The-Host-Admin.md) | L | [HO42](#ho42) | `porelo-host-person`: a person admitted from their public keys (account, laptops' ssh keys and VPN peers, forge login and identities, Matrix token), locked and purged. |
@@ -71,7 +72,6 @@ it is left out.
 | <a id="ho78"></a>[HO78](HO78-Only-The-Gates-Sockets-Forwarded.md) | - | [HO74](#ho74) | A person's SSH connection forwards only to the gates' sockets and their own return socket, and to no TCP address. |
 | <a id="ho77"></a>[HO77](HO77-Each-Job-In-A-Network-Of-Its-Own.md) | - | [HO69](#ho69) | Concurrent jobs on a host cannot reach one another's network, and no host login reaches Forgejo over TCP. |
 | <a id="ho64"></a>[HO64](HO64-The-Collection-Tested-Where-Up-Puts-It.md) | - | - | Once the interface installs the collection for every account, Molecule installs the collection as `up` does and shows a person's account finds it there; the README names the place. |
-| <a id="ho63"></a>[HO63](HO63-Podman-Reached-Through-The-Accounts-Session-Bus.md) | - | - | Every podman call as a service account reaches its user manager's bus, and a missing bus refuses by name. |
 | <a id="ho58"></a>[HO58](HO58-The-Services-Podman-Kept-Small.md) | - | - | Once a day, and after a missed day, each service account's Podman loses the images and volumes no container used for a set time. |
 | <a id="ho54"></a>[HO54](HO54-The-Host-Helpers-Hardened.md) | - | - | The stop's certificate and path checks, the people's SSH drop-in read first, a project registration retried after a forge timeout, and the password helper held to the project helper's checks. |
 | <a id="ho51"></a>[HO51](HO51-Down-Names-What-A-Transport-Left.md) | - | - | Where `down` cleared the vault past a transport, its protocol names that transport and project in Porelo's words. |

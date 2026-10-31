@@ -56,6 +56,7 @@
   become_user: "{{ matrix_account }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['getent_passwd'][matrix_account][1] }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ ansible_facts['getent_passwd'][matrix_account][1] }}/bus"
   when:
     - ansible_facts['getent_passwd'][matrix_account] is not none
     - __matrix_down_runtime.stat.isdir | default(false)

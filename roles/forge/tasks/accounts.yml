@@ -15,6 +15,17 @@
     creates: /var/lib/systemd/linger/{{ item }}
   loop: ["{{ forge_account }}", "{{ forge_runner_account }}"]
 
+# Podman keeps to the systemd cgroup manager only through each account's bus; without it crun fails on cgroup.procs.
+- name: accounts | Wait for each account's user manager and its session bus
+  ansible.builtin.wait_for:
+    path: "/run/user/{{ item.uid }}/bus"
+    timeout: 60
+    msg: "the user manager of {{ item.name }} has no session bus at /run/user/{{ item.uid }}/bus"
+  loop: "{{ __forge_users.results }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: not ansible_check_mode
+
 # Each file on its own: grep answers 1 for an account it does not name there, and 2 for a file it cannot read.
 - name: accounts | Read their subordinate ids, in each file
   ansible.builtin.command:

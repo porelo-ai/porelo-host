@@ -17,6 +17,7 @@ __forge_state_dir: /etc/porelo-host/forge
 __forge_socket: "/run/user/{{ __forge_uid }}/porelo-forge/http.sock"
 __forge_environment:
   XDG_RUNTIME_DIR: "/run/user/{{ __forge_uid }}"
+  DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ __forge_uid }}/bus"
 
 # The forge's admin, made by Forgejo's own command line, and the file its API token is kept in.
 __forge_admin: porelo-admin
@@ -37,6 +38,7 @@ __forge_runner_proxy_image: >-
   docker.io/alpine/socat:1.8.1.3@sha256:603174b77eebaba25ba8f8ebb15e1234d6600409554e95d6fb203fd106150287
 __forge_runner_environment:
   XDG_RUNTIME_DIR: "/run/user/{{ __forge_runner_uid }}"
+  DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ __forge_runner_uid }}/bus"
 
 # Jobs get a pinned JDK without installing one in each job.
 __forge_runner_jdk:
@@ -74,3 +76,4 @@ __forge_own_uid: "{{ ansible_facts['getent_passwd'][porelo_account][1] | int }}"
 __forge_own_dir: "/run/user/{{ __forge_own_uid }}/porelo-host"
 __forge_own_environment:
   XDG_RUNTIME_DIR: "/run/user/{{ __forge_own_uid }}"
+  DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ __forge_own_uid }}/bus"

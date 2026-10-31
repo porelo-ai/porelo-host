@@ -7,6 +7,7 @@ import http.client
 import io
 import json
 import os
+import stat
 import runpy
 import ssl
 import subprocess
@@ -285,8 +286,18 @@ def project(
         ROOT_UID=os.getuid(),
         TRUST_ANCHOR=str(host["tmp"]),
         PUSH=str(host["push"]["command"]),
+        RUN_USER=str(host["tmp"] / "run-user"),
     )
     values.update(overrides or {})
+    bus = host["tmp"] / "run-user/1234/bus"
+    if not bus.exists() and not host.get("no bus"):
+        # The caller's umask under test must not shape the fixture's own bus.
+        mask = os.umask(0o022)
+        try:
+            bus.parent.mkdir(parents=True, exist_ok=True)
+            os.mknod(bus, stat.S_IFSOCK | 0o600)
+        finally:
+            os.umask(mask)
     real_run = subprocess.run
 
     def commands(arguments, **kwargs):

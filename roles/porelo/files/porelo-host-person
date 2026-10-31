@@ -511,16 +511,27 @@ class Host:
         return self.accounts[user] if self.accounts is not None else pwd.getpwnam(user).pw_uid
 
     def as_account(self, user, arguments, **kwargs):
-        """Pass credentials on stdin only, with a fixed runtime and the account's own home."""
+        """Pass credentials on stdin only, with a fixed runtime, the account's own home and its user manager's bus."""
         self.require(["runuser", "env"])
         entry = self.account(user)
+        runtime = f"/run/user/{entry.pw_uid}"
+        self.session_bus(user, runtime)
         return self.command(
             [
-                "runuser", "-u", user, "--", "env", f"HOME={entry.pw_dir}",
-                f"XDG_RUNTIME_DIR=/run/user/{entry.pw_uid}", *arguments,
+                "runuser", "-u", user, "--", "env", f"HOME={entry.pw_dir}", f"XDG_RUNTIME_DIR={runtime}",
+                f"DBUS_SESSION_BUS_ADDRESS=unix:path={runtime}/bus", *arguments,
             ],
             **kwargs,
         )
+
+    def session_bus(self, user, runtime):
+        """Podman keeps to the systemd cgroup manager only through the account's bus; crun fails without it."""
+        try:
+            if stat.S_ISSOCK(self.path(runtime + "/bus").lstat().st_mode):
+                return
+        except OSError:
+            pass
+        refuse(f"the user manager of {user} has no session bus at {runtime}/bus", 69)
 
     def forge_configuration(self, user):
         """An absent/empty account switches the forge off; agents= names a 6j host's agent identities, for lock."""

@@ -120,7 +120,7 @@
 
 - name: gate | Ask Porelo which entry names its open vault holds
   ansible.builtin.shell:
-    cmd: XDG_RUNTIME_DIR=/run/user/$(id -u) porelo vault list
+    cmd: XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus porelo vault list
     executable: /bin/bash
   become: true
   become_user: "{{ forge_porelo_account }}"

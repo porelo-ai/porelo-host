@@ -21,6 +21,9 @@ def cards(tmp_path, monkeypatch):
     scope = runpy.run_path(str(SCRIPT), run_name="card_tests")
     host = scope["Host"]()
     host.root, host.owner, host.group = tmp_path, os.getuid(), os.getgid()
+    for uid in (1200, 1201):  # The service accounts' user managers, each with its session bus.
+        (tmp_path / f"run/user/{uid}").mkdir(parents=True, exist_ok=True)
+        os.mknod(tmp_path / f"run/user/{uid}/bus", stat.S_IFSOCK | 0o600)
     host.euid = 0
     host.accounts = {"ada": 1000, "alice": 1001, "bo": 1002}
     host.groups = {"porelo-people"}
