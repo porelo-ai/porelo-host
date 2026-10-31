@@ -37,6 +37,7 @@ it is left out.
 | <a id="ho71"></a>[HO71](HO71-A-Task-Recorded-And-Given-Its-Forge-Token-By-The-Host.md) | M | [HO70](#ho70); Porelo's task certificate check | Every forge token on the host is made there and goes with its person or task; each task's certificate is recorded at its start. |
 | <a id="ho84"></a>[HO84](HO84-The-Persons-Daemon-By-A-Fixed-Name.md) | S | - | A person's tunnel reaches their daemon and binds its return socket by names that follow from the login alone. |
 | <a id="ho83"></a>[HO83](HO83-The-Persons-Token-Kept-Where-Each-Tool-Reads-It.md) | S | [HO71](#ho71) | The vault's person token stays the one in force after every remake; each task-start and token-handling check is tested by its absence. |
+| <a id="ho76"></a>[HO76](HO76-Each-Push-Judged-When-It-Arrives.md) | L | [HO71](#ho71), [HO75](#ho75); Porelo's commit verify against signers and KRL | The first accepted push of a commit to the host's forge judges it against the signers and KRL in force, and records the verdict. |
 
 ## Implementing
 
@@ -63,7 +64,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho76"></a>[HO76](HO76-Each-Push-Judged-When-It-Arrives.md) | M | [HO71](#ho71), [HO75](#ho75); Porelo's commit verify against signers and KRL | The first accepted push of a commit to the host's forge judges it against the signers and KRL in force, and records the verdict. |
 | <a id="ho74"></a>[HO74](HO74-Every-Role-Tested-Without-The-VPN.md) | M | [HO63](#ho63), [HO68](#ho68), [HO69](#ho69), [HO70](#ho70), [HO71](#ho71), [HO72](#ho72), [HO73](#ho73), [HO75](#ho75), [HO76](#ho76) | Molecule shows every role over SSH alone, and the guide's checks pass on a rented host. |
 | <a id="ho59"></a>[HO59](HO59-An-Interrupted-Bring-Replaced-Safely.md) | M | - | A bring leaves `bring.state` in its setup directory, so an interrupted one is recognized and replaced by a new upload instead of refused. |
 | <a id="ho56"></a>[HO56](HO56-Remove-Takes-The-Persons-Push-And-Sync-Away.md) | M | [HO46](#ho46), [HO47](#ho47) | Removing a project takes the push config and the sync timer out of each person's own account. |
