@@ -35,6 +35,7 @@ it is left out.
 | <a id="ho69"></a>[HO69](HO69-The-Forge-Behind-Its-Gate-Without-TLS.md) | L | [HO71](#ho71) | The forge has no TLS and no password: a person's browser is signed in through `web.sock`, Git and the API take a token through `git.sock`. |
 | <a id="ho81"></a>[HO81](HO81-The-Gates-Route-Match-Holds-For-Every-Decoded-Byte.md) | XS | [HO69](#ho69) | No decoded byte takes a refused route past the forge gate's match, and `web.sock` challenges a client that waits for one. |
 | <a id="ho71"></a>[HO71](HO71-A-Task-Recorded-And-Given-Its-Forge-Token-By-The-Host.md) | M | [HO70](#ho70); Porelo's task certificate check | Every forge token on the host is made there and goes with its person or task; each task's certificate is recorded at its start. |
+| <a id="ho84"></a>[HO84](HO84-The-Persons-Daemon-By-A-Fixed-Name.md) | S | - | A person's tunnel reaches their daemon and binds its return socket by names that follow from the login alone. |
 
 ## Implementing
 
