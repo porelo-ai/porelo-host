@@ -85,5 +85,26 @@ Git on the central forge, every service on the host behind a Unix socket.
   throughput through it, for the hand-over.
 
 - Forgejo 13's `http+unix` inside a rootless container with keep-id, and the socket's owner seen by the account.
-- Which Forgejo routes set a password or make tokens, read in Forgejo's router for the pinned version.
-- That `ENABLE_REVERSE_PROXY_AUTHENTICATION_API=false` holds for every `/api/` route in that version.
+  Held in the rehearsals on Forgejo 17.0.0, the pinned version: `web.sock` and `git.sock` answered.
+- Read in Forgejo 17.0.0's routers (`routers/web/web.go`, `routers/api/v1/api.go`, `routers/api/packages`) for the
+  routes that set a password or make a credential. Beyond the routes already refused, the gate let these through:
+  - the OAuth2 provider, enabled by default with `git-credential-oauth`, `git-credential-manager` and `tea`;
+  - `/user/recover_account`;
+  - every runner management route, where even listing a scope's runners makes a registration token and editing a
+    runner can regenerate its token;
+  - the runners' registration RPC on `web.sock` and `git.sock`;
+  - the token routes on `git.sock` and `runner.sock`.
+  Dot segments behind an encoded slash (`..%2f`, `/%2f`) could also take a refused route past the gate's match. The
+  gate now refuses each on every socket. It matches the segments as Forgejo's router splits them. It refuses with
+  400 a dot or empty segment, a bad escape, and an encoded slash beside a raw character a path does not hold. The
+  OAuth2 provider is off. The host's runner registers through `runner.sock` with a registration token from
+  Forgejo's CLI; person and task tokens come from the CLI or Forgejo's own socket.
+- `ENABLE_REVERSE_PROXY_AUTHENTICATION_API=false` holds for `/api/v1`. Forgejo still takes the sign-in header for
+  Git and LFS over HTTP, `/api/packages` and the container registry `/v2`. `web.sock` now passes those only with an
+  Authorization header, which the LFS and package links under `ROOT_URL` bring.
+- Decided (operator, 2026-10-31): `/v2/token` and Conan's `authenticate`, which turn a token into a signed 24-hour
+  token Forgejo does not record, are refused on every socket, `runner.sock` too. Every forge credential is thus made
+  and revocable by the host. Container or Conan publishing on a host becomes an issue of its own when a project
+  needs it.
+- Known before and unchanged: Artifact v4 transfers under `/twirp/` carry a signed URL and no token, and do not pass
+  `runner.sock` (forge README). Package clients sending a Bearer token or their own header do not pass `git.sock`.

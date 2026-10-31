@@ -110,7 +110,6 @@ def test_root_service_and_unadmitted_callers_are_refused(gate, monkeypatch, uid,
         "/api/v1/users/person/tokens",
         "/api/v1/user",
         "/api/v1/admin/users/person",
-        "/user/settings/account/../applications",
         "/user/forgot_password",
         "/user/reset_password",
         "/user/change_password",
@@ -121,6 +120,144 @@ def test_browser_cannot_set_passwords_or_mint_tokens(gate, path):
     response, calls = request(gate, path=path, method="POST")
     assert response.startswith(b"HTTP/1.1 403")
     assert calls == []
+
+
+MINTING = [
+    ("/api/v1/users/person/tokens", "POST"),
+    ("/api/v1/users/person/TOKENS", "POST"),
+    ("/api/v1/users/person/tokens/7", "DELETE"),
+    ("/login/oauth/authorize?client_id=fixture", "GET"),
+    ("/login/oauth/grant", "POST"),
+    ("/login/oauth/access_token", "POST"),
+    ("/login/%6fauth/access_token", "POST"),
+    ("/user/recover_account", "GET"),
+    ("/user/recover_account/", "POST"),
+    ("/user/settings/applications", "POST"),
+    ("/api/v1/orgs/project/actions/runners/registration-token", "GET"),
+    ("/api/v1/repos/project/repo/actions/runners/registration-token", "GET"),
+    ("/api/v1/repos/project/repo/actions/runners", "GET"),
+    ("/api/v1/admin/runners/registration-token", "GET"),
+    ("/api/v1/user/actions/runners", "POST"),
+    ("/api/v1/admin/actions/runners", "POST"),
+    ("/api/v1/admin/users/person", "PATCH"),
+    ("/org/project/settings/actions/runners", "GET"),
+    ("/org/project/settings/actions/runners/new", "POST"),
+    ("/org/project/settings/actions/runners/1/edit", "POST"),
+    ("/project/repo/settings/actions/runners/reset_registration_token", "GET"),
+    ("/admin/actions/runners/new", "GET"),
+    ("/api/v1/admin/users", "POST"),
+    ("/api/v1/user", "PATCH"),
+    ("/user/forgot_password", "POST"),
+    ("/user/reset_password", "POST"),
+    ("/user/change_password", "POST"),
+    ("/admin/users/1", "POST"),
+    ("/api/v1/users/person%2fx/tokens", "POST"),
+]
+
+
+@pytest.mark.parametrize("mode", ["web", "git", "runner"])
+@pytest.mark.parametrize("credential", [None, "token fixture"])
+@pytest.mark.parametrize("path, method", MINTING)
+def test_no_caller_gets_a_forge_credential_through_any_socket(gate, mode, credential, path, method):
+    """Prevent a token, an OAuth2 grant, a runner's registration or a password made past the host."""
+    headers = [] if credential is None else [("Authorization", credential)]
+    response, calls = request(gate, mode, path=path, method=method, headers=headers)
+    assert response.startswith(b"HTTP/1.1 403")
+    assert calls == []
+
+
+@pytest.mark.parametrize("mode", ["web", "git", "runner"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/%2fuser/recover_account",
+        "/api/v1/users/person/tokens/..%2ffixture",
+        "/api/v1/users/person/x/%2e%2e/tokens",
+        "/project/repo/./settings/actions/runners",
+        "/api/v1/users/person%2f%2ftokens",
+        "/api/v1/user%2f",
+        "/project/repo%2f%2e%2e/settings",
+        "/api/v1/users/person%2fx^/tokens",
+        "/api/packages/project/generic/pkg/1.0/a%2f{b}",
+        "/project/repo%2fx|/info/refs",
+        "/project/repo/src/%zz",
+    ],
+)
+def test_a_path_read_differently_by_forgejo_is_refused(gate, mode, path):
+    """Prevent an encoded slash or a dot segment taking a refused route past the gate's match."""
+    response, calls = request(gate, mode, path=path, method="POST", headers=[("Authorization", "token fixture")])
+    assert response.startswith(b"HTTP/1.1 400")
+    assert calls == []
+
+
+@pytest.mark.parametrize("mode", ["web", "git"])
+def test_the_runners_own_protocol_is_the_runner_sockets_alone(gate, mode):
+    """Prevent a runner registered through a person's socket; the host's runner registers through runner.sock."""
+    register = "/api/actions/runner.v1.RunnerService/Register"
+    response, calls = request(gate, mode, path=register, method="POST", headers=[("Authorization", "token fixture")])
+    assert response.startswith(b"HTTP/1.1 403") and calls == []
+    response, calls = request(gate, "runner", path=register, method="POST")
+    assert response.startswith(b"HTTP/1.1 200") and calls[0][1] == register
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/v2/project/image/manifests/1",
+        "/api/packages/project/generic/pkg/1.0/file",
+        "/project/repo.git/info/refs?service=git-receive-pack",
+        "/project/repo/git-upload-pack",
+        "/project/repo.git/info/lfs/objects/batch",
+        "/project/repo.git/HEAD",
+        "/project/repo.git/objects/info/packs",
+        "/project/repo%2fx/info/refs",
+    ],
+)
+def test_the_browser_gets_git_and_packages_only_with_a_token(gate, path):
+    """Prevent Forgejo taking the gate's sign-in for Git, LFS or packages, yet pass the token their links under
+    ROOT_URL bring to web.sock."""
+    response, calls = request(gate, path=path, method="POST")
+    assert response.startswith(b"HTTP/1.1 403")
+    assert calls == []
+    for mode in ("web", "git"):
+        response, calls = request(gate, mode, path=path, method="POST", headers=[("Authorization", "token fixture")])
+        assert response.startswith(b"HTTP/1.1 200") and calls[0][1] == path, mode
+        assert "x-webauth-user" not in {key.lower() for key in calls[0][3]}
+
+
+@pytest.mark.parametrize("mode", ["web", "git", "runner"])
+@pytest.mark.parametrize(
+    "path",
+    ["/v2/token", "/v2/token?scope=repository:project/image:push", "/api/packages/person/conan/v2/users/authenticate"],
+)
+def test_no_token_is_exchanged_for_one_a_revocation_does_not_end(gate, mode, path):
+    """Prevent a host-made token turned into a signed one Forgejo does not record, on any socket."""
+    for headers in ([], [("Authorization", "token fixture")]):
+        response, calls = request(gate, mode, path=path, headers=headers)
+        assert response.startswith(b"HTTP/1.1 403") and calls == []
+
+
+@pytest.mark.parametrize("mode", ["web", "git"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/project/repo/src/branch/main/src/tokens/Store.java",
+        "/project/repo/src/branch/main/src/runners/new",
+        "/project/repo/src/branch/main/settings/actions/runners.md",
+        "/api/v1/repos/project/repo/contents/src/tokens/Store.java",
+        "/api/v1/repos/project/tokens",
+        "/api/v1/repos/project/repo/branches/tokens",
+        "/api/v1/user",
+        "/api/v1/repos/project/repo/branches/porelo%2Ftask",
+        "/project/repo/src/branch/main/a^b|c.txt",
+    ],
+)
+def test_names_like_a_refused_route_elsewhere_still_pass(gate, mode, path):
+    """Prevent a repository, branch or file named tokens or runners being refused as if it were a credential route."""
+    headers = [] if mode == "web" else [("Authorization", "token fixture")]
+    response, calls = request(gate, mode, path=path, headers=headers)
+    assert response.startswith(b"HTTP/1.1 200")
+    assert calls[0][1] == path
 
 
 def test_git_challenges_before_any_upstream_request(gate):
@@ -242,7 +379,7 @@ def test_runner_protocol_passes_without_a_token_but_nothing_else_does(gate):
         response, calls = request(gate, "runner", path=path)
         assert response.startswith((b"HTTP/1.1 401", b"HTTP/1.1 400")) and calls == [], path
     response, calls = request(gate, "git", path=ping, method="POST")
-    assert response.startswith(b"HTTP/1.1 401") and calls == []
+    assert response.startswith(b"HTTP/1.1 403") and calls == []
 
 
 def test_runner_forwards_job_tokens_as_git_does(gate):
@@ -265,6 +402,13 @@ def test_host_card_names_no_certificate_authority():
     text = (ROOT / "roles/base/tasks/host.yml").read_text()
     assert "ca_sha256" not in text and "base_ca_path" not in text
     assert "base_ca_path" not in (ROOT / "roles/base/defaults/main.yml").read_text()
+
+
+def test_forgejo_offers_no_oauth2_grant():
+    """Prevent a signed-in person granting themselves a lasting token through Forgejo's built-in OAuth2 apps."""
+    lines = (ROOT / "roles/forge/templates/forgejo.container.j2").read_text().splitlines()
+    assert "Environment=FORGEJO__oauth2__ENABLED=false" in lines
+    assert not [line for line in lines if "FORGEJO__oauth2__ENABLE" in line and not line.endswith("=false")]
 
 
 def loopback_gate(mode, request_bytes):

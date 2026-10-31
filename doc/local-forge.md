@@ -12,6 +12,25 @@ The gate takes the login from Unix peer credentials and `porelo-people` membersh
 and signs the person in without a password when no Authorization header is present. Browser credential settings,
 password reset and user-administration routes, and API token or password mutations are refused.
 
+Every forge credential is made by the host, by Forgejo's CLI or Forgejo's own socket. On all three sockets the gate
+refuses token routes, OAuth2 grants, account recovery, password changes and every runner management route, whatever
+credential comes with the request. Forgejo's OAuth2 provider is off: its built-in applications would otherwise let a
+signed-in person grant themselves a lasting token. The runners' own protocol under `/api/actions/` passes on
+`runner.sock` alone, where the host's runner registers with a registration token from Forgejo's CLI. The gate
+matches routes on the path's segments as Forgejo's router splits them, an encoded slash staying inside its segment.
+A dot segment or an empty segment, also one behind an encoded slash, is refused with `400` before any match. So
+are a bad escape and an encoded slash beside a character a path does not hold raw, such as `^` or `|`; Go then
+reads the path decoded, slash and all.
+
+Forgejo signs a request in by the gate's `X-WEBAUTH-USER` for Git, LFS, packages and the container registry even
+with `ENABLE_REVERSE_PROXY_AUTHENTICATION_API=false`. `web.sock` therefore passes `/v2`, `/api/packages` and Git's
+and LFS's HTTP routes only with an Authorization header, never with the gate's sign-in. LFS and package links point
+at `ROOT_URL`, the web port, and bring the token with them. The container registry's `/v2/token` and Conan's
+`authenticate` turn a token into a signed 24-hour token Forgejo keeps no record of, which a revocation does not end.
+Every socket refuses them, so no job or person pushes a container image or a Conan package to the host's forge.
+Container, npm, NuGet and other clients that send a Bearer token or their own header do not pass `git.sock`, which
+takes Basic or `token` alone.
+
 Git and API clients use `git.sock` with a token; on the host, Git, which has no Unix-socket transport, uses the
 same gate on `127.0.0.1:<git_port>`, which `porelo-forge-git.socket` also listens on. The first unauthenticated Git request receives `401` and
 `WWW-Authenticate: Basic`, so Git can ask its credential helper. The gate drops cookies and identity headers and

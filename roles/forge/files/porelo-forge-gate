@@ -48,17 +48,64 @@ def peer_login(uid):
         return None
 
 
-def blocked_route(target, method):
-    path = posixpath.normpath(unquote(urlsplit(target).path)).rstrip("/")
-    if (path == "/user/settings" or path.startswith("/user/settings/") or
-            path in {"/user/forgot_password", "/user/reset_password", "/user/change_password"} or
-            path == "/admin/users" or path.startswith("/admin/users/")):
+def route_parts(target):
+    """The path's segments as Forgejo's router splits them: on a plain slash, each segment then decoded."""
+    return [unquote(segment) for segment in urlsplit(target).path.split("/")[1:]]
+
+
+def unsafe_path(target):
+    """A path Forgejo could read otherwise than the gate: a dot or empty segment, also behind an encoded slash, a bad
+    escape, or an encoded slash beside a character a path does not hold raw, for which Go drops the path as sent and
+    decodes every encoded slash."""
+    raw = urlsplit(target).path
+    if re.search(r"%(?![0-9A-Fa-f]{2})", raw) or (re.search(r"%2[fF]", raw) and
+                                                  re.search(r"[^A-Za-z0-9\-._~!$&'()*+,;=:@/%]", raw)):
         return True
-    if path.startswith("/api/"):
-        parts = path.split("/")
-        return ("tokens" in parts or (method not in ("GET", "HEAD", "OPTIONS") and
-                (path == "/api/v1/user" or path.startswith("/api/v1/admin/users"))))
+    parts = route_parts(target)
+    if "" in parts[:-1]:
+        return True
+    for part in parts:
+        pieces = part.split("/")
+        if any(piece in (".", "..") for piece in pieces) or (len(pieces) > 1 and "" in pieces):
+            return True
     return False
+
+
+def route(target):
+    """The decoded path in lower case, without a trailing slash; an encoded slash stays inside its one segment."""
+    return "/" + "/".join(part.replace("/", "%2f") for part in route_parts(target)).rstrip("/").lower()
+
+
+# Every forge credential is made by the host, by Forgejo's CLI or its own socket: no caller gets a token, a grant, a
+# runner's registration or a password through any of the gate's sockets.
+MINTING = re.compile(
+    r"/(login/oauth|user/recover_account|user/settings|admin/users|admin/actions/runners|api/v1/users/[^/]+/tokens"
+    r"|api/v1/(orgs/[^/]+|repos/[^/]+/[^/]+|user|admin)/actions/runners|api/v1/admin/runners"
+    r"|(org/[^/]+|[^/]+/[^/]+)/settings/actions/runners)(/.*)?"
+)
+# Forgejo signs these in by the gate's X-WEBAUTH-USER even with ENABLE_REVERSE_PROXY_AUTHENTICATION_API=false, so
+# web.sock passes them only with a token, as the LFS and package links under ROOT_URL bring one.
+SIGNED_IN_ONLY_BY_TOKEN = re.compile(
+    r"/(v2|api/packages)(/.*)?|/[^/]+/[^/]+/(info/refs|git-upload-pack|git-receive-pack|info/lfs|objects|head)(/.*)?"
+)
+
+# These turn a token into a signed 24-hour one Forgejo keeps no record of, which a revocation does not end.
+TOKEN_EXCHANGE = re.compile(r"/v2/token(/.*)?|/api/packages/[^/]+/conan/v[12]/users/authenticate")
+
+
+def blocked_route(target, method, mode, authorized):
+    """A route the gate refuses in this mode before any upstream request."""
+    path = route(target)
+    if MINTING.fullmatch(path) or path in {"/user/forgot_password", "/user/reset_password", "/user/change_password"}:
+        return True
+    if (method not in ("GET", "HEAD", "OPTIONS") and
+            (path == "/api/v1/user" or path == "/api/v1/admin/users" or path.startswith("/api/v1/admin/users/"))):
+        return True
+    if mode != "runner" and (path == "/api/actions" or path.startswith("/api/actions/")):
+        return True
+    if TOKEN_EXCHANGE.fullmatch(path):
+        return True
+    return mode == "web" and not authorized and SIGNED_IN_ONLY_BY_TOKEN.fullmatch(path) is not None
 
 
 class RequestBody:
@@ -120,7 +167,13 @@ class Handler(BaseHTTPRequestHandler):
     def forward(self):
         self.close_connection = True
         login = peer_login(self.server.uid) if self.server.mode == "web" else None
-        if self.server.mode == "web" and (login is None or blocked_route(self.path, self.command)):
+        if self.server.mode == "web" and login is None:
+            self.reply(403)
+            return
+        if unsafe_path(self.path):
+            self.reply(400)
+            return
+        if blocked_route(self.path, self.command, self.server.mode, bool(self.headers.get_all("Authorization", []))):
             self.reply(403)
             return
         authorizations = self.headers.get_all("Authorization", [])
