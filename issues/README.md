@@ -46,6 +46,7 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho72"></a>[HO72](HO72-The-Central-Forge-Reached-Only-On-A-Persons-Word.md) | M | - | No token for the central forge lies on the host: migration, push and pull take the starting person's own on stdin, once. |
+| <a id="ho89"></a>[HO89](HO89-A-Person-Locked-And-Purged-Through-The-Transports-Expel.md) | M | - | Lock and purge give the Matrix transport's expel its administrator's token on stdin, and run as the person from `/`. |
 | <a id="ho74"></a>[HO74](HO74-Every-Role-Tested-Without-The-VPN.md) | M | [HO63](#ho63), [HO68](#ho68), [HO69](#ho69), [HO70](#ho70), [HO71](#ho71), [HO72](#ho72), [HO73](#ho73), [HO75](#ho75), [HO76](#ho76), [HO89](#ho89) | Molecule shows every role over SSH alone, and the guide's checks pass on a rented host. |
 
 ## Backlog
@@ -77,7 +78,6 @@ it is left out.
 |---|---|---|---|
 | <a id="ho86"></a>[HO86](HO86-The-Push-Judges-Smaller-Edges.md) | - | [HO85](#ho85) | The push judge's smaller edges from its reading, gathered: links in the arming, the removal's checks, a first-push race, the null object, the answer's field and record checks pinned by tests. |
 | <a id="ho88"></a>[HO88](HO88-A-Project-Registered-From-The-Admins-Own-Account.md) | - | [HO70](#ho70) | A project admin registers their project from their own account, its forge organization and teams made with it. |
-| <a id="ho89"></a>[HO89](HO89-A-Person-Locked-And-Purged-Through-The-Transports-Expel.md) | - | [HO73](#ho73) | Lock and purge give the Matrix transport's expel its administrator's token on stdin, and run as the person from `/`. |
 | <a id="ho82"></a>[HO82](HO82-A-Bring-With-No-Token-File.md) | - | [HO71](#ho71) | bring and join reach the host's forge with the person's token read from the vault per call, never from a file. |
 | <a id="ho78"></a>[HO78](HO78-Only-The-Gates-Sockets-Forwarded.md) | - | [HO74](#ho74) | A person's SSH connection forwards only to the gates' sockets and their own return socket, and to no TCP address. |
 | <a id="ho79"></a>[HO79](HO79-A-Persons-SSH-Login-Confirmed-By-A-Second-Factor.md) | - | [HO63](#ho63) | A person's SSH login needs a second factor beside their key: FIDO2 touch, or TOTP through PAM. |
