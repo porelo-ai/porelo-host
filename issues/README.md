@@ -57,6 +57,7 @@ it is left out.
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | [HO37](#ho37) | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho60"></a>[HO60](HO60-Each-Repositorys-Review-Set-On-The-Forge.md) | M | - | Each repository's `main` on the local forge and the project repository's protected from the signed project file's `review`: one approval by another person, dismissed by a later commit, or none; only owners and developers merge; set again at each sync. |
 | <a id="ho61"></a>[HO61](HO61-A-Purged-Persons-Matrix-Account-Taken-Off.md) | S | - | A purged person's account on the host's own Matrix homeserver is taken off or named, not left without a word when the transport refused to clear it. |
+| <a id="ho82"></a>[HO82](HO82-A-Bring-With-No-Token-File.md) | - | [HO71](#ho71) | bring and join reach the host's forge with the person's token read from the vault per call, never from a file. |
 
 ## Analyzed
 
@@ -78,7 +79,6 @@ it is left out.
 |---|---|---|---|
 | <a id="ho86"></a>[HO86](HO86-The-Push-Judges-Smaller-Edges.md) | - | [HO85](#ho85) | The push judge's smaller edges from its reading, gathered: links in the arming, the removal's checks, a first-push race, the null object, the answer's field and record checks pinned by tests. |
 | <a id="ho88"></a>[HO88](HO88-A-Project-Registered-From-The-Admins-Own-Account.md) | - | [HO70](#ho70) | A project admin registers their project from their own account, its forge organization and teams made with it. |
-| <a id="ho82"></a>[HO82](HO82-A-Bring-With-No-Token-File.md) | - | [HO71](#ho71) | bring and join reach the host's forge with the person's token read from the vault per call, never from a file. |
 | <a id="ho78"></a>[HO78](HO78-Only-The-Gates-Sockets-Forwarded.md) | - | [HO74](#ho74) | A person's SSH connection forwards only to the gates' sockets and their own return socket, and to no TCP address. |
 | <a id="ho79"></a>[HO79](HO79-A-Persons-SSH-Login-Confirmed-By-A-Second-Factor.md) | - | [HO63](#ho63) | A person's SSH login needs a second factor beside their key: FIDO2 touch, or TOTP through PAM. |
 | <a id="ho77"></a>[HO77](HO77-Each-Job-In-A-Network-Of-Its-Own.md) | - | [HO69](#ho69) | Concurrent jobs on a host cannot reach one another's network, and no host login reaches Forgejo over TCP. |
