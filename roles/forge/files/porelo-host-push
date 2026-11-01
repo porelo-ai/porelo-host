@@ -237,7 +237,7 @@ finally:
             DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$caller_uid/bus \
             porelo vault put "$forge_name.person" > /dev/null 2>&1 \
         || printf 'porelo-host-push: %s\n' "your vault took no new forge token; $forge_name.person works again after \
-your next bring or join" >&2
+your next push, pull, bring or join with your vault open" >&2
 else
     declare -A named=()
     for name in "$@"; do
