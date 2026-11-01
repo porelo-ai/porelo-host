@@ -15,7 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Each push to the host's forge is judged when it arrives: a pre-receive hook asks root's `porelo-host-person
   verify-push`, which has Porelo's `commit verify` judge every new commit against the project's keys in force, their
   certifiers of the project's own tasks, the KRL and the project's task certificates valid now, refuses the push
-  otherwise (taking the quarantine as git names it, `.` segments included, never a `..`), and appends each accepted
+  otherwise (taking the quarantine as git names it, `.` segments included, never a `..`, in a volume of the forge's or
+  its container root's), and appends each accepted
   commit's verdict to `/var/lib/porelo-host/arrivals/<project>/<repository>.jsonl`. Sync arms each new repository after
   the migration and records its history as `migrated`, stopping when the hook link would not hold;
   `arrivals <project> <repository>` reads the record, and removing a project takes it along.

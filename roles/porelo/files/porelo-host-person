@@ -2592,7 +2592,7 @@ class Host:
             refuse("the hook names no repository of a project", 65)
         return match.group("project"), match.group("repository")
 
-    def push_paths(self, values, entry):
+    def push_paths(self, values, account, entry):
         """Map the container's paths to the forge volume's on the host, each inside the pushed repository."""
         # Git names them through a "." segment (<repository>/./objects/…); dropping one never moves a path, ".." stays.
         values = {key: "/".join(part for part in value.split("/") if part != ".") for key, value in values.items()}
@@ -2609,7 +2609,11 @@ class Host:
         if not re.fullmatch(r"/[A-Za-z0-9._/-]{1,255}", home):
             refuse("the forge account's home cannot be named to a unit", 69)
         # Every directory from the forge's home to the quarantine is the forge's own and no link, so the unit
-        # reads the push the hook named and nothing a link put in its place.
+        # reads the push the hook named and nothing a link put in its place. Podman gives a volume's own directory to
+        # the container's root, the first uid of the forge's subordinate range.
+        owners = {entry.pw_uid} | {
+            start for name, start, _ in self.subids("subuid") if name in (account, str(entry.pw_uid))
+        }
         directory = Path(home)
         for part in (FORGE_VOLUME + quarantine.removeprefix(FORGE_DATA)).split("/"):
             directory = directory / part
@@ -2617,7 +2621,7 @@ class Host:
                 status = directory.lstat()
             except OSError:
                 refuse(f"the push's directory {directory} is missing", 65)
-            if not stat.S_ISDIR(status.st_mode) or status.st_uid != entry.pw_uid:
+            if not stat.S_ISDIR(status.st_mode) or status.st_uid not in owners:
                 refuse(f"the push's directory {directory} is no directory of the forge's", 65)
         host = home + "/" + FORGE_VOLUME
         return {key: host + value.removeprefix(FORGE_DATA) for key, value in values.items()}
@@ -2755,7 +2759,7 @@ class Host:
         if deletions:
             # A push that only deletes refs brings no commit and no quarantine: nothing to judge or record.
             return 200, "porelo: the push brings no new commit\n"
-        host = self.push_paths(values, entry)
+        host = self.push_paths(values, account, entry)
         self.require(["systemd-run", "porelo"])
         signers, certifiers = self.push_signers(project)
         texts = {"signers": signers, "certifiers": certifiers, "certificates": self.push_certificates(project)}

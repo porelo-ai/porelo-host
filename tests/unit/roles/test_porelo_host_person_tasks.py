@@ -837,6 +837,7 @@ def judged_project(tasks):
     write(tasks.root, "/etc/porelo-host/signers/alpha.json", json.dumps({"current": current, "history": []}))
     # The forge's volume is the test's own, so the forge account is the test's uid.
     tasks.entries["porelo-forge"].pw_uid = os.getuid()
+    write(tasks.root, "/etc/subuid", "porelo-runner:300000:65536\n")
     bus = tasks.root / f"run/user/{os.getuid()}/bus"
     bus.parent.mkdir(parents=True, exist_ok=True)
     os.mknod(bus, stat.S_IFSOCK | 0o600)
@@ -953,6 +954,34 @@ def test_a_push_named_as_git_2_54_names_it_is_judged_on_the_plain_paths(tasks, c
     assert f"Environment=GIT_QUARANTINE_PATH={host}/objects/tmp_objdir-incoming-AbC123" in args
     assert f"Environment=GIT_ALTERNATE_OBJECT_DIRECTORIES={host}/objects" in args
     assert [arrival["verdict"] for arrival in arrivals(tasks)] == ["accepted"]
+
+
+def forge_as_container_root(tasks, start):
+    """The forge account another uid than the volume's, whose subordinate range starts at `start`."""
+    forge = os.getuid() + 1
+    tasks.entries["porelo-forge"].pw_uid = forge
+    bus = tasks.root / f"run/user/{forge}/bus"
+    bus.parent.mkdir(parents=True, exist_ok=True)
+    os.mknod(bus, stat.S_IFSOCK | 0o600)
+    write(tasks.root, "/etc/subuid", f"porelo-forge:{start}:65536\n")
+
+
+def test_a_volume_podman_gave_the_forges_container_root_is_the_forges_own(tasks, capsys):
+    """Prevent every push from being refused unjudged where podman owns the volume as the forge's container root."""
+    judged_project(tasks)
+    forge_as_container_root(tasks, os.getuid())
+    hook = judge(tasks, uid=os.getuid() + 1)
+    capsys.readouterr()
+    assert hook.status() == 200, hook.text()
+
+
+def test_a_volume_of_another_uid_in_the_forges_range_is_refused_unjudged(tasks, capsys):
+    """Prevent a directory of any uid but the forge's or its container root's from carrying the judged push."""
+    judged_project(tasks)
+    forge_as_container_root(tasks, os.getuid() - 1)
+    hook = judge(tasks, uid=os.getuid() + 1)
+    capsys.readouterr()
+    assert hook.status() == 403 and tasks.forge.verifies == []
 
 
 def test_an_expired_card_signs_nothing_and_certifies_no_task(tasks, capsys):
