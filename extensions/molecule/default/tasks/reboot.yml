@@ -66,12 +66,23 @@
       ansible.builtin.systemd_service:
         daemon_reload: true
 
-- name: Wait until the Matrix homeserver answers again on the VPN address after the reboot
+# Both are reached as their own accounts on the sockets behind the gates, as the gates themselves reach them.
+- name: Wait until the Matrix homeserver answers again on its socket after the reboot
   ansible.builtin.command:  # noqa: command-instead-of-module
-    cmd: >-
-      curl -fsS --max-time 10 --noproxy '*' --cacert /etc/porelo-host/forge/ca.pem
-      --resolve matrix.alpha.porelo.internal:8448:10.73.7.1 -o /dev/null -w '%{http_code}'
-      https://matrix.alpha.porelo.internal:8448/_matrix/client/versions
+    argv:
+      - curl
+      - -fsS
+      - --max-time
+      - "10"
+      - --unix-socket
+      - "/run/user/{{ ansible_facts['getent_passwd']['porelo-matrix'][1] }}/porelo-matrix-gate/homeserver.sock"
+      - -o
+      - /dev/null
+      - -w
+      - "%{http_code}"
+      - http://localhost/_matrix/client/versions
+  become: true
+  become_user: porelo-matrix
   register: verify_reboot_homeserver
   until: verify_reboot_homeserver.rc == 0 and verify_reboot_homeserver.stdout == '200'
   retries: 30
@@ -99,12 +110,22 @@
       ({{ verify_reboot_homeserver_unit.stderr }}) and curl gave rc {{ verify_reboot_homeserver.rc }}:
       {{ verify_reboot_homeserver.stdout }} {{ verify_reboot_homeserver.stderr }}
 
-- name: Wait until the forge answers again on the VPN address after the reboot
+- name: Wait until the forge answers again on its socket after the reboot
   ansible.builtin.command:  # noqa: command-instead-of-module
-    cmd: >-
-      curl -fsS --max-time 10 --noproxy '*' --cacert /etc/porelo-host/forge/ca.pem
-      --resolve forge.alpha.porelo.internal:3000:10.73.7.1 -o /dev/null -w '%{http_code}'
-      https://forge.alpha.porelo.internal:3000/api/v1/version
+    argv:
+      - curl
+      - -fsS
+      - --max-time
+      - "10"
+      - --unix-socket
+      - "/run/user/{{ ansible_facts['getent_passwd']['porelo-forge'][1] }}/porelo-forge/http.sock"
+      - -o
+      - /dev/null
+      - -w
+      - "%{http_code}"
+      - http://localhost/api/v1/version
+  become: true
+  become_user: porelo-forge
   register: verify_reboot_forge
   until: verify_reboot_forge.rc == 0 and verify_reboot_forge.stdout == '200'
   retries: 30

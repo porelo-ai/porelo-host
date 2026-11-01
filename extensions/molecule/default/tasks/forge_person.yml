@@ -1,5 +1,6 @@
 ---
-# No default operator login, password helper, password file or CA key belongs on the host.
+# No default operator login, password helper, password file or CA key belongs on the host; the refusal of a person
+# named operator is with the persons, who come from the registry.
 - name: Read whether a password file or a CA key of a person's is on the host
   ansible.builtin.stat:
     path: "{{ item }}"
@@ -50,46 +51,3 @@
   ansible.builtin.assert:
     that: "'operator' not in (verify_person_users.stdout_lines[1:] | map('split') | map(attribute=1) | list)"
     fail_msg: asked for no operator user in Forgejo after up, got operator present
-
-- name: Verify that admitting a person named operator is refused and leaves nothing
-  when: verify_admit_operator | default(true) | bool
-  block:
-    - name: Ask porelo-host-person to admit operator, whose name Ubuntu's system group holds
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          umask 077
-          d=$(mktemp -d)
-          trap 'rm -rf "$d"' EXIT
-          ssh-keygen -q -t ed25519 -N "" -C "" -f "$d/key"
-          printf 'operator-laptop %s %s\n' "$(awk '{print $1, $2}' "$d/key.pub")" "$(wg genkey | wg pubkey)" > "$d/in"
-          rc=0
-          /usr/local/sbin/porelo-host-person add operator --role project-admin < "$d/in" || rc=$?
-          exit "$rc"
-        executable: /bin/bash
-      register: verify_operator_add
-      changed_when: false
-      failed_when: false
-
-    - name: Read whether anything of an operator person was made
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          getent passwd operator > /dev/null && echo account || true
-          [ -e /etc/porelo-host/people/operator.conf ] && echo record || true
-          cd / && runuser -u porelo-forge -- env XDG_RUNTIME_DIR="/run/user/$(id -u porelo-forge)" \
-              podman exec forgejo forgejo admin user list | awk 'NR > 1 && $2 ~ /operator$/ {print "forge " $2}'
-        executable: /bin/bash
-      register: verify_operator_left
-      changed_when: false
-
-    - name: Assert operator was refused 65 for the group and nothing of it was made
-      ansible.builtin.assert:
-        that:
-          - verify_operator_add.rc == 65
-          - verify_operator_add.stdout == ''
-          - verify_operator_add.stderr is search('existing group')
-          - verify_operator_left.stdout == ''
-        fail_msg: >-
-          asked porelo-host-person add operator to refuse 65 for the existing group and make nothing; got rc
-          {{ verify_operator_add.rc }}: {{ verify_operator_add.stderr }}; left: {{ verify_operator_left.stdout }}

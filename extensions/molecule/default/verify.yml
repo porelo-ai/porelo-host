@@ -380,8 +380,6 @@
 
     - name: Verify up made no operator forge login or password helper
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_person.yml"
-      vars:
-        verify_admit_operator: false
       when: verify_forge == 'on'
 
     # Simulate a host prepared by an earlier version: an unrecorded operator user in Forgejo and person= in forge.conf.
@@ -493,12 +491,8 @@
             path: /root/porelo-host-vvv.out
             state: absent
 
-    # Admitting operator still hands add a laptop line on stdin; add now takes the person's card from the registry
-    # alone, so that refusal waits for the scenario's rewrite without the VPN.
     - name: Verify up with -vvv removed the unrecorded operator login
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_person.yml"
-      vars:
-        verify_admit_operator: false
       when: verify_forge == 'on'
 
     # The VM pool: one VM per run account, its file for porelo-machines holding no key, its run key root's alone on the
@@ -681,17 +675,18 @@
           {{ verify_global_ipv4.stdout_lines | map('split') | map(attribute=3) | map('split', '/') | map('first')
           | list }}
 
-    # These five still check the host of the VPN: WireGuard keys, addresses in 10.73.7.0/24, the forge's CA and laptop
-    # lines on add's stdin. They are skipped (notest) until the scenario is rewritten for the host reached over SSH
-    # with its persons taken from the registry.
     - name: Verify that the host comes back from a reboot with its firewall, homeserver and forge
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/reboot.yml"
-      tags: [notest]
 
-    - name: Verify project admins admitted, checked, locked and purged on the prepared host
+    # Skipped (notest) while lock and purge give the Matrix transport's expel no homeserver administrator's token on
+    # stdin: expel refuses (78), no person can be locked or purged, and down refuses for the persons left. Everything
+    # before the lock passes.
+    - name: Verify persons taken from the registry, admitted, reached, locked and purged on the prepared host
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/people.yml"
       tags: [notest]
 
+    # These three still check the host of the VPN: WireGuard keys, addresses in 10.73.7.0/24, the forge's CA and
+    # laptop lines on add's stdin. They are skipped (notest) until they are rewritten on the registry.
     - name: Verify projects registered, isolated and removed on the prepared host's forge
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/projects.yml"
       when: verify_forge == 'on'
