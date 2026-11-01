@@ -93,6 +93,7 @@ it is left out.
 | <a id="ho27"></a>[HO27](HO27-The-Forges-Jobs-Told-Where-The-Pool-Is.md) | - | - | The forge's runner tells every job where the VM pool is, so one workflow takes a pool account on the forge and rents a server on GitHub. |
 | <a id="ho24"></a>[HO24](HO24-The-Setup-Runs-To-Its-End-On-The-Host.md) | - | - | `up`'s playbook runs on the host to its end whoever watches, and `porelo-host` attaches to it again when started again. |
 | <a id="ho15"></a>[HO15](HO15-The-Host-On-Fedora.md) | - | - | The host on Fedora as on Ubuntu 26.04: SELinux, firewalld, `dnf` and a Molecule scenario on Fedora to measure. |
+| <a id="ho90"></a>[HO90](HO90-Each-Persons-State-Named-By-Sync-And-Status.md) | S | - | `sync` names each person's state, and `registry status` leaves out revoked and refused logins and names a cut-off purge or a removal's window `pending`. |
 
 ## Estimated
 

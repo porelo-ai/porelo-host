@@ -1,6 +1,7 @@
 # HO74 — Every Role Tested Without The VPN
 
-**Status:** Implementing; its persons' lock and purge blocked by [HO89](README.md#ho89).
+**Status:** Implementing; its persons' lock and purge wait for the published Matrix transport whose `expel`
+reaches the homeserver through the gate.
 **Size:** M - Molecule's scenario and the host's guide rewritten for SSH alone; measured M median 63 min, from three M
 builds (47, 63, 75).
 **Blocked by:** [HO63](README.md#ho63), [HO68](README.md#ho68), [HO69](README.md#ho69), [HO70](README.md#ho70),
@@ -32,3 +33,17 @@ host without hand patches.
   tag `notest`, and the operator admission in `forge_person.yml` is off. Each still builds the VPN host's input
   (WireGuard keys, `10.73.7.0/24`, the forge CA, laptop lines on `add`'s stdin). This rewrite takes the tags off.
   `push.yml` also waits for [HO80](README.md#ho80), which changes the push.
+
+## Part 2 also takes
+
+Molecule's own checks and its registry fixture, read after part 1, are made exact with part 2:
+
+- `people.yml` checks `authorized_keys` whole, not by its last line, so an extra earlier key fails.
+- The refusals after admission compare the accounts and the people records before and after.
+- The forge logins are compared as the exact set, and the person's token is checked by signing in with it, not by its
+  shape.
+- The locked record excludes a trailing `lock=pending`.
+- The leak scan covers `forge-token`'s stderr, the admin token minted for the check and the fixture's private keys.
+- `files/registry-bundle.sh` runs under `umask 077` with an isolated git configuration, takes a relative `DIR`, keeps
+  `registry verify`'s temporary files in its own directory, quotes `${PROJECTS}` and its YAML scalars.
+- `/root/verify-registry` and the persons are removed after a failure too, and the SSH master has an exit trap.
