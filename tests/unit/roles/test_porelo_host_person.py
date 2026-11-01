@@ -1082,6 +1082,61 @@ def test_useradd_cannot_allocate_unplanned_subordinate_ranges(host):
     assert "SUB_UID_COUNT=0" in creation and "SUB_GID_COUNT=0" in creation
 
 
+def test_a_new_account_names_a_umask_without_group_write_ahead_of_usergroups(host):
+    """Prevent USERGROUPS_ENAB's 002 from giving a person's directories group write, which Porelo then refuses."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    creation = next(call for call in host.calls if call[0] == "useradd")
+    assert creation[creation.index("--comment") + 1] == ",,,,umask=0022"
+
+
+def test_admission_starts_the_persons_daemon_with_nothing_on_stdin(host, capsys):
+    """Prevent the person's tunnel from reaching no porelod until they run setup themselves."""
+    host.path("/run/user/1000").mkdir(parents=True)
+    os.mknod(host.path("/run/user/1000/bus"), stat.S_IFSOCK | 0o600)
+    given = {}
+    run = host.run
+
+    def recording(args, input=None):
+        given[tuple(args)] = input
+        return run(args, input)
+
+    host.run = recording
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    assert not capsys.readouterr().err
+    start = host.calls.index(["systemctl", "start", "user@1000.service"])
+    assert host.calls[start + 1] == as_alice(host, "setup")
+    assert given[tuple(as_alice(host, "setup"))] == ""
+    assert host.calls[start + 2] == [*as_alice(host)[:-1], "systemctl", "--user", "is-active", "--quiet", "porelod"]
+    assert start > host.calls.index(["loginctl", "enable-linger", "alice"])
+
+
+@pytest.mark.parametrize("missing", ["bus", "porelo", "running"])
+def test_a_daemon_that_does_not_start_leaves_the_admission_standing(host, capsys, missing):
+    """Prevent a missing bus, Porelo or a failing setup from taking back the access just given."""
+    if missing != "bus":
+        host.path("/run/user/1000").mkdir(parents=True)
+        os.mknod(host.path("/run/user/1000/bus"), stat.S_IFSOCK | 0o600)
+    if missing == "porelo":
+        host.commands.remove("porelo")
+    if missing == "running":
+        host.fail = [*as_alice(host)[:-1], "systemctl", "--user", "is-active"]
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    output = capsys.readouterr()
+    assert json.loads(output.out) == {"person": "alice", "role": "project-admin"}
+    assert "porelod of alice is not running" in output.err and "'porelo setup' as alice" in output.err
+    assert "locked=false" in host.path("/etc/porelo-host/people/alice.conf").read_text()
+
+
+def test_readmission_gives_an_older_account_the_umask_and_its_daemon(host, capsys):
+    """Prevent a person admitted before either from keeping group write or a daemon nobody started."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    capsys.readouterr()
+    host.calls.clear()
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    assert ["usermod", "--comment", ",,,,umask=0022", "alice"] in host.calls
+    assert ["systemctl", "start", "user@1000.service"] in host.calls
+
+
 @pytest.mark.parametrize(
     "kind,text",
     [

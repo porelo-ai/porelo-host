@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `porelo-host-person add` starts the person's `porelod` with `porelo setup`, so their tunnel reaches a daemon before
+  their first bring, and gives the account `umask=0022` in its GECOS field, so Ubuntu's usergroups `002` no longer makes
+  directories Porelo refuses as group writable.
+- `porelo-host-push --migrate` gives Forgejo the central token as the password of `x-access-token`, which a git
+  migration clones with and GitHub takes for an App installation token as for a person's; `auth_token` it ignored.
 - `porelo-host-person sync` no longer calls the Matrix transport's `members`, which is the project admin's verb and
   refused the host's call with 64, failing every sync; the gate admits each login by itself. Its arming of pushes no
   longer stops with 6 on a forge that never held a repository.

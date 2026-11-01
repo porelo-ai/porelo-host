@@ -137,6 +137,9 @@ PERSON_SCOPES = "write:repository,write:issue,write:organization,read:user"
 TASK_SCOPES = "write:repository"
 # ssh-keygen -L shows a certificate's validity in local time; it runs with TZ=UTC, so this reads it as UTC.
 TIME = "%Y-%m-%dT%H:%M:%S"
+# pam_umask reads the GECOS field's fifth part first, ahead of USERGROUPS_ENAB's 002 for a group of one's own:
+# a person's directories are their own, and Porelo refuses any that another account may write to.
+GECOS = ",,,,umask=0022"
 HEADERS = (
     "Type", "Public key", "Signing CA", "Key ID", "Serial", "Valid", "Principals", "Critical Options", "Extensions"
 )
@@ -1050,9 +1053,38 @@ class Host:
         """Create the home and private primary group before enabling user services."""
         # useradd must not allocate its own defaults before the explicit, prevalidated ranges.
         self.command(
-            ["useradd", "--create-home", "--user-group", "--shell", "/bin/bash",
+            ["useradd", "--create-home", "--user-group", "--shell", "/bin/bash", "--comment", GECOS,
              "--key", "SUB_UID_COUNT=0", "--key", "SUB_GID_COUNT=0", user]
         )
+
+    def private_umask(self, user):
+        """Give an account admitted before its GECOS named a umask the same one, without touching a fitting entry."""
+        if getattr(self.account(user), "pw_gecos", None) != GECOS:
+            self.command(["usermod", "--comment", GECOS, user])
+
+    def start_daemon(self, user):
+        """Start the person's porelod for good, so their tunnel reaches it before they ever run setup themselves.
+
+        Not a refusal: the person's access stands, and 'porelo setup' in their own account starts it later.
+        """
+        try:
+            if not self.available("porelo"):
+                refuse("porelo is missing from the fixed PATH", 69)
+            uid = self.uid(user)
+            # Linger starts the manager in the background; start it here and wait for it, then for its bus.
+            self.command(["systemctl", "start", f"user@{uid}.service"])
+            self.session_bus(user, f"/run/user/{uid}")
+            # Nothing on stdin: setup makes no vault without a person at a terminal, and says so.
+            self.command(self.porelo(user, "setup"), input="")
+            self.command([*self.switched(user, uid, self.account(user).pw_dir), "systemctl", "--user", "is-active",
+                          "--quiet", "porelod"])
+        except Refusal as error:
+            print(
+                f"porelo-host-person: porelod of {user} is not running ({error}); 'porelo setup' as {user} starts it",
+                file=sys.stderr,
+            )
+            return False
+        return True
 
     def enable_linger(self, user):
         """Allow the person's own user services to survive sign-out."""
@@ -3127,6 +3159,8 @@ class Host:
                     self.record(user, {**record, **card})
                     self.write_authorized_key(user, card["ssh"], self.card_expiry(card["expires"]))
                     self.admit_runtime(user)
+                    self.private_umask(user)
+                    self.start_daemon(user)
                     return {"person": user, "role": "project-admin"}
                 groups = self.groups if self.groups is not None else {entry.gr_name for entry in grp.getgrall()}
                 if user in groups:
@@ -3137,6 +3171,7 @@ class Host:
                 self.prepare_services(user, verb)
                 self.add(user, card, groups, self.next_range(self.subids("subuid")),
                          self.next_range(self.subids("subgid")))
+                self.start_daemon(user)
                 return {"person": user, "role": "project-admin"}
             if verb == "lock":
                 record["reason"] = "host"

@@ -203,6 +203,11 @@ project's unlocked recorded admin (`sudo -n /usr/local/sbin/porelo-host-person s
 `/etc/porelo-host/projects/<project>.conf`) calls `sync <project>`.
 
 `add` takes the person's one current key from the applied registry and accepts no credential input on stdin.
+The account's GECOS field names `umask=0022`, which `pam_umask` reads ahead of `USERGROUPS_ENAB`'s `002`, so the
+person's directories carry no group write; an account admitted before gets it on its next `add`. Once admitted, root
+starts the person's user manager and runs `porelo setup` as the person with nothing on stdin, which registers the hooks
+and starts `porelod` for good, so the tunnel's `porelod.sock` answers before the person's first bring. A daemon that
+does not start leaves the admission standing and says so on stderr: `porelo setup` as the person starts it.
 Logins match `[a-z][a-z0-9-]{0,31}` and cannot be `porelo` or start with `porelo-`. A purged login is permanently
 refused through root's mode `0600` `/etc/porelo-host/people/purged`, including on a later registry intake.
 
