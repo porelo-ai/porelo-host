@@ -72,8 +72,8 @@ admin's Porelo brings it, never from the central forge itself.
 
 ## To be checked
 
-- Settled (2026-10-31): Porelo's pushed registry verify takes `--since` and checks the descent itself. The host
+- Settled: Porelo's pushed registry verify takes `--since` and checks the descent itself. The host
   passes the previous applied commit there.
-- Settled (2026-10-31): the answer names the host card's signer as `host_card.signed_by` (a `SHA256:` fingerprint),
+- Settled: the answer names the host card's signer as `host_card.signed_by` (a `SHA256:` fingerprint),
   which the handover reads.
 - What `admins` holds; the host records it as answered and does not read it.

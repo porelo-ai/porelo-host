@@ -19,7 +19,7 @@ Read in the code (`9f883ec`), nothing measured.
 
 - **`up` keeps:** base and Porelo's packages; the VPN interface `10.73.<n>.1/24`, `<n>` given by the host admin's
   interface (QH66 a); the forge's accounts, service and admin; the runner; the VM pool.
-- **`up` installs every published agent package** (operator's decision, room 2026-10-29): each package the
+- **`up` installs every published agent package**: each package the
   repository lists as providing `porelo-agent`, read as Porelo's setup script and daemon read it, so a new agent needs
   no list and the acceptance suite's stub, which provides nothing, is never installed. There is no list in the
   inventory and no field in the interface. A repository that lists none stops `up`. No agent package has a service

@@ -1,6 +1,6 @@
 # HO60 — Each Repository's Review Set On The Forge
 
-**Status:** Backlog (operator, 2026-10-30).
+**Status:** Backlog.
 **Size:** M - the protection per repository from one value, a dismissed approval, the value read from the project
 file in force at bring and at each sync, and Molecule steps for both values and a change between them, with a VM run;
 measured M median 63 min, from three M builds (47, 63, 75).

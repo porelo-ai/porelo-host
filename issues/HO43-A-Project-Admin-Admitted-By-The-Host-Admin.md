@@ -67,5 +67,5 @@ project's signed `access.yml` ([HO46](README.md#ho46)), through the same helper.
   `{"machine":"M","known":true,"expelled":[…],"revoked":true|false}`, every `@….<M>` account taken out server-wide
   and its registration token revoked together, so the homeserver refuses it at the next registration. Expelling a
   machine with no token, record or account exits 0 with `{"machine":"M","known":false,"revoked":false,"expelled":[]}`
-  and changes nothing; every refusal exits non-zero (Agent Matrix, room 2026-10-29, from its next commit on).
+  and changes nothing; every refusal exits non-zero.
 - That Porelo names a transport's machine `<host>-<account>` (`porelo talk machine` prints it).

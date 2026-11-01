@@ -9,7 +9,7 @@ like anyone else; on Ubuntu no person can be named `operator`, which a system gr
 
 ## Plan
 
-- **The decision** (operator's, relayed by the Coordinator in the room, 2026-10-29): `up` stops making the forge user
+- **The decision:** `up` stops making the forge user
   `operator`, on hosts already set up too.
 - **First shown, then removed:** a search of the collection, its tests and Molecule for every reader of
   `forge_person`, of `person=` in `/etc/porelo-host/forge.conf` and of the login `operator`, each named in this issue

@@ -9,8 +9,7 @@ leaves an admitted person behind: it refuses while anyone holds a membership, na
 
 ## Plan
 
-- **The decision** (operator's, relayed by the Coordinator in the room, 2026-10-29, answering what `down` does with
-  admitted people):
+- **What `down` does with admitted people:**
   1. Every person carries memberships: per project, as project admin or developer, and "admitted by hand" when the
      host admin admitted them.
   2. A project's `sync` adds or removes only that project's membership ([HO46](README.md#ho46) holds this).

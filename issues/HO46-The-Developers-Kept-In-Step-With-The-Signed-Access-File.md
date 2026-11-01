@@ -25,7 +25,7 @@ Developers are listed with their public keys in the signed file, kept private in
   4. the whole diff against `people/` is checked before anything is done (the refusals of
      [HO43](README.md#ho43)); one refusal refuses all and names each entry;
   5. developers and laptops added (QF76 a) as in [HO43](README.md#ho43); dropped ones locked at once (QH65 a), under
-     the memberships of [HO55](README.md#ho55) (operator's decision, room 2026-10-29): `sync` adds or removes only
+     the memberships of [HO55](README.md#ho55): `sync` adds or removes only
      this project's membership, and a person is locked only when no membership is left. It never undoes an admission
      by hand. A developer in two projects keeps access through the other when dropped from one; a developer listed
      who already has an account, admitted by hand or from another project, gets this project's membership added, not

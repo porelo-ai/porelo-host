@@ -69,7 +69,7 @@ Git on the central forge, every service on the host behind a Unix socket.
   `forge_ca_*` defaults.
 - Red first: `tests/unit/roles/test_forge_gate.py`, the gate over socket pairs against a stand-in upstream: header
   dropped, uid mapped, 403 on the routes, 401 Basic on git, cookie removed.
-- The runner and its jobs (operator, 2026-10-30, option b): a third socket of the gate, `runner.sock`, served like
+- The runner and its jobs: a third socket of the gate, `runner.sock`, served like
   `git.sock` (token only), `SocketGroup` the runner account's group. A proxy container of the runner account,
   `forgejo-runner-proxy`, from `docker.io/alpine/socat` pinned by digest, owns the network namespace: `socat` on
   `127.0.0.1:<web port>` and `127.0.0.1:<git port>` forwards to `runner.sock`, mounted alone. The runner joins it
@@ -102,7 +102,7 @@ Git on the central forge, every service on the host behind a Unix socket.
 - `ENABLE_REVERSE_PROXY_AUTHENTICATION_API=false` holds for `/api/v1`. Forgejo still takes the sign-in header for
   Git and LFS over HTTP, `/api/packages` and the container registry `/v2`. `web.sock` now passes those only with an
   Authorization header, which the LFS and package links under `ROOT_URL` bring.
-- Decided (operator, 2026-10-31): `/v2/token` and Conan's `authenticate`, which turn a token into a signed 24-hour
+- Decided: `/v2/token` and Conan's `authenticate`, which turn a token into a signed 24-hour
   token Forgejo does not record, are refused on every socket, `runner.sock` too. Every forge credential is thus made
   and revocable by the host. Container or Conan publishing on a host becomes an issue of its own when a project
   needs it.

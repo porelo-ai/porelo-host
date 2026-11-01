@@ -139,10 +139,10 @@ it is left out.
 
 | # | Title | Why |
 |---|---|---|
-| <a id="ho22"></a>HO22 | Ssh Reached Only Through The VPN Once It Is Up | Rejected (operator, 2026-10-30): replaced by the one-key design; there is no VPN, and SSH on port 22 is the host's only way in, [HO68](#ho68). |
-| <a id="ho62"></a>HO62 | The Forge's Own Reason For A Refused Password | Rejected (operator, 2026-10-30): replaced by the one-key design; the forge has no password, [HO69](#ho69). |
-| <a id="ho65"></a>HO65 | The Host's Tunnel Addresses Answered | Rejected (operator, 2026-10-30): replaced by the one-key design; the host has no tunnel addresses, [HO68](#ho68). |
-| <a id="ho66"></a>HO66 | The Forge's Links Reach The Laptop | Rejected (operator, 2026-10-30): replaced by the one-key design; the forge's links follow `ROOT_URL` at `<host>.localhost`, [HO69](#ho69). |
-| <a id="ho67"></a>HO67 | The Walk's Host Checks Hold On A Rented Host | Rejected (operator, 2026-10-30): replaced by the one-key design; the forge's session bus is [HO63](#ho63), and [HO74](#ho74) keeps the rented-host run and the check of the helpers' version. |
+| <a id="ho22"></a>HO22 | Ssh Reached Only Through The VPN Once It Is Up | replaced by the one-key design; there is no VPN, and SSH on port 22 is the host's only way in, [HO68](#ho68). |
+| <a id="ho62"></a>HO62 | The Forge's Own Reason For A Refused Password | replaced by the one-key design; the forge has no password, [HO69](#ho69). |
+| <a id="ho65"></a>HO65 | The Host's Tunnel Addresses Answered | replaced by the one-key design; the host has no tunnel addresses, [HO68](#ho68). |
+| <a id="ho66"></a>HO66 | The Forge's Links Reach The Laptop | replaced by the one-key design; the forge's links follow `ROOT_URL` at `<host>.localhost`, [HO69](#ho69). |
+| <a id="ho67"></a>HO67 | The Walk's Host Checks Hold On A Rented Host | replaced by the one-key design; the forge's session bus is [HO63](#ho63), and [HO74](#ho74) keeps the rented-host run and the check of the helpers' version. |
 | <a id="ho16"></a>HO16 | The Person's Drive On OneDrive | The host has no drive any more; OneDrive as a user's own drive may come later as a new idea beside the interface's. |
 

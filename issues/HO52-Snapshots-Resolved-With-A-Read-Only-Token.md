@@ -11,7 +11,7 @@ build that misses it fails instead of resolving elsewhere.
 
 ## Plan
 
-- **The contract** (operator's decision, 2026-10-29; the names are fixed in the room):
+- **The contract:**
   - Actions secret **`PORELO_PACKAGES_READ_TOKEN`** of each project's organization: a Forgejo token with the single
     scope `read:package`, of that organization's publisher account. It reads the organization's packages and nothing
     else.

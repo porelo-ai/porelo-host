@@ -21,14 +21,13 @@ host without hand patches.
 
 ## Notes
 
-- Forwarding differs from [HO68](README.md#ho68), accepted for the 6m test (Coordinator, 2026-10-30, for the
-  operator to see): `porelo-people` gets `AllowTcpForwarding yes` and `PermitListen none` besides socket forwarding.
+- Forwarding differs from [HO68](README.md#ho68), accepted for the 6m test: `porelo-people` gets `AllowTcpForwarding yes` and `PermitListen none` besides socket forwarding.
   OpenSSH 10.2 opens no Unix-socket forward while TCP forwarding is off, and `PermitOpen none` refuses socket paths
   too, as a debug `sshd` on the test VM showed. Residual risk: a person's local TCP forward reaches every address the
   host reaches, such as the homeserver's empty loopback port, other hosts on its networks and the internet, which is
   what their login shell reaches already; remote TCP listeners stay refused. The narrower way is
   [HO78](README.md#ho78).
-- Skipped until this rewrite (Agent Machines, 2026-10-31, to make the Build green): verify's includes of
+- Skipped until this rewrite, to keep the Build green: verify's includes of
   `tasks/reboot.yml`, `people.yml`, `projects.yml` (with `bring.yml`), `push.yml` and `two_projects.yml` carry the
   tag `notest`, and the operator admission in `forge_person.yml` is off. Each still builds the VPN host's input
   (WireGuard keys, `10.73.7.0/24`, the forge CA, laptop lines on `add`'s stdin). This rewrite takes the tags off.

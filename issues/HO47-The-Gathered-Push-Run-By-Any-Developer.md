@@ -18,7 +18,7 @@ Any developer of a project runs the gathered push. Today it is root's, configure
   local forge is read with their own forge token.
 - `porelo-host-project remove <project>` stops reading the central addresses from root's
   `/etc/porelo-host/forge/push.conf`, which the bring no longer writes: it compares each repository with the
-  `original_url` Forgejo kept from the migration (Coordinator, room 2026-10-29).
+  `original_url` Forgejo kept from the migration.
 
 ## Acceptance
 

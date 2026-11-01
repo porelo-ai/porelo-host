@@ -1,6 +1,6 @@
 # HO79 — A Person's SSH Login Confirmed By A Second Factor
 
-**Status:** Idea (operator, 2026-10-31).
+**Status:** Idea.
 **Size:** - (M proposed, for the recommended form).
 
 Part of the project's decision that a person joins with one click: one SSH key per person, no VPN, the state signed in

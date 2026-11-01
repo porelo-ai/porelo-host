@@ -13,7 +13,7 @@ walk.
 - on the host, the homeserver packages `porelo-matrix-homeserver` and `porelo-message-transport-matrix`
   `0.5.1~snapshot.0+local.20261029T131907` (Agent Matrix's `49a567a`).
 
-**Seen to work:** every check below ran on a test VM in the collection's Molecule scenario on 2026-10-29 (run 12,
+**Seen to work:** every check below ran on a test VM in the collection's Molecule scenario (run 12,
 green, with exactly these packages), with the names `alpha`, `ada` and `alpha-one` in place of the walk's. The scripts that run the checks here
 were rehearsed against a stand-in host: a container laid out as each act leaves the host, its `wg`, `curl`, `sshd`
 and `runuser` answering as the VM did, reached through a stand-in `ssh`. Each script passed on its state and failed,

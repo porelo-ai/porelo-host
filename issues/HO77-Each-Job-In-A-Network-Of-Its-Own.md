@@ -1,6 +1,6 @@
 # HO77 — Each Job In A Network Of Its Own
 
-**Status:** Idea (operator, 2026-10-30).
+**Status:** Idea.
 **Size:** -
 
 Part of the project's decision that a person joins with one click: one SSH key per person, no VPN, the state signed in

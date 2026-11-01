@@ -1,6 +1,6 @@
 # HO63 — Podman Reached Through The Account's Session Bus
 
-**Status:** Review (Backlog: operator, 2026-10-31).
+**Status:** Review.
 **Size:** S.
 **Blocked by:** -.
 

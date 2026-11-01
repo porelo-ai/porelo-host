@@ -23,7 +23,7 @@ these steps too. Each step below says which of theirs follows it.
 
 **Seen to work:**
 
-- Every host-side behavior these checks read ran on a test VM in the collection's Molecule scenario on 2026-10-30
+- Every host-side behavior these checks read ran on a test VM in the collection's Molecule scenario
   (run `20261030t050056z-3899440` on `363f921`, green; `2443282` adds only issue states and `AGENTS.md`), with the
   names `alpha`, `bo`, `cy` and `alpha-one` in place of the pass's.
 - The scripts were rehearsed against a stand-in host. It was a container laid out as each act leaves the host,
@@ -38,7 +38,7 @@ these steps too. Each step below says which of theirs follows it.
 
 **Not run:**
 
-- The steps changed on 2026-10-30 for the walk's new order were not rehearsed against the stand-in host:
+- The steps changed for the walk's new order were not rehearsed against the stand-in host:
   host-bring.4 and .5, host-join.4 and host-sync two's step 2, and the new host-push-run.
 - The developer's VPN on laptop B: laptop B's interface brings it up; this guide checks only the host's peer.
 - `down` after the pass: nothing below checks it.

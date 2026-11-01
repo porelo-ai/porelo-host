@@ -1,6 +1,6 @@
 # HO80 — Git And The API On The Host's Loopback With A Token
 
-**Status:** Review (Backlog: operator, 2026-10-31), the middle way for [HO69](README.md#ho69).
+**Status:** Review, the middle way for [HO69](README.md#ho69).
 **Size:** M.
 
 Part of the project's decision that a person joins with one click: one SSH key per person, no VPN, the state signed in
@@ -129,7 +129,7 @@ within the token's scopes. Brute force of a 40-hex token is no attack.
 ## Idea part, not built now
 
 - The nftables `output` rule on `127.0.0.1:<git_port>` by `meta skuid`, for the persons' and the forge's uids, which
-  narrows the port to the circle `git.sock` has today (operator, 2026-10-31).
+  narrows the port to the circle `git.sock` has today.
 
 ## Open questions
 

@@ -59,7 +59,7 @@ deletes them with nothing left.
   (`0755`) mounted read-only into the forge runner's jobs; `down` deletes the secret `PORELO_POOL_SSH`, the pool VMs
   with their snapshots, disks and seeds by name, and the pool's keys and file, before the forge, while the images and
   their base volumes stay as a cache named by digest.
-- **Molecule**, green, 5 of 5 stages, on this machine, 2026-10-22 15:20Z-15:39Z, on the commit that adds the role, with
+- **Molecule**, green, 5 of 5 stages, on this machine, 19 min, on the commit that adds the role, with
   one Ubuntu pool VM of 1024 MiB nested in the test VM (now 6144 MiB). The pool file names one VM with one account and
   no key, mode `0644` `root`; the run key is `root`'s, mode `0600`, in `/var/lib/porelo-host/pool`. A workflow job of
   the forge (its image running as its own user) reads the pool file and gets the run key from the organization's Actions
@@ -70,7 +70,7 @@ deletes them with nothing left.
   root into `/etc`, a give-back brought the VM back `ready` with both gone; the revert ran once, watching, never started
   again. After the two `down`s of the test (the first stopping at the unsynced drive), the forge's Actions secret
   `PORELO_POOL_SSH` was deleted exactly once, and no pool VM, volume, seed, key, directory or unit is left.
-- **Molecule**, green, 5 of 5 stages, on this machine, 2026-10-25 09:31Z-09:50Z, 18.4 min, with `porelo-machines` built
+- **Molecule**, green, 5 of 5 stages, on this machine, 18.4 min, with `porelo-machines` built
   from porelo-buildtools `3bf62cf` (the commit that provisions a pool
   lease as root through `sudo -n`) and handed over by a SHA-256 manifest checked on the host and again on the test VM:
   - a renter that returned its lease normally, and one killed with SIGKILL while holding it, each left a file in the
@@ -79,14 +79,14 @@ deletes them with nothing left.
     unprivileged `acceptance` account and ran a leg in it; the next rental found that account gone;
   - after `down`, the libvirt listings (read first, so a failed query cannot pass as empty) showed no pool VM or
     volume, and the test VM, its disk and its seed were gone.
-- **Seen red first**, each break restored, 2026-10-22 14:53Z-15:39Z, in runs with faults put in: a line of the run key
+- **Seen red first**, each break restored, in runs with faults put in: a line of the run key
   in the `-vvv` output (the check named only the key file, never the key), and `down` deleting another secret name (both
   `down`s reported unchanged). Earlier red runs caught the job's digest of the secret against the host's key (the forge
   given the public key) and `down` leaving a VM's directory; a job that could not read the pool file under rootless
   podman when it was `0640` for the runner's group; the VM never coming back `ready` with the revert taking no snapshot;
   and `virsh event --all --event lifecycle`, which virsh refuses at once, starting the revert again 83 times. That last
   fault was in the first green run too, hidden by the revert's first loop; the check on its restarts now finds it.
-  2026-10-25 09:51Z-10:08Z, with `porelo-machines` built without the reset of an account a killed renter left dirty,
+  With `porelo-machines` built without the reset of an account a killed renter left dirty,
   the normal return stayed clean and the rental after the SIGKILL found both files, failing the check; the break was in
   a copy of the source only.
 
@@ -99,5 +99,5 @@ deletes them with nothing left.
 ## To be checked
 
 - On GitHub's runner (AMD, nested KVM present) the pool VM gets its address but does not say ready within 15 minutes
-  (porelo-host Builds 16 and 17, 2026-10-22); the Build leaves the pool out (`PORELO_HOST_MOLECULE_POOL=off`) until that
+  (porelo-host Builds 16 and 17); the Build leaves the pool out (`PORELO_HOST_MOLECULE_POOL=off`) until that
   is found; local Molecule runs it.

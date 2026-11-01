@@ -1,6 +1,6 @@
 # HO78 — Only The Gates' Sockets Forwarded
 
-**Status:** Idea (Agent Machines, 2026-10-30, on the Coordinator's word).
+**Status:** Idea.
 **Size:** -
 
 Part of the project's decision that a person joins with one click: one SSH key per person, no VPN, the state signed in
