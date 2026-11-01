@@ -922,6 +922,22 @@ def test_failed_admission_removes_access_with_missing_revocation_dependency(card
     assert any(args == ["usermod", "--lock", "--expiredate", "1", "carol"] for args, _ in cards.calls)
 
 
+def test_a_person_sync_admits_gets_their_daemon_started(cards):
+    """Prevent a developer the project's sync admits from having no porelod for their tunnel."""
+    host = cards.host
+    host.commands.update({"useradd", "groupadd"})
+    host.create_account = lambda user: host.accounts.__setitem__(user, 1003)
+    started = []
+    host.start_daemon = started.append
+    cards.reply["persons"].append(person("carol", 8))
+    registry_card(cards, person("carol", 8))
+    sync(cards)
+    assert host.records()["carol"]["members"] == ["alpha developer"]
+    assert started == ["carol"]
+    sync(cards)
+    assert started == ["carol"], "a person already admitted is not set up again at each sync"
+
+
 def test_sync_existing_unlock_requires_usermod_before_execution(cards):
     """Prevent an existing person's unlock from running an unchecked executable."""
     host = cards.host

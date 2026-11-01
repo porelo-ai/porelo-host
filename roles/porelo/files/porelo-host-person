@@ -2059,6 +2059,7 @@ class Host:
                 self.add(user, card, groups, self.next_range(self.subids("subuid")),
                          self.next_range(self.subids("subgid")), members=(membership,))
                 records[user] = {"members": [membership], "locked": False, **card}
+                self.start_daemon(user)
             else:
                 if rec["locked"]:
                     if rec.get("reason") in ("key", "membership"):
