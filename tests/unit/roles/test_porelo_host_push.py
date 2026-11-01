@@ -844,7 +844,8 @@ def test_migrate_takes_only_the_missing_repositories_with_the_central_token_in_t
             "service": "git",
             "mirror": False,
             "private": True,
-            "auth_token": CENTRAL_TOKEN,
+            "auth_username": "x-access-token",
+            "auth_password": CENTRAL_TOKEN,
         }
     ]
     assert not seen, f"the central token was in an argv: {seen}"

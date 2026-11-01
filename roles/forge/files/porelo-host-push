@@ -440,6 +440,8 @@ said() {
 }
 
 # The token reaches the request body on a pipe, never an argument: Forgejo clones with it once and keeps it nowhere.
+# A git migration ignores auth_token and clones with the address's user and password alone; GitHub takes an App
+# installation token, as a person's own, as the password of x-access-token, the same as --pull's Basic header.
 if [ "$mode" = migrate ]; then
     for name in "${targets[@]}"; do
         http_code=$(api "http://localhost/api/v1/repos/$owner/$name") || fail "$name: the forge did not answer" 69
@@ -451,7 +453,8 @@ if [ "$mode" = migrate ]; then
         http_code=$(printf '%s' "$central_token" | python3 -I -c '
 import json, sys
 print(json.dumps({"clone_addr": sys.argv[1], "repo_name": sys.argv[2], "repo_owner": sys.argv[3], "service": "git",
-                  "mirror": False, "private": True, "auth_token": sys.stdin.read()}))
+                  "mirror": False, "private": True, "auth_username": "x-access-token",
+                  "auth_password": sys.stdin.read()}))
 ' "${central_url[$name]}" "$name" "$owner" | api -X POST --data @- "http://localhost/api/v1/repos/migrate") \
             || fail "$name: the forge did not answer the migration" 69
         [ "$http_code" = 201 ] || fail "$name: the forge answered HTTP $http_code: $(redact "$(said)")" 65
