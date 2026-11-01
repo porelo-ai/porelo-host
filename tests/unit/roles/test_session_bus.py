@@ -68,6 +68,7 @@ def test_the_project_helper_refuses_a_forge_account_without_its_bus(tmp_path, mo
 
     values["RUN_USER"] = str(tmp_path)
     monkeypatch.setattr(values["subprocess"], "run", run)
+    monkeypatch.setattr(values["pwd"], "getpwnam", lambda account: SimpleNamespace(pw_dir="/home/" + account))
     if bus == "socket":
         namespace["forge_command"]("porelo-forge", "list")
         assert "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1234/bus" in calls[-1]

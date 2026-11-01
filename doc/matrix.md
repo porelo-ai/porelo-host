@@ -26,7 +26,9 @@ only that project's admins file. Links and paths writable by other accounts are 
 
 Admission issues no Matrix machine or registration credential. Lock and purge run
 `/usr/libexec/porelo/transports/porelo-message-transport-matrix expel <login>` as `porelo-matrix`; purge repeats expulsion after an earlier
-lock. A transport failure stops removal without repeating captured output. The transport owns deactivation of the
+lock. Expel takes the homeserver administrator's token on its stdin alone, as
+`{"secrets":{"PORELO_MATRIX_ADMIN_TOKEN":"<token>"}}`; the helper reads it as `porelo-matrix` from the gate's
+`gate/admin-token` and refuses a missing, empty or multi-word token before expel starts. A transport failure stops removal without repeating captured output. The transport owns deactivation of the
 person's `@<login>` and task `@*.<login>` accounts.
 
 The socket unit, preparation ordering and authorization publication have unit checks. Live validation requires the

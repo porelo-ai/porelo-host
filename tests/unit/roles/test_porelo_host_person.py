@@ -71,6 +71,24 @@ def snapshot(root):
     }
 
 
+def as_alice(host, *words):
+    """Porelo as alice the way root starts it: in `/`, with her own home and her user manager's runtime and bus."""
+    return [
+        "runuser",
+        "-u",
+        "alice",
+        "--",
+        "env",
+        "-C",
+        "/",
+        f"HOME={host.root / 'home' / 'alice'}",
+        "XDG_RUNTIME_DIR=/run/user/1000",
+        "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus",
+        "porelo",
+        *words,
+    ]
+
+
 class Host:
     def __init__(self, root, factory):
         self.root = root
@@ -1406,34 +1424,8 @@ def test_purge_locks_first_clears_vault_then_removes_account_and_ranges(host, ca
         # A locked account is expired, which PAM refuses to runuser and to the user manager; its password stays locked.
         ["usermod", "--expiredate", "", "alice"],
         ["systemctl", "start", "user@1000.service"],
-        [
-            "runuser",
-            "-u",
-            "alice",
-            "--",
-            "env",
-            "XDG_RUNTIME_DIR=/run/user/1000",
-            "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus",
-            "porelo",
-            "task",
-            "stop",
-            "--all",
-        ],
-        [
-            "runuser",
-            "-u",
-            "alice",
-            "--",
-            "env",
-            "XDG_RUNTIME_DIR=/run/user/1000",
-            "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus",
-            "porelo",
-            "vault",
-            "clear",
-            "--yes",
-            "--force",
-            "--json",
-        ],
+        as_alice(host, "task", "stop", "--all"),
+        as_alice(host, "vault", "clear", "--yes", "--force", "--json"),
         ["usermod", "--expiredate", "1", "alice"],
         ["systemctl", "stop", "user@1000.service"],
         ["loginctl", "disable-linger", "alice"],
@@ -1486,18 +1478,7 @@ def test_purge_clears_no_vault_while_a_task_of_the_person_still_runs(host, capsy
     assert host.invoke("lock", "alice", data=b"") == 0
     capsys.readouterr()
     host.calls.clear()
-    host.fail = [
-        "runuser",
-        "-u",
-        "alice",
-        "--",
-        "env",
-        "XDG_RUNTIME_DIR=/run/user/1000",
-        "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus",
-        "porelo",
-        "task",
-        "stop",
-    ]
+    host.fail = as_alice(host, "task", "stop")
     assert host.invoke("purge", "alice", data=b"") == 69
     assert not any("vault" in args for args in host.calls)
     assert not any(args[0] == "userdel" for args in host.calls)
@@ -1510,18 +1491,7 @@ def test_purge_goes_on_when_only_a_transport_could_not_clear_its_account(host, c
     """Prevent a person whose project's transport cannot clear its account from staying unpurgeable for good."""
     assert host.invoke("add", "alice", "--role", "project-admin") == 0
     capsys.readouterr()
-    host.fail = [
-        "runuser",
-        "-u",
-        "alice",
-        "--",
-        "env",
-        "XDG_RUNTIME_DIR=/run/user/1000",
-        "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus",
-        "porelo",
-        "vault",
-        "clear",
-    ]
+    host.fail = as_alice(host, "vault", "clear")
     item = {"kind": "conversation", "what": "the matrix account of alpha", "status": "NOT_REMOVED", "why": "exit 78"}
     host.failed_output = json.dumps({"items": [item | {"transport": "matrix", "project": "alpha"}], "refused": False})
     assert host.invoke("purge", "alice", data=b"") == 0
@@ -1532,18 +1502,7 @@ def test_purge_refuses_when_the_vault_kept_more_than_a_transports_account(host, 
     """Prevent deleting the account while something of the vault other than a transport's account was not removed."""
     assert host.invoke("add", "alice", "--role", "project-admin") == 0
     capsys.readouterr()
-    host.fail = [
-        "runuser",
-        "-u",
-        "alice",
-        "--",
-        "env",
-        "XDG_RUNTIME_DIR=/run/user/1000",
-        "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus",
-        "porelo",
-        "vault",
-        "clear",
-    ]
+    host.fail = as_alice(host, "vault", "clear")
     item = {"kind": "vault", "what": "vault.bin", "status": "NOT_REMOVED", "why": "", "transport": "", "project": ""}
     host.failed_output = json.dumps({"items": [item], "refused": False})
     assert host.invoke("purge", "alice", data=b"") == 69
@@ -1569,18 +1528,7 @@ def test_purge_refuses_unless_only_a_transports_account_was_kept(host, capsys, a
     """Prevent a transport's kept account from letting purge delete an account whose vault kept more."""
     assert host.invoke("add", "alice", "--role", "project-admin") == 0
     capsys.readouterr()
-    host.fail = [
-        "runuser",
-        "-u",
-        "alice",
-        "--",
-        "env",
-        "XDG_RUNTIME_DIR=/run/user/1000",
-        "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus",
-        "porelo",
-        "vault",
-        "clear",
-    ]
+    host.fail = as_alice(host, "vault", "clear")
     host.failed_output = json.dumps(answer)
     assert host.invoke("purge", "alice", data=b"") == 69
     assert not any(args[0] == "userdel" for args in host.calls)
@@ -1591,18 +1539,7 @@ def test_failed_vault_clear_keeps_the_locked_account_and_record_for_retry(host, 
     assert host.invoke("add", "alice", "--role", "project-admin") == 0
     capsys.readouterr()
     host.calls.clear()
-    host.fail = [
-        "runuser",
-        "-u",
-        "alice",
-        "--",
-        "env",
-        "XDG_RUNTIME_DIR=/run/user/1000",
-        "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus",
-        "porelo",
-        "vault",
-        "clear",
-    ]
+    host.fail = as_alice(host, "vault", "clear")
     assert host.invoke("purge", "alice", data=b"") == 69
     assert not any(args[0] == "userdel" for args in host.calls)
     assert host.calls[-2:] == [
@@ -1673,19 +1610,7 @@ def test_failed_service_revocation_still_locks_the_host_account_for_retry(host, 
     assert host.invoke("lock", "alice", data=b"") == 69
     assert ["usermod", "--lock", "--expiredate", "1", "alice"] in host.calls
     assert ["loginctl", "terminate-user", "alice"] in host.calls
-    assert [
-        "runuser",
-        "-u",
-        "alice",
-        "--",
-        "env",
-        "XDG_RUNTIME_DIR=/run/user/1000",
-        "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus",
-        "porelo",
-        "task",
-        "stop",
-        "--all",
-    ] in host.calls
+    assert as_alice(host, "task", "stop", "--all") in host.calls
     assert "locked=true" in host.path("/etc/porelo-host/people/alice.conf").read_text()
     assert not capsys.readouterr().out
 

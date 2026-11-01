@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Lock and purge, and every lock a sync or a project's removal makes, end the person on the homeserver again: the
+  Matrix transport's `expel` gets the homeserver administrator's token from the gate on its stdin, never on a command
+  line, where before it refused with 78 and the lock stayed pending.
+- Every command the host's helpers run as a person or a service account starts in `/` with that account's own `HOME`,
+  so a lock run by root over SSH no longer fails where the account cannot enter root's working directory.
 - Person revocation tolerates missing Linux accounts, rejects shared purged keys, preserves lagging project cards,
   and validates lock retry dependencies. Local removal survives service failures, and lagging cards honor access
   losses. Unfinished locks retry across runs, and cleanup failures retain their retry state.

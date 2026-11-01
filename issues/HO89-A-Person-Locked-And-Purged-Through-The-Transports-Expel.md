@@ -1,6 +1,6 @@
 # HO89 — A Person Locked And Purged Through The Transport's Expel
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** M - one helper and its tests, the transport's secrets form, and the Molecule scenario's people again.
 **Severity:** high - on a host with the published Matrix transport no person can be locked or purged, so no project
 with a person on it is removed and `down` refuses.
@@ -23,13 +23,15 @@ person on the homeserver and on the host:
   before any change, and the token is in no argv, environment, file or output.
 - Red first in `tests/unit/roles/test_porelo_host_person*.py`: a call as another account without `-C /` or the
   account's HOME, and expel called without the secrets on stdin.
-- `extensions/molecule/default/verify.yml`: people.yml runs again, no longer `notest`.
+- `extensions/molecule/default/verify.yml`: people.yml runs again once the published Matrix transport's `expel`
+  reaches the homeserver through the gate; until then it stays `notest`, since behind the gate `expel` waits for
+  `127.0.0.1` and exits 75.
 
 ## Acceptance
 
 - The unit tests above, seen red then green, and the full helper suite.
-- Molecule on `ubuntu26.04`: people.yml locks and purges its persons, and `down` passes.
+- Molecule: people.yml locks and purges its persons, and `down` passes, once that transport is published.
 
 ## To be checked
 
-- Which file holds the token expel needs, asked of the Matrix transport's agent.
+- people.yml in Molecule against the published Matrix transport whose `expel` reaches the homeserver through the gate.

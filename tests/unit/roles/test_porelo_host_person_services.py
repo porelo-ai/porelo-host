@@ -57,7 +57,9 @@ class Services:
             return subprocess.CompletedProcess(args, 1, self.failure, self.failure)
         assert isinstance(args, list)
         assert args[:2] == ["runuser", "-u"]
-        assert args[3:5] == ["--", "env"]
+        # Root's working directory and HOME are no account's: podman refuses a directory it cannot enter.
+        homes = {"porelo-forge": "forge", "porelo-matrix": "matrix", "alice": "alice"}
+        assert args[3:8] == ["--", "env", "-C", "/", f"HOME={self.host.root / 'home' / homes[args[2]]}"], args
         if "podman" in args:
             assert args[2] == "porelo-forge"
             assert "XDG_RUNTIME_DIR=/run/user/1200" in args
@@ -91,9 +93,15 @@ class Services:
             assert args[2] == "porelo-matrix"
             assert "XDG_RUNTIME_DIR=/run/user/1201" in args
             assert any(arg.startswith("HOME=") for arg in args)
-            assert input is None
             assert args[-3:] == ["/usr/libexec/porelo/transports/porelo-message-transport-matrix", "expel", "alice"]
             return subprocess.CompletedProcess(args, self.transport_exit, "", self.transport_error)
+        if args[10:12] == ["cat", "--"]:
+            # The gate's file is porelo-matrix's alone; only its own account may read it, with nothing on stdin.
+            assert args[2] == "porelo-matrix" and input == "", (args, input)
+            path = Path(args[12])
+            if not path.is_file():
+                return subprocess.CompletedProcess(args, 1, "", f"cat: {path}: No such file or directory")
+            return subprocess.CompletedProcess(args, 0, path.read_text(), "")
         assert args[2] == "alice"
         offset = args.index("/bin/sh")
         environment = dict(self.host.env)
@@ -153,7 +161,13 @@ def services(tmp_path, monkeypatch):
     for uid in (1200, 1201):  # The service accounts' user managers, each with its session bus.
         (tmp_path / f"run/user/{uid}").mkdir(parents=True, exist_ok=True)
         os.mknod(tmp_path / f"run/user/{uid}/bus", stat.S_IFSOCK | 0o600)
-    host.commands = {"runuser", "env", "podman", "/usr/libexec/porelo/transports/porelo-message-transport-matrix"}
+    host.commands = {
+        "runuser",
+        "env",
+        "cat",
+        "podman",
+        "/usr/libexec/porelo/transports/porelo-message-transport-matrix",
+    }
     home = tmp_path / "home" / "alice"
     home.mkdir(parents=True)
     host.home, host.env = home, namespace["ENV"]
@@ -385,22 +399,62 @@ def test_forge_admin_transport_connects_only_to_the_private_socket(services, mon
     assert connected == ["/run/user/1200/porelo-forge/http.sock"]
 
 
-def test_matrix_expels_the_login_as_the_service_account_without_credentials(services):
-    """Prevent purge leaving person and task accounts active or issuing a reusable host credential."""
+def gate_admin_token(services, text=MATRIX_ADMIN + "\n"):
+    """The homeserver administrator's token as the Matrix gate's prepare keeps it in porelo-matrix's home."""
+    path = services.host.root / "home/matrix/.config/porelo/matrix/gate/admin-token"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    path.chmod(0o600)
+    return path
+
+
+def test_matrix_expels_the_login_with_the_gates_admin_token_on_stdin_alone(services):
+    """Prevent a lock or purge that leaves the person's Matrix accounts active, or the admin token in argv or env."""
+    path = gate_admin_token(services)
     hook(services, "matrix_expel_revoke", "alice")
-    assert len(services.recorder.calls) == 1
-    assert services.recorder.calls[0][-3:] == [
+    read, expel = services.recorder.calls
+    assert read[2] == "porelo-matrix" and read[10:] == ["cat", "--", str(path)], read
+    assert expel[2] == "porelo-matrix" and expel[-3:] == [
         "/usr/libexec/porelo/transports/porelo-message-transport-matrix",
         "expel",
         "alice",
-    ]
-    assert services.recorder.inputs == [None]
+    ], expel
+    assert json.loads(services.recorder.inputs[1]) == {"secrets": {"PORELO_MATRIX_ADMIN_TOKEN": MATRIX_ADMIN}}
+    assert not any(MATRIX_ADMIN in argument for call in services.recorder.calls for argument in call)
     assert not services.host.path("/etc/porelo-host/matrix-admin.token").exists()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [None, "", "\n", "two words\n", "a\nb\n", "x" * 4097],
+    ids=["missing", "empty", "newline", "space", "two-lines", "too-long"],
+)
+def test_matrix_expel_refuses_without_a_usable_gate_admin_token(services, text):
+    """Prevent expel from being started without its token, or with a file's other content passed on as the token."""
+    if text is not None:
+        gate_admin_token(services, text)
+    with pytest.raises(services.scope["Refusal"]) as error:
+        hook(services, "matrix_expel_revoke", "alice")
+    assert error.value.code == 69
+    assert "administrator's token" in str(error.value), str(error.value)
+    assert not any("expel" in call for call in services.recorder.calls)
+
+
+@pytest.mark.parametrize("program", ["env", "cat", "runuser"])
+def test_matrix_expel_names_a_missing_program_before_reading_the_token(services, program):
+    """Prevent a missing program from being reported as a missing token, or found only after the token was read."""
+    gate_admin_token(services)
+    services.host.commands.discard(program)
+    with pytest.raises(services.scope["Refusal"]) as error:
+        hook(services, "matrix_expel_revoke", "alice")
+    assert error.value.code == 69 and program in str(error.value), str(error.value)
+    assert services.recorder.calls == []
 
 
 @pytest.mark.parametrize("code", [1, 78])
 def test_failed_matrix_expulsion_blocks_removal_without_repeating_output(services, code):
     """Prevent a failed account deactivation from being treated as successful purge."""
+    gate_admin_token(services)
     services.recorder.transport_exit = code
     services.recorder.transport_error = MATRIX_ADMIN
     with pytest.raises(services.scope["Refusal"]) as error:

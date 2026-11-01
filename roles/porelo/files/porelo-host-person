@@ -61,7 +61,8 @@ project.
 
 Matrix admission stores no token. The gate authenticates the socket's peer.
 Lock and purge run the transport's expel <login> as porelo-matrix, including a
-purge after an earlier lock; a refusal stops removal. Sync publishes the verified
+purge after an earlier lock, the gate's admin token on its stdin alone; a refusal
+stops removal. Sync publishes the verified
 admins list, one login per line, atomically in matrix/<project>.admins, root's
 0640 file in a root:porelo-matrix 0750 directory.
 
@@ -522,10 +523,15 @@ class Host:
 
     def porelo(self, user, *arguments):
         """Porelo as the person, with their own user manager's runtime, which rootless podman needs."""
-        runtime = f"/run/user/{self.uid(user)}"
+        return [*self.switched(user, self.uid(user), self.account(user).pw_dir), "porelo", *arguments]
+
+    @staticmethod
+    def switched(user, uid, home):
+        """Start as the account in `/` with its own HOME: root's directory, which podman cannot enter, is no account's."""
+        runtime = f"/run/user/{uid}"
         return [
-            "runuser", "-u", user, "--", "env", f"XDG_RUNTIME_DIR={runtime}",
-            f"DBUS_SESSION_BUS_ADDRESS=unix:path={runtime}/bus", "porelo", *arguments,
+            "runuser", "-u", user, "--", "env", "-C", "/", f"HOME={home}", f"XDG_RUNTIME_DIR={runtime}",
+            f"DBUS_SESSION_BUS_ADDRESS=unix:path={runtime}/bus",
         ]
 
     def uid_min(self):
@@ -550,13 +556,7 @@ class Host:
         runtime = f"/run/user/{entry.pw_uid}"
         if arguments[:1] == ["podman"]:
             self.session_bus(user, runtime)
-        return self.command(
-            [
-                "runuser", "-u", user, "--", "env", f"HOME={entry.pw_dir}", f"XDG_RUNTIME_DIR={runtime}",
-                f"DBUS_SESSION_BUS_ADDRESS=unix:path={runtime}/bus", *arguments,
-            ],
-            **kwargs,
-        )
+        return self.command([*self.switched(user, entry.pw_uid, entry.pw_dir), *arguments], **kwargs)
 
     def session_bus(self, user, runtime):
         """Podman keeps to the systemd cgroup manager only through the account's bus; crun fails without it."""
@@ -672,7 +672,7 @@ class Host:
                     self.forge_endpoint()
         if verb != "add" and self.hooks["matrix_expel_revoke"] == self.matrix_expel_revoke:
             self.account("porelo-matrix")
-            self.require(["runuser", TRANSPORT])
+            self.require(["runuser", "env", "cat", TRANSPORT])
 
     def forge_admit(self, user, card=None):
         """Make only missing identities, and no token: Forgejo keeps a token's hash alone, so forge-token makes it."""
@@ -827,9 +827,23 @@ class Host:
         self.forge_drop_named(opener, base, token, identity)
 
     def matrix_expel_revoke(self, user):
-        """Deactivate the person's and tasks' accounts through the transport as its service account."""
-        self.require(["runuser", TRANSPORT])
-        self.as_account("porelo-matrix", [TRANSPORT, "expel", user])
+        """Deactivate the person's and tasks' accounts through the transport, its admin token on stdin alone."""
+        self.require(["runuser", "env", "cat", TRANSPORT])
+        secrets = json.dumps({"secrets": {"PORELO_MATRIX_ADMIN_TOKEN": self.matrix_admin_token()}})
+        self.as_account("porelo-matrix", [TRANSPORT, "expel", user], input=secrets)
+
+    def matrix_admin_token(self):
+        """The homeserver administrator's token the gate's prepare keeps, read by its own account, never by root."""
+        path = self.account("porelo-matrix").pw_dir + "/.config/porelo/matrix/gate/admin-token"
+        try:
+            token = self.as_account("porelo-matrix", ["cat", "--", path], input="").stdout
+        except Refusal:
+            refuse(f"the homeserver administrator's token could not be read from {path}", 69)
+        if token.endswith("\n"):
+            token = token[:-1]
+        if not re.fullmatch(r"[\x21-\x7e]{1,4096}", token):
+            refuse(f"{path} holds no homeserver administrator's token", 69)
+        return token
 
     def targets(self, user):
         """Check all publication/removal paths without creating directories."""

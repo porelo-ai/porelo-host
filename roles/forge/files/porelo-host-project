@@ -229,6 +229,17 @@ def stage_file(destination, prefix, content):
         raise
 
 
+def forge_home(account):
+    """The forge account's own home, for podman: root's HOME and working directory are not the account's."""
+    try:
+        home = pwd.getpwnam(account).pw_dir
+    except KeyError:
+        refuse(f"the forge's account {account} is not known, or is root", 69)
+    if not home.startswith("/") or home == "/" or os.path.normpath(home) != home:
+        refuse(f"the forge's account {account} has no usable absolute home", 69)
+    return home
+
+
 def forge_command(account, *arguments):
     """Run the forge CLI with a fixed environment and no input, capturing all output in memory."""
     uid = subprocess.run(
@@ -249,6 +260,7 @@ def forge_command(account, *arguments):
         bus = False
     if not bus:
         refuse(f"the user manager of {account} has no session bus at /run/user/{number}/bus", 69)
+    home = forge_home(account)
     return subprocess.run(
         [
             "/usr/sbin/runuser",
@@ -256,6 +268,9 @@ def forge_command(account, *arguments):
             account,
             "--",
             "/usr/bin/env",
+            "-C",
+            "/",
+            f"HOME={home}",
             f"XDG_RUNTIME_DIR=/run/user/{number}",
             f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{number}/bus",
             "/usr/bin/podman",

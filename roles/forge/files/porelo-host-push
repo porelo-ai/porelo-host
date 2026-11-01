@@ -273,7 +273,8 @@ else
     admin_token_file="$forge_home/.config/porelo-forge/api.token"
     # The forge's account reads its own token, so a file it put in that token's place is never read with root's rights.
     # Neither the terminal nor the central token reaches its stdin, and a pipe put there cannot wait forever.
-    local_token=$(timeout 10 runuser -u "$forge_account" -- cat -- "$admin_token_file" < /dev/null) \
+    local_token=$(timeout 10 runuser -u "$forge_account" -- env -C / HOME="$forge_home" cat -- "$admin_token_file" \
+        < /dev/null) \
         || fail "$admin_token_file could not be read" 66
     [ -n "$local_token" ] || fail "$admin_token_file is empty" 66
 fi

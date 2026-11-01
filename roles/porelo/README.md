@@ -19,7 +19,9 @@ memberships with `"Take the project off"` and `"Purge"`.
 Matrix admission stores no machine or registration token. Sync atomically publishes the verified access file's
 `admins` list into `/etc/porelo-host/matrix/<project>.admins`, root:porelo-matrix `0640` in a `0750` directory;
 project removal deletes it. Lock and purge run `porelo-message-transport-matrix expel <login>` as `porelo-matrix`,
-including purge after a prior lock. See [Matrix access](../../doc/matrix.md) for the gate boundary.
+including purge after a prior lock, with the homeserver administrator's token from the gate's
+`~porelo-matrix/.config/porelo/matrix/gate/admin-token` on its stdin alone. Every command run as another account
+starts in `/` with that account's own `HOME`. See [Matrix access](../../doc/matrix.md) for the gate boundary.
 
 The helper also provides `forge-token`, `task <task>`, `task --end <task>`, `task --show <fingerprint>` and root's
 `sweep`. The person role installs their sudo rules and the daily persistent `porelo-host-task-sweep.timer`.

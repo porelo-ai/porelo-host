@@ -216,6 +216,17 @@ def project_host(tmp_path, forge, push_host):
         cli_calls.append(arguments)
         if arguments[:2] == ["/usr/bin/id", "-u"]:
             return subprocess.CompletedProcess(arguments, 0, "1234\n", "")
+        # Root's working directory and HOME are not the forge account's: podman refuses a directory it cannot enter.
+        assert arguments[:8] == [
+            "/usr/sbin/runuser",
+            "-u",
+            "porelo-forge",
+            "--",
+            "/usr/bin/env",
+            "-C",
+            "/",
+            "HOME=/home/porelo-forge",
+        ], arguments
         if "create" in arguments:
             name = arguments[arguments.index("--username") + 1]
             forge.users[name] = {}
@@ -317,7 +328,9 @@ def project(
         return central_token
 
     with monkeypatch.context() as patch:
-        patch.setattr(values["pwd"], "getpwnam", lambda account: SimpleNamespace(pw_uid=1200))
+        patch.setattr(
+            values["pwd"], "getpwnam", lambda account: SimpleNamespace(pw_uid=1200, pw_dir="/home/" + account)
+        )
         patch.setattr(os, "geteuid", lambda: uid)
         patch.setattr(sys, "argv", [str(SCRIPT), *arguments])
         patch.setattr(subprocess, "run", commands)
@@ -1314,3 +1327,24 @@ def test_pending_admin_cannot_add_a_project(memory_host, monkeypatch, capsys):
     path.write_text("member=hand\nlocked=false\nlaptop=laptop ssh-ed25519 AAAA wg= 192.0.2.3\nlock=pending\n")
     result = project(memory_host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)
     assert_refused(memory_host, result, "locked", 65)
+
+
+@pytest.mark.parametrize(
+    "home",
+    [None, "", "/", "home/porelo-forge", "/home/../root"],
+    ids=["unknown", "empty", "root", "relative", "dotdot"],
+)
+def test_a_forge_account_without_a_usable_home_is_refused(monkeypatch, home):
+    """Prevent podman from running as the forge account with a home that is root's, relative or not its own."""
+    namespace = runpy.run_path(str(SCRIPT), run_name="forge_home_tests")
+    values = namespace["forge_home"].__globals__
+
+    def lookup(account):
+        if home is None:
+            raise KeyError(account)
+        return SimpleNamespace(pw_dir=home)
+
+    monkeypatch.setattr(values["pwd"], "getpwnam", lookup)
+    with pytest.raises(values["Refusal"]) as refused:
+        namespace["forge_home"]("porelo-forge")
+    assert refused.value.code == 69, str(refused.value)

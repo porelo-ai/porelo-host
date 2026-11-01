@@ -177,7 +177,13 @@ def host(tmp_path):
         "sys.exit(real.returncode)\n"
     )
 
-    (bin_dir / "runuser").write_text('#!/bin/sh\nwhile [ "$1" != -- ]; do shift; done\nshift\nexec "$@"\n')
+    # Root's working directory and HOME are not the forge account's, so its call starts in / with its own home.
+    (bin_dir / "runuser").write_text(
+        '#!/bin/sh\n[ "$1 $2 $3" = "-u porelo-forge --" ] || { echo "runuser not as porelo-forge: $*" >&2; exit 97; }\n'
+        "shift 3\n"
+        f'[ "$1 $2 $3 $4" = "env -C / HOME={forge_home}" ] || {{ echo "runuser without env -C / and HOME: $*" >&2; exit 97; }}\n'
+        'exec "$@"\n'
+    )
 
     (bin_dir / "porelo-host-person").write_text(
         f"#!{sys.executable}\n"

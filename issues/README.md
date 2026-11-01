@@ -40,13 +40,13 @@ it is left out.
 | <a id="ho76"></a>[HO76](HO76-Each-Push-Judged-When-It-Arrives.md) | L | [HO71](#ho71), [HO75](#ho75); Porelo's commit verify against signers and KRL | The first accepted push of a commit to the host's forge judges it against the signers and KRL in force, and records the verdict. |
 | <a id="ho85"></a>[HO85](HO85-The-Push-Judge-Armed-Only-Where-It-Holds.md) | S | [HO76](#ho76) | A repository is armed only where the judge's hook holds, a removal takes the arrivals along, and each verdict is recorded only whole. |
 | <a id="ho87"></a>[HO87](HO87-The-Hosts-Registry-State-Answered.md) | S | [HO70](#ho70) | The interface reads, as root over SSH, which registry the host applied and each person's standing on it. |
+| <a id="ho89"></a>[HO89](HO89-A-Person-Locked-And-Purged-Through-The-Transports-Expel.md) | M | - | Lock and purge give the Matrix transport's expel its administrator's token on stdin, and run as the person from `/`. |
 
 ## Implementing
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho72"></a>[HO72](HO72-The-Central-Forge-Reached-Only-On-A-Persons-Word.md) | M | - | No token for the central forge lies on the host: migration, push and pull take the starting person's own on stdin, once. |
-| <a id="ho89"></a>[HO89](HO89-A-Person-Locked-And-Purged-Through-The-Transports-Expel.md) | M | - | Lock and purge give the Matrix transport's expel its administrator's token on stdin, and run as the person from `/`. |
 | <a id="ho74"></a>[HO74](HO74-Every-Role-Tested-Without-The-VPN.md) | M | [HO63](#ho63), [HO68](#ho68), [HO69](#ho69), [HO70](#ho70), [HO71](#ho71), [HO72](#ho72), [HO73](#ho73), [HO75](#ho75), [HO76](#ho76), [HO89](#ho89) | Molecule shows every role over SSH alone, and the guide's checks pass on a rented host. |
 
 ## Backlog

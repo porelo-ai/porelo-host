@@ -678,9 +678,9 @@
     - name: Verify that the host comes back from a reboot with its firewall, homeserver and forge
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/reboot.yml"
 
-    # Skipped (notest) while lock and purge give the Matrix transport's expel no homeserver administrator's token on
-    # stdin: expel refuses (78), no person can be locked or purged, and down refuses for the persons left. Everything
-    # before the lock passes.
+    # Skipped (notest) while the published Matrix transport's expel reaches the homeserver on 127.0.0.1 alone: behind
+    # the gate it waits 180 s and exits 75, so no person can be locked or purged. It gets the gate's admin token on
+    # stdin.
     - name: Verify persons taken from the registry, admitted, reached, locked and purged on the prepared host
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/people.yml"
       tags: [notest]
