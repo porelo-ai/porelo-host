@@ -1,6 +1,6 @@
 # HO74 — Every Role Tested Without The VPN
 
-**Status:** Accepted (operator, 2026-10-30, with the project's one-click joining).
+**Status:** Implementing; its persons' lock and purge blocked by [HO89](README.md#ho89).
 **Size:** M - Molecule's scenario and the host's guide rewritten for SSH alone; measured M median 63 min, from three M
 builds (47, 63, 75).
 **Blocked by:** [HO63](README.md#ho63), [HO68](README.md#ho68), [HO69](README.md#ho69), [HO70](README.md#ho70),
