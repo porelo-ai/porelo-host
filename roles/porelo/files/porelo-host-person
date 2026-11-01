@@ -2917,11 +2917,17 @@ class Host:
             'organization="/var/lib/gitea/git/repositories/$1"\n'
             '[ -e "$organization" ] || [ -L "$organization" ] || exit 0\n'
             '[ -d "$organization" ] && [ ! -L "$organization" ] && cd "$organization" || exit 6\n'
+            # Forgejo 17 keeps no hooks in a repository: its git's core.hooksPath names one shared directory, whose
+            # pre-receive runs Forgejo's own check first and then each repository's hooks/pre-receive.d, the judge's.
+            'hooks="$(git config --file /var/lib/gitea/home/.gitconfig core.hooksPath)" && [ -n "$hooks" ] || exit 4\n'
+            '[ -f "$hooks/pre-receive" ] && [ -x "$hooks/pre-receive" ] || exit 4\n'
+            "grep -qxF 'custom_hooks_dir=\"./hooks/${hookname}.d\"' \"$hooks/pre-receive\" || exit 4\n"
             "shift\n"
             "for repository in *.git .*.git; do\n"
             '  [ -d "$repository" ] && [ ! -L "$repository" ] || continue\n'
             '  [ ! -L "$repository/hooks" ] && [ ! -L "$repository/hooks/pre-receive.d" ] || exit 5\n'
-            '  [ -x "$repository/hooks/pre-receive" ] || exit 4\n'
+            # A repository's own core.hooksPath would pass by the shared directory, and the judge with it.
+            '  git config --file "$repository/config" --get core.hooksPath > /dev/null; [ "$?" -eq 1 ] || exit 4\n'
             '  hook="$repository/hooks/pre-receive.d/porelo"\n'
             '  if [ ! -e "$hook" ] && [ ! -L "$hook" ]; then\n'
             '    mkdir -p "$repository/hooks/pre-receive.d" || exit 5\n'
@@ -2934,15 +2940,11 @@ class Host:
             '  git --git-dir="$repository" rev-list --all || exit 3\n'
             "done\n"
         )
-        listing = ["podman", "exec", "forgejo", "sh", "-c", script, "sh", project, *sorted(recorded)]
-        found = self.as_account(account, listing, accepted=(0, 4))
+        found = self.as_account(
+            account, ["podman", "exec", "forgejo", "sh", "-c", script, "sh", project, *sorted(recorded)], accepted=(0, 4)
+        )
         if found.returncode == 4:
-            # A migration can leave a repository without Forgejo's own delegating hook, which alone runs the judge's;
-            # Forgejo writes it again for every repository, and only then is the repository armed.
-            self.as_account(account, ["podman", "exec", "forgejo", "forgejo", "admin", "regenerate", "hooks"])
-            found = self.as_account(account, listing, accepted=(0, 4))
-            if found.returncode == 4:
-                refuse(f"a repository of {project} has no pre-receive hook of Forgejo's, even after regenerating", 69)
+            refuse(f"Forgejo's shared pre-receive hook would not run the judge for a repository of {project}", 69)
         found = found.stdout
         migrated, current = {}, None
         for line in found.splitlines():

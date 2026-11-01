@@ -295,7 +295,9 @@ after the bundle is applied.
 
 The first accepted push of a commit to the host's forge is its arrival, and there it is judged. Each repository of a
 project's organization links `hooks/pre-receive.d/porelo` to the hook mounted read-only into Forgejo's container,
-which runs it after Forgejo's own pre-receive hook. The hook sends the push's lines, the repository and its quarantine
+which runs it after Forgejo's own pre-receive hook: Forgejo 17 keeps its hooks in one directory its git's
+`core.hooksPath` names (`/var/lib/gitea/home/hooks`), whose `pre-receive` runs Forgejo's check and then each
+repository's `hooks/pre-receive.d`. The hook sends the push's lines, the repository and its quarantine
 to `/run/porelo-verify/verify.sock` in the container, whose directory is the host's `/run/porelo-host/verify` mounted
 read-only, and shows the answer to the pusher; no answer, or any answer but 200, refuses the push. A push that only
 deletes refs brings no commit and passes unjudged.
@@ -323,7 +325,8 @@ commits, and last an `armed` line. A commit pushed between the link and the list
 later pushes are arrivals. A repository made on the forge another way is armed by the next sync, and is not judged
 before; one whose history was not recorded is listed again at each sync until it is. The arming stops, recording
 nothing, when the hook link names anything but the mounted hook, the mounted hook is not executable, a link stands
-for the repository's hooks, or Forgejo's own hook is missing. Removing the project takes its arrivals along, so a
+for the repository's hooks, Forgejo's shared `pre-receive` is missing or runs no repository's hooks, or a repository
+names a `core.hooksPath` of its own. Removing the project takes its arrivals along, so a
 project brought again under the name starts its record anew. A person reads the record under the same shared lock
 the pushes take, never while a sync, a lock or a removal is half done.
 

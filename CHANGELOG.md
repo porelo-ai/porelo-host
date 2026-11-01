@@ -34,8 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `porelo-host-person add` starts the person's `porelod` with `porelo setup`, so their tunnel reaches a daemon before
   their first bring, and gives the account `umask=0022` in its GECOS field, so Ubuntu's usergroups `002` no longer makes
   directories Porelo refuses as group writable.
-- Sync's arming has Forgejo write its hooks again (`forgejo admin regenerate hooks`) when a migrated repository lacks
-  Forgejo's own `pre-receive`, instead of stopping with "runuser failed (exit 4)"; still missing, it names the cause.
+- Sync arms a repository through Forgejo 17's shared hooks directory (its git's `core.hooksPath`), whose `pre-receive`
+  runs each repository's `hooks/pre-receive.d`; it no longer waits for a `hooks/pre-receive` Forgejo 17 never writes
+  into a repository, which stopped every sync after a migration with "runuser failed (exit 4)".
 - `porelo-host-push --migrate` gives Forgejo the central token as the password of `x-access-token`, which a git
   migration clones with and GitHub takes for an App installation token as for a person's; `auth_token` it ignored.
 - `porelo-host-person sync` no longer calls the Matrix transport's `members`, which is the project admin's verb and
