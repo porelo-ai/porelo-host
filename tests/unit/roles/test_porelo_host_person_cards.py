@@ -70,6 +70,7 @@ def cards(tmp_path, monkeypatch):
     reply = {"persons": [persons[0], persons[1]], "admins": ["ada"]}
     host.verify_bundles = lambda *args: (reply, "1" * 40, "2" * 40, [ssh_key(9)])
     host.forge_project_apply = lambda project, admin, desired: calls.append(("teams", (project, desired)))
+    # The host keeps no Matrix room's members: the gate admits by login; a call here is recorded so tests see it.
     host.matrix_members = lambda project, desired: calls.append(("rooms", (project, desired)))
     host.key_revoked = lambda key: False
     return SimpleNamespace(host=host, calls=calls, reply=reply, scope=scope)
@@ -111,12 +112,12 @@ def test_project_lock_removes_only_its_authority_and_let_back_in_restores_it(car
     assert record["members"] == ["beta developer"] and not record["locked"]
     assert not any(call[0] in ("forge_lock", "matrix_expel_revoke") for call in cards.calls)
     assert not any(isinstance(call[0], list) and "terminate-user" in call[0] for call in cards.calls)
-    assert ("rooms", ("alpha", ["ada"])) in cards.calls
+    assert not any(call[0] == "rooms" for call in cards.calls)
     assert "alice" not in cards.host.read(cards.host.path("/etc/porelo-host/signers/alpha.allowed"))
     cards.reply["persons"][1]["locked"] = False
     sync(cards)
     assert "alpha developer" in cards.host.records()["alice"]["members"]
-    assert ("rooms", ("alpha", ["ada", "alice"])) in cards.calls
+    assert not any(call[0] == "rooms" for call in cards.calls)
 
 
 def test_signers_are_project_local_and_rotation_preserves_only_history(cards):
@@ -215,7 +216,7 @@ def test_host_lock_removes_signers_and_rooms_from_all_projects(cards):
     cards.host.execute(["lock", "alice"], None)
     for project in ("alpha", "beta"):
         assert "alice" not in cards.host.path(f"/etc/porelo-host/signers/{project}.allowed").read_text()
-    assert ("rooms", ("beta", ["bo"])) in cards.calls
+    assert not any(call[0] == "rooms" for call in cards.calls)
     assert any(call[0] == ["gpasswd", "--delete", "alice", "porelo-people"] for call in cards.calls)
     cards.calls.clear()
     sync(cards)
@@ -435,7 +436,7 @@ def test_verify_answering_the_old_role_name_is_refused(cards):
         sync(cards)
 
 
-@pytest.mark.parametrize("failed", [None, "forge", "rooms"])
+@pytest.mark.parametrize("failed", [None, "forge"])
 def test_lock_preserves_verified_admins_and_attempts_each_service(cards, failed):
     """Prevent role escalation and one service failure from retaining another service's authority."""
     cards.reply["persons"][1]["role"] = "admin"
@@ -452,13 +453,12 @@ def test_lock_preserves_verified_admins_and_attempts_each_service(cards, failed)
         return apply
 
     cards.host.forge_project_apply = service("forge")
-    cards.host.matrix_members = service("rooms")
     if failed:
         with pytest.raises(cards.scope["Refusal"], match=f"{failed} unavailable"):
             cards.host.execute(["lock", "alice"], None)
     else:
         cards.host.execute(["lock", "alice"], None)
-    assert attempts == ["forge", "rooms"]
+    assert attempts == ["forge"]
     assert cards.host.path("/etc/porelo-host/matrix/alpha.admins").read_text() == ""
 
 
@@ -569,11 +569,10 @@ def test_project_revocation_reports_all_service_failures(cards):
         return apply
 
     cards.host.forge_project_apply = failure("forge")
-    cards.host.matrix_members = failure("rooms")
     cards.host.matrix_admins = failure("admins")
     with pytest.raises(cards.scope["Refusal"]) as error:
         cards.host.revoke_project_access("alice")
-    assert attempts == ["forge", "rooms", "admins"]
+    assert attempts == ["forge", "admins"]
     assert all(name + " unavailable" in str(error.value) for name in attempts)
 
 
@@ -820,7 +819,7 @@ def test_lagging_card_cannot_preserve_ineligible_access(cards, loss):
     assert "alice" in answer["dropped"]
     assert "alpha developer" not in host.records()["alice"]["members"]
     assert "alice" not in json.loads(host.path("/etc/porelo-host/projects/alpha.people.json").read_text())
-    assert ("rooms", ("alpha", ["ada"])) in cards.calls
+    assert not any(call[0] == "rooms" for call in cards.calls)
     assert "alice" not in next(args[1] for name, args in cards.calls if name == "teams")
     assert ssh_key(2) not in host.path("/etc/porelo-host/signers/alpha.allowed").read_text()
     if loss in ("entry-krl", "previous-krl", "missing-account"):
@@ -1049,7 +1048,7 @@ def test_sync_continues_revoking_after_one_person_fails(cards):
     with pytest.raises(cards.scope["Refusal"], match="alice"):
         sync(cards)
     assert host.records()["bo"]["locked"]
-    assert ("rooms", ("alpha", ["ada"])) in cards.calls
+    assert not any(call[0] == "rooms" for call in cards.calls)
 
 
 @pytest.mark.parametrize("reason", ["key", "membership"])
@@ -1181,7 +1180,7 @@ def test_bad_project_does_not_block_remaining_project_revocations(cards, malform
     cards.calls.clear()
     with pytest.raises(cards.scope["Refusal"], match="malformed"):
         host.revoke_project_access("alice")
-    assert ("rooms", ("alpha", ["ada"])) in cards.calls
+    assert not any(call[0] == "rooms" for call in cards.calls)
 
 
 def test_null_previous_member_is_refused(cards):
@@ -1252,7 +1251,7 @@ def test_pending_local_lock_cannot_regain_runtime_or_project_access(cards, opera
         assert ("admitted", "alice") not in cards.calls
     else:
         host.revoke_project_access("ada")
-        assert ("rooms", ("alpha", [])) in cards.calls
+        assert not any(call[0] == "rooms" for call in cards.calls)
         assert ssh_key(2) not in host.path("/etc/porelo-host/signers/alpha.allowed").read_text()
 
 

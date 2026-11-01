@@ -4,7 +4,7 @@
 Root's 0600 people/<user>.conf records ordered member= lines, locked=true|false,
 ssh=<card key> and expires=<card expiry or empty>. No device credential is admitted.
 Sync verifies project bundles in an isolated unit and reconciles the verified
-persons' project roles, locks, forge teams, Matrix rooms and allowed signers.
+persons' project roles, locks, forge teams, room admins and allowed signers.
 Project locks leave other memberships, sessions and tokens intact. Host locks,
 current-key revocation and last-membership removal revoke the whole account.
 
@@ -1185,7 +1185,7 @@ class Host:
         return errors
 
     def revoke_project_access(self, user):
-        """Take a host-locked login out of every known project's teams, rooms and signers."""
+        """Take a host-locked login out of every known project's teams, room admins and signers."""
         directory = self.path("/etc/porelo-host/projects")
         self.check(directory, directory=True, mode=0o700)
         errors = []
@@ -1219,7 +1219,6 @@ class Host:
                 continue
             for apply in (lambda: self.project_signers(project, people),
                           lambda: self.forge_project_apply(project, admin, people),
-                          lambda: self.matrix_members(project, sorted(people)),
                           lambda: self.revoke_matrix_admins(project, people)):
                 try:
                     apply()
@@ -2078,7 +2077,6 @@ class Host:
                              entry_expiries={entry["login"]: entry.get("expires") for entry in entries})
         for apply in (lambda: self.forge_project_apply(project, admin, active),
                       lambda: self.forge_configuration(admin) is not None and self.arm_pushes(project),
-                      lambda: self.matrix_members(project, sorted(active)),
                       lambda: self.matrix_admins(self.path(f"/etc/porelo-host/matrix/{project}.admins"),
                                                 [user for user in admins if user in active],
                                                 self.account("porelo-matrix").pw_gid)):
@@ -2110,11 +2108,6 @@ class Host:
         groups = self.groups if self.groups is not None else {entry.gr_name for entry in grp.getgrall()}
         for user in sorted(desired - current):
             self.join_groups(user, groups)
-
-    def matrix_members(self, project, users):
-        """Reconcile only this project's rooms through the existing service-account transport boundary."""
-        self.require(["runuser", TRANSPORT])
-        self.as_account("porelo-matrix", [TRANSPORT, "members", project], input="".join(u + "\n" for u in users))
 
     def forge_project_apply(self, project, admin, persons):
         """Reconcile every project team, removing person and task identities only from this organization."""
@@ -2886,6 +2879,8 @@ class Host:
         # root records it once. A repository whose history root has not recorded is listed at each sync until it is.
         # A link that names no executable hook would let Forgejo skip it, so the arming stops instead.
         script = (
+            # Forgejo makes the repositories root with its first repository: a fresh forge has nothing to arm.
+            "[ -e /var/lib/gitea/git/repositories ] || [ -L /var/lib/gitea/git/repositories ] || exit 0\n"
             "[ -d /var/lib/gitea/git/repositories ] && [ ! -L /var/lib/gitea/git/repositories ] || exit 6\n"
             'organization="/var/lib/gitea/git/repositories/$1"\n'
             '[ -e "$organization" ] || [ -L "$organization" ] || exit 0\n'

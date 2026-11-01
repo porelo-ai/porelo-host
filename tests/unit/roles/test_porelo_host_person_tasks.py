@@ -1094,6 +1094,13 @@ def test_the_forge_without_the_organization_s_directory_arms_nothing(tasks, caps
     assert tasks.host.arm_pushes("alpha") == [] and arrivals(tasks) == []
 
 
+def test_a_forge_that_never_held_a_repository_arms_nothing(tasks, capsys):
+    """Prevent a fresh forge, whose repositories root Forgejo makes only with the first repository, failing a sync."""
+    tasks.forge.gitea = tasks.root.parent / "gitea"
+    tasks.forge.gitea.mkdir()
+    assert tasks.host.arm_pushes("alpha") == [] and arrivals(tasks) == []
+
+
 @pytest.mark.parametrize(
     "fields, uid",
     [
@@ -1273,7 +1280,7 @@ def wrong_link(repository, relative):
         lambda tasks: wrong_link(forge_repository(tasks, "app", ["d" * 40]), "hooks/pre-receive.d"),
         lambda tasks: wrong_link(forge_repository(tasks, "app", ["d" * 40]), "hooks"),
         lambda tasks: wrong_link(forge_repository(tasks, "app", ["d" * 40]).parent, "."),
-        lambda tasks: shutil.rmtree(forge_repository(tasks, "app", ["d" * 40]).parents[1]),
+        lambda tasks: wrong_link(forge_repository(tasks, "app", ["d" * 40]).parents[1], "."),
     ],
     ids=[
         "history unreadable",
@@ -1285,7 +1292,7 @@ def wrong_link(repository, relative):
         "linked hook directory",
         "linked hooks",
         "linked organization",
-        "no repositories",
+        "linked repositories root",
     ],
 )
 def test_arming_stops_on_what_it_cannot_read_and_records_nothing(tasks, capsys, broken):

@@ -76,7 +76,8 @@ SSH policy and initial key/KRL installation belong to `base`. The person helper 
 `/run/user/<uid>/porelo/porelod.sock`, and a per-person tmpfiles rule for both at admission; lock and purge remove
 them. Lock terminates sessions and stops the user manager even if a service hook refuses.
 Registry intake applies card keys and expiries, rebuilds the KRL and locks revoked accounts. Project sync applies
-verified person roles and locks to that project's forge teams, Matrix rooms and allowed signers. Other projects,
+verified person roles and locks to that project's forge teams, room admins and allowed signers; the Matrix room's
+members are the project admin's Porelo's to keep. Other projects,
 sessions and tokens stay until a host lock or last-membership removal. A project can restore a membership-only lock;
 it cannot undo a host lock. `porelo-people` holds exactly unlocked admitted logins. Purge permanently records the login
 in root's `0600` `/etc/porelo-host/people/purged` and refuses later admission.

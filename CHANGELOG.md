@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `porelo-host-person sync` no longer calls the Matrix transport's `members`, which is the project admin's verb and
+  refused the host's call with 64, failing every sync; the gate admits each login by itself. Its arming of pushes no
+  longer stops with 6 on a forge that never held a repository.
 - Lock and purge, and every lock a sync or a project's removal makes, end the person on the homeserver again: the
   Matrix transport's `expel` gets the homeserver administrator's token from the gate on its stdin, never on a command
   line, where before it refused with 78 and the lock stayed pending.

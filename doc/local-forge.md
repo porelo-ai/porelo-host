@@ -226,7 +226,9 @@ refused through root's mode `0600` `/etc/porelo-host/people/purged`, including o
    `/etc/ssh/authorized_keys/<login>`, with `expiry-time` when the card expires. There are no device names or VPN
    fields. `porelo-people` contains exactly the admitted logins that the host has not locked.
 5. A project's lock, revocation, expired card or removal takes the person out of that project's memberships,
-   forge teams, Matrix rooms and signers. Other memberships, the account, sessions and tokens stay.
+   forge teams, its room admins and signers. Other memberships, the account, sessions and tokens stay. The host
+   keeps no Matrix room's members: the gate admits each login of `porelo-people`, and the project admin's Porelo
+   keeps the room.
    An unlocked verified membership restores that project's access. A host lock, the current key in the host KRL,
    registry revocation or removal of the last membership locks the account, ends sessions and deletes forge tokens.
    A project cannot undo a host lock. A membership-only lock can be undone by a verified membership.
