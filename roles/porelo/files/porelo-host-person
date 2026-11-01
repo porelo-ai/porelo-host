@@ -2594,6 +2594,8 @@ class Host:
 
     def push_paths(self, values, entry):
         """Map the container's paths to the forge volume's on the host, each inside the pushed repository."""
+        # Git names them through a "." segment (<repository>/./objects/…); dropping one never moves a path, ".." stays.
+        values = {key: "/".join(part for part in value.split("/") if part != ".") for key, value in values.items()}
         inside = values["repository"]
         quarantine = values["quarantine"]
         if not re.fullmatch(re.escape(inside) + r"/objects/(tmp_objdir-)?incoming-[A-Za-z0-9]{1,64}", quarantine):

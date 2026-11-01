@@ -941,6 +941,20 @@ def test_a_push_porelo_accepts_is_recorded_with_its_signer_and_answered_200(task
     assert list((tasks.root / "run/porelo-host/push").iterdir()) == []
 
 
+def test_a_push_named_as_git_2_54_names_it_is_judged_on_the_plain_paths(tasks, capsys):
+    """Prevent every push from being refused unjudged because git names the quarantine through a dot segment."""
+    judged_project(tasks)
+    dotted = REPOSITORY + "/./objects/tmp_objdir-incoming-AbC123"
+    hook = judge(tasks, push_request({"quarantine": dotted, "objects": dotted, "alternates": REPOSITORY + "/./objects"}))
+    capsys.readouterr()
+    assert hook.status() == 200, hook.text()
+    args = tasks.forge.verifies[-1]["args"]
+    host = str(tasks.root) + VOLUME + "/git/repositories/alpha/app.git"
+    assert f"Environment=GIT_QUARANTINE_PATH={host}/objects/tmp_objdir-incoming-AbC123" in args
+    assert f"Environment=GIT_ALTERNATE_OBJECT_DIRECTORIES={host}/objects" in args
+    assert [arrival["verdict"] for arrival in arrivals(tasks)] == ["accepted"]
+
+
 def test_an_expired_card_signs_nothing_and_certifies_no_task(tasks, capsys):
     """Prevent a person whose card has ended from signing a commit the host takes."""
     judged_project(tasks)
@@ -1124,6 +1138,14 @@ def test_a_forge_that_never_held_a_repository_arms_nothing(tasks, capsys):
         ({"alternates": "/var/lib/gitea/git/repositories/beta/app.git/objects"}, None),
         ({"quarantine": REPOSITORY + "/objects/incoming-Gone", "objects": REPOSITORY + "/objects/incoming-Gone"}, None),
         ({"extra": "1"}, None),
+        (
+            {
+                "quarantine": REPOSITORY + "/./objects/../objects/tmp_objdir-incoming-AbC123",
+                "objects": REPOSITORY + "/./objects/../objects/tmp_objdir-incoming-AbC123",
+            },
+            None,
+        ),
+        ({"alternates": "/var/lib/gitea/git/repositories/beta/app.git/./objects"}, None),
     ],
     ids=[
         "another peer",
@@ -1135,6 +1157,8 @@ def test_a_forge_that_never_held_a_repository_arms_nothing(tasks, capsys):
         "other alternates",
         "no such quarantine",
         "extra field",
+        "dot dot in the quarantine",
+        "other alternates through a dot",
     ],
 )
 def test_a_request_not_from_the_forge_or_not_of_one_project_repository_is_refused_unjudged(tasks, capsys, fields, uid):
