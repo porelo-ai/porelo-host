@@ -2934,9 +2934,16 @@ class Host:
             '  git --git-dir="$repository" rev-list --all || exit 3\n'
             "done\n"
         )
-        found = self.as_account(
-            account, ["podman", "exec", "forgejo", "sh", "-c", script, "sh", project, *sorted(recorded)]
-        ).stdout
+        listing = ["podman", "exec", "forgejo", "sh", "-c", script, "sh", project, *sorted(recorded)]
+        found = self.as_account(account, listing, accepted=(0, 4))
+        if found.returncode == 4:
+            # A migration can leave a repository without Forgejo's own delegating hook, which alone runs the judge's;
+            # Forgejo writes it again for every repository, and only then is the repository armed.
+            self.as_account(account, ["podman", "exec", "forgejo", "forgejo", "admin", "regenerate", "hooks"])
+            found = self.as_account(account, listing, accepted=(0, 4))
+            if found.returncode == 4:
+                refuse(f"a repository of {project} has no pre-receive hook of Forgejo's, even after regenerating", 69)
+        found = found.stdout
         migrated, current = {}, None
         for line in found.splitlines():
             if line.startswith("repository "):

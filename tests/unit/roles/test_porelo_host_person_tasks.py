@@ -126,6 +126,12 @@ class Forge:
         offset = args.index("podman")
         if args[offset : offset + 5] == ["podman", "exec", "forgejo", "sh", "-c"]:
             return self.forge_shell(args, args[offset + 5], args[offset + 7 :])
+        if args[offset:] == ["podman", "exec", "forgejo", "forgejo", "admin", "regenerate", "hooks"]:
+            for repository in (self.gitea / "git/repositories").glob("*/*.git"):
+                if not getattr(self, "keeps_no_hook", False):
+                    (repository / "hooks/pre-receive").write_text("#!/bin/sh\n")
+                    (repository / "hooks/pre-receive").chmod(0o755)
+            return subprocess.CompletedProcess(args, 0, "", "")
         if args[offset:] == ["podman", "exec", "forgejo", "forgejo", "admin", "user", "list"]:
             return subprocess.CompletedProcess(
                 args,
@@ -1272,7 +1278,10 @@ def wrong_link(repository, relative):
     "broken",
     [
         lambda tasks: forge_repository(tasks, "app", None),
-        lambda tasks: forge_repository(tasks, "app", ["d" * 40], hook=False),
+        lambda tasks: (
+            forge_repository(tasks, "app", ["d" * 40], hook=False),
+            setattr(tasks.forge, "keeps_no_hook", True),
+        ),
         lambda tasks: forge_repository(tasks, "App", ["d" * 40]),
         lambda tasks: forge_repository(tasks, "app", ["not a commit"]),
         lambda tasks: (forge_repository(tasks, "app", ["d" * 40]), setattr(tasks.forge, "no_hook", True)),
@@ -1284,7 +1293,7 @@ def wrong_link(repository, relative):
     ],
     ids=[
         "history unreadable",
-        "no forge hook",
+        "no forge hook, even regenerated",
         "upper case",
         "bad history",
         "judge's hook not mounted",
@@ -1302,6 +1311,18 @@ def test_arming_stops_on_what_it_cannot_read_and_records_nothing(tasks, capsys, 
         tasks.host.arm_pushes("alpha")
     assert refused.value.code == 69
     assert arrivals(tasks) == [] and arrivals(tasks, "App") == []
+
+
+def test_a_migrated_repository_without_forgejos_hook_is_armed_once_forgejo_wrote_it_again(tasks, capsys):
+    """Prevent a sync from stopping at a migrated repository whose delegating hook Forgejo never wrote."""
+    app = forge_repository(tasks, "app", ["d" * 40], hook=False)
+    assert tasks.host.arm_pushes("alpha") == ["app"]
+    regenerate = [call for call in tasks.forge.calls if call[-3:] == ["admin", "regenerate", "hooks"]]
+    assert len(regenerate) == 1
+    assert os.access(app / "hooks/pre-receive", os.X_OK)
+    assert os.readlink(app / "hooks/pre-receive.d/porelo") == str(tasks.forge.gitea / "pre-receive-hook")
+    assert tasks.host.arm_pushes("alpha") == []
+    assert len([call for call in tasks.forge.calls if call[-3:] == ["admin", "regenerate", "hooks"]]) == 1
 
 
 def test_a_projects_person_reads_its_arrivals_and_no_one_else(tasks, capsys):
