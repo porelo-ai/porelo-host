@@ -9,20 +9,25 @@ import json
 import os
 import stat
 import runpy
-import ssl
 import subprocess
 import sys
-import threading
 import urllib.error
 import urllib.request
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import parse_qs, unquote, urlsplit
 
 import pytest
 
-from test_porelo_host_push import CENTRAL_TOKEN, assert_no_token_anywhere, bare, commit, git, host as push_host
+# pytest takes the fixture push_host by its name in this module, though nothing here names it.
+from test_porelo_host_push import (  # pylint: disable=unused-import
+    CENTRAL_TOKEN,
+    assert_no_token_anywhere,
+    bare,
+    commit,
+    git,
+    host as push_host,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "roles/forge/files/porelo-host-project"
@@ -320,7 +325,8 @@ def project(
             path = f"/api/v1/orgs/{org}/repos"
             pages = host["forge"].pages.get(path, [host["forge"].repositories.get(org, []), []])
             host["push"]["repos_json"].write_text(json.dumps({"token": ADMIN_TOKEN, "pages": pages}))
-        return real_run(arguments, **kwargs)
+        # The caller passes check itself.
+        return real_run(arguments, **kwargs)  # pylint: disable=subprocess-run-check
 
     def read_token(*_args):
         if token_error is not None:

@@ -986,7 +986,7 @@ def test_token_helpers_cannot_consume_the_central_credential(host, mode):
     helper = host["root"] / "bin/porelo-host-person"
     helper.write_text(
         helper.read_text().replace(
-            "import pathlib, sys\n", "import pathlib, sys\n" "assert sys.stdin.buffer.read() == b''\n"
+            "import pathlib, sys\n", "import pathlib, sys\nassert sys.stdin.buffer.read() == b''\n"
         )
     )
     arguments = ("porelo", "stand-in")
@@ -1119,6 +1119,7 @@ def run_capture(setup, command):
         ],
         capture_output=True,
         timeout=10,
+        check=False,
     )
 
 
@@ -1172,6 +1173,7 @@ def test_cleanup_uses_transfer_pid_before_active_pid_is_assigned(tmp_path):
         ],
         capture_output=True,
         timeout=5,
+        check=False,
     )
     assert result.returncode == 0 and b"-TERM -- -12345" in result.stdout, (result.stdout, result.stderr)
     assert b"-KILL -- -12345" in result.stdout

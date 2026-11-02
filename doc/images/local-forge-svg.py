@@ -51,10 +51,10 @@ def badge(x, y, ok):
     fill = "#2fa53a" if ok else "#e23b3b"
     add(f'<circle cx="{x}" cy="{y}" r="10" fill="{fill}" stroke="#1d1d1b" stroke-width="2"/>')
     if ok:
-        add(f'<path d="M{x-5},{y} l3.5,4 l6.5,-8" stroke="#fff" stroke-width="2.6" fill="none" '
+        add(f'<path d="M{x - 5},{y} l3.5,4 l6.5,-8" stroke="#fff" stroke-width="2.6" fill="none" '
             'stroke-linecap="round" stroke-linejoin="round"/>')
     else:
-        add(f'<path d="M{x-4.5},{y-4.5} l9,9 M{x+4.5},{y-4.5} l-9,9" stroke="#fff" stroke-width="2.6" '
+        add(f'<path d="M{x - 4.5},{y - 4.5} l9,9 M{x + 4.5},{y - 4.5} l-9,9" stroke="#fff" stroke-width="2.6" '
             'stroke-linecap="round"/>')
 
 
@@ -225,7 +225,7 @@ add(f'<text transform="translate(22,{TOP + 120}) rotate(-90)" font-size="24" fon
     'font-style="italic" text-anchor="middle">Time</text>')
 
 # everything that happens, a little below the region labels
-add(f'<g transform="translate(0,50)">')
+add('<g transform="translate(0,50)">')
 # one heading over each forge's area (inside the shifted group, so 12 is drawn at 62)
 add('<text x="661" y="12" text-anchor="middle" font-size="17" font-weight="700">local forge</text>')
 add('<text x="1029" y="12" text-anchor="middle" font-size="17" font-weight="700">central forge</text>')

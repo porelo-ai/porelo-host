@@ -13,7 +13,7 @@ says why.
 | How the stop's secrets reach the host | On the stop's standard input, from the person's secrets file on the desktop, each passed straight to its user; the drive holds none. | [Why](#how-the-stops-secrets-reach-the-host) |
 | The forge's CA on the desktop | One lasting CA of the person's, name-constrained to `porelo.internal` and the VPN's network, signs every host's forge; its key never reaches a host. | [Why](#the-forges-ca-on-the-desktop) |
 | Where the VM test runs | On a libvirt VM per run everywhere: here, in the GitHub Build and in the Forgejo build. | [Why](#where-the-vm-test-runs) |
-| `ansible-test sanity` | Not run yet, though the collection holds Python; it comes in its own pinned container. | [Why](#ansible-test-sanity) |
+| `ansible-test sanity` | Run in the Build on the whole collection, offline, its requirements taken by hash; shellcheck is left out. | [Why](#ansible-test-sanity) |
 | Ubuntu's `ansible-core` and CVE-2026-89091 | An accepted risk: the one tarball the host installs is the collection's own. | [Why](#ubuntus-ansible-core-and-cve-2026-89091) |
 | The release's publish job unpacks the build's artifact | An accepted risk: `unzip` parses an archive the build job made, beside the token that writes the release. | [Why](#the-releases-publish-job-unpacks-the-builds-artifact) |
 | The changelog | `CHANGELOG.md`, Keep a Changelog, as in every Porelo repository; no `antsibull-changelog`. | [Why](#the-changelog) |
@@ -74,10 +74,18 @@ are moved by hand.
 
 ## `ansible-test sanity`
 
-The collection holds Python: the `lines` callback. `ansible-test sanity` is not run on it yet, since it installs its own
-requirements from PyPI at run time, by version and without a hash, which a pinned build may not do. Until it runs in a
-pinned container of its own, the Build checks it with `black`, a compile, and unit tests that run it under the image's
-own `ansible-playbook`; what sanity adds beyond that, such as a plugin's documentation against its code, is not checked.
+`build/sanity.sh` runs `ansible-test sanity` on the whole collection, in the Build and locally alike. ansible-test makes
+a virtual environment for each test and installs that test's requirements into it with pip, from PyPI and by version
+alone, which a pinned build may not do. So the run takes the tools image `build/tools-image` pins, builds on it an
+image holding sanity's wheels, each taken by its hash from `build/sanity/requirements.txt`, and pip's bootstrap script,
+taken by its hash; pip's own configuration there takes nothing but those wheels, and the run has no network. The
+requirements follow the ansible-core of the tools image and are renewed when that image moves.
+
+What sanity leaves standing on purpose is named, each with its reason, in `tests/sanity/ignore-2.21.txt`: the
+interpreters of the helpers, scripts and the nftables template, which are no modules (the helpers' `-I` and `env -i`
+keep a caller's environment out); `_` for a value thrown away; and the shared
+block of `AGENTS.md`, which is kept elsewhere. The `shellcheck` test does not run, since the image holds no
+`shellcheck`; the shell helpers are checked by their unit tests alone.
 
 ## Ubuntu's `ansible-core` and CVE-2026-89091
 

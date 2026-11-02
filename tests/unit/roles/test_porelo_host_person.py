@@ -19,7 +19,6 @@ import runpy
 
 
 import shutil
-import ssl
 
 
 import stat
@@ -538,7 +537,6 @@ def test_registry_applies_a_verified_bundle_against_the_pin_and_records_it_root_
         "refused": [],
         "unchanged": False,
         "host": "host",
-        "pinned": fingerprint(SIGNER_ONE),
         "persons": [
             {
                 "login": "ada",

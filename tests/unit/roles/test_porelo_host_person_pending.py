@@ -9,9 +9,13 @@ from pathlib import Path
 import pytest
 import yaml
 
+# pytest takes a fixture by its name in this module, so the fixtures imported here are used though nothing names them.
+# pylint: disable=unused-import
 from test_porelo_host_person import host, sync_host, registry_host, ssh_key, applied
 from test_porelo_host_person_cards import cards, sync, registry_card
 from test_porelo_host_person_services import services, OWN
+
+# pylint: enable=unused-import
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -45,6 +49,7 @@ def test_registry_records_new_revocations_despite_a_stuck_retry(registry_host):
         input=state.registry_reply["persons"][1]["ssh"] + "\n",
         text=True,
         capture_output=True,
+        check=False,
     )
     assert check.returncode == 1, check.stdout + check.stderr
 
@@ -132,7 +137,7 @@ def test_pending_person_format_is_shared_and_preserved(cards, monkeypatch, reaso
     program = yaml.safe_load((ROOT / "roles/porelo/tasks/people.yml").read_text())[0]["ansible.builtin.command"][
         "argv"
     ][-2]
-    result = subprocess.run(["python3", "-I", "-c", program, str(people)], capture_output=True, text=True)
+    result = subprocess.run(["python3", "-I", "-c", program, str(people)], capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == []
 

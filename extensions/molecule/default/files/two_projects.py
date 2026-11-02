@@ -110,7 +110,7 @@ def run(argv, stdin="", user=None, check=True, keep=True):
             "LC_ALL=C.UTF-8",
             *argv,
         ]
-    done = subprocess.run(argv, input=stdin, capture_output=True, text=True, cwd=cwd)
+    done = subprocess.run(argv, input=stdin, capture_output=True, text=True, cwd=cwd, check=False)
     if keep:
         record_output(done)
     if check and done.returncode != 0:

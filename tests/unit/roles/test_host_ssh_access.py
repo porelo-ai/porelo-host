@@ -21,7 +21,7 @@ def host(tmp_path):
     host.owner, host.group = os.getuid(), os.getgid()
     host.account = lambda user: SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid())
     host.accounts = {"alice": 1001}
-    host.runner = lambda args, **kwargs: subprocess.run(args, capture_output=True, text=True, **kwargs)
+    host.runner = lambda args, **kwargs: subprocess.run(args, capture_output=True, text=True, **kwargs, check=False)
     host.commands = {"ssh-keygen", "loginctl", "systemctl", "usermod", "gpasswd"}
     return host
 
@@ -71,7 +71,10 @@ def test_krl_is_valid_empty_then_replaced_without_a_partial_target(host, tmp_pat
     assert target.read_bytes().startswith(b"SSHKRL\n\x00")
     query = tmp_path / "query.pub"
     query.write_text(key + "\n")
-    assert subprocess.run(["ssh-keygen", "-Q", "-f", str(target), str(query)], capture_output=True).returncode == 0
+    assert (
+        subprocess.run(["ssh-keygen", "-Q", "-f", str(target), str(query)], capture_output=True, check=False).returncode
+        == 0
+    )
     previous = target.read_bytes()
     replace = os.replace
     observed = []
@@ -84,7 +87,10 @@ def test_krl_is_valid_empty_then_replaced_without_a_partial_target(host, tmp_pat
     monkeypatch.setattr(os, "replace", publish)
     host.write_krl([key])
     assert observed == [previous]
-    assert subprocess.run(["ssh-keygen", "-Q", "-f", str(target), str(query)], capture_output=True).returncode == 1
+    assert (
+        subprocess.run(["ssh-keygen", "-Q", "-f", str(target), str(query)], capture_output=True, check=False).returncode
+        == 1
+    )
     previous = target.read_bytes()
     with pytest.raises(host.refusal):
         host.write_krl(["invalid"])

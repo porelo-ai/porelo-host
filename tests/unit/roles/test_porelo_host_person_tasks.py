@@ -50,7 +50,10 @@ class Keys:
     def make(self, name):
         path = self.directory / name
         made = subprocess.run(
-            [SSH_KEYGEN, "-q", "-t", "ed25519", "-N", "", "-C", "", "-f", str(path)], capture_output=True, text=True
+            [SSH_KEYGEN, "-q", "-t", "ed25519", "-N", "", "-C", "", "-f", str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
         )
         assert made.returncode == 0, made.stderr
         return " ".join(path.with_suffix(".pub").read_text().split()[:2])
@@ -77,6 +80,7 @@ class Keys:
             ],
             capture_output=True,
             text=True,
+            check=False,
         )
         assert made.returncode == 0, made.stderr
         return certificate.read_text()
@@ -195,7 +199,9 @@ class Forge:
             hook.chmod(0o755)
         script = script.replace("/var/lib/gitea/", str(self.gitea) + "/").replace(PUSH_HOOK, str(hook))
         environment = {"PATH": f"{bin_dir}:/usr/bin:/bin", "LC_ALL": "C"}
-        return subprocess.run(["sh", "-c", script, "sh", *arguments], capture_output=True, text=True, env=environment)
+        return subprocess.run(
+            ["sh", "-c", script, "sh", *arguments], capture_output=True, text=True, env=environment, check=False
+        )
 
     def check_certificate(self, args, input):
         """Porelo's task check-certificate as its contract answers, judging the signer with the real ssh-keygen."""
@@ -462,7 +468,7 @@ def test_a_certificate_the_persons_current_key_did_not_sign_for_this_task_now_is
         "bad signature": lambda: tampered(task_certificate(tasks)),
         "revoked person": lambda: revoke(tasks) or task_certificate(tasks),
         "person not in the registry": lambda: forget(tasks) or task_certificate(tasks),
-        "plain key": lambda: (tasks.keys.directory / "task.pub").read_text(),
+        "plain key": (tasks.keys.directory / "task.pub").read_text,
         "too long": lambda: task_certificate(tasks).strip() + " " + "x" * 16384 + "\n",
         "two lines": lambda: task_certificate(tasks) * 2,
         "empty": lambda: "",
@@ -907,7 +913,7 @@ def test_a_push_porelo_accepts_is_recorded_with_its_signer_and_answered_200(task
     args = verify["args"]
     host = str(tasks.root) + VOLUME + "/git/repositories/alpha/app.git"
     for setting in (
-        f"User=porelo-forge",
+        "User=porelo-forge",
         "PrivateNetwork=yes",
         "PrivateTmp=yes",
         "ProtectHome=tmpfs",

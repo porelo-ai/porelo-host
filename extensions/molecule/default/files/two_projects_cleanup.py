@@ -40,7 +40,7 @@ def delete(path):
 
 
 def tool(*argv):
-    done = subprocess.run(list(argv), input="", capture_output=True, text=True, cwd="/")
+    done = subprocess.run(list(argv), input="", capture_output=True, text=True, cwd="/", check=False)
     if done.returncode != 0:
         failures[" ".join(argv[:3])] = ((done.stderr or "").strip().splitlines() or [""])[-1][:300]
 
@@ -67,6 +67,7 @@ def forge_user_gone(name):
         capture_output=True,
         text=True,
         cwd="/",
+        check=False,
     )
     # Forgejo's console logger writes its errors to either stream.
     if done.returncode != 0 and "user does not exist" not in (done.stdout + done.stderr).lower():

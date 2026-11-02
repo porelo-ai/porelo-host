@@ -1,6 +1,5 @@
 """Prevent a push to the host's forge from passing unjudged, or the judge from answering anyone but the forge."""
 
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -41,6 +40,7 @@ def run_hook(tmp_path, status, answer="porelo: 1 new commit(s) judged and record
             "GIT_OBJECT_DIRECTORY": f"{repository}/objects/incoming-x",
             "GIT_ALTERNATE_OBJECT_DIRECTORIES": f"{repository}/objects",
         },
+        check=False,
     )
     return result, repository, sent.read_text() if sent.exists() else None, tmp_path / "argv"
 

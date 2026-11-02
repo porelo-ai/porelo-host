@@ -1,0 +1,17 @@
+# The tools image with ansible-test sanity's own requirements beside it, so the sanity run itself fetches nothing. The
+# base is passed as build/tools-image pins it, by digest. ansible-test makes a virtual environment for each test and
+# installs into it with pip, passing on no environment of ours: the wheels lie in /opt/sanity/wheels, each taken by its
+# hash, pip's own configuration tells it to take nothing else, and pip's bootstrap script, taken by its hash too, is
+# copied by build/sanity.sh to where ansible-test looks for it.
+ARG TOOLS_IMAGE
+FROM ${TOOLS_IMAGE}
+COPY requirements.txt /opt/sanity/requirements.txt
+RUN pip download -q --no-cache-dir --no-deps --require-hashes --only-binary=:all: -d /opt/sanity/wheels \
+        -r /opt/sanity/requirements.txt \
+    && python3 -c "import hashlib, sys, urllib.request; \
+data = urllib.request.urlopen('https://ci-files.testing.ansible.com/ansible-test/get-pip-25.2.py').read(); \
+digest = hashlib.sha256(data).hexdigest(); \
+sys.exit(f'get-pip-25.2.py has the hash {digest}') \
+    if digest != 'b4c0f2a23c8c26893d5b9bdcd3ef8e6d3915d90f84acccafa3e7829bd0bf4414' \
+    else open('/opt/sanity/get_pip_25_2.py', 'wb').write(data)" \
+    && printf '[global]\nno-index = true\nfind-links = /opt/sanity/wheels\n' > /etc/pip.conf

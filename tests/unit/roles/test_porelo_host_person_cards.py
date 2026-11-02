@@ -402,7 +402,9 @@ def test_krl_updates_keep_all_previously_revoked_keys(cards):
     """Prevent registry refresh or key rotation from reviving an already revoked key."""
     host = cards.host
     host.commands.add("ssh-keygen")
-    host.runner = lambda args, input=None: subprocess.run(args, input=input, text=True, capture_output=True)
+    host.runner = lambda args, input=None: subprocess.run(
+        args, input=input, text=True, capture_output=True, check=False
+    )
     host.key_revoked = cards.scope["Host"].key_revoked.__get__(host)
     host.write_krl([ssh_key(8)])
     host.write_krl([ssh_key(7)])
@@ -528,7 +530,7 @@ def test_revoked_login_with_a_refused_card_still_locks_its_recorded_key(cards):
     refused = []
     persons, revoked = host.registry_persons([person("alice", 2, ssh="invalid", revoked=True)], None, refused)
     keys = []
-    host.write_krl = lambda values: keys.extend(values)
+    host.write_krl = keys.extend
     host.apply_registry_cards(persons, revoked, host.records())
     assert refused
     assert host.records()["alice"]["locked"]
@@ -541,7 +543,7 @@ def test_purged_revocation_still_enters_the_krl(cards):
     host.write(host.path("/etc/porelo-host/people/purged"), "carol\n", 0o600)
     persons, revoked = host.registry_persons([person("carol", 7, revoked=True)], None, [])
     keys = []
-    host.write_krl = lambda values: keys.extend(values)
+    host.write_krl = keys.extend
     host.apply_registry_cards(persons, revoked, host.records())
     assert ssh_key(7) in keys
 
@@ -680,7 +682,7 @@ def test_purged_revocations_cannot_steal_keys_or_repeat_logins(cards, other):
     if other == "record":
         assert persons == []
         keys = []
-        host.write_krl = lambda values: keys.extend(values)
+        host.write_krl = keys.extend
         host.apply_registry_cards(persons, revoked, host.records())
         assert ssh_key(2) not in keys
         assert not host.records()["alice"]["locked"]

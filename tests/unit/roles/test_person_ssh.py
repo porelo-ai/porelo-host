@@ -62,7 +62,9 @@ def test_sshd_accepts_the_policy_and_only_people_can_forward_sockets(tmp_path):
     if sshd is None:
         pytest.skip("sshd is not installed")
     key = tmp_path / "host-key"
-    made = subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)], capture_output=True)
+    made = subprocess.run(
+        ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)], capture_output=True, check=False
+    )
     assert made.returncode == 0, made.stderr
     user = pwd.getpwuid(os.getuid()).pw_name
     group = grp.getgrgid(os.getgid()).gr_name
@@ -73,6 +75,7 @@ def test_sshd_accepts_the_policy_and_only_people_can_forward_sockets(tmp_path):
             [sshd, "-T", "-f", str(config), "-C", f"user={user},host=example.org,addr=192.0.2.1"],
             capture_output=True,
             text=True,
+            check=False,
         )
         assert result.returncode == 0, result.stderr
         settings = dict(line.split(None, 1) for line in result.stdout.splitlines())

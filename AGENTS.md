@@ -484,8 +484,9 @@ and the UTC time that text last changed; change it in the channel first, never i
   in the Build; nothing of Ansible is installed on a machine that checks the collection. The image is moved by this
   repository's agent, not by Dependabot.
 - **Files that cannot be Java, and why:** `mvnw`, the Maven wrapper that fetches the shared build tools by
-  `build/pom.xml`, which builds nothing; `build/tools.sh`, `build/check-tarball.sh` and `build/molecule.sh`, shell,
-  since they run the container, read its tarball and drive libvirt where the collection is checked;
+  `build/pom.xml`, which builds nothing; `build/tools.sh`, `build/sanity.sh`, `build/check-tarball.sh` and
+  `build/molecule.sh`, shell, since they run the container, read its tarball and drive libvirt where the collection is
+  checked;
   `roles/vm_pool/files/porelo-vm`, `roles/vm_pool/files/porelo-pool-give-back` and
   `roles/vm_pool/files/porelo-pool-revert`, shell, since they drive virsh on the host and run inside a pool VM, where
   there is no Java; `roles/porelo/files/porelo-host-stop` and `roles/forge/files/porelo-host-push`, shell, since they

@@ -2,7 +2,6 @@
 
 import os
 import subprocess
-from pathlib import Path
 
 
 def test_down_goes_through_when_up_made_nothing(tmp_path):

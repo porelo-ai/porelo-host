@@ -1,0 +1,37 @@
+# ansible-test sanity's own requirements for the tools image's ansible-core and Python 3.14, each by its wheel's hash,
+# and the pip its bootstrap puts into each test's virtual environment.
+# Taken from ansible_test/_data/requirements/sanity.*.txt of that ansible-core; renewed when build/tools-image moves.
+antsibull_docs_parser==1.0.0 \
+    --hash=sha256:397978554bfd58709f2aaa81946d1e31c71d674c411a8a9513d7181843eb1f63
+astroid==4.0.4 \
+    --hash=sha256:52f39653876c7dec3e3afd4c2696920e05c83832b9737afc21928f2d2eb7a753
+dill==0.4.1 \
+    --hash=sha256:1e1ce33e978ae97fcfcff5638477032b801c46c7c65cf717f95fbc2248f79a9d
+isort==8.0.1 \
+    --hash=sha256:28b89bc70f751b559aeca209e6120393d43fbe2490de0559662be7a9787e3d75
+jinja2==3.1.6 \
+    --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
+markupsafe==3.0.3 \
+    --hash=sha256:457a69a9577064c05a97c41f4e65148652db078a3a509039e64d3467b9e7ef97
+mccabe==0.7.0 \
+    --hash=sha256:6c2d30ab6be0e4a46919781807b4f0d834ebdd6c6e3dca0bda5a15f863427b6e
+packaging==26.0 \
+    --hash=sha256:b36f1fef9334a5588b4166f8bcd26a14e521f2b55e6b9de3aaa80d3ff7a37529
+pathspec==1.0.4 \
+    --hash=sha256:fb6ae2fd4e7c921a165808a552060e722767cfa526f99ca5156ed2ce45a5c723
+pip==25.2 \
+    --hash=sha256:6d67a2b4e7f14d8b31b8b52648866fa717f45a1eb70e83002f4331d07e953717
+platformdirs==4.9.4 \
+    --hash=sha256:68a9a4619a666ea6439f2ff250c12a853cd1cbd5158d258bd824a7df6be2f868
+pycodestyle==2.14.0 \
+    --hash=sha256:dd6bf7cb4ee77f8e016f9c8e74a35ddd9f67e1d5fd4184d86c3b98e07099f42d
+pylint==4.0.5 \
+    --hash=sha256:00f51c9b14a3b3ae08cff6b2cdd43f28165c78b165b628692e428fb1f8dc2cf2
+pyyaml==6.0.3 \
+    --hash=sha256:c458b6d084f9b935061bc36216e8a69a7e293a2f1e68bf956dcd9e6cbcd143f5
+tomlkit==0.14.0 \
+    --hash=sha256:592064ed85b40fa213469f81ac584f67a4f2992509a7c3ea2d632208623a3680
+voluptuous==0.16.0 \
+    --hash=sha256:ee342095263e1b5afbd4d418cb5adc92810eebfd07696bb033a261210df33db4
+yamllint==1.38.0 \
+    --hash=sha256:fc394a5b3be980a4062607b8fdddc0843f4fa394152b6da21722f5d59013c220

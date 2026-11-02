@@ -72,6 +72,11 @@ jobs:
                   build/tools.sh python3 -c "import sys; [compile(open(f).read(), f, 'exec') for f in sys.argv[1:]]" plugins/callback/lines.py
                   build/tools.sh python3 -m pytest -q -p no:cacheprovider -p no:pytest-ansible tests/unit
 
+            # ansible-test sanity on the whole collection, in the tools image with sanity's requirements installed by
+            # hash and no network while it runs; what it leaves out on purpose is named in tests/sanity/ with its reason.
+            - name: The collection under ansible-test sanity
+              run: build/sanity.sh
+
             - name: The tarball, holding only what the collection ships
               run: |
                   set -eu

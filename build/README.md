@@ -5,6 +5,8 @@ What builds and checks the collection; none of it ships. `pom.xml` builds nothin
 digest, and `tools.sh` runs a tool from it on this checkout, through podman, or directly with `HOST_TOOLS_IN_IMAGE=1`
 inside that image, as a Porelo task built from `../porelo.yml` is; `check-tarball.sh` refuses a collection tarball that
 holds anything the collection does not ship; `molecule.sh` runs the Molecule scenario on a VM it makes and deletes,
-from the cloud image `test-image` pins. `ansible-lint.yml` is ansible-lint's settings; `yamllint-ansible.yml`
+from the cloud image `test-image` pins. `sanity.sh` runs `ansible-test sanity` offline on a copy of the
+collection, in an image `sanity/Containerfile` builds on the tools image with the wheels `sanity/requirements.txt`
+takes by hash. `ansible-lint.yml` is ansible-lint's settings; `yamllint-ansible.yml`
 holds the collection's Ansible YAML to two spaces and `yamllint.yml` every other YAML file to four, as `.editorconfig`
 splits them.

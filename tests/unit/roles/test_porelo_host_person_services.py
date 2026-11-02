@@ -5,12 +5,9 @@ import http.client
 import json
 import os
 import runpy
-import shutil
 import ssl
 import stat
 import subprocess
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
