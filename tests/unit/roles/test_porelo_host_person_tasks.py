@@ -946,7 +946,9 @@ def test_a_push_named_as_git_2_54_names_it_is_judged_on_the_plain_paths(tasks, c
     """Prevent every push from being refused unjudged because git names the quarantine through a dot segment."""
     judged_project(tasks)
     dotted = REPOSITORY + "/./objects/tmp_objdir-incoming-AbC123"
-    hook = judge(tasks, push_request({"quarantine": dotted, "objects": dotted, "alternates": REPOSITORY + "/./objects"}))
+    hook = judge(
+        tasks, push_request({"quarantine": dotted, "objects": dotted, "alternates": REPOSITORY + "/./objects"})
+    )
     capsys.readouterr()
     assert hook.status() == 200, hook.text()
     args = tasks.forge.verifies[-1]["args"]
