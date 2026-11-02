@@ -14,14 +14,20 @@ a host without them takes and drops the project's members alone.
 
 - The host's card in the organization names the projects it carries by name; the follow compares that list with the
   projects the host has and puts on or takes off the difference.
-- Putting on, where the host runs a forge: `roles/forge/files/porelo-host-project add` as today, with the signer from
-  the project's `project.yml` as the organization hands it; then the repositories migrate from the central forge with
+- Putting on, where the host runs a forge: `roles/forge/files/porelo-host-project add` as today, with the allowed
+  signers `porelo org signers` builds from the state taken; then the repositories migrate from the central forge with
   the host admin's central token, sent once through their tunnel on standard input, as the push takes it today; it never
   lies on the host. The same token adds the host's read-only deploy key to each of the project's repositories; the key
   is made on the host, root's alone, and taking the project off removes it.
 - Taking off, where the host runs a forge: `porelo-host-project remove` as today, refused while any repository holds a
   commit the central forge lacks, read with the project repository's deploy key, with the refusal named in the follow's
   answer.
+- The token at putting on: after the host admin's `carry`, the interface runs *Refresh* (`org refresh`) with the token
+  on standard input; until it comes, the project stands as `waiting-for-token` in `org status`. A project kept for
+  unpushed commits stands as `held`, naming them. Each member's read ACL on
+  `/etc/porelo-host/organization/projects/<project>.json` follows the members, and a locked member's is taken off.
+- Porelo on the host takes `homeserver` and `room` from that file, written by the follow, both only where the host runs
+  the gate and the project names no homeserver of its own.
 - The project's room, where the host runs the Matrix gate and the project's `project.yml` names no homeserver of its own
   under `mail.transports.matrix` (otherwise its room is kept where it names, not here): on putting on, on each change of
   its members and on *Refresh*, the follow runs the Matrix gate's `keep-room --project <project> --persons <logins>`
@@ -38,11 +44,3 @@ a host without them takes and drops the project's members alone.
 
 - Molecule: a project put on the card stands with its repositories after one follow; taken off, it goes, or stays named
   while a commit is unpushed.
-
-## To be checked
-
-- How the interface sends the host admin's token at the moment of putting on: the same stop as the push, or one of its
-  own.
-- Where Porelo on the host takes its transport's `homeserver` (`unix:/run/porelo-matrix/client.sock`) and `room`
-  (`#porelo-<project>:<server>`, with the host's Matrix server name) from, both always, now that no access file names
-  them: a file the host writes, settled with Core.

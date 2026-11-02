@@ -31,14 +31,23 @@ took, and applies it.
   root, readable by its members alone. Nothing of root's credentials is readable by a person.
 - A systemd timer and service of root's, `porelo-host-follow`, every five minutes, `Persistent=true`; a refusal fails
   the unit loudly and changes nothing.
-- A root verb the host admin reaches over SSH for *Refresh*, answering what changed.
-- A person who is a member of no project the host carries any more is locked on that follow. Seven days later the
-  follow purges their account by itself: the Linux account with whatever it holds unpushed, their forge users and
-  tokens, and their Matrix accounts expelled where the gate runs. The record keeps the day of the lock; a person taken
-  back into a project within the seven days is unlocked and finds the account as they left it.
-- Red first: a state older than the last one is refused; a revoked person is locked on the next follow; a project the
-  host no longer carries locks its members who hold no other membership. Such a person is purged on the first follow
-  seven days after the lock and not before; taken back within them, they are unlocked with their account untouched.
+- *Refresh* is `porelo-host-person org refresh`, root's, reached by the host admin over SSH: it follows at once and
+  answers as `org status` does. It takes the host admin's central token on standard input only while a project waits for
+  it (HO94), takes an empty input otherwise, and refuses a token nobody waits for, so none lies unused.
+- `org status` answers, besides the host and its persons, `projects`: each with `state` (`carried`, `putting-on`,
+  `waiting-for-token`, `held`, `gone`), `why` (for `held`, the repositories with unpushed commits) and `since`; a locked
+  person carries `purge_on`, the day the account is deleted.
+- The fetch is `porelo org fetch --host --settings --ssh-key --known-hosts --pin --since`: the organization repository's
+  deploy key and the central forge's host key pinned at `up`, both root's; the pin is the set of host admin keys last
+  taken, written back only once an answer is taken.
+- A person who is a member of no project the host carries any more is locked on that follow. Seven days later the follow
+  purges their account by itself: the Linux account with whatever it holds unpushed, their forge users and tokens, and
+  their Matrix accounts expelled where the gate runs. The record keeps the day of the lock; a person taken back into a
+  project within the seven days is unlocked and finds the account as they left it.
+- Red first: a state older than the last one is refused; a token given to *Refresh* with no project waiting is refused;
+  a revoked person is locked on the next follow; a project the host no longer carries locks its members who hold no
+  other membership. Such a person is purged on the first follow seven days after the lock and not before; taken back
+  within them, they are unlocked with their account untouched.
 
 ## Acceptance
 
