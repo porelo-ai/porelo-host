@@ -39,7 +39,7 @@ took, and applies it.
   the unit loudly and changes nothing.
 - *Refresh* is `porelo-host-person org refresh`, root's, reached by the host admin over SSH: it follows at once and
   answers as `org status` does. It takes the host admin's central token on standard input only while a project waits for
-  it (HO94), takes an empty input otherwise, and refuses a token nobody waits for, so none lies unused.
+  it ([HO94](README.md#ho94)), takes an empty input otherwise, and refuses a token nobody waits for, so none lies unused.
 - `org status` answers, besides the host and its persons, `projects`: each with `state` (`carried`, `putting-on`,
   `waiting-for-token`, `held`, `gone`), `why` (for `held`, the repositories with unpushed commits) and `since`; a locked
   person carries `purge_on`, the day the account is deleted.
