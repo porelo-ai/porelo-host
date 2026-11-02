@@ -14,7 +14,7 @@ host without hand patches.
 
 - The test peer reaches the forge, the homeserver and the daemon only through an SSH tunnel with a person's key, and
   nothing else on the host from outside.
-- `doc/guides/6-host.md` and its scripts without the VPN, the CA and the stops that went, tried once on a rented host.
+- The operator's walk without the VPN, the CA and the stops that went, tried once on a rented host.
   The preparation checks that the host runs the porelo-host collection and helpers of the commit under test, so what
   [HO67](README.md#ho67) asked of a rented host stays.
 
