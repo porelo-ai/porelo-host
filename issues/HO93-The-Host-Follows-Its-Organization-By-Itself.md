@@ -32,8 +32,13 @@ took, and applies it.
 - A systemd timer and service of root's, `porelo-host-follow`, every five minutes, `Persistent=true`; a refusal fails
   the unit loudly and changes nothing.
 - A root verb the host admin reaches over SSH for *Refresh*, answering what changed.
+- A person who is a member of no project the host carries any more is locked on that follow. Seven days later the
+  follow purges their account by itself: the Linux account with whatever it holds unpushed, their forge users and
+  tokens, and their Matrix accounts expelled where the gate runs. The record keeps the day of the lock; a person taken
+  back into a project within the seven days is unlocked and finds the account as they left it.
 - Red first: a state older than the last one is refused; a revoked person is locked on the next follow; a project the
-  host no longer carries locks its members who hold no other membership.
+  host no longer carries locks its members who hold no other membership. Such a person is purged on the first follow
+  seven days after the lock and not before; taken back within them, they are unlocked with their account untouched.
 
 ## Acceptance
 
