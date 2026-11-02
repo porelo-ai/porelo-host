@@ -7,7 +7,10 @@
     group: root
     mode: "0700"
 
-- name: person | Allow people to sync their project
+- name: person | Configure the organization and its follow timer
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/organization.yml"
+
+- name: person | Allow people their own commands
   ansible.builtin.copy:
     src: "{{ role_path }}/files/porelo-host-person.sudoers"
     dest: /etc/sudoers.d/porelo-host-person

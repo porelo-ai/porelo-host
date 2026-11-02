@@ -16,6 +16,8 @@ import urllib.request
 
 import pytest
 
+from test_porelo_host_person import ssh_key
+
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "roles/porelo/files/porelo-host-person"
 ADMIN_TOKEN = "a" * 40
@@ -134,7 +136,10 @@ class Services:
             self.users[user] = True
             data, status = {}, 200
         elif method == "DELETE":
-            self.tokens[user].remove(int(path.rsplit("/", 1)[1]))
+            if path.endswith("/" + user):
+                del self.users[user]
+            else:
+                self.tokens[user].remove(int(path.rsplit("/", 1)[1]))
             data, status = None, 204
         else:
             assert method == "GET" and path.endswith("/tokens")
@@ -203,6 +208,24 @@ def services(tmp_path, monkeypatch):
 
 def hook(services, name, *args):
     return services.host.hooks[name](*args)
+
+
+def test_purge_deletes_the_persons_forge_users_after_their_tokens(services):
+    """Prevent purged persons and their task gates from retaining Forgejo accounts."""
+    host = services.host
+    services.recorder.users = dict.fromkeys(IDENTITIES, True)
+    services.recorder.tokens = {user: [1, 2] for user in IDENTITIES}
+    # Linux revocation is isolated; the purge still runs its real Forgejo cleanup.
+    host.lock = lambda *args: None
+    host.hooks["matrix_expel_revoke"] = lambda *args: None
+    record = {"members": [], "locked": True, "ssh": ssh_key(1), "expires": None}
+    host.record("alice", record)
+    for kind in ("subuid", "subgid"):
+        host.write(host.path("/etc/" + kind), "", 0o644)
+    host.purge("alice", record, False, False)
+    assert services.recorder.users == {}
+    assert all(not tokens for tokens in services.recorder.tokens.values())
+    assert not services.recorder.admin_tokens
 
 
 def token_file(services):

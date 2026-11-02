@@ -32,7 +32,7 @@ def public_key(tmp_path):
     return key.with_suffix(".pub").read_text().rsplit(" ", 1)[0]
 
 
-def test_registry_key_has_expiry_and_no_source_address(host, tmp_path):
+def test_org_key_has_expiry_and_no_source_address(host, tmp_path):
     """Prevent expired cards or a writable home key file from granting access."""
     key = public_key(tmp_path)
     host.write_authorized_key("alice", key, "20300102030405Z")
@@ -114,7 +114,7 @@ def test_lock_ends_sessions_and_user_manager_even_when_a_hook_refuses(host):
     assert ["systemctl", "stop", "user@1001.service"] in calls
 
 
-def test_registry_revocation_ends_every_affected_users_sessions(host, tmp_path):
+def test_org_revocation_ends_every_affected_users_sessions(host, tmp_path):
     """Prevent a revoked card's open tunnel from surviving an atomic KRL update."""
     key = public_key(tmp_path)
     calls = []

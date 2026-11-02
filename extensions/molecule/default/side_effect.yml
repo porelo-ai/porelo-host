@@ -12,6 +12,20 @@
     side_effect_expected_accounts: >-
       {{ ['porelo-matrix'] + (['porelo-forge', 'porelo-runner'] if side_effect_forge == 'on' else []) }}
   tasks:
+    # Down refuses while anyone holds a membership, and the follow keeps its host admin one: root purges them first.
+    - name: Read whether the follow left its host admin
+      ansible.builtin.stat:
+        path: /etc/porelo-host/people/hostadmin.conf
+      register: side_effect_host_admin
+
+    - name: Purge the host admin, as down asks
+      ansible.builtin.command:
+        argv: [/usr/local/sbin/porelo-host-person, purge, hostadmin]
+      environment:
+        SUDO_USER: ""
+      when: side_effect_host_admin.stat.exists
+      changed_when: true
+
     # Check that up placed what down is expected to remove, so teardown cannot pass vacuously.
     - name: Read every account on the host before down
       ansible.builtin.getent:
@@ -178,6 +192,12 @@
         - /var/lib/systemd/linger/porelo-runner
         - /var/lib/systemd/linger/porelo-matrix
         - /etc/porelo-host/host.json
+        - /etc/porelo-host/organization
+        - /etc/porelo-host/setup
+        - /etc/porelo-host/signers
+        - /etc/systemd/system/porelo-host-follow.service
+        - /etc/systemd/system/porelo-host-follow.timer
+        - /var/lib/private/porelo-host-org-fetch
         - /etc/wireguard/wg-porelo.conf
         - /etc/wireguard/porelo-host.key
         - /etc/porelo-host/vpn.conf

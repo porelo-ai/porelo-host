@@ -363,7 +363,7 @@ def host(tmp_path):
 
     person_conf = alice_push / "porelo.conf"
     person_conf.write_text(
-        "# Written by porelo.host.bring; read by porelo-host-push.\n"
+        "# Written by the follow; read by porelo-host-push.\n"
         f"local {LOCAL_BASE}\n"
         "owner porelo\n"
         f"central-ca {forge_etc / 'central-ca.pem'}\n"
@@ -803,102 +803,6 @@ def test_nothing_reads_or_writes_roots_push_conf():
     assert "tasks/push.yml" in main_tasks, "roles/forge/tasks/main.yml does not include tasks/push.yml"
 
 
-def migration(host, routes):
-    """The bring's list of repositories still to migrate, and a forge that answers the person's own token."""
-    listed = host["alice_push"] / "porelo.migrate"
-    listed.write_text(
-        "# Written by porelo.host.bring; read by porelo-host-push --migrate.\n"
-        f"local {LOCAL_BASE}\n"
-        "owner porelo\n"
-        f"central-ca {host['forge_etc'] / 'central-ca.pem'}\n"
-        f"repository stand-in {CENTRAL_BASE}/stand-in.git\n"
-        f"repository second {CENTRAL_BASE}/second.git\n"
-    )
-    listed.chmod(0o600)
-    host["routes_json"].write_text(json.dumps({"token": PERSON_TOKEN, "routes": routes}))
-    return listed
-
-
-def test_migrate_takes_only_the_missing_repositories_with_the_central_token_in_the_body_alone(host):
-    """Prevents the central token from lying on the host, or reaching an argv, a log or an answer, at migration."""
-    listed = migration(
-        host,
-        {
-            "GET /api/v1/repos/porelo/stand-in": [200, {"name": "stand-in"}],
-            "GET /api/v1/repos/porelo/second": [404, {}],
-            "POST /api/v1/repos/migrate": [201, {"name": "second"}],
-        },
-    )
-
-    with argv_watched(CENTRAL_TOKEN) as seen:
-        code, output = push(host, "--migrate", "porelo", newline=False)
-
-    assert code == 0, output
-    assert "stand-in: already on the forge" in output and "second: migrated" in output, output
-    bodies = [json.loads(line) for line in host["bodies"].read_text().splitlines()]
-    assert bodies == [
-        {
-            "clone_addr": f"{CENTRAL_BASE}/second.git",
-            "repo_name": "second",
-            "repo_owner": "porelo",
-            "service": "git",
-            "mirror": False,
-            "private": True,
-            "auth_username": "x-access-token",
-            "auth_password": CENTRAL_TOKEN,
-        }
-    ]
-    assert not seen, f"the central token was in an argv: {seen}"
-    assert_no_token_anywhere(host, output)
-    assert not listed.exists(), "the migration list outlived a migration that took every repository"
-    files = [path for path in host["root"].rglob("*") if path.is_file() and path != host["bodies"]]
-    assert not [path for path in files if CENTRAL_TOKEN.encode() in path.read_bytes()], "the token lies in a file"
-    assert list(host["temporary"].iterdir()) == [], "the temporary answer was left behind"
-
-
-def test_a_migration_the_forge_refuses_names_its_answer_and_keeps_the_list(host):
-    """Prevents a refused migration from passing silently or losing what is still to migrate."""
-    listed = migration(
-        host,
-        {
-            "GET /api/v1/repos/porelo/stand-in": [404, {}],
-            "GET /api/v1/repos/porelo/second": [404, {}],
-            "POST /api/v1/repos/migrate": [422, {"message": "clone address refused"}],
-        },
-    )
-
-    code, output = push(host, "--migrate", "porelo")
-
-    assert code == 65, output
-    assert "stand-in: the forge answered HTTP 422: clone address refused" in output, output
-    assert listed.exists(), "the migration list went although nothing was migrated"
-    assert_no_token_anywhere(host, output)
-
-
-def test_migrate_runs_only_in_the_persons_own_account_from_their_own_list(host):
-    """Prevents root, or a list another account could write, from deciding what is migrated with the token."""
-    migration(host, {})
-    code, output = push(host, "--migrate", "porelo", uid=0)
-    assert code == 77, output
-
-    (host["alice_push"] / "porelo.migrate").chmod(0o644)
-    code, output = push(host, "--migrate", "porelo")
-    assert code == 66 and "porelo.migrate" in output, output
-
-    (host["alice_push"] / "porelo.migrate").chmod(0o600)
-    host["foreign_marker"].write_text(str(host["alice_push"] / "porelo.migrate"))
-    code, output = push(host, "--migrate", "porelo")
-    assert code == 66 and "9999" in output, output
-    host["foreign_marker"].unlink()
-
-    elsewhere = host["root"] / "elsewhere.migrate"
-    (host["alice_push"] / "porelo.migrate").rename(elsewhere)
-    (host["alice_push"] / "porelo.migrate").symlink_to(elsewhere)
-    code, output = push(host, "--migrate", "porelo")
-    assert code == 66 and "link" in output, output
-    assert not host["bodies"].exists(), "a request body was sent"
-
-
 def test_pull_brings_central_main_to_the_local_forge_as_central_main(host):
     """Prevents the central state from reaching the host only through a token kept there."""
     central = host["root"] / "central" / "stand-in.git"
@@ -980,8 +884,7 @@ def test_check_refuses_sudo_even_when_effective_uid_is_root(host, environment):
     assert not host["calls"].exists()
 
 
-@pytest.mark.parametrize("mode", ["push", "migrate"])
-def test_token_helpers_cannot_consume_the_central_credential(host, mode):
+def test_token_helpers_cannot_consume_the_central_credential(host):
     """Prevent a helper or sudo relay from consuming or observing the central token on stdin."""
     helper = host["root"] / "bin/porelo-host-person"
     helper.write_text(
@@ -989,11 +892,7 @@ def test_token_helpers_cannot_consume_the_central_credential(host, mode):
             "import pathlib, sys\n", "import pathlib, sys\nassert sys.stdin.buffer.read() == b''\n"
         )
     )
-    arguments = ("porelo", "stand-in")
-    if mode == "migrate":
-        migration(host, {"GET /api/v1/repos/porelo/stand-in": [200, {}], "GET /api/v1/repos/porelo/second": [200, {}]})
-        arguments = ("--migrate", "porelo")
-    code, output = push(host, *arguments)
+    code, output = push(host, "porelo", "stand-in")
     assert code == 0, (code, output)
     assert_no_token_anywhere(host, output)
 

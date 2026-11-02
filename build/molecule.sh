@@ -66,6 +66,11 @@ made=
 cleanup() {
     status=$?
     trap - EXIT INT TERM
+    # Kept only when asked and only on a failure: one failing scenario can be run again on the same VM.
+    if [ "${PORELO_HOST_MOLECULE_KEEP:-off}" = on ] && [ "$status" != 0 ] && [ -n "$made" ]; then
+        say "kept for the failure: $name, its files in $dir; porelo-vm delete $name removes it, then $dir by hand"
+        exit "$status"
+    fi
     rm -rf "$dir"
     if [ -n "$made" ]; then
         "$vm" delete "$name" || exit 1

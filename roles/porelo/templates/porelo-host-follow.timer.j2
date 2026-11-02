@@ -1,0 +1,11 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Follow the host's organization every five minutes
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+Unit=porelo-host-follow.service
+
+[Install]
+WantedBy=timers.target

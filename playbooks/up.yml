@@ -105,7 +105,7 @@
           text: Installing the people's helper
           seconds: 5
 
-    - name: Write and print what a project's access file needs of the host
+    - name: Write and print what the host's card needs of the host
       ansible.builtin.include_role:
         name: porelo.host.base
         tasks_from: host

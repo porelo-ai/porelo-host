@@ -1,0 +1,161 @@
+---
+- name: organization | Inspect the machine file before reading it
+  ansible.builtin.stat:
+    path: "{{ porelo_machine_file }}"
+    follow: false
+  register: __porelo_organization_machine_stat
+
+- name: organization | Require a machine file only root can write
+  ansible.builtin.assert:
+    that:
+      - __porelo_organization_machine_stat.stat.isreg | default(false)
+      - not (__porelo_organization_machine_stat.stat.islnk | default(false))
+      - __porelo_organization_machine_stat.stat.uid | default(-1) == 0
+      - not (__porelo_organization_machine_stat.stat.wgrp | default(true))
+      - not (__porelo_organization_machine_stat.stat.woth | default(true))
+    fail_msg: "{{ porelo_machine_file }} must be a plain file only root can write"
+    quiet: true
+
+- name: organization | Read the machine file's organization handover
+  ansible.builtin.slurp:
+    src: "{{ porelo_machine_file }}"
+  register: __porelo_organization_machine
+  no_log: true
+
+- name: organization | Require settings text and pinned forge and admin keys
+  ansible.builtin.assert:
+    that:
+      - __porelo_organization is mapping
+      - __porelo_organization.settings is string
+      - __porelo_organization.settings | length > 0
+      - __porelo_organization.known_hosts is string
+      - __porelo_organization.known_hosts | trim | length > 0
+      - __porelo_organization.pin is string
+      - __porelo_organization.pin | trim | length > 0
+    fail_msg: "organization needs settings text, known_hosts lines and pin lines"
+    quiet: true
+  no_log: true
+
+- name: organization | Inspect credential directories before creating them
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop:
+    - /etc/porelo-host
+    - /etc/porelo-host/organization
+    - /etc/porelo-host/organization/read
+    - /etc/porelo-host/organization/projects
+  register: __porelo_organization_directories
+
+- name: organization | Refuse directories another account could redirect
+  ansible.builtin.assert:
+    that:
+      - not item.stat.exists or (item.stat.isdir and not item.stat.islnk and item.stat.uid == 0 and
+        not item.stat.wgrp and not item.stat.woth)
+    fail_msg: "{{ item.item }} must be a directory of root's alone"
+    quiet: true
+  loop: "{{ __porelo_organization_directories.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: organization | Make the organization's private credential directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: /etc/porelo-host/organization, mode: '0711'}
+    - {path: /etc/porelo-host/organization/read, mode: '0700'}
+    - {path: /etc/porelo-host/organization/projects, mode: '0711'}
+
+- name: organization | Write the adapter settings without interpreting them
+  ansible.builtin.copy:
+    dest: /etc/porelo-host/organization/organization.yml
+    content: "{{ __porelo_organization.settings }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: organization | Write the central forge's pinned host keys
+  ansible.builtin.copy:
+    dest: /etc/porelo-host/organization/known_hosts
+    content: "{{ __porelo_organization.known_hosts }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+# A repeated up must not roll back a pin the verified organization has already advanced.
+- name: organization | Seed the host admin keys once
+  ansible.builtin.copy:
+    dest: /etc/porelo-host/organization/pin
+    content: "{{ __porelo_organization.pin }}"
+    force: false
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: organization | Inspect the organization's read key
+  ansible.builtin.stat:
+    path: /etc/porelo-host/organization/read/organization
+    follow: false
+  register: __porelo_organization_key
+  no_log: true
+
+- name: organization | Refuse an unsafe existing read key
+  ansible.builtin.assert:
+    that:
+      - not __porelo_organization_key.stat.exists or
+        (__porelo_organization_key.stat.isreg and not __porelo_organization_key.stat.islnk and
+        __porelo_organization_key.stat.uid == 0 and __porelo_organization_key.stat.mode == '0600')
+    fail_msg: "the organization's read key must be a root-owned plain 0600 file"
+    quiet: true
+  no_log: true
+
+- name: organization | Generate the organization's read key once
+  ansible.builtin.command:
+    argv: [ssh-keygen, -q, -t, ed25519, -N, '', -C, '', -f, /etc/porelo-host/organization/read/organization]
+    creates: /etc/porelo-host/organization/read/organization
+  no_log: true
+
+- name: organization | Read only the deploy key's public half
+  ansible.builtin.command:
+    argv: [ssh-keygen, -y, -f, /etc/porelo-host/organization/read/organization]
+  register: __porelo_organization_public
+  changed_when: false
+  no_log: true
+
+# The public summary is a collection contract consumed by the base role.
+- name: organization | Keep the public key for the host's summary
+  ansible.builtin.set_fact:
+    porelo_host_organization_read_key: >-  # noqa: var-naming[no-role-prefix]
+      {{ __porelo_organization_public.stdout | trim }}
+
+- name: organization | Name the host to the helper when no forge runs
+  ansible.builtin.copy:
+    dest: /etc/porelo-host/forge.conf
+    content: "host={{ porelo_host_name }}\naccount=\n"
+    owner: root
+    group: root
+    mode: "0644"
+  when: not (porelo_host_forge | default(false) | bool)
+
+- name: organization | Install the follow's service and persistent timer
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  loop: [porelo-host-follow.service, porelo-host-follow.timer]
+  register: __porelo_follow_units
+
+- name: organization | Enable the follow every five minutes
+  ansible.builtin.systemd_service:
+    name: porelo-host-follow.timer
+    daemon_reload: "{{ __porelo_follow_units is changed }}"
+    enabled: true
+    state: started

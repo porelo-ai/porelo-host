@@ -27,46 +27,9 @@ argument_specs:
         type: str
         default: https://fuinorg.jfrog.io/artifactory/porelo-dist-deb
         description: Porelo's apt repository.
-  project:
-    short_description: The second inventory from the machine file, its keys checked in the vault, the project followed.
-    options:
-      porelo_account:
-        type: str
-        required: true
-        description: The account Porelo's tasks run as.
-      porelo_machine_file:
-        type: path
-        default: /etc/porelo-host/setup/machine.yml
-        description: >-
-          The person's machine file, uploaded by the interface into the setup directory root's, which Porelo reads.
-  tasks:
-    short_description: >-
-      After project, every offered agent and the project's transport packages installed, with no task started.
-    options:
-      porelo_account:
-        type: str
-        required: true
-        description: The account Porelo's tasks run as.
-      porelo_distribution:
-        type: str
-        default: releases
-        choices: [releases, snapshots]
-        description: >-
-          Which of Porelo's published distributions the setup script lists and installs packages from.
-      porelo_setup_script:
-        type: path
-        default: /usr/share/porelo/setup/porelo-setup.sh
-        description: >-
-          Porelo's setup script, which lists agents with --list --json and installs missing packages with --with.
   down:
-    short_description: >-
-      Every running task of the account stopped, its vault cleared, and the stop's account file, the setup's files and
-      the room's registration token removed before the host is given back.
+    short_description: The organization's follow, its keys and the setup's files removed before the host is given back.
     options:
-      porelo_account:
-        type: str
-        required: true
-        description: The account Porelo's tasks run as.
       porelo_machine_file:
         type: path
         default: /etc/porelo-host/setup/machine.yml
@@ -75,6 +38,11 @@ argument_specs:
     short_description: >-
       The root helper /usr/local/sbin/porelo-host-person, its password and sync sudoers drop-in and SSH authorized_keys
       drop-in.
+    options:
+      porelo_machine_file:
+        type: path
+        default: /etc/porelo-host/setup/machine.yml
+        description: The machine file whose organization mapping supplies settings, known_hosts and pin text.
   people:
     short_description: >-
       Refuse at the start of down while any person record still holds a membership on the host.

@@ -1,7 +1,6 @@
 # HO74 — Every Role Tested Without The VPN
 
-**Status:** Implementing; its persons' lock and purge wait for the published Matrix transport whose `expel`
-reaches the homeserver through the gate.
+**Status:** Implementing; its persons' lock and purge are in the Molecule act, with the transport built from source.
 **Size:** M - Molecule's scenario and the host's guide rewritten for SSH alone; measured M median 63 min, from three M
 builds (47, 63, 75).
 **Blocked by:** [HO63](README.md#ho63).

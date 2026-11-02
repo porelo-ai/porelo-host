@@ -1,0 +1,24 @@
+---
+# The host following its organization on a real machine, up to a lock and a purge, through the stand-in's answers. One
+# script, as it acts as several people in turn and keeps its token out of Ansible's output.
+- name: Copy the follow's act onto the host
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/files/follow_act.py"
+    dest: /root/follow_act.py
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Follow the organization through its states and through what can go wrong
+  ansible.builtin.command:
+    argv: [/usr/bin/python3, -I, /root/follow_act.py]
+  register: verify_follow
+  changed_when: true
+  failed_when: false
+
+- name: Assert the act ran to its end
+  ansible.builtin.assert:
+    that: verify_follow.rc == 0
+    fail_msg: >-
+      the follow's act ended: {{ verify_follow.stderr }}; last right: {{ verify_follow.stdout_lines[-3:] }}
+    success_msg: "{{ verify_follow.stdout_lines | length }} facts of the follow hold"

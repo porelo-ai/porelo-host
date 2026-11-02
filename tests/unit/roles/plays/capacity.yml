@@ -3,8 +3,37 @@
   hosts: localhost
   connection: local
   gather_facts: false
+  vars_files:
+      - ../../../../roles/forge/defaults/main.yml
+  vars:
+      porelo_host_name: fixture-host
+      vpn_address: 192.0.2.1/24
+      porelo_host_network: 7
   tasks:
+      - name: Prevent main argument validation failing before capacity computes job bounds
+        ansible.builtin.validate_argument_spec:
+            argument_spec: >-
+                {{ (lookup('ansible.builtin.file', playbook_dir ~ '/../../../../roles/forge/meta/argument_specs.yml')
+                    | from_yaml).argument_specs.main.options }}
+
       - name: Run the forge's capacity check with its defaults against the given cpuinfo and meminfo
         ansible.builtin.include_role:
             name: porelo.host.forge
             tasks_from: capacity
+
+      - name: Prevent changed bounds on a second capacity check
+        ansible.builtin.set_fact:
+            first_capacity: "{{ [forge_runner_capacity | int, forge_job_cpus | int, forge_job_memory] }}"
+
+      - name: Repeat the real capacity tasks on the same host
+        ansible.builtin.include_role:
+            name: porelo.host.forge
+            tasks_from: capacity
+
+      - name: Prevent excessive defaults or changing explicit bounds
+        ansible.builtin.assert:
+            that:
+                - first_capacity == expected_capacity
+                - first_capacity == [forge_runner_capacity | int, forge_job_cpus | int, forge_job_memory]
+                - forge_job_omp_num_threads | int == forge_job_cpus | int
+        when: expected_capacity is defined

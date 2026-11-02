@@ -74,7 +74,6 @@
               porelo_host_distribution: snapshots
               porelo_host_forge: {{ (converge_forge == 'on') | lower }}
           {% if converge_forge == 'on' %}
-              porelo_host_forge_agents: [probe]
               # Lets Forgejo migrate from the stand-in central organization on the host's own forge.
               forge_migrations_allow_local: true
           {% endif %}
@@ -89,6 +88,35 @@
               porelo_host_vm_pool: {systems: [ubuntu], accounts: 1}
               vm_pool_memory: 1024
           {% endif %}
+
+    # What the host admin's desktop hands over for the organization: a read key is made on the host at up.
+    - name: Make the fixture key of the organization's host admin and the machine file's directory
+      ansible.builtin.shell:
+        cmd: |
+          set -eu
+          umask 077
+          mkdir -p /root/verify-org /etc/porelo-host/setup
+          [ -e /root/verify-org/hostadmin ] || ssh-keygen -q -t ed25519 -N "" -C "" -f /root/verify-org/hostadmin
+        creates: /root/verify-org/hostadmin
+
+    - name: Read the host's own key and the host admin's, for the machine file
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop: [/root/verify-org/hostadmin.pub, /etc/ssh/ssh_host_ed25519_key.pub]
+      register: converge_machine_keys
+
+    - name: Write the machine file's organization handover
+      ansible.builtin.copy:
+        dest: /etc/porelo-host/setup/machine.yml
+        owner: root
+        group: root
+        mode: "0600"
+        content: "{{ {'organization': converge_organization} | to_nice_yaml }}"
+      vars:
+        converge_organization:
+          settings: "organization: {address: 'git@central.example:acme/organization.git', forge: central.example}\n"
+          known_hosts: "central.example {{ (converge_machine_keys.results[1].content | b64decode).split()[:2] | join(' ') }}\n"
+          pin: "hostadmin {{ (converge_machine_keys.results[0].content | b64decode).split()[:2] | join(' ') }}\n"
 
     # Stands in for the host admin: Molecule's own key is pinned for root, as `host up` pins the card's key. Once SSH
     # reads only /etc/ssh/authorized_keys/%u, the VM's own login keeps its key there, as an admitted login would.

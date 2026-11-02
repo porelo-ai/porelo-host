@@ -10,11 +10,6 @@ __forge_image: >-
 # The hook path inside Forgejo's container; the person helper links each judged repository's pre-receive.d to it.
 __forge_push_hook: /usr/local/libexec/porelo/pre-receive
 
-# Where the person's push config and the bring's list of repositories still to migrate lie, theirs alone.
-__forge_push_dir: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo-host/push"
-__forge_to_migrate: "{{ __forge_repositories_state.results | selectattr('stdout', 'equalto', 'missing')
-  | map(attribute='item.name') | list }}"
-
 # Root's nonpublic forge settings and agent tokens; no certificate authority.
 __forge_state_dir: /etc/porelo-host/forge
 __forge_socket: "/run/user/{{ __forge_uid }}/porelo-forge/http.sock"
@@ -26,11 +21,6 @@ __forge_environment:
 __forge_admin: porelo-admin
 __forge_token: "{{ __forge_home }}/.config/porelo-forge/api.token"
 
-# The account every build publishes with, its team in the owner's organization, the Actions secret that holds its
-# token, and the file that says the secret was set, which down removes with the volume that holds the token.
-__forge_publisher: porelo-publisher
-__forge_publisher_team: publishers
-__forge_publisher_secret: PORELO_PUBLISHER_TOKEN
 __forge_publisher_set: "{{ __forge_home }}/.config/porelo-forge/publisher.set"
 
 # Forgejo's runner, by version and digest, the newest release at least three days old when it was pinned.
@@ -52,31 +42,3 @@ __forge_runner_jdk:
 __forge_runner_jdk_dir: "/opt/porelo-host/jdk-{{ __forge_runner_jdk.version }}"
 __forge_runner_job_hosts: /opt/porelo-host/runner-job-hosts
 __forge_runner_jdk_job_dir: /opt/porelo-jdk-25
-
-# The project's teams the bring makes in its organization, with no members: sync puts people into developers, and each
-# task's gate and agent identity into gates and agents. Each writes every repository of the organization and creates
-# none; Forgejo 17 reads the access from units_map alone.
-__forge_teams:
-  - name: developers
-    includes_all_repositories: true
-    can_create_org_repo: false
-    units_map: {repo.code: write, repo.pulls: write, repo.issues: write, repo.actions: read, repo.packages: read}
-  - name: gates
-    includes_all_repositories: true
-    can_create_org_repo: false
-    units_map: {repo.code: write, repo.pulls: write, repo.actions: read}
-  - name: agents
-    includes_all_repositories: true
-    can_create_org_repo: false
-    units_map: {repo.code: write, repo.pulls: write, repo.issues: write, repo.actions: read, repo.packages: read}
-
-# bring and join: the host's forge as /etc/porelo-host/forge.conf names it, and the person's runtime directory, where
-# their stop leaves the central token and the play keeps their own forge token while it runs. Both role's vars, so the
-# play's own settings never move a token's path.
-__forge_own_settings: "{{ dict(__forge_own_conf.content | b64decode | split('\n') | select('match', '^[a-z_]+=')
-  | map('split', '=', 1) | list) }}"
-__forge_own_uid: "{{ ansible_facts['getent_passwd'][porelo_account][1] | int }}"
-__forge_own_dir: "/run/user/{{ __forge_own_uid }}/porelo-host"
-__forge_own_environment:
-  XDG_RUNTIME_DIR: "/run/user/{{ __forge_own_uid }}"
-  DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ __forge_own_uid }}/bus"

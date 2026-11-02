@@ -36,7 +36,7 @@ from ansible.template import Templar
 
 VERSION = 1
 WAITING_TAG = "porelo_host_waiting"
-# The task whose message is the host's values for a project's access file, which the interface reads from its own line.
+# The task whose message is the host's values for its card, which the interface reads from its own line.
 HOST_TAG = "porelo_host_summary"
 HIDDEN = "hidden, the task has no_log"
 META_ACTIONS = ("meta", "ansible.builtin.meta", "ansible.legacy.meta")

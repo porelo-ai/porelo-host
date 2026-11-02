@@ -60,10 +60,28 @@ def main():
             forward = Path(directory) / "forward.sock"
             worker.start()
             process = subprocess.Popen(
-                ["ssh", "-N", "-i", str(key), "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes",
-                 "-o", "StrictHostKeyChecking=accept-new", "-o", f"UserKnownHostsFile={directory}/known_hosts",
-                 "-o", "ExitOnForwardFailure=yes", "-L", f"{forward}:{service}", f"{USER}@localhost"],
-                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                [
+                    "ssh",
+                    "-N",
+                    "-i",
+                    str(key),
+                    "-o",
+                    "IdentitiesOnly=yes",
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    "StrictHostKeyChecking=accept-new",
+                    "-o",
+                    f"UserKnownHostsFile={directory}/known_hosts",
+                    "-o",
+                    "ExitOnForwardFailure=yes",
+                    "-L",
+                    f"{forward}:{service}",
+                    f"{USER}@localhost",
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
             deadline = time.monotonic() + 10
             while not forward.exists() and process.poll() is None and time.monotonic() < deadline:

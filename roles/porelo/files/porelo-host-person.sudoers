@@ -1,7 +1,4 @@
-# Each helper checks SUDO_USER against root's records; sync accepts only sync <project> by that project's admin,
-# registry, in its bare form alone, only the pinned host admin, and arrivals only a person of that project.
-%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person sync *
-%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person registry
+# Each helper checks SUDO_USER against root's records.
 %porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person forge-token ""
 %porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person task *
 %porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person arrivals *

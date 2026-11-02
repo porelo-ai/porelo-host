@@ -1,0 +1,36 @@
+---
+# No published Porelo has `porelo org` yet, so Molecule's own stand-in answers it from what each act writes. Found first
+# on the PATH the helper's units run with; every other command goes on to the real Porelo.
+- name: Make the stand-in's directory
+  ansible.builtin.file:
+    path: /usr/local/share/porelo-org-standin
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the stand-in for porelo org
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/files/porelo-org-standin.py"
+    dest: /usr/local/bin/porelo
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install what writes the stand-in's answer
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/files/org-answer.py"
+    dest: /root/org-answer.py
+    owner: root
+    group: root
+    mode: "0700"
+
+# Until the published transport has the room verbs, a run can name a build of its own, in the checkout's target directory.
+- name: Install the transport this run names
+  ansible.builtin.copy:
+    src: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_TRANSPORT') }}"
+    dest: /usr/libexec/porelo/transports/porelo-message-transport-matrix
+    owner: root
+    group: root
+    mode: "0755"
+  when: lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_TRANSPORT', default='') | length > 0

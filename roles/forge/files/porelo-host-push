@@ -3,8 +3,7 @@
 # The gathered push, run by a project developer in their own account on the host: each repository's approved
 # local main goes to the central forge with a plain push. A central forge that moved refuses it, and its commits reach
 # the local forge as central/main. With --check, root compares every local ref of a project against Forgejo's migrated
-# original_url before project removal, writing neither forge. With --migrate, the project admin's bring stop has
-# Forgejo migrate the repositories the bring listed and the forge lacks; with --pull, central main reaches the local
+# original_url before project removal, writing neither forge. With --pull, central main reaches the local
 # forge as central/main. The central token is read from standard input every time and kept in memory alone. Git reaches
 # the host's forge on 127.0.0.1:<git_port>, the token-only gate git.sock has, with the person's own forge token.
 # The line above empties the environment before bash starts: it takes no PATH, HOME, git, proxy or shell setting from
@@ -56,7 +55,7 @@ forge_conf_value() {
 
 caller_uid=$(id -u) || fail "cannot read the calling account id" 69
 mode=push
-case "${1-}" in --migrate | --pull) mode=${1#--} && shift ;; esac
+case "${1-}" in --pull) mode=${1#--} && shift ;; esac
 checking=
 project_owner=
 if [ "$mode" = push ] && [ "${1-}" = --check ]; then
@@ -68,12 +67,11 @@ if [ "$mode" = push ] && [ "${1-}" = --check ]; then
     [[ $project_owner =~ $project_pattern ]] || fail "--check needs a valid project organization" 64
     shift 2
 else
-    [ "$caller_uid" != 0 ] || fail "push, --pull and --migrate run in the person's own account" 77
+    [ "$caller_uid" != 0 ] || fail "push and --pull run in the person's own account" 77
     [ "$#" -ge 1 ] || fail "name the project, and optionally the repositories to push" 64
     project_owner=$1
     [[ $project_owner =~ $project_pattern ]] || fail "'$project_owner' is not a project name" 64
     shift
-    [ "$mode" != migrate ] || [ "$#" -eq 0 ] || fail "--migrate takes the project alone" 64
 fi
 
 git_port=$(forge_conf_value git_port '^[1-9][0-9]{0,4}$') || exit $?
@@ -94,9 +92,7 @@ if [ -z "$checking" ]; then
         || fail "getent passwd gave no home directory for account $caller_uid" 69
 
     push_dir="$caller_home/.config/porelo-host/push"
-    # The bring's list of repositories still to migrate has the push config's form, under a name of its own.
     conf="$push_dir/$project_owner.conf"
-    [ "$mode" != migrate ] || conf="$push_dir/$project_owner.migrate"
     for dir in "$caller_home" "$caller_home/.config" "$caller_home/.config/porelo-host"; do
         [ ! -L "$dir" ] || fail "$dir is a symbolic link, not a directory of $caller_user's" 66
         [ -e "$dir" ] || fail "$conf does not exist ($dir is missing)" 66
@@ -237,7 +233,7 @@ finally:
             DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$caller_uid/bus \
             porelo vault put "$forge_name.person" > /dev/null 2>&1 \
         || printf 'porelo-host-push: %s\n' "your vault took no new forge token; $forge_name.person works again after \
-your next push, pull, bring or join with your vault open" >&2
+your next push or pull with your vault open" >&2
 else
     declare -A named=()
     for name in "$@"; do
@@ -438,32 +434,6 @@ said() {
     python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1])).get("message", ""))' "$answer" 2> /dev/null \
         || true
 }
-
-# The token reaches the request body on a pipe, never an argument: Forgejo clones with it once and keeps it nowhere.
-# A git migration ignores auth_token and clones with the address's user and password alone; GitHub takes an App
-# installation token, as a person's own, as the password of x-access-token, the same as --pull's Basic header.
-if [ "$mode" = migrate ]; then
-    for name in "${targets[@]}"; do
-        http_code=$(api "http://localhost/api/v1/repos/$owner/$name") || fail "$name: the forge did not answer" 69
-        case "$http_code" in
-            200) printf '%s: already on the forge\n' "$name" && continue ;;
-            404) ;;
-            *) fail "$name: the forge answered HTTP $http_code" 69 ;;
-        esac
-        http_code=$(printf '%s' "$central_token" | python3 -I -c '
-import json, sys
-print(json.dumps({"clone_addr": sys.argv[1], "repo_name": sys.argv[2], "repo_owner": sys.argv[3], "service": "git",
-                  "mirror": False, "private": True, "auth_username": "x-access-token",
-                  "auth_password": sys.stdin.read()}))
-' "${central_url[$name]}" "$name" "$owner" | api -X POST --data @- "http://localhost/api/v1/repos/migrate") \
-            || fail "$name: the forge did not answer the migration" 69
-        [ "$http_code" = 201 ] || fail "$name: the forge answered HTTP $http_code: $(redact "$(said)")" 65
-        printf '%s: migrated\n' "$name"
-    done
-    # Nothing is left to migrate, so the bring run again finds every repository and writes the push config.
-    rm -f -- "$conf" || fail "$conf could not be removed" 73
-    exit 0
-fi
 
 # Main is protected on the local forge, so central main arrives beside it and reaches it by a pull request.
 if [ "$mode" = pull ]; then

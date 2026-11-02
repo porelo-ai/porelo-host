@@ -42,14 +42,48 @@
           got {{ porelo_host_network | to_json if porelo_host_network is defined else 'undefined' }}
         quiet: true
 
-    - name: Stop while any person still holds a membership on the host
+    - name: Read the follow's installed units before pausing it
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/{{ item }}"
+      loop: [porelo-host-follow.timer, porelo-host-follow.service]
+      register: __porelo_follow_units
+
+    - name: Stop the follow timer and wait for an active follow to finish
+      ansible.builtin.systemd_service:
+        name: "{{ item.item }}"
+        state: stopped
+      loop: "{{ __porelo_follow_units.results }}"
+      when: item.stat.exists
+
+    - name: Check memberships with the follow paused
+      block:
+        - name: Stop while any person still holds a membership on the host
+          ansible.builtin.include_role:
+            name: porelo.host.porelo
+            tasks_from: people
+          vars:
+            porelo_host_step:
+              text: Checking admitted people
+              seconds: 5
+      rescue:
+        - name: Resume following on a host that cannot be taken down
+          ansible.builtin.systemd_service:
+            name: porelo-host-follow.timer
+            state: started
+          when: __porelo_follow_units.results[0].stat.exists
+
+        - name: Keep the membership refusal after resuming the follow
+          ansible.builtin.fail:
+            msg: "{{ ansible_failed_result.msg }}"
+
+    - name: Take the organization's follow, the account's tasks and its vault off the host
       ansible.builtin.include_role:
         name: porelo.host.porelo
-        tasks_from: people
+        tasks_from: down
       vars:
         porelo_host_step:
-          text: Checking admitted people
-          seconds: 5
+          text: Removing the organization's follow and the vault
+          seconds: 10
 
     - name: Stop the host's Matrix homeserver and remove its account
       ansible.builtin.include_role:

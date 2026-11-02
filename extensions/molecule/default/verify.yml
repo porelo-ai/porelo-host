@@ -43,18 +43,21 @@
           {{ ([ansible_user, 'porelo-matrix']
           + (['porelo-forge', 'porelo-runner'] if verify_forge == 'on' else [])) | unique | sort }}
 
-    - name: Read whether stop.conf or a person's setup directory exists on the host
-      ansible.builtin.stat:
-        path: "{{ item }}"
-      loop: [/etc/porelo-host/stop.conf, /etc/porelo-host/setup]
+    - name: Read whether stop.conf exists on the host, and what the handover's directory holds
+      ansible.builtin.shell:
+        cmd: |
+          [ ! -e /etc/porelo-host/stop.conf ] || echo /etc/porelo-host/stop.conf
+          find /etc/porelo-host/setup -mindepth 1 -printf '%p %U %m\n'
+        executable: /bin/bash
       register: verify_person_paths
+      changed_when: false
 
-    - name: Assert neither /etc/porelo-host/stop.conf nor /etc/porelo-host/setup exists
+    - name: Assert no stop.conf, and the root-only machine file alone in the handover's directory
       ansible.builtin.assert:
-        that: verify_person_paths.results | selectattr('stat.exists') | list | length == 0
+        that: verify_person_paths.stdout_lines == ['/etc/porelo-host/setup/machine.yml 0 600']
         fail_msg: >-
-          asked for neither /etc/porelo-host/stop.conf nor /etc/porelo-host/setup on a host with no person;
-          found {{ verify_person_paths.results | selectattr('stat.exists') | map(attribute='item') | list }}
+          asked for no stop.conf and only root's machine file on a host with no person;
+          found {{ verify_person_paths.stdout_lines }}
 
     - name: Search user systemd directories and running user managers for any porelo user unit outside porelo-matrix
       ansible.builtin.shell:
@@ -648,7 +651,7 @@
           - verify_host_json_stat.stat.mode | default('') == '0644'
           - verify_host_lines[0].host == verify_host_json
           - verify_host_json | dict2items | map(attribute='key') | sort
-            == ['address', 'homeserver', 'services', 'ssh_host_key']
+            == ['address', 'homeserver', 'organization_read_key', 'services', 'ssh_host_key']
           - verify_host_json.ssh_host_key == verify_expected_ssh_key
           - verify_host_json.homeserver == 'matrix.alpha.porelo.internal'
           - verify_host_json.address is match('^[0-9]{1,3}(\.[0-9]{1,3}){3}$')
@@ -678,29 +681,12 @@
     - name: Verify that the host comes back from a reboot with its firewall, homeserver and forge
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/reboot.yml"
 
-    # Skipped (notest) while the published Matrix transport's expel reaches the homeserver on 127.0.0.1 alone: behind
-    # the gate it waits 180 s and exits 75, so no person can be locked or purged. It gets the gate's admin token on
-    # stdin.
-    - name: Verify persons taken from the registry, admitted, reached, locked and purged on the prepared host
-      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/people.yml"
-      tags: [notest]
+    - name: Install the stand-in for what no published Porelo answers yet
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/org_standin.yml"
 
-    # These three still check the host of the VPN: WireGuard keys, addresses in 10.73.7.0/24, the forge's CA and
-    # laptop lines on add's stdin. They are skipped (notest) until they are rewritten on the registry.
-    - name: Verify projects registered, isolated and removed on the prepared host's forge
-      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/projects.yml"
+    - name: Verify the host following its organization, on a real machine and through its failures
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/follow.yml"
       when: verify_forge == 'on'
-      tags: [notest]
-
-    - name: Verify the gathered push run by a project admin and a developer with their own tokens
-      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/push.yml"
-      when: verify_forge == 'on'
-      tags: [notest]
-
-    - name: Verify two projects brought by their own admins, sharing a developer with two laptops, and taken off
-      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/two_projects.yml"
-      when: verify_forge == 'on'
-      tags: [notest]
 
     - name: Verify the host's TCP listeners and person socket forwarding over SSH
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/ssh.yml"

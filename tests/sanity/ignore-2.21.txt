@@ -1,22 +1,23 @@
 AGENTS.md no-smart-quotes # the shared rules' block is checked against its hash and changed only where it is kept
+doc/images/local-forge-svg.py pylint:disallowed-name # _ names a thrown-away value
 doc/images/local-forge-svg.py shebang # a script run by hand to draw the picture, not a module
-extensions/molecule/default/files/registry-bundle.sh shebang # Molecule's own script, run on the VM
+extensions/molecule/default/files/follow_act.py shebang # Molecule's own script, run on the VM
+extensions/molecule/default/files/org-answer.py shebang # Molecule's own script, run on the VM
+extensions/molecule/default/files/porelo-org-standin.py shebang # Molecule's own script, run on the VM
+extensions/molecule/default/files/verify-ssh.py pylint:disallowed-name # _ names a thrown-away value
 roles/base/templates/firewall.nft.j2 shebang # nft's own script, loaded by nft -f
 roles/forge/files/porelo-forge-gate shebang # installed on the host as a program of its own, with its interpreter
 roles/forge/files/porelo-host-project shebang # installed as root's program; -I keeps the caller's environment out
 roles/forge/files/porelo-host-push shebang # the person's program; env -i keeps the caller's environment out
 roles/porelo/files/porelo-host-person shebang # installed as root's program; -I keeps the caller's environment out
 roles/porelo/files/porelo-host-stop shebang # installed as the person's program, run by its own bash
-doc/images/local-forge-svg.py pylint:disallowed-name # _ names a thrown-away value
-extensions/molecule/default/files/two_projects.py pylint:disallowed-name # _ names a thrown-away value
-extensions/molecule/default/files/verify-ssh.py pylint:disallowed-name # _ names a thrown-away value
 tests/unit/plugins/callback/test_lines.py pylint:disallowed-name # _ names a thrown-away value
 tests/unit/roles/test_down_people.py pylint:disallowed-name # _ names a thrown-away value
 tests/unit/roles/test_forge_gate.py pylint:disallowed-name # _ names a thrown-away value
 tests/unit/roles/test_forge_push_judge.py pylint:disallowed-name # _ names a thrown-away value
+tests/unit/roles/test_porelo_host_person.py pylint:disallowed-name # _ names a thrown-away value
 tests/unit/roles/test_porelo_host_person_cards.py pylint:disallowed-name # _ names a thrown-away value
 tests/unit/roles/test_porelo_host_person_pending.py pylint:disallowed-name # _ names a thrown-away value
-tests/unit/roles/test_porelo_host_person.py pylint:disallowed-name # _ names a thrown-away value
 tests/unit/roles/test_porelo_host_project.py pylint:disallowed-name # _ names a thrown-away value
 tests/unit/roles/test_porelo_host_push.py pylint:disallowed-name # _ names a thrown-away value
 tests/unit/roles/test_porelo_host_stop.py pylint:disallowed-name # _ names a thrown-away value

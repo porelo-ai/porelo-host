@@ -1,8 +1,8 @@
 #!/usr/bin/python3 -I
 """Register a forge organization and its package publisher, or remove it after checking the central forge.
 
-A project is registered only where the registry state porelo-host-person applied, root's
-/etc/porelo-host/registry/applied.json, names it for its admin and does not revoke that admin.
+A project is registered only where the organization state porelo-host-person applied, root's
+/etc/porelo-host/organization/applied.json, names it for its admin and does not revoke that admin.
 
 Tokens stay in this process and the forge. The publisher's generated password is discarded by Forgejo's CLI,
 and its package token goes directly to the organization's Actions secret over the private socket.
@@ -18,6 +18,7 @@ import json
 import os
 import re
 import secrets
+import shlex
 import socket
 import stat
 import subprocess
@@ -34,7 +35,6 @@ ARRIVALS = "/var/lib/porelo-host/arrivals"
 CONF = "/etc/porelo-host/forge.conf"
 RUN_USER = "/run/user"
 PUSH = "/usr/local/sbin/porelo-host-push"
-PERSON = "/usr/local/sbin/porelo-host-person"
 ROOT_UID = 0
 TRUST_ANCHOR = "/"
 PROJECT_PATTERN = r"[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?"
@@ -139,7 +139,7 @@ def setting(values, key, pattern, path=CONF, code=69):
 
 def member_key(value):
     """Return the canonical sort key for one membership value, refusing unknown shapes."""
-    if value == "hand":
+    if value == "host-admin":
         return (0, "", 0)
     parts = value.split(" ")
     if len(parts) == 2 and re.fullmatch(PROJECT_PATTERN, parts[0]) and parts[1] in ("project-admin", "developer"):
@@ -147,22 +147,72 @@ def member_key(value):
     refuse("a person record holds an invalid membership", 65)
 
 
+ADMIN = "porelo-admin"
+# Each writes every repository of the organization and creates none; the follow fills them. Forgejo reads the access
+# from the units' map alone.
+TEAMS = (
+    {
+        "name": "developers",
+        "units": {
+            "repo.code": "write",
+            "repo.pulls": "write",
+            "repo.issues": "write",
+            "repo.actions": "read",
+            "repo.packages": "read",
+        },
+    },
+    {"name": "gates", "units": {"repo.code": "write", "repo.pulls": "write", "repo.actions": "read"}},
+    {
+        "name": "agents",
+        "units": {
+            "repo.code": "write",
+            "repo.pulls": "write",
+            "repo.issues": "write",
+            "repo.actions": "read",
+            "repo.packages": "read",
+        },
+    },
+)
+# Fast-forward alone keeps a pull request's commits unchanged: no merge commit under the forge's own name.
+MERGE_STYLE = {
+    "allow_fast_forward_only_merge": True,
+    "default_merge_style": "fast-forward-only",
+    "allow_merge_commits": False,
+    "allow_rebase": False,
+    "allow_rebase_explicit": False,
+    "allow_squash_merge": False,
+    "allow_manual_merge": False,
+}
+MAIN_PROTECTION = {
+    "rule_name": "main",
+    "enable_push": False,
+    "required_approvals": 1,
+    "enable_approvals_whitelist": True,
+    "approvals_whitelist_teams": ["Owners", "developers"],
+    "enable_merge_whitelist": True,
+    "merge_whitelist_teams": ["Owners", "developers"],
+    "enable_status_check": False,
+    "apply_to_admins": True,
+}
+
+
+def valid_lock_details(lines):
+    """A locked person's record ends in why and since when, in that order, each at most once."""
+    if lines and lines[0] in ("reason=membership", "reason=key"):
+        lines = lines[1:]
+    if lines and re.fullmatch(r"locked_on=\d{4}-\d{2}-\d{2}", lines[0]):
+        lines = lines[1:]
+    return not lines
+
+
 def read_person(user, path):
-    """Read and validate one trusted person record, accepting the legacy role-based shape."""
+    """Read and validate one trusted person record."""
     trusted(path, private=True)
     try:
         with open(path, encoding="utf-8") as stream:
             lines = stream.read().splitlines()
     except UnicodeError:
         refuse(f"{path} is not UTF-8", 69)
-    if (
-        len(lines) >= 4
-        and lines[0] == "role=project-admin"
-        and lines[1] == "projects="
-        and lines[2] in ("locked=false", "locked=true")
-        and all(line.startswith("laptop=") and len(line) > 7 for line in lines[3:])
-    ):
-        return ["hand"], lines[2] == "locked=true", False, lines[3:]
     pending = bool(lines and lines[-1] == "lock=pending")
     if pending:
         lines = lines[:-1]
@@ -177,30 +227,24 @@ def read_person(user, path):
         previous = order
         index += 1
     if (
-        len(lines) < index + 2
+        len(lines) < index + 3
         or lines[index] not in ("locked=false", "locked=true")
-        or not (
-            all(line.startswith("laptop=") and len(line) > 7 for line in lines[index + 1 :])
-            or (len(lines) in (index + 3, index + 4)
-                and lines[index + 1].startswith("ssh=")
-                and lines[index + 2].startswith("expires=")
-                and (len(lines) == index + 3 or lines[index + 3] in
-                     ("reason=host", "reason=membership", "reason=key")))
-        )
+        or not lines[index + 1].startswith("ssh=")
+        or not lines[index + 2].startswith("expires=")
+        or not valid_lock_details(lines[index + 3 :])
     ):
         refuse(f"the record for {user} is malformed", 65)
-    if lines[index + 1].startswith("ssh="):
-        signing_key(lines[index + 1][4:], "person card key", 65)
+    signing_key(lines[index + 1][4:], "person card key", 65)
     return members, lines[index] == "locked=true", pending, lines[index + 1 :]
 
 
-def format_person(members, locked, pending, laptops):
+def format_person(members, locked, pending, card):
     """Serialize a person's record in canonical membership order."""
     ordered = sorted(set(members), key=member_key)
     return (
         "".join(f"member={item}\n" for item in ordered)
         + f"locked={'true' if locked else 'false'}\n"
-        + "".join(f"{line}\n" for line in laptops)
+        + "".join(f"{line}\n" for line in card)
         + ("lock=pending\n" if pending else "")
     )
 
@@ -241,7 +285,12 @@ def forge_home(account):
 
 
 def forge_command(account, *arguments):
-    """Run the forge CLI with a fixed environment and no input, capturing all output in memory."""
+    """Run the forge admin CLI without putting its captured credentials into an argument or file."""
+    return forge_exec(account, "forgejo", "admin", "user", *arguments)
+
+
+def forge_exec(account, *arguments):
+    """Run a container command with the forge account's fixed environment and user manager."""
     uid = subprocess.run(
         ["/usr/bin/id", "-u", account],
         capture_output=True,
@@ -276,9 +325,6 @@ def forge_command(account, *arguments):
             "/usr/bin/podman",
             "exec",
             "forgejo",
-            "forgejo",
-            "admin",
-            "user",
             *arguments,
         ],
         capture_output=True,
@@ -358,7 +404,7 @@ class Forge:
         self.base = "http://localhost/api/v1"
         self.token = token(
             self.account,
-            "porelo-admin",
+            ADMIN,
             "write:admin,write:organization,read:user,write:repository,write:package",
         )
 
@@ -408,6 +454,45 @@ class Forge:
         refuse(f"the forge did not finish listing {path} in 100 pages")
 
 
+def make_organization_settings(forge, project):
+    """Give a new organization its teams, then the Actions variables and placeholder secrets its workflows read."""
+    for team in TEAMS:
+        forge.request(
+            "POST",
+            f"/orgs/{project}/teams",
+            {
+                "name": team["name"],
+                "permission": "write",
+                "units": list(team["units"]),
+                "units_map": team["units"],
+                "includes_all_repositories": True,
+                "can_create_org_repo": False,
+            },
+            (201,),
+        )
+    path = os.path.join(ETC, "forge", "organization.json")
+    trusted(path)
+    with open(path, encoding="utf-8") as stream:
+        settings = json.load(stream)
+    for name, value in settings["variables"].items():
+        forge.request(
+            "POST",
+            f"/orgs/{project}/actions/variables/{name}",
+            {"value": value.replace("{project}", project)},
+            (201, 204),
+        )
+    for name in settings["placeholder_secrets"]:
+        forge.request("PUT", f"/orgs/{project}/actions/secrets/{name}", {"data": "porelo-host-placeholder"}, (201, 204))
+
+
+def protect_repository(forge, project, name):
+    """A migrated repository's main takes no direct push, and a reviewed pull request reaches it by fast-forward."""
+    route = f"/repos/{project}/{name}"
+    forge.request("PATCH", route, MERGE_STYLE, (200,))
+    if forge.request("GET", f"{route}/branch_protections/main", expected=(200, 404)) is None:
+        forge.request("POST", f"{route}/branch_protections", MAIN_PROTECTION, (201,))
+
+
 def add(forge, project, admin, key, record, person, person_content):
     """Validate all existing identities before making one organization and an isolated package publisher."""
     publisher = "porelo-publisher-" + project
@@ -429,12 +514,14 @@ def add(forge, project, admin, key, record, person, person_content):
     organization_made = publisher_made = False
     try:
         person_temporary = stage_file(person, f".{admin}-", person_content)
-        forge.request("POST", f"/admin/users/{admin}/orgs", {"username": project, "visibility": "private"}, (201,))
+        # The forge's own administrator owns it, as Forgejo keeps a last owner: the project's admin can always leave.
+        forge.request("POST", f"/admin/users/{ADMIN}/orgs", {"username": project, "visibility": "private"}, (201,))
         organization_made = True
         owners = [team for team in forge.listing(f"/orgs/{project}/teams") if team.get("name") == "Owners"]
         if len(owners) != 1 or type(owners[0].get("id")) is not int or owners[0]["id"] <= 0:
             refuse(f"the forge has no unique Owners team for {project}")
         forge.request("PUT", f"/teams/{owners[0]['id']}/members/{admin}", expected=(204,))
+        make_organization_settings(forge, project)
         made = forge_command(
             forge.account,
             "create",
@@ -522,35 +609,26 @@ def add(forge, project, admin, key, record, person, person_content):
 
 
 def registered_publisher(project, record):
-    """Validate the complete record, including any recorded sync commits and signers, before obtaining a credential."""
-    values, signers = {}, []
-    allowed = {"admin", "signed_by", "publisher", "commit", "access_commit"}
+    """Validate the complete registration before obtaining a credential."""
+    values = {}
+    allowed = {"admin", "signed_by", "publisher", "removing"}
     try:
         with open(record, encoding="utf-8") as lines:
             for line in lines:
                 key, separator, value = line.rstrip("\n").partition("=")
                 if not separator:
                     refuse(f"{record} has a malformed or duplicate setting", 65)
-                if key == "signer":
-                    signing_key(value, f"{record} signer signing key", 65)
-                    if value in signers:
-                        refuse(f"{record} repeats a signer signing key", 65)
-                    signers.append(value)
-                elif key in allowed and key not in values:
+                if key in allowed and key not in values:
                     values[key] = value
                 else:
                     refuse(f"{record} has a malformed or duplicate setting", 65)
     except UnicodeError:
         refuse(f"{record} is not UTF-8", 65)
+    if "removing" in values and values["removing"] != "true":
+        refuse(f"{record} has a malformed removal state", 65)
     setting(values, "admin", PERSON_PATTERN, record, 65)
     signing_key(values.get("signed_by", ""), f"{record} signed_by signing key", 65)
     publisher = setting(values, "publisher", re.escape("porelo-publisher-" + project), record, 65)
-    synced = ("commit" in values, "access_commit" in values, bool(signers))
-    if any(synced):
-        if not all(synced):
-            refuse(f"{record} has an incomplete sync state", 65)
-        setting(values, "commit", COMMIT_PATTERN, record, 65)
-        setting(values, "access_commit", COMMIT_PATTERN, record, 65)
     return publisher
 
 
@@ -571,9 +649,8 @@ def people_after_removal(project):
     """Validate every person record before forge deletion and collect records losing this project."""
     people_dir = os.path.join(ETC, "people")
     affected = []
-    to_lock = []
     if not os.path.lexists(people_dir):
-        return affected, to_lock
+        return affected
     trusted_directory(people_dir, private=True)
     for entry_name in sorted(os.listdir(people_dir)):
         if entry_name == "purged":
@@ -583,51 +660,25 @@ def people_after_removal(project):
             refuse("the people directory holds an unknown record", 65)
         user = entry_name[:-5]
         person_path = os.path.join(people_dir, entry_name)
-        members, locked, pending, laptops = read_person(user, person_path)
-        remaining = [item for item in members if item == "hand" or item.split(" ", 1)[0] != project]
+        members, locked, pending, card = read_person(user, person_path)
+        remaining = [item for item in members if item == "host-admin" or item.split(" ", 1)[0] != project]
         if remaining != members:
-            affected.append((user, person_path, format_person(remaining, locked, pending, laptops)))
-            if not remaining and (not locked or pending):
-                to_lock.append(user)
-    if to_lock:
-        trusted(PERSON)
-    return affected, to_lock
-
-
-def lock_people(project, users):
-    """Lock each person left with no membership after releasing forge.conf's lock."""
-    failed = []
-    code = 69
-    for user in users:
-        locked = subprocess.run(
-            [PERSON, "lock", user],
-            env=SAFE_ENV,
-            check=False,
-            cwd="/",
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        try:
-            answer = json.loads(locked.stdout) if not locked.returncode else None
-        except ValueError:
-            answer = None
-        if locked.returncode or answer != {"person": user, "locked": True}:
-            if not failed and locked.returncode in (65, 69, 73):
-                code = locked.returncode
-            failed.append(user)
-    if failed:
-        refuse(f"removed {project}, but could not lock {', '.join(failed)}", code)
+            affected.append((user, person_path, format_person(remaining, locked, pending, card)))
+    return affected
 
 
 def remove(forge, project, record, publisher, affected):
     """Check every repository without pushing anything, then delete the forge identities and update records."""
+    with open(record, encoding="utf-8") as stream:
+        record_content = stream.read()
+    started = "removing=true" in record_content.splitlines()
+    present = {}
     for kind, path in (("organization", f"/orgs/{project}"), ("publisher", f"/users/{publisher}")):
-        if forge.request("GET", path, expected=(200, 404)) is None:
+        present[kind] = forge.request("GET", path, expected=(200, 404)) is not None
+        if not present[kind] and not started:
             refuse(f"the forge has no {kind} for registered project {project}")
-    repositories = forge.listing(f"/orgs/{project}/repos")
-    packages = forge.listing(f"/packages/{project}")
+    repositories = forge.listing(f"/orgs/{project}/repos") if present["organization"] else []
+    packages = forge.listing(f"/packages/{project}") if present["organization"] else []
     package_paths = []
     for package in packages:
         parts = [package.get(key) for key in ("type", "name", "version")]
@@ -649,7 +700,10 @@ def remove(forge, project, record, publisher, affected):
         if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name) or name in names:
             refuse(f"the forge returned an invalid or duplicate repository name for {project}")
         names.append(name)
-    if names:
+    if names and (os.path.lexists(os.path.join(ETC, "organization", "read", "projects", project, "repositories.json"))
+                  or "--lock-fd" in sys.argv):
+        check_read_keys(forge, project, repositories)
+    elif names:
         trusted(PUSH)
         central_token = central_forge_token()
         checked = subprocess.run(
@@ -668,10 +722,6 @@ def remove(forge, project, record, publisher, affected):
                 f"gathered push check exited {checked.returncode}",
                 code,
             )
-    admins = os.path.join(ETC, "matrix", project + ".admins")
-    trusted_directory(os.path.dirname(admins), missing=True)
-    if os.path.lexists(admins):
-        trusted(admins)
     publications = [os.path.join(ETC, "projects", project + ".people.json")]
     publications.extend(os.path.join(ETC, "signers", project + suffix) for suffix in (".json", ".allowed"))
     for path in publications:
@@ -686,25 +736,33 @@ def remove(forge, project, record, publisher, affected):
             for name in sorted(os.listdir(arrivals)):
                 trusted(os.path.join(arrivals, name), private=True)
                 recorded.append(os.path.join(arrivals, name))
+    read_key_paths(project)
     staged = []
     try:
         for user, person_path, content in affected:
             staged.append((person_path, stage_file(person_path, f".{user}-", content)))
+        if not started:
+            temporary = stage_file(record, f".{project}-removing-", record_content + "removing=true\n")
+            try:
+                with writing(record):
+                    os.replace(temporary, record)
+            finally:
+                if os.path.lexists(temporary):
+                    os.unlink(temporary)
         for name in names:
             forge.request("DELETE", f"/repos/{project}/{name}", expected=(204,))
         for path in package_paths:
             forge.request("DELETE", path, expected=(204,))
-        forge.request("DELETE", f"/orgs/{project}", expected=(204,))
-        forge.request("DELETE", f"/admin/users/{publisher}", expected=(204,))
+        if present["organization"]:
+            forge.request("DELETE", f"/orgs/{project}", expected=(204,))
+        if present["publisher"]:
+            forge.request("DELETE", f"/admin/users/{publisher}", expected=(204,))
         for path in (f"/orgs/{project}", f"/users/{publisher}"):
             if forge.request("GET", path, expected=(200, 404)) is not None:
                 refuse(f"the forge still holds an identity for {project}; keeping its record")
         for person_path, temporary in staged:
             with writing(person_path):
                 os.replace(temporary, person_path)
-        with writing(admins):
-            if os.path.lexists(admins):
-                os.unlink(admins)
         for path in publications:
             with writing(path):
                 if os.path.lexists(path):
@@ -716,6 +774,7 @@ def remove(forge, project, record, publisher, affected):
         if os.path.lexists(arrivals):
             with writing(arrivals):
                 os.rmdir(arrivals)
+        drop_read_keys(project)
         with writing(record):
             os.unlink(record)
     finally:
@@ -729,26 +788,27 @@ def admitted(admin, person):
     """Under the lock, the admin must still hold a membership and not be locked out or purged."""
     if not os.path.lexists(person):
         refuse(f"{admin} is no person on this host", 65)
-    members, locked, pending, laptops = read_person(admin, person)
+    members, locked, pending, card = read_person(admin, person)
     if locked or pending:
         refuse(f"{admin} is locked on this host", 65)
     if not members:
         refuse(f"{admin} holds no membership on this host", 65)
-    return members, locked, pending, laptops
+    return members, locked, pending, card
 
 
-def named_in_registry(project, admin):
-    """Under the lock, the registry state porelo-host-person applied must name the project for this unrevoked admin."""
-    path = os.path.join(ETC, "registry", "applied.json")
-    trusted_directory(os.path.dirname(path), private=True, missing=True)
+def named_in_organization(project, admin):
+    """Under the lock, the organization state porelo-host-person applied must name the project for this unrevoked admin."""
+    path = os.path.join(ETC, "organization", "applied.json")
+    # Members pass through this directory to their project's file; what must stay root's alone is this file.
+    trusted_directory(os.path.dirname(path), missing=True)
     if not os.path.lexists(path):
-        refuse(f"the host's registry names no project {project} for {admin}; none is applied yet", 65)
+        refuse(f"the host's organization names no project {project} for {admin}; none is applied yet", 65)
     trusted(path, private=True)
     try:
         with open(path, encoding="utf-8") as stream:
             applied = json.load(stream)
     except (UnicodeError, ValueError):
-        refuse(f"{path} holds no valid applied registry", 65)
+        refuse(f"{path} holds no valid applied organization", 65)
     projects = applied.get("projects") if isinstance(applied, dict) else None
     revoked = applied.get("revoked") if isinstance(applied, dict) else None
     if (
@@ -756,12 +816,318 @@ def named_in_registry(project, admin):
         or not isinstance(revoked, list)
         or not all(isinstance(item, str) for item in revoked)
     ):
-        refuse(f"{path} holds no valid applied registry", 65)
+        refuse(f"{path} holds no valid applied organization", 65)
     if admin in revoked:
-        refuse(f"{admin} is revoked in the host's registry and registers no project", 65)
-    named = [item for item in projects if isinstance(item, dict) and item.get("name") == project]
-    if not any(item.get("admin") == admin for item in named):
-        refuse(f"the host's registry names no project {project} for {admin}", 65)
+        refuse(f"{admin} is revoked in the host's organization and registers no project", 65)
+    named = [item for item in projects if isinstance(item, dict) and item.get("project") == project]
+    members = [member for item in named for member in item.get("members", []) if isinstance(member, dict)]
+    if not any(member.get("login") == admin and member.get("role") == "admin" for member in members):
+        refuse(f"the host's organization names no project {project} for {admin}", 65)
+
+
+def central_address(value):
+    """Normalize only a forge repository's credential-free HTTPS or git SSH address."""
+    name = r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}"
+    host = r"[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?"
+    match = re.fullmatch(rf"git@(?P<host>{host}):(?P<owner>{name})/(?P<repo>{name})", value)
+    if match:
+        server, owner, repository = match.group("host", "owner", "repo")
+        origin, port = "https://" + server, None
+    else:
+        parsed = urllib.parse.urlsplit(value)
+        match = re.fullmatch(rf"/(?P<owner>{name})/(?P<repo>{name})/?", parsed.path)
+        if (parsed.scheme not in ("https", "ssh") or not parsed.hostname or not re.fullmatch(host, parsed.hostname)
+                or not match or parsed.query or parsed.fragment or parsed.password
+                or parsed.username != ("git" if parsed.scheme == "ssh" else None)):
+            refuse("the project names no credential-free forge repository address", 65)
+        server, owner, repository = parsed.hostname, *match.group("owner", "repo")
+        port = parsed.port if parsed.scheme == "ssh" else None
+        origin = "https://" + (parsed.netloc if parsed.scheme == "https" else server)
+    repository = repository.removesuffix(".git")
+    if not repository or repository.lower() in (".", "..", "repositories.json") or owner in (".", ".."):
+        refuse("the project names no forge repository", 65)
+    ssh = f"ssh://git@{server}{':' + str(port) if port else ''}/{owner}/{repository}.git"
+    return origin, owner, repository, f"{origin}/{owner}/{repository}.git", ssh
+
+
+class Central:
+    """Use one in-memory credential only at the organization forge, refusing every redirect."""
+
+    def __init__(self, credential, origin):
+        self.credential = credential
+        self.base = "https://api.github.com" if origin == "https://github.com" else origin + "/api/v1"
+        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+
+    def request(self, method, path, body=None, expected=(200,)):
+        """Suppress bodies and exception messages that could repeat the request's credential."""
+        request = urllib.request.Request(self.base + path, method=method,
+                                        data=None if body is None else json.dumps(body).encode(),
+                                        headers={"Authorization": "token " + self.credential,
+                                                 "Content-Type": "application/json"})
+        try:
+            with self.opener.open(request, timeout=30) as answer:
+                status, data = answer.status, answer.read(1024 * 1024 + 1)
+        except urllib.error.HTTPError as error:
+            status, data = error.code, b""
+            error.close()
+        except (OSError, urllib.error.URLError, http.client.HTTPException):
+            refuse("the central forge did not answer the deploy-key request", 69)
+        if status not in expected or len(data) > 1024 * 1024:
+            refuse(f"the central forge refused the deploy-key request (HTTP {status})", 69)
+        try:
+            return json.loads(data) if data else None
+        except (ValueError, UnicodeError):
+            refuse("the central forge answered malformed deploy-key JSON", 69)
+
+
+def project_read_directory(project):
+    """Keep each project's private read keys separate from member-readable project publications."""
+    path = os.path.join(ETC, "organization", "read", "projects", project)
+    parts = [os.path.join(ETC, "organization", "read"), os.path.dirname(path), path]
+    for part in parts:
+        trusted_directory(os.path.dirname(part))
+        if not os.path.lexists(part):
+            return path
+        trusted_directory(part, private=True)
+    return path
+
+
+def project_manifest(project):
+    """Read the keys and exact central addresses made for this project, never a member's config."""
+    directory = project_read_directory(project)
+    path = os.path.join(directory, "repositories.json")
+    if not os.path.lexists(path):
+        return directory, []
+    trusted(path, private=True)
+    try:
+        with open(path, encoding="utf-8") as stream:
+            entries = json.load(stream)
+    except (ValueError, UnicodeError):
+        refuse("the project's read-key manifest does not read", 65)
+    if not isinstance(entries, list):
+        refuse("the project's read-key manifest is malformed", 65)
+    names = set()
+    for item in entries:
+        if (not isinstance(item, dict) or not isinstance(item.get("name"), str)
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", item["name"])
+                or item["name"] in names or not isinstance(item.get("address"), str)
+                or type(item.get("key_id")) is not int or item["key_id"] < 0):
+            refuse("the project's read-key manifest is malformed", 65)
+        central_address(item["address"])
+        names.add(item["name"])
+    return directory, entries
+
+
+def write_manifest(directory, entries):
+    """Publish only nonsecret retry data, before any remote mutation needs recovery."""
+    destination = os.path.join(directory, "repositories.json")
+    temporary = stage_file(destination, ".repositories-", json.dumps(entries) + "\n")
+    try:
+        with writing(destination):
+            os.replace(temporary, destination)
+    finally:
+        if os.path.lexists(temporary):
+            os.unlink(temporary)
+
+
+def project_git(arguments, *, environment=None):
+    """Run read-only Git without global configuration, prompts or inherited credentials."""
+    env = dict(SAFE_ENV, GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_SYSTEM="/dev/null", GIT_TERMINAL_PROMPT="0")
+    env.update(environment or {})
+    result = subprocess.run(["/usr/bin/git", "-c", "core.hooksPath=/dev/null", *arguments],
+                            env=env, cwd="/", stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                            check=False, timeout=120)
+    if result.returncode:
+        refuse(f"the project read-only Git command failed (exit {result.returncode})", 69)
+    return result.stdout
+
+
+def central_commits(directory, item):
+    """Fetch every central ref with the repository's read key and the pinned SSH host keys."""
+    key = os.path.join(directory, item["name"].lower())
+    known = os.path.join(ETC, "organization", "known_hosts")
+    trusted(key, private=True)
+    trusted(known, private=True)
+    # All paths have passed the root-owned path checks; quote each for Git's SSH command parser.
+    command = " ".join(shlex.quote(word) for word in [
+        "/usr/bin/ssh", "-F", "/dev/null", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
+        "-o", "IdentityAgent=none", "-o", "StrictHostKeyChecking=yes", "-o", "UpdateHostKeys=no",
+        "-o", "GlobalKnownHostsFile=/dev/null", "-o", "UserKnownHostsFile=" + known, "-i", key,
+    ])
+    with tempfile.TemporaryDirectory(prefix="porelo-project-read-") as scratch:
+        path = os.path.join(scratch, "central.git")
+        project_git(["clone", "--mirror", "--", central_address(item["address"])[4], path],
+                    environment={"GIT_SSH_COMMAND": command})
+        text = project_git(["--git-dir=" + path, "rev-list", "--all"])
+    return commit_set(text)
+
+
+def commit_set(text):
+    """Reject incomplete or malformed Git answers before deciding that work is safe to delete."""
+    lines = text.splitlines()
+    if any(not re.fullmatch(COMMIT_PATTERN, line) for line in lines):
+        refuse("Git answered an invalid commit set", 69)
+    return set(lines)
+
+
+def check_read_keys(forge, project, repositories):
+    """Compare every local ref with central reachability, using no central write token."""
+    directory, entries = project_manifest(project)
+    by_name = {entry["name"]: entry for entry in entries}
+    missing = {}
+    for repository in repositories:
+        name = repository["name"]
+        item = by_name.get(name)
+        if item is None or repository.get("original_url") != central_address(item["address"])[3] or item["key_id"] <= 0:
+            refuse(f"{project}/{name} has no confirmed read key for its central address", 69)
+        local = forge_git(forge.account, project, name)
+        unpushed = sorted(commit_set(local) - central_commits(directory, item))
+        if unpushed:
+            missing[name] = unpushed
+    if missing:
+        error = Refusal(f"{project} has unpushed commits in " + ", ".join(missing), 65)
+        error.unpushed = missing
+        raise error
+
+
+def forge_git(account, project, repository):
+    """Read all local refs inside Forgejo's container, without giving root a forge-owned path."""
+    result = forge_exec(account, "git",
+                        "--git-dir=/var/lib/gitea/git/repositories/" + project + "/" + repository.lower() + ".git",
+                        "rev-list", "--all")
+    if result.returncode:
+        refuse(f"the local forge could not list all commits of {project}/{repository}", 69)
+    return result.stdout
+
+
+def migrate(forge, project, supplied):
+    """Migrate the state's project repository once, with a central token used only in memory."""
+    try:
+        request = json.loads(supplied)
+    except (ValueError, UnicodeError):
+        refuse("migration requires a JSON request on standard input", 64)
+    if (not isinstance(request, dict) or set(request) != {"address", "token"}
+            or not isinstance(request["address"], str) or not isinstance(request["token"], str)
+            or not re.fullmatch(r"[!-~]{1,4096}", request["token"])):
+        refuse("migration requires an address and one printable token on standard input", 64)
+    origin, owner, name, address, _ssh = central_address(request["address"])
+    settings = os.path.join(ETC, "organization", "organization.yml")
+    trusted(settings, private=True)
+    with open(settings, encoding="utf-8") as stream:
+        text = stream.read()
+    # Porelo has already accepted these adapter settings; refuse spellings this helper cannot bind to one origin.
+    matches = re.findall(r"^\s+repository:\s*(['\"]?)([^\s'\"]+)\1\s*$", text, re.MULTILINE)
+    if len(matches) != 1 or central_address(matches[0][1])[0] != origin:
+        refuse("migration's central forge differs from the organization's forge or its settings do not read", 65)
+    directory, entries = project_manifest(project)
+    for path in (os.path.dirname(directory), directory):
+        trusted_directory(path, private=True, missing=True)
+        os.makedirs(path, mode=0o700, exist_ok=True)
+    item = next((entry for entry in entries if entry["name"] == name), None)
+    if item is None:
+        item = {"name": name, "address": request["address"], "key_id": 0}
+        entries.append(item)
+        write_manifest(directory, entries)
+    elif central_address(item["address"])[3] != address:
+        refuse("the project's recorded central address differs; keeping the existing repository", 65)
+    key = os.path.join(directory, name.lower())
+    if not os.path.lexists(key):
+        made = subprocess.run(["/usr/bin/ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "", "-f", key],
+                              env=SAFE_ENV, stdin=subprocess.DEVNULL, capture_output=True, check=False, timeout=30)
+        if made.returncode:
+            refuse("the project's read key could not be made", 69)
+    trusted(key, private=True)
+    if not os.path.lexists(key + ".pub"):
+        derived = subprocess.run(["/usr/bin/ssh-keygen", "-y", "-P", "", "-f", key],
+                                 env=SAFE_ENV, stdin=subprocess.DEVNULL, capture_output=True,
+                                 text=True, check=False, timeout=30)
+        if derived.returncode:
+            refuse("the project's public read key could not be recovered", 69)
+        public = signing_key(derived.stdout.strip(), code=65)
+        temporary = stage_file(key + ".pub", ".repositories-", public + "\n")
+        try:
+            with writing(key + ".pub"):
+                os.replace(temporary, key + ".pub")
+        finally:
+            if os.path.lexists(temporary):
+                os.unlink(temporary)
+    trusted(key + ".pub")
+    with open(key + ".pub", encoding="utf-8") as stream:
+        public = signing_key(stream.read().strip(), code=65)
+    central = Central(request["token"], origin)
+    route = f"/repos/{owner}/{name}/keys"
+    if item["key_id"] == 0:
+        existing = []
+        seen = set()
+        for page in range(1, 101):
+            keys = central.request("GET", route + f"?page={page}&per_page=50&limit=50")
+            if not isinstance(keys, list) or any(not isinstance(value, dict) for value in keys):
+                refuse("the central forge answered malformed deploy keys", 69)
+            if not keys:
+                break
+            digest = json.dumps(keys, sort_keys=True)
+            if digest in seen:
+                refuse("the central forge repeated a deploy-key page", 69)
+            seen.add(digest)
+            existing.extend(value for value in keys if value.get("key") == public)
+        else:
+            refuse("the central forge did not finish listing deploy keys", 69)
+        made = existing[0] if len(existing) == 1 else central.request("POST", route, {
+            "title": "porelo-host-" + project, "key": public, "read_only": True,
+        }, expected=(201,)) if not existing else None
+        if (not isinstance(made, dict) or type(made.get("id")) is not int or made["id"] <= 0
+                or made.get("read_only") is not True or made.get("key") != public):
+            refuse("the central forge confirmed no matching read-only deploy key", 69)
+        item["key_id"] = made["id"]
+        write_manifest(directory, entries)
+    local = forge.request("GET", f"/repos/{project}/{name}", expected=(200, 404))
+    if local is None:
+        forge.request("POST", "/repos/migrate", {
+            "clone_addr": address, "repo_name": name, "repo_owner": project, "service": "git",
+            "mirror": False, "private": True, "auth_username": "x-access-token", "auth_password": request["token"],
+        }, expected=(201,))
+        local = forge.request("GET", f"/repos/{project}/{name}")
+    if not isinstance(local, dict) or local.get("original_url") != address:
+        refuse("the local forge has no migration from the project's central address", 69)
+    protect_repository(forge, project, name)
+
+
+def read_key_paths(project):
+    """Refuse unknown read-directory entries before any destructive operation."""
+    directory, entries = project_manifest(project)
+    if not os.path.lexists(directory):
+        return directory, []
+    expected = {"repositories.json"} | {item["name"].lower() + suffix for item in entries for suffix in ("", ".pub")}
+    paths = []
+    for name in os.listdir(directory):
+        if name not in expected and not name.startswith(".repositories-"):
+            refuse("the project's read directory holds an unknown file; keeping it", 73)
+        path = os.path.join(directory, name)
+        trusted(path)
+        paths.append(path)
+    return directory, paths
+
+
+def drop_read_keys(project):
+    """Remove exactly this project's local read credentials after every forge deletion has succeeded."""
+    directory, paths = read_key_paths(project)
+    if not os.path.lexists(directory):
+        return
+    for path in sorted(paths, key=lambda item: os.path.basename(item) == "repositories.json"):
+        os.unlink(path)
+    os.rmdir(directory)
+
+
+def inherited_lock(descriptor):
+    """Require the inherited open file to be the trusted configuration, then take its shared open description's lock."""
+    try:
+        status = os.fstat(descriptor)
+        expected = os.stat(CONF, follow_symlinks=False)
+        if (status.st_dev, status.st_ino) != (expected.st_dev, expected.st_ino):
+            refuse("the inherited project lock is not forge.conf", 65)
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, ValueError):
+        refuse("the inherited project lock is unavailable", 69)
 
 
 def run():
@@ -772,9 +1138,15 @@ def run():
     os.environ.clear()
     os.environ.update(SAFE_ENV)
     arguments = sys.argv[1:]
+    lock_fd = None
+    if len(arguments) >= 2 and arguments[-2] == "--lock-fd":
+        if not re.fullmatch(r"[0-9]{1,8}", arguments[-1]):
+            refuse("the inherited lock descriptor is invalid", 64)
+        lock_fd = int(arguments[-1])
+        arguments = arguments[:-2]
     if len(arguments) == 5 and arguments[0] == "add" and arguments[3] == "--signed-by":
         action, project, admin, _, key = arguments
-    elif len(arguments) == 2 and arguments[0] == "remove":
+    elif len(arguments) == 2 and arguments[0] in ("remove", "migrate"):
         action, project = arguments
         admin = key = None
     else:
@@ -788,7 +1160,7 @@ def run():
     record = os.path.join(ETC, "projects", project + ".conf")
     if action == "add" and os.path.lexists(record):
         refuse(f"{record} exists")
-    if action == "remove" and not os.path.lexists(record):
+    if action in ("remove", "migrate") and not os.path.lexists(record):
         refuse(f"unknown project {project}")
     for name in ("projects", "people"):
         trusted_directory(os.path.join(ETC, name), private=True, missing=True)
@@ -801,32 +1173,35 @@ def run():
     else:
         trusted(record, private=True)
     trusted(CONF)
-    to_lock = []
     with open(CONF, encoding="utf-8") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        if lock_fd is None:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        else:
+            inherited_lock(lock_fd)
         if action == "add" and os.path.lexists(record):
             refuse(f"{record} exists")
-        if action == "remove" and not os.path.lexists(record):
+        if action in ("remove", "migrate") and not os.path.lexists(record):
             refuse(f"unknown project {project}")
         if action == "add":
-            members, locked, pending, laptops = admitted(admin, person)
-            named_in_registry(project, admin)
-            person_content = format_person([*members, f"{project} project-admin"], locked, pending, laptops)
+            members, locked, pending, card = admitted(admin, person)
+            named_in_organization(project, admin)
+            person_content = format_person([*members, f"{project} project-admin"], locked, pending, card)
             affected = None
             publisher = None
         else:
             publisher = registered_publisher(project, record)
-            affected, to_lock = people_after_removal(project)
+            affected = people_after_removal(project)
             person_content = None
         forge = Forge(read_values(CONF))
         if action == "add":
             add(forge, project, admin, key, record, person, person_content)
+        elif action == "migrate":
+            migrate(forge, project, sys.stdin.read(16385))
         else:
             remove(forge, project, record, publisher, affected)
     if action == "remove":
-        lock_people(project, to_lock)
         with writing("standard output"):
-            print(json.dumps(dict(project=project, removed=True, locked=to_lock), separators=(",", ":")), flush=True)
+            print(json.dumps(dict(project=project, removed=True), separators=(",", ":")), flush=True)
 
 
 def main():
@@ -844,6 +1219,9 @@ def main():
     else:
         return
     try:
+        if "--lock-fd" in sys.argv and sys.argv[1:2] == ["remove"] and failure.code == 65:
+            project = sys.argv[2]
+            print(json.dumps({"project": project, "unpushed": getattr(failure, "unpushed", {})}), flush=True)
         print(f"porelo-host-project: {failure}", file=sys.stderr, flush=True)
     except OSError:
         sys.exit(73)

@@ -285,64 +285,6 @@ def test_the_person_opens_a_new_vault_and_puts_keys_from_their_own_pipe(own_acco
     assert "chosen passphrase" not in output and "KEY MATERIAL" not in output
 
 
-def waiting_bring(home, project="alpha"):
-    """The bring's list of repositories to migrate, and a stand-in migration recording its call and its input."""
-    push_dir = home / ".config/porelo-host/push"
-    push_dir.mkdir(parents=True, exist_ok=True)
-    (push_dir / f"{project}.migrate").write_text("owner alpha\n")
-    (home / "bin/porelo-host-push").write_text(
-        f"#!{sys.executable}\n"
-        "import json, os, sys\n"
-        "from pathlib import Path\n"
-        "call = {'args': sys.argv[1:], 'stdin': sys.stdin.read()}\n"
-        "(Path(os.environ['HOME']) / 'push-calls').write_text(json.dumps(call))\n"
-        "sys.exit(int(os.environ.get('PUSH_STUB_EXIT', '0')))\n"
-    )
-    (home / "bin/porelo-host-push").chmod(0o755)
-
-
-def test_the_central_forge_token_goes_on_a_pipe_into_the_migration_alone(own_account):
-    """Prevent the central forge's token from lying in any file on the host, even for the length of a bring."""
-    home = own_account
-    waiting_bring(home)
-    result = own_stop(home, "forge-central-token", lines=f"forge-central-token {b64('central-token')}\n")
-    assert result.returncode == 0, result.stderr
-    import json
-
-    assert json.loads((home / "push-calls").read_text()) == {"args": ["--migrate", "alpha"], "stdin": "central-token"}
-    files = [path for path in home.rglob("*") if path.is_file() and path.name != "push-calls"]
-    assert not [path for path in files if b"central-token" in path.read_bytes()], "the token lies in a file"
-    assert "central-token" not in result.stdout + result.stderr
-    assert calls(home) == []
-
-
-def test_the_central_token_without_a_waiting_bring_is_refused(own_account):
-    """Prevent the token from being taken when no bring waits for it, or two do and the stop cannot say which."""
-    home = own_account
-    waiting_bring(home)
-    (home / ".config/porelo-host/push/alpha.migrate").unlink()
-    result = own_stop(home, "forge-central-token", lines=f"forge-central-token {b64('central-token')}\n")
-    assert result.returncode == 69 and "no single bring waits" in result.stderr
-    waiting_bring(home, "beta")
-    waiting_bring(home, "gamma")
-    result = own_stop(home, "forge-central-token", lines=f"forge-central-token {b64('central-token')}\n")
-    assert result.returncode == 69 and "no single bring waits" in result.stderr
-    assert not (home / "push-calls").exists()
-
-
-def test_a_refused_migration_fails_the_stop(own_account):
-    """Prevent the interface from running the bring again as if the repositories had come."""
-    home = own_account
-    waiting_bring(home)
-    result = own_stop(
-        home,
-        "forge-central-token",
-        lines=f"forge-central-token {b64('central-token')}\n",
-        extra={"PUSH_STUB_EXIT": "65"},
-    )
-    assert result.returncode == 65 and "alpha" in result.stderr
-
-
 @pytest.mark.parametrize("need", ["wireguard", "forge-certificate", "identities"])
 def test_the_needs_that_went_are_refused_in_a_persons_account(own_account, need):
     """Prevent a person from believing they gave the VPN's key or the forge's certificates, which the host no longer takes."""

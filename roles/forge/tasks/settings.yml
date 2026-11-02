@@ -7,6 +7,14 @@
     group: root
     mode: "0755"
 
+- name: settings | Name what each organization on this forge is given
+  ansible.builtin.copy:
+    dest: "{{ __forge_state_dir }}/organization.json"
+    content: "{{ {'variables': forge_variables, 'placeholder_secrets': forge_placeholder_secrets} | to_nice_json }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+
 - name: settings | Name the forge to the host's helpers
   ansible.builtin.copy:
     dest: /etc/porelo-host/forge.conf

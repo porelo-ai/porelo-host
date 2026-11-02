@@ -97,7 +97,7 @@ def test_admin_and_krl_are_seeded_before_the_policy_can_reload():
     seed = next(
         i
         for i, t in enumerate(tasks)
-        if t.get("ansible.builtin.copy", {}).get("dest") == "/etc/ssh/authorized_keys/root"
+        if "/etc/ssh/authorized_keys/root" in t.get("ansible.builtin.shell", {}).get("cmd", "")
     )
     krl = next(
         i
@@ -106,3 +106,61 @@ def test_admin_and_krl_are_seeded_before_the_policy_can_reload():
     )
     assert seed < policy and krl < policy
     assert tasks[-1].get("ansible.builtin.meta") == "flush_handlers"
+
+
+def seed_root_keys(tmp_path, existing=None, applied=False):
+    """Run the role's real seeding step with its paths under a scratch root."""
+    tasks = yaml.safe_load((ROOT / "roles/base/tasks/ssh.yml").read_text())
+    command = next(
+        t["ansible.builtin.shell"]["cmd"]
+        for t in tasks
+        if "/etc/ssh/authorized_keys/root" in t.get("ansible.builtin.shell", {}).get("cmd", "")
+    )
+    seed = tmp_path / "seed"
+    seed.write_text(f"# the pinned key\n{SEED_KEY} a-comment\n")
+    command = command.replace("/etc/", f"{tmp_path}/etc/").replace("{{ base_host_admin_key_file | quote }}", str(seed))
+    keys = tmp_path / "etc/ssh/authorized_keys/root"
+    keys.parent.mkdir(parents=True)
+    if existing is not None:
+        keys.write_text(existing)
+    if applied:
+        marker = tmp_path / "etc/porelo-host/organization/applied.json"
+        marker.parent.mkdir(parents=True)
+        marker.write_text("{}\n")
+    done = subprocess.run(["bash", "-c", command], capture_output=True, text=True, check=True)
+    return keys.read_text(), done.stdout, oct(keys.stat().st_mode & 0o777), keys.parent
+
+
+SEED_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAISeedSeedSeedSeedSeedSeedSeedSeedSeedSeedSeed"
+OTHER_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOtherOtherOtherOtherOtherOtherOtherOtherOther"
+
+
+def test_up_seeds_roots_keys_on_a_new_host(tmp_path):
+    """Prevent a host whose sshd reads no key for root once the policy is on."""
+    text, said, mode, unused = seed_root_keys(tmp_path)
+    assert text == f"{SEED_KEY}\n" and said == "changed\n" and mode == "0o644"
+
+
+def test_up_keeps_the_key_that_reached_root(tmp_path):
+    """Prevent `up` locking out the person who runs it with a key other than the seed."""
+    text, said, unused, directory = seed_root_keys(tmp_path, f"{OTHER_KEY} a-person\n")
+    assert text == f"{OTHER_KEY} a-person\n{SEED_KEY}\n" and said == "changed\n"
+    assert [path.name for path in directory.iterdir()] == ["root"]
+
+
+def test_up_again_changes_nothing(tmp_path):
+    """Prevent a repeated `up` growing root's keys or reporting a change."""
+    text, said, *unused = seed_root_keys(tmp_path, f"{SEED_KEY} another-comment\n")
+    assert text == f"{SEED_KEY} another-comment\n" and said == ""
+
+
+def test_up_after_a_follow_does_not_bring_a_replaced_admin_back(tmp_path):
+    """Prevent the seed giving root back to a host admin the organization replaced."""
+    text, said, *unused = seed_root_keys(tmp_path, f"{OTHER_KEY} new-admin\n", applied=True)
+    assert text == f"{OTHER_KEY} new-admin\n" and said == ""
+
+
+def test_up_seeds_a_followed_host_that_lost_roots_keys(tmp_path):
+    """Prevent a host locked out for good when root's key file is gone after a follow."""
+    text, said, *unused = seed_root_keys(tmp_path, None, applied=True)
+    assert text == f"{SEED_KEY}\n" and said == "changed\n"

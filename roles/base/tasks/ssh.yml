@@ -37,14 +37,26 @@
   changed_when: false
   check_mode: false
 
-- name: ssh | Seed or replace the host admin's key before enabling its lookup
-  ansible.builtin.copy:
-    src: "{{ base_host_admin_key_file }}"
-    remote_src: true
-    dest: /etc/ssh/authorized_keys/root
-    owner: root
-    group: root
-    mode: "0644"
+# The seed joins root's keys and pushes none out, so a key that made the server keeps its way in; once a follow has taken
+# a state, root's keys are that state's, so a host admin it replaced does not come back with the seed.
+- name: ssh | Add the host admin's key before enabling its lookup, unless a follow owns root's keys
+  ansible.builtin.shell:
+    cmd: |
+      set -eu
+      keys=/etc/ssh/authorized_keys/root
+      if [ -e /etc/porelo-host/organization/applied.json ] && [ -e "$keys" ]; then exit 0; fi
+      seed=$(awk 'NF && $1 !~ /^#/ { print $1 " " $2; exit }' {{ base_host_admin_key_file | quote }})
+      if [ -e "$keys" ] && awk -v seed="$seed" '$1 " " $2 == seed { found = 1 } END { exit !found }' "$keys"; then exit 0; fi
+      work=$(mktemp "$keys.XXXXXX")
+      trap 'rm -f -- "$work"' EXIT HUP INT TERM
+      if [ -e "$keys" ]; then cat "$keys" > "$work"; fi
+      printf '%s\n' "$seed" >> "$work"
+      chmod 0644 "$work"
+      mv -fT "$work" "$keys"
+      echo changed
+    executable: /bin/bash
+  register: __base_root_keys
+  changed_when: "'changed' in __base_root_keys.stdout"
 
 - name: ssh | Seed a valid empty KRL before enabling revocation checks
   ansible.builtin.shell:

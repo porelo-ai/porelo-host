@@ -11,42 +11,43 @@ import yaml
 
 # pytest takes a fixture by its name in this module, so the fixtures imported here are used though nothing names them.
 # pylint: disable=unused-import
-from test_porelo_host_person import host, sync_host, registry_host, ssh_key, applied
-from test_porelo_host_person_cards import cards, sync, registry_card
-from test_porelo_host_person_services import services, OWN
+from test_porelo_host_person import host, follow_host, org_host, ssh_key, applied
+from test_porelo_host_person_cards import cards, follow, card, person
+from porelo_host_person_follow_support import revoke
+from test_porelo_host_person_services import services, OWN, ADMIN_TOKEN
 
 # pylint: enable=unused-import
 
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def pending(cards, user="alice", locked=False):
+def pending(cards, user="bob", locked=False):
     record = cards.host.records()[user]
     record.update(lock="pending", locked=locked, reason="membership")
     cards.host.record(user, record)
     return record
 
 
-def test_registry_records_new_revocations_despite_a_stuck_retry(registry_host):
+def test_follow_records_new_revocations_despite_a_stuck_retry(org_host):
     """Prevent one service outage from keeping a newly revoked key and login authorized."""
-    host, state = registry_host
-    assert host.invoke("registry", data=b"") == 0
-    path = host.path("/etc/porelo-host/people/ada.conf")
+    host, state = org_host
+    assert host.invoke("org", "follow", data=b"") == 0
+    path = host.path("/etc/porelo-host/people/alice.conf")
     path.write_text(path.read_text() + "lock=pending\n")
 
     def failed(name, values):
-        if name == "forge_lock" and values[0] == "ada":
+        if name == "forge_lock" and values[0] == "alice":
             raise host.factory.__globals__["Refusal"]("service unavailable", 69)
 
     host.hook_inspect = failed
-    state.registry_reply["commit"] = "b" * 40
-    state.registry_reply["persons"][1]["revoked"] = True
-    assert host.invoke("registry", data=b"") == 69
+    state.follow.reply["revision"] = "b" * 40
+    state.follow.reply["persons"][1]["revoked"] = True
+    assert host.invoke("org", "follow", data=b"") == 69
     assert applied(host)["commit"] == "b" * 40
-    assert "locked=true" in host.path("/etc/porelo-host/people/bo.conf").read_text()
+    assert "locked=true" in host.path("/etc/porelo-host/people/bob.conf").read_text()
     check = subprocess.run(
         ["ssh-keygen", "-Q", "-f", str(host.path("/etc/ssh/porelo-revoked.krl")), "/dev/stdin"],
-        input=state.registry_reply["persons"][1]["ssh"] + "\n",
+        input=state.follow.reply["persons"][1]["key"] + "\n",
         text=True,
         capture_output=True,
         check=False,
@@ -54,15 +55,15 @@ def test_registry_records_new_revocations_despite_a_stuck_retry(registry_host):
     assert check.returncode == 1, check.stdout + check.stderr
 
 
-def test_pending_registry_admin_has_no_authority(registry_host):
-    """Prevent an incomplete local lock from retaining registry administration."""
-    host, state = registry_host
-    assert host.invoke("registry", data=b"") == 0
-    path = host.path("/etc/porelo-host/people/ada.conf")
+def test_pending_host_admin_has_no_authority(org_host):
+    """Prevent an incomplete local lock from retaining organization administration."""
+    host, state = org_host
+    assert host.invoke("org", "follow", data=b"") == 0
+    path = host.path("/etc/porelo-host/people/alice.conf")
     path.write_text(path.read_text() + "lock=pending\n")
     host.fail = ["gpasswd"]
-    state.registry_reply["commit"] = "b" * 40
-    assert host.invoke("registry", data=b"", sudo_user="ada") == 65
+    state.follow.reply["revision"] = "b" * 40
+    assert host.invoke("org", "follow", data=b"", sudo_user="alice") == 65
     assert applied(host)["commit"] == "a" * 40
 
 
@@ -73,23 +74,22 @@ def test_new_key_revocation_relocks_a_successful_retry_with_porelo(cards):
     host.commands.remove("porelo")
     host.write_krl = lambda keys: None
     with pytest.raises(cards.scope["Refusal"]):
-        host.apply_registry_cards([cards.reply["persons"][1]], ["alice"], host.records())
-    assert host.records()["alice"]["reason"] == "key"
-    assert host.records()["alice"]["lock"] == "pending"
+        host.apply_org_cards([person("bob", 2)], ["bob"], host.records())
+    assert host.records()["bob"]["reason"] == "key"
+    assert host.records()["bob"]["lock"] == "pending"
 
 
-@pytest.mark.parametrize("operation", ["sweep", "add"])
+@pytest.mark.parametrize("operation", ["sweep", "follow"])
 def test_later_runs_retry_pending_locks(cards, operation):
-    """Prevent the daily sweep or manual admission from leaving unfinished service revocations untouched."""
+    """Prevent the daily sweep or organization follow from leaving unfinished service revocations untouched."""
     host = cards.host
     pending(cards)
     if operation == "sweep":
         host.sweep(host.records())
     else:
-        with pytest.raises(cards.scope["Refusal"]):
-            host.execute(["add", "alice", "--role", "project-admin"], b"")
-    assert ("forge_lock", ("alice",)) in cards.calls
-    assert host.records()["alice"].get("lock") is None
+        revoke(cards)
+    assert ("forge_lock", ("bob",)) in cards.calls
+    assert host.records()["bob"].get("lock") is None
 
 
 def test_sweep_drops_expired_tokens_even_when_pending_lock_retry_fails(cards):
@@ -97,8 +97,8 @@ def test_sweep_drops_expired_tokens_even_when_pending_lock_retry_fails(cards):
     host = cards.host
     pending(cards, locked=True)
     host.hooks["forge_lock"] = lambda user: (_ for _ in ()).throw(cards.scope["Refusal"]("offline", 69))
-    host.task_records = lambda: [("alice", "task-one", {"valid_before": "2026-01-01T00:00:00Z"})]
-    host.forge_configuration = lambda user: ("forge", ["alice", "porelo-alice"])
+    host.task_records = lambda: [("bob", "task-one", {"valid_before": "2026-01-01T00:00:00Z"})]
+    host.forge_configuration = lambda user: ("forge", ["bob", "porelo-bob"])
     host.forge_session = lambda user: nullcontext((None, None, None, None))
     dropped = []
     host.forge_drop_named = lambda *args: dropped.extend(args[-1]) or list(args[-1])
@@ -108,7 +108,7 @@ def test_sweep_drops_expired_tokens_even_when_pending_lock_retry_fails(cards):
 
 
 @pytest.mark.parametrize("reader", ["project", "down"])
-@pytest.mark.parametrize("reason", [None, "membership", "key", "host"])
+@pytest.mark.parametrize("reason", [None, "membership", "key"])
 def test_pending_person_format_is_shared_and_preserved(cards, monkeypatch, reason, reader):
     """Prevent root project removal and teardown from rejecting or discarding unfinished locks."""
     record = pending(cards)
@@ -117,19 +117,19 @@ def test_pending_person_format_is_shared_and_preserved(cards, monkeypatch, reaso
         record.pop("reason", None)
     else:
         record["reason"] = reason
-    cards.host.record("alice", record)
+    cards.host.record("bob", record)
     project = runpy.run_path(str(ROOT / "roles/forge/files/porelo-host-project"), run_name="format_tests")
     scope = project["read_person"].__globals__
     monkeypatch.setitem(scope, "trusted", lambda *args, **kwargs: None)
-    path = cards.host.path("/etc/porelo-host/people/alice.conf")
+    path = cards.host.path("/etc/porelo-host/people/bob.conf")
     if reader == "project":
-        members, locked, pending_lock, tail = project["read_person"]("alice", str(path))
+        members, locked, pending_lock, tail = project["read_person"]("bob", str(path))
         assert pending_lock and not locked
         before = path.read_bytes()
         path.write_text(project["format_person"](members, locked, pending_lock, tail))
         assert path.read_bytes() == before
         assert "lock=pending\n" in path.read_text()
-        assert cards.host.records()["alice"]["lock"] == "pending"
+        assert cards.host.records()["bob"]["lock"] == "pending"
     people = path.parent
     for other in people.glob("*.conf"):
         if other != path:
@@ -142,31 +142,13 @@ def test_pending_person_format_is_shared_and_preserved(cards, monkeypatch, reaso
     assert json.loads(result.stdout) == []
 
 
-@pytest.mark.parametrize("missing_people", [False, True])
-def test_deferred_card_entry_bounds_members_and_signers(cards, missing_people):
-    """Prevent lagging access from allowing certificates or git signatures beyond the supplied entry."""
-    sync(cards)
-    host = cards.host
-    if missing_people:
-        host.path("/etc/porelo-host/projects/alpha.people.json").unlink()
-    registry_card(cards, dict(cards.reply["persons"][1], ssh=ssh_key(7)))
-    cards.reply["persons"][1]["expires"] = "2026-11-01"
-    sync(cards)
-    if not missing_people:
-        people = json.loads(host.path("/etc/porelo-host/projects/alpha.people.json").read_text())
-        assert host.card_expiry(people["alice"]["expires"]) == "20261101000000Z"
-    allowed = host.path("/etc/porelo-host/signers/alpha.allowed").read_text().splitlines()
-    assert all('valid-before="20261101000000Z"' in line for line in allowed if ssh_key(2) in line)
-    assert any(ssh_key(2) in line for line in allowed)
-
-
 def test_equivalent_expiry_encodings_do_not_defer_new_members(cards):
     """Prevent equivalent timestamps from blocking admission of a verified current card."""
     host = cards.host
-    cards.reply["persons"][1]["expires"] = "2026-11-01"
-    registry_card(cards, dict(cards.reply["persons"][1], expires="20261101000000Z"))
-    sync(cards)
-    assert "alpha developer" in host.records()["alice"]["members"]
+    card(cards)["expires"] = "20261101000000Z"
+    cards.reply["projects"][0]["signing_keys"][1]["valid_until"] = "2026-11-01"
+    follow(cards)
+    assert "alpha developer" in host.records()["bob"]["members"]
 
 
 @pytest.mark.parametrize("operation", ["forge_lock", "forge_drop_tokens"])
@@ -177,11 +159,11 @@ def test_forge_revocation_skips_absent_agent_identities(services, operation):
     recorder.tokens = {user: [1] for user in OWN}
     config = services.host.forge_configuration("alice")
     base, ca = services.host.forge_endpoint()
-    services.host.forge_session = lambda user: nullcontext((config[0], recorder, base, "a" * 40))
+    services.host.forge_session = lambda user: nullcontext((config[0], recorder, base, ADMIN_TOKEN))
     getattr(services.host, operation)("alice")
     assert all(not values for values in recorder.tokens.values())
     assert all(
-        not any(identity in path for identity in ("codex-alice", "claude-alice")) for _, path, _ in recorder.requests
+        not any(identity in path for identity in ("codex-bob", "claude-bob")) for _, path, _ in recorder.requests
     )
 
 
@@ -189,9 +171,9 @@ def test_cleanup_tolerates_passwd_removal_before_failed_userdel(cards):
     """Prevent a partial userdel failure from replacing the retryable error with a traceback."""
     host = cards.host
     pending(cards)
-    host.accounts.pop("alice")
-    host.finish_cleanup("alice")
-    assert host.records()["alice"]["locked"]
+    host.accounts.pop("bob")
+    host.finish_cleanup("bob")
+    assert host.records()["bob"]["locked"]
 
 
 @pytest.mark.parametrize("operation", ["clear_vault", "finish_cleanup"])
@@ -202,29 +184,7 @@ def test_cleanup_requires_its_privileged_programs(cards, operation, program):
     pending(cards)
     host.commands.remove(program)
     with pytest.raises(cards.scope["Refusal"], match=program):
-        getattr(host, operation)("alice")
-
-
-@pytest.mark.parametrize(
-    "locked, pending_lock, retry_fails", [(True, False, False), (True, True, False), (False, True, True)]
-)
-def test_revoked_card_preserves_host_lock_reason(cards, locked, pending_lock, retry_fails):
-    """Prevent key rotation from reopening an administrative lock after a registry retry."""
-    host = cards.host
-    record = host.records()["alice"]
-    record.update(locked=locked, reason="host")
-    if pending_lock:
-        record["lock"] = "pending"
-    host.record("alice", record)
-    if retry_fails:
-        host.commands.remove("gpasswd")
-    host.write_krl = lambda keys: None
-    host.key_revoked = lambda key: True
-    try:
-        host.apply_registry_cards([cards.reply["persons"][1]], [], host.records())
-    except cards.scope["Refusal"]:
-        assert retry_fails
-    assert host.records()["alice"]["reason"] == "host"
+        getattr(host, operation)("bob")
 
 
 @pytest.mark.parametrize("program", ["runuser", "env", "porelo"])
@@ -233,8 +193,8 @@ def test_clear_vault_preflights_before_lifting_expiry(cards, program):
     host = cards.host
     pending(cards, locked=True)
     host.commands.remove(program)
-    before = host.path("/etc/porelo-host/people/alice.conf").read_bytes()
+    before = host.path("/etc/porelo-host/people/bob.conf").read_bytes()
     with pytest.raises(cards.scope["Refusal"], match=program):
-        host.clear_vault("alice")
+        host.clear_vault("bob")
     assert not cards.calls
-    assert host.path("/etc/porelo-host/people/alice.conf").read_bytes() == before
+    assert host.path("/etc/porelo-host/people/bob.conf").read_bytes() == before

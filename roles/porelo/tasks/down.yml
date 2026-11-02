@@ -1,159 +1,29 @@
 ---
-# The vault taken off the host before it is given back: its keys came from the person's secrets file and come again
-# from it at the next up, so nothing is lost. A failed up may have stopped before Porelo, the account or the vault was
-# there; down then has nothing of it to take, and goes on.
-- name: down | Read the account, if up got as far as Porelo's setup script
-  ansible.builtin.getent:
-    database: passwd
-    key: "{{ porelo_account }}"
-    fail_key: false
-
-- name: down | Read whether Porelo is installed
-  ansible.builtin.stat:
-    path: /usr/bin/porelo
-  register: __porelo_binary
-
-- name: down | Ask Porelo whether the account has a vault
-  ansible.builtin.command:
-    cmd: porelo vault status
-  become: true
-  become_user: "{{ porelo_account }}"
-  environment: "{{ __porelo_user_environment }}"
-  register: __porelo_vault
-  changed_when: false
+# What the follow holds, taken off the host before it is given back.
+- name: down | Stop the host's follow of its organization
+  ansible.builtin.systemd_service:
+    name: porelo-host-follow.timer
+    state: stopped
+    enabled: false
   failed_when: false
-  check_mode: false
-  when: ansible_facts['getent_passwd'][porelo_account] is not none
 
-- name: down | Stop on an unexpected vault status where Porelo is installed
-  ansible.builtin.assert:
-    that: __porelo_vault.rc in [0, 3, 4]
-    fail_msg: "porelo vault status returned {{ __porelo_vault.rc }}: {{ __porelo_vault.stderr }}"
-    quiet: true
-  when:
-    - __porelo_binary.stat.exists
-    - ansible_facts['getent_passwd'][porelo_account] is not none
+- name: down | Remove the follow's units, the organization's keys and what the fetch kept
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/porelo-host-follow.timer
+    - /etc/systemd/system/porelo-host-follow.service
+    - /etc/porelo-host/organization
+    - /etc/porelo-host/signers
+    - /var/lib/porelo-host-org-fetch
+    - /var/lib/private/porelo-host-org-fetch
+  register: __porelo_follow_removed
 
-- name: down | Read whether the account has a runtime directory
-  ansible.builtin.stat:
-    path: "/run/user/{{ ansible_facts['getent_passwd'][porelo_account][1] }}"
-  register: __porelo_runtime
-  when: ansible_facts['getent_passwd'][porelo_account] is not none
-
-# A running task can hold a vault token, so every task must stop before its vault is cleared.
-- name: down | Stop every running task of the account; its containers and workspaces stay
-  ansible.builtin.command:
-    argv: [porelo, task, stop, --all]
-  become: true
-  become_user: "{{ porelo_account }}"
-  environment: "{{ __porelo_user_environment }}"
-  register: __porelo_stop_all
-  changed_when: true
-  failed_when: __porelo_stop_all.rc != 0
-  # With no linger yet no task can have run, and rootless podman needs the runtime directory.
-  when: >-
-    __porelo_vault.rc | default(-1) in [0, 3]
-    or (__porelo_vault.rc | default(-1) == 4 and (__porelo_runtime.stat.isdir | default(false)))
-
-# A shut vault is cleared unread, since no one at down opens it and its keys are the secrets file's.
-- name: down | Clear the vault, its cached passphrase and its shares
-  ansible.builtin.command:
-    argv: "{{ ['porelo', 'vault', 'clear', '--yes', '--json'] + (['--force'] if __porelo_vault.rc == 3 else []) }}"
-  become: true
-  become_user: "{{ porelo_account }}"
-  environment: "{{ __porelo_user_environment }}"
-  register: __porelo_vault_clear
-  when: __porelo_vault.rc | default(-1) in [0, 3]
-  changed_when: true
-  failed_when: >-
-    __porelo_vault_clear.rc != 0
-    and __porelo_vault_clear_answer.kept | default('') != 'transports'
-    and not __porelo_vault_clear_left_for_transports
-  vars:
-    __porelo_vault_clear_answer: "{{ __porelo_vault_clear.stdout | default('', true) | from_json
-      if __porelo_vault_clear.stdout | default('', true) is match('\\s*\\{') else {} }}"
-    __porelo_vault_clear_left_for_transports: "{{ __porelo_vault_clear_answer | length > 0
-      and not __porelo_vault_clear_answer.refused | default(true)
-      and __porelo_vault_clear_answer['items'] | selectattr('status', 'equalto', 'NOT_REMOVED')
-      | rejectattr('kind', 'in', __porelo_transport_kinds) | rejectattr('transport', 'truthy') | list | length == 0 }}"
-
-# Kept only because a transport could not clear what it keeps, such as a homeserver taken off the VPN before the
-# give-back: the host goes with its disk, so the vault is cleared all the same. porelo then still exits 1 for that
-# transport, so the step fails only where something not a transport's was not removed.
-- name: down | Clear the vault although a transport could not clear what it keeps
-  ansible.builtin.command:
-    argv: [porelo, vault, clear, --yes, --json, --force]
-  become: true
-  become_user: "{{ porelo_account }}"
-  environment: "{{ __porelo_user_environment }}"
-  register: __porelo_vault_forced
-  when:
-    - __porelo_vault_clear is not skipped
-    - __porelo_vault_clear.rc != 0
-    - (__porelo_vault_clear.stdout | from_json).kept | default('') == 'transports'
-  changed_when: true
-  failed_when: >-
-    __porelo_vault_forced.rc != 0
-    and not (__porelo_vault_forced_answer | length > 0
-    and not __porelo_vault_forced_answer.refused | default(true)
-    and __porelo_vault_forced_answer['items'] | selectattr('status', 'equalto', 'NOT_REMOVED')
-    | rejectattr('kind', 'in', __porelo_transport_kinds) | rejectattr('transport', 'truthy') | list | length == 0)
-  vars:
-    __porelo_vault_forced_answer: "{{ __porelo_vault_forced.stdout | default('', true) | from_json
-      if __porelo_vault_forced.stdout | default('', true) is match('\\s*\\{') else {} }}"
-
-- name: down | Take the host's forge trust out of the account
-  when: ansible_facts['getent_passwd'][porelo_account] is not none
-  block:
-    - name: down | Read whether the account's CA bundle exists
-      ansible.builtin.stat:
-        path: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo/ca-certificates.pem"
-      register: __porelo_ca_bundle
-
-    - name: down | Remove only the forge's marked CA block
-      ansible.builtin.blockinfile:
-        path: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo/ca-certificates.pem"
-        marker: "# {mark} porelo-host forge CA"
-        state: absent
-      when: __porelo_ca_bundle.stat.exists
-
-    - name: down | Read what remains of the account's CA bundle
-      ansible.builtin.slurp:
-        src: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo/ca-certificates.pem"
-      register: __porelo_ca_remaining
-      when: __porelo_ca_bundle.stat.exists
-
-    - name: down | Remove the CA bundle if no certificates remain
-      ansible.builtin.file:
-        path: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo/ca-certificates.pem"
-        state: absent
-      when:
-        - __porelo_ca_bundle.stat.exists
-        - __porelo_ca_remaining.content | b64decode | trim == ''
-
-    - name: down | Remove the tasks' CA file
-      ansible.builtin.file:
-        path: "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo/task-ca-certificates.pem"
-        state: absent
-
-    - name: down | Let the account's containers read the host's names again
-      ansible.builtin.file:
-        path: "{{ __porelo_hosts_dropin }}"
-        state: absent
-
-# vault clear does not reach the room's registration token the person's stop wrote into the account's home; removed
-# as the account, so no link of the account's leads root's hand elsewhere.
-- name: down | Remove the room's registration token from the account's home
-  ansible.builtin.command:
-    argv:
-      - rm
-      - -f
-      - --
-      - "{{ ansible_facts['getent_passwd'][porelo_account][4] }}/.config/porelo/matrix/host-registration-token"
-  become: true
-  become_user: "{{ porelo_account }}"
-  when: ansible_facts['getent_passwd'][porelo_account] is not none
-  changed_when: false
+- name: down | Forget the follow's units
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: __porelo_follow_removed.results | selectattr('changed') | list | length > 0
 
 - name: down | Remove the account's name the person's stop reads
   ansible.builtin.file:

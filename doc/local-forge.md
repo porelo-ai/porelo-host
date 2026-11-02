@@ -141,12 +141,15 @@ both forges let workflows select their destinations without editing the workflow
 
 ## Registering a project
 
-With the forge running, root registers a project through
-`porelo-host-project add <project> <admin> --signed-by 'ssh-ed25519 <base64>'`.
+Root's organization follow registers projects named in the taken state and removes projects no longer named.
+On a forge host it calls `porelo-host-project add <project> <admin> --signed-by 'ssh-ed25519 <base64>'` with an
+unlocked project admin and that admin's current signing key from the state. The root helper remains available for
+manual registration. Follow lends the helper its existing configuration lock through a validated inherited file
+descriptor, so registration and removal stay inside the follow's exclusive lock.
 The project name is 1 to 40 lowercase letters or digits, with hyphens allowed inside. The admin's user name must have
 an unlocked plain root-only record `/etc/porelo-host/people/<admin>.conf` holding at least one membership, and an
-existing forge login, and the [applied registry](#the-hosts-state-taken-from-the-registry) must name the project for
-that admin. The signing key is the
+existing forge login, and the [applied organization](#the-hosts-state-taken-from-the-organization) must name the
+project for that admin. The signing key is the
 project's SSH Ed25519 public key, in the form Porelo's `project.yml` uses in `signers`: one argument containing
 `ssh-ed25519 <base64>`, with one space and no comment. Its canonical base64 decodes to the 51-byte SSH wire format:
 the `ssh-ed25519` string header and a 32-byte public key. The bytes re-encode to exactly the supplied base64.
@@ -158,30 +161,34 @@ access or repository creation. Its `write:package` token becomes the organizatio
 `PORELO_PUBLISHER_TOKEN`. The generated password is discarded; no credential reaches stdout or a record.
 
 `/etc/porelo-host/projects/<project>.conf`, root's with mode `0600`, holds `admin`, `signed_by` and `publisher` as
-`key=value` lines (and, once `porelo-host-person sync` has run, `commit`, `access_commit` and one `signer` line per
-verified project signing key), and registration adds `member=<project> project-admin` in fixed order to
+`key=value` lines, and registration adds `member=<project> project-admin` in fixed order to
 `/etc/porelo-host/people/<admin>.conf`. Both record directories are root's with mode `0700`. An existing record,
 organization, user or publisher name is refused before registration changes the forge. Success prints one compact JSON
 line, in this field order:
 `{"project":"<project>","admin":"<admin>","organization":"<project>","publisher":"porelo-publisher-<project>"}`.
 The helper accepts no environment overrides for its paths or authority.
 
-`porelo-host-project remove <project>` first lists every repository and package version. For repositories, it calls
-the gathered push's read-only `--check <project> <repositories...>` mode, asking for the central token with hidden
-input. `--check` reads each repository's central `https://` `original_url` kept by Forgejo from its migration through
-the admin API and trusts the central forge by `/etc/porelo-host/forge/central-ca.conf` (the system CA bundle
-`/etc/ssl/certs/ca-certificates.crt` unless `porelo_host_forge_central_ca` names another); a repository without an
-`original_url` is refused by name. Every commit reachable from a local ref, including task branches and tags, must be
-reachable from a central ref. Missing settings, an unreachable forge or unpushed commits refuse removal before any
-deletion; the comparison pushes nothing.
+`porelo-host-project remove <project>` first lists every repository and package version. A project migrated by
+refresh has a separate read-only deploy key for each migrated repository, under root's private
+`/etc/porelo-host/organization/read/projects/<project>/`. Removal fetches every central ref with those keys and the
+organization's pinned SSH host keys, then compares all commits reachable from local refs, including task branches
+and tags. A missing read key, mismatched central address, unavailable forge or incomplete comparison prevents
+removal before any deletion. Unpushed work keeps the project `held` in `org status`, naming its repositories and
+commits; the next follow tries again. Memberships and member file access are revoked even while the forge is held.
+The comparison pushes nothing and uses no central write token. Taking a project off deletes the host's private read
+keys but not their public deploy keys at the central forge, as no central token is at hand then: they are read-only
+and can no longer be used, and a person with admin rights on the central repository removes them by hand.
+Manual removal of a legacy registration without
+read keys retains the gathered push's `--check` comparison and hidden central-token input.
 
 Once the check passes, removal deletes the repositories and package versions, then the organization and publisher,
-drops `member=<project> …` from every person record in `/etc/porelo-host/people/` and removes the project record, and
-locks each unlocked person left with no membership through `porelo-host-person lock`. Success prints
-`{"project":"<project>","removed":true,"locked":[<users>]}`. Registration attempts cleanup of
+drops `member=<project> …` from every person record in `/etc/porelo-host/people/` and removes the project record.
+The follow locks each person left with no membership. A private `removing=true`
+record marks deletion after its preflight, so an interrupted run can finish a publisher or local cleanup after the
+organization is gone. The read-key manifest is removed after its keys, so cleanup can resume too. Success prints
+`{"project":"<project>","removed":true}`. Registration attempts cleanup of
 its own new identities if an API operation fails. Deletion spans separate API operations; a failure after deletion
-starts can leave part of the project removed, with its record retained and a nonzero exit. Keep the project idle
-while removing it so a concurrent push cannot add work after the check. `down` removes the helper and project records
+starts retains its progress and returns nonzero for the next follow to resume. `down` removes the helper and project records
 with the forge.
 
 Every refusal goes to stderr as `porelo-host-project: <words>`, with no success line on stdout. Its exit code is:
@@ -197,99 +204,74 @@ Every refusal goes to stderr as `porelo-host-project: <words>`, with no success 
 
 `/usr/local/sbin/porelo-host-person` manages host people under the exclusive flock on `/etc/porelo-host/forge.conf`,
 with the same refusal prefix (`porelo-host-person: <words>` on stderr) and exit codes (`64`, `65`, `69`, `73`). Root
-calls `add <user> --role project-admin` (recording `member=hand`), `lock <user>` and `purge <user>`. Either root or the
-project's unlocked recorded admin (`sudo -n /usr/local/sbin/porelo-host-person sync <project>`, permitted to
-`%porelo-people` in `/etc/sudoers.d/porelo-host-person` and checked by the helper against `SUDO_USER` and `admin=` in
-`/etc/porelo-host/projects/<project>.conf`) calls `sync <project>`.
+calls `purge <user>`; who is on the host and who is locked changes only in the organization, and the host follows.
 
-`add` takes the person's one current key from the applied registry and accepts no credential input on stdin.
-The account's GECOS field names `umask=0022`, which `pam_umask` reads ahead of `USERGROUPS_ENAB`'s `002`, so the
+The follow takes each person's one current key from the applied organization. The account's GECOS field names `umask=0022`, which `pam_umask` reads ahead of `USERGROUPS_ENAB`'s `002`, so the
 person's directories carry no group write; an account admitted before gets it on its next `add`. Once admitted, root
 starts the person's user manager and runs `porelo setup` as the person with nothing on stdin, which registers the hooks
-and starts `porelod` for good, so the tunnel's `porelod.sock` answers before the person's first bring. A daemon that
+and starts `porelod` for good, so the tunnel's `porelod.sock` answers before the person's first task. A daemon that
 does not start leaves the admission standing and says so on stderr: `porelo setup` as the person starts it.
 Logins match `[a-z][a-z0-9-]{0,31}` and cannot be `porelo` or start with `porelo-`. A purged login is permanently
-refused through root's mode `0600` `/etc/porelo-host/people/purged`, including on a later registry intake.
+refused through root's mode `0600` `/etc/porelo-host/people/purged`, including on a later organization intake.
 
-`porelo-host-person sync <project>` reconciles the project's persons with its signed bundles, once the
-[applied registry](#the-hosts-state-taken-from-the-registry) names the project for its recorded admin:
+The follow reconciles each project's persons with the [state it took](#the-hosts-state-taken-from-the-organization):
 
-1. Root traverses `<admin home>/.local/share/porelo-host/setup/<project>/` without following symlinks, requires
-   `project.bundle` and `access.bundle` to be plain files owned by the admin and not writable by group or others, and
-   copies both into a fresh `0700` root-only directory under `/run/porelo-host/sync/`, removed before `sync` exits.
-2. Root runs `porelo project verify --json` through `systemd-run --pipe --wait --quiet --collect` in transient unit
-   `porelo-host-sync-<project>` with `DynamicUser=yes`, `PrivateNetwork=yes`, `ProtectHome=yes` and `LoadCredential=`
-   for both copied bundles. Verification pins `signed_by=` from the project record on the first run and the recorded
-   `signer=` keys thereafter, passing `--since` and `--access-since` once commits are recorded. A nonzero exit refuses
-   with `65` and Porelo's stderr words.
-3. The verified `persons` list supplies `login`, `ssh`, `expires`, `revoked`, `role`, `hosts` and `locked`.
-   The helper validates names, keys, expiries and membership shapes. A purged login is refused alone while other
-   changes continue. The access file's old host CA values are not read. Project verification keys remain trust anchors
-   for the bundles; they grant no commit-signing authority.
-4. The person record holds ordered `member=` lines, `locked=`, `ssh=` and `expires=`, with an optional `reason=` for
+1. A person record holds ordered `member=` lines, `locked=`, `ssh=` and `expires=`, with an optional `reason=` for
    a host, membership or key lock. Each admitted person's one card key replaces
    `/etc/ssh/authorized_keys/<login>`, with `expiry-time` when the card expires. There are no device names or VPN
    fields. `porelo-people` contains exactly the admitted logins that the host has not locked.
-5. A project's lock, revocation, expired card or removal takes the person out of that project's memberships,
-   forge teams, its room admins and signers. Other memberships, the account, sessions and tokens stay. The host
-   keeps no Matrix room's members: the gate admits each login of `porelo-people`, and the project admin's Porelo
-   keeps the room.
-   An unlocked verified membership restores that project's access. A host lock, the current key in the host KRL,
-   registry revocation or removal of the last membership locks the account, ends sessions and deletes forge tokens.
-   A project cannot undo a host lock. A membership-only lock can be undone by a verified membership.
-6. Forgejo reconciliation uses its private socket API. Persons join `Owners` or `developers` by their verified role;
-   gate and legacy agent identities join `developers`. Removal reaches every team in that organization and leaves
-   other organizations alone. Matrix reconciliation runs the transport as `porelo-matrix`, sending the project's
-   active logins on stdin. Missing verified `admins` means no room administrators. Even unchanged bundle commits
-   reconcile access again, so a failed service change can be retried.
-7. `/etc/porelo-host/projects/<project>.conf` is updated atomically with `commit=`, `access_commit=` and the verified
-   `signer=` lines, and stdout prints one compact JSON line:
-   `project`, `commit`, `access_commit`, `added`, `dropped`, `refused` and `unchanged` fields.
+2. A project's lock, revocation, expired card or removal takes the person out of that project's memberships,
+   forge teams and signers. Other memberships, the account, sessions and tokens stay. Where the host runs the gate
+   and the project has no homeserver of its own, follow calls the gate's `keep-room` with exactly the unlocked
+   members. Taking the project off drops the room after the project's forge removal succeeds; 75 retries on the next
+   follow and 78 is named and left alone. While forge removal is held, the gate keeps the room with no members, retaining
+   its conversation until removal succeeds.
+   An unlocked membership restores that project's access. A host lock, the current key in the host KRL,
+   organization revocation or removal of the last membership locks the account, ends sessions and deletes forge tokens.
+   A project cannot undo a host lock.
+3. Forgejo reconciliation uses its private socket API. Persons join `Owners` or `developers` by their role; gate and
+   legacy agent identities join `developers`. Removal reaches every team in that organization and leaves other
+   organizations alone. Even an unchanged commit reconciles access again, so a failed service change is retried at the
+   next follow.
 
-Each project's `/etc/porelo-host/signers/<project>.allowed` is root-owned mode `0644`, in a mode `0755` directory.
-It lists only that project's unlocked persons: a plain key for the login and a `cert-authority` line restricted to
-the `git` namespace and `task:*` principals. A replaced key remains with `valid-before` bounded by replacement time
-and the old card's expiry. Locked or removed persons have no lines in that project. Private `.json` history files
-retain the keys needed for later reconciliation. A task's certificate names the one principal
-`task:<project>:<task>`, which the host and Porelo's `task check-certificate` both hold it to at its start.
+Each project's `/etc/porelo-host/signers/<project>.allowed` and `.certifiers` are root-owned mode `0644`, in a
+mode `0755` directory. Porelo derives them from the taken state's signing keys: persons' Git signing keys in
+`.allowed`, and task certificate authorities restricted to `task:<project>:*` in `.certifiers`. Porelo bounds
+replaced keys by their validity periods. Locked or removed persons have no lines in that project. A task's
+certificate names the one principal `task:<project>:<task>`, which the host and Porelo's
+`task check-certificate` both hold it to at its start.
 
-## The host's state taken from the registry
+## The host's state taken from the organization
 
-The host takes which projects it has, and for whom, from the signed registry state its host admin brings, never from
-the central forge. Root pins the host admin once, at setup, with the key that signed the host card:
-`porelo-host-person registry pin <login> "ssh-ed25519 <base64>"` writes `/etc/porelo-host/registry/pin.conf` (`0600`,
-`admin=` and `key=`, in a `0700` directory) and refuses a second pin.
+Root's `porelo-host-person org follow` fetches the signed organization from the central forge every five minutes;
+`org refresh` follows immediately with empty stdin, and takes the host admin's central token on standard input to
+add the organization's read key after setup or migrate projects waiting for that token. Setup supplies the initial
+admin pin and organization deploy key; a taken state advances the pin. Project files are readable through
+per-member ACLs, and membership loss locks an account for seven days before automatic purge. See the porelo role's README for the machine
+file handover and host summary. `org pin` is unavailable.
 
-The host admin's Porelo uploads `registry.bundle` into `porelo-host/setup/` in the data folder, and root or the pinned host
-admin (`sudo -n /usr/local/sbin/porelo-host-person registry`, the sudoers rule's bare form alone) runs `registry`. On a
-fresh host no account holds a setup directory yet: root, logged in with the pinned host admin's key, gives the first
-bundle on stdin with `registry --stdin` (at most 16 MiB, refused through `sudo`). Root
-copies the bundle as `sync` does and runs `porelo registry verify --repository <copy> --host <host> --pinned
-<fingerprint> --json` in the transient unit `porelo-host-registry`, isolated like the sync's, with `--since` and the
-applied commit once one is applied; `<host>` is `forge.conf`'s `host=`. A refusal from Porelo, a bundle signed by
-another key or one not descending from the applied state alike, refuses the whole bundle with `65` and changes nothing,
-so no lock, revocation or handover is rolled back.
+Each project and person entry is checked alone: a bad or duplicated project is named with state `refused` in the
+answer's projects and left out while the rest applies; unusable person cards are named on stderr. A revoked key
+stays revoked; a replacement card under another key can readmit the login. When the host card is signed by another
+key Porelo accepted as the pinned key's successor, the pin moves to the person holding that key, a handover. `/etc/porelo-host/organization/applied.json` (`0600`) records the commit, the host
+card, the projects, the persons and every revoked login; the persons' keys and revocations feed SSH's keys and the
+KRL. An entry that names a login revoked counts even where its card is unusable for another fault, and its last key
+stays recorded for the KRL.
 
-Each project and person entry is checked alone: a bad or duplicated one is named in the answer's `refused` and left
-out while the rest applies. A login once applied as revoked stays revoked; a later entry admitting it again is refused
-alone. When the host card is signed by another key Porelo accepted as the pinned key's successor, the pin moves to the
-person holding that key, a handover. `/etc/porelo-host/registry/applied.json` (`0600`) records the commit, the host
-card, the projects, the persons and every revoked login; the persons' keys and revocations are for SSH's keys and the
-KRL to read, which this step does not write. A project registered here that the registry no longer names for its
-recorded admin is named in `dropped` and kept: its next `sync` and a new `porelo-host-project add` for it are refused
-(`65`) until the host admin removes it or names it again. A revoked login stays revoked: an entry that names it
-revoked counts even where it is refused for another fault, its last key stays recorded for the KRL, and a revoked admin
-gets no project, no `sync` and no `add`. A host card without its signer refuses the bundle (`69`), and `registry pin`
-runs as root alone, never through `sudo`. Success prints
-`{"commit":"<commit>","pinned":"SHA256:...","projects":[...],"dropped":[...],"revoked":[...],"refused":[...],"unchanged":false,"host":"<host>","persons":[...]}`.
+When an owner has replaced a host admin's card, no key the host holds signed that change, so every fetch is refused.
+The way out is on the machine: root gives the host admins' keys, one `login key` line each, on standard input of
+`porelo-host-person org renew-pin`, root's alone, which replaces the pin and the keys in the state taken, and answers as
+`org status`. A host's own record refuses a rolled-back tip as well; to start over after a real rollback, root empties the
+state directory of the unit `porelo-host-org-fetch`.
 
-`porelo-host-person registry status`, root's alone and read-only, answers the interface over root's SSH without it
-reading root's files: `{"host":"<host>","commit":"<commit>"|null,"pinned":"SHA256:..."|null,"persons":[...]}`. Each
-person, sorted by login, has `login`, `state`, `hand` (a membership by hand) and `projects` (`project`, `role`). The
+`porelo-host-person org status`, root's alone and read-only, answers the interface over root's SSH without it
+reading root's files: `{"host":"<host>","refused":"<words>"|null,"commit":"<commit>"|null,"pinned":"SHA256:..."|null,"persons":[...]}`.
+`refused` is what the last fetch refused, for the host admin to judge: the host keeps the state it took and does not read
+this as being taken out of the organization, since a removal looks the same as a commit nobody allowed. Each
+person, sorted by login, has `login`, `state`, `host_admin` (the organization names them a host admin) and `projects` (`project`, `role`). The
 state is `active`, `locked`, `pending` (a lock or purge to retry), `purged`, or `named` for a login the applied
-registry names that the host has not admitted; only `active` is an admission. It reads under the host's shared lock,
-so it never sees a lock, removal or sync half done. `registry` answers `host` and `persons` in the same shape, read
-after the bundle is applied.
+organization names that the host has not admitted; only `active` is an admission. It reads under the host's shared lock,
+so it never sees a lock, removal or follow half done.
 
 ## Each push judged when it arrives
 
@@ -309,7 +291,7 @@ organization no project registered or through a link on the way, and runs
 repository read-only. Porelo gets the project's keys in force without a `valid-before` (`--signers`), their
 `cert-authority` lines for the project's own tasks (`--certifiers`), the KRL and each task certificate the host
 recorded for the project and valid now, as `task --show` answers it (`--certificates`). Pushes are judged side by
-side, each with its own staging directory; a sync waits for them and they for it. Every new commit, merges too, must be signed so that it holds now: by a person's key, by a task
+side, each with its own staging directory; a follow waits for them and they for it. Every new commit, merges too, must be signed so that it holds now: by a person's key, by a task
 certificate valid now, or by a task key whose recorded certificate holds now. Porelo's 65 refuses the push with its
 lines; any other failure refuses it too.
 
@@ -319,16 +301,16 @@ Each accepted commit's verdict, with the arrival time Porelo read and the signer
 arrived, not that the forge kept it: a push the forge refuses after both hooks leaves its verdict there, and the same
 commit pushed again is judged again.
 
-The bring's migration is not an arrival. Sync arms each repository right after the migration: it links the hook first,
+A repository's migration is not an arrival. The follow arms each repository: it links the hook first,
 then records the history the repository holds as `migrated`, not judged here, since the central forge took those
 commits, and last an `armed` line. A commit pushed between the link and the listing is judged and kept once. Only
-later pushes are arrivals. A repository made on the forge another way is armed by the next sync, and is not judged
-before; one whose history was not recorded is listed again at each sync until it is. The arming stops, recording
+later pushes are arrivals. A repository made on the forge another way is armed by the next follow, and is not judged
+before; one whose history was not recorded is listed again at each follow until it is. The arming stops, recording
 nothing, when the hook link names anything but the mounted hook, the mounted hook is not executable, a link stands
 for the repository's hooks, Forgejo's shared `pre-receive` is missing or runs no repository's hooks, or a repository
 names a `core.hooksPath` of its own. Removing the project takes its arrivals along, so a
 project brought again under the name starts its record anew. A person reads the record under the same shared lock
-the pushes take, never while a sync, a lock or a removal is half done.
+the pushes take, never while a follow, a lock or a removal is half done.
 
 ## The person's two decisions
 
@@ -359,7 +341,7 @@ SSH, naming the project and optionally the repositories in their order; a root c
 Without repository names it pushes every repository `porelo-host/push/<project>.conf` in the config folder names, in the config's
 order; with names, those, refusing an unknown or duplicate name before asking for credentials. The config is read only
 from the caller's `getent passwd` home (never `$HOME`): a plain file of theirs, not a link, mode `0600`, in a `0700`
-directory of theirs, written by `porelo.host.bring` and `porelo.host.join` from the repositories the person reaches on
+directory of theirs, written by the host's follow, as that person, from the project's repositories on
 the forge and their `original_url`; anything else is refused naming what was found. It reads local `main` with the
 person's own local forge token from `sudo -n porelo-host-person forge-token`, which refuses a locked person or one
 no project holds (a failed token request refuses with `69`), asks once on the terminal for their central forge write token without
@@ -407,13 +389,20 @@ documentation](https://github.com/porelo-ai/porelo/blob/main/doc/credentials.md)
 
 The gathered push asks for the central token with hidden input in the SSH terminal and stores it nowhere; git
 receives it only as a header in its environment, never on a command line, and the command's output names no token. The
-token for the initial repository migration is used the same way, once: a `bring` with a repository still to migrate
-lists it in `porelo-host/push/<project>.migrate` in the config folder (no secret) and waits, naming `forge-central-token`; the
-person's stop pipes the token into `porelo-host-push --migrate <project>`, which has Forgejo migrate each listed
-repository it lacks, with the token in the request body on a pipe alone, and removes the list; the `bring` run again
-goes on. `/usr/local/sbin/porelo-host-push --pull <project> [repositories...]` brings central `main` locally as
+token for a project's initial repository migration arrives only on `org refresh` standard input. A project stands
+as `waiting-for-token` until it arrives. Refresh passes it once to the root project helper on a pipe; the helper adds
+a read-only deploy key to the central repository and migrates the repository the organization state names through
+Forgejo's private socket API, with the token in the request body alone. HTTPS and git SSH project addresses are
+normalized to the central forge's HTTPS clone address. The central forge must match the organization's adapter
+settings, which this helper reads as an indented `repository:` setting, optionally single- or double-quoted; other spellings are refused before
+sending the token. An existing matching migration and deploy key are kept on retry. The follow then writes members'
+push configs from Forgejo's repositories and their `original_url`. The state supplies no additional repository
+list; repositories inside a project file are not expanded by this helper. Removing a project deletes its local
+private read keys; the recorded address retains an explicit SSH port for the removal comparison. The repository name
+`repositories.json` is reserved for the read-key manifest. Public deploy-key registrations on the central forge require separate removal with central
+administrative authority. `/usr/local/sbin/porelo-host-push --pull <project> [repositories...]` brings central `main` locally as
 `central/main`, in the person's own account with the central token on stdin. Local `main` reaches it by a pull
-request. Push, pull and migration each call `sudo -n porelo-host-person forge-token` for the local token and put it into the
+request. Push and pull each call `sudo -n porelo-host-person forge-token` for the local token and put it into the
 person's vault as `<forge>.person`, since it replaces the one there.
 No token for the central forge lies on the host.
 

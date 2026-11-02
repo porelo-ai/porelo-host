@@ -147,7 +147,7 @@ def test_jobs_share_loopback_for_checkout_registry_and_cache():
     assert config["container"]["valid_volumes"] == ["/opt/jdk", "/opt/job-hosts"]
     defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())
     assert defaults["forge_variables"]["MAVEN_SNAPSHOTS_URL"] == (
-        "http://{{ forge_name }}:{{ forge_http_port }}/api/packages/{{ forge_owner }}/maven"
+        "http://{{ forge_name }}:{{ forge_http_port }}/api/packages/{project}/maven"
     )
 
 

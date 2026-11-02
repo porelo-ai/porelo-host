@@ -33,19 +33,18 @@ modes refuse a connection that is not a Unix socket. Without `Authorization`, it
 `WWW-Authenticate: Basic`; Basic and token credentials pass to Forgejo, which checks their owner and rights.
 Token issuance and task-token isolation belong to the host's token lifecycle. Tasks receive neither socket nor a
 person's token. `/etc/porelo-host/forge.conf` records `host`, `name`, `port`, `git_port` and `account`, with no secret.
-Root's administration helpers reach the private upstream socket; a person's bring and join use `git.sock`.
+Root's administration helpers reach the private upstream socket; a person's forge calls use `git.sock`.
 
 `up` creates no default forge user and removes an unrecorded `operator` login. Each person gets their own login
 at admission. Browser access needs no password. The role removes the password helper, old HTTPS units and forge TLS
-files; the person's sudoers configuration provides no password-setting command. Porelo's account setup removes its
-forge CA trust block and task CA file.
+files; the person's sudoers configuration provides no password-setting command.
 
-`up` prepares the forge without repositories (`forge_repositories` stays empty on the host) and installs
+`up` prepares the forge without repositories and installs
 `/usr/local/sbin/porelo-host-push` (`0755`, push, `--pull` and `--migrate` in a project developer's own account,
 reading `porelo-host/push/<project>.conf` from the caller's config folder, and as root with `--check` by
 `porelo-host-project remove` against Forgejo's `original_url`) together with `/etc/porelo-host/forge/central-ca.conf`
-(`0644`, holding `forge_central_ca`). `porelo.host.bring` and `porelo.host.join` write each person's
-`porelo-host/push/<project>.conf` in the config folder from the repositories they reach on the forge.
+(`0644`, holding `forge_central_ca`). The host's follow writes each member's
+`porelo-host/push/<project>.conf` in their config folder, as that member, from the project's repositories on the forge.
 The helper gets the caller's local token through `sudo -n porelo-host-person forge-token`.
 APIs use `git.sock`; local Git uses `127.0.0.1:<git_port>`, a second listener of `porelo-forge-git.socket` with the
 same token-only gate, since Git has no Unix-socket transport. Forgejo itself never listens on TCP, and the browser's
@@ -53,11 +52,10 @@ and the runner's gates serve their Unix sockets alone. Central transfers retain 
 sudoers drop-in an older host had for the push.
 
 `/usr/local/sbin/porelo-host-project`, root's alone, registers an organization with an unlocked member in
-`/etc/porelo-host/people/` (recording `member=<project> project-admin`) whom the applied registry in
-`/etc/porelo-host/registry/applied.json` names as the project's admin, a signing key in Porelo's canonical
+`/etc/porelo-host/people/` (recording `member=<project> project-admin`) whom the applied organization in
+`/etc/porelo-host/organization/applied.json` names as the project's admin, a signing key in Porelo's canonical
 `ssh-ed25519 <base64>` signer format and a package-only publisher, or checks its commits against the central forge
-before removing the project (including any `commit=`, `access_commit=` and `signer=` lines recorded by
-`porelo-host-person sync`), dropping its memberships from `/etc/porelo-host/people/` and locking each person left with
+before removing the project, dropping its memberships from `/etc/porelo-host/people/` and locking each person left with
 none through `/usr/local/sbin/porelo-host-person lock`. Its credentials stay in memory and Forgejo;
 [project registration](../../doc/local-forge.md#registering-a-project)
 describes the records, refusal checks and failure behavior. Down removes the helper and project records.
@@ -67,8 +65,11 @@ The [resource bounds](../../doc/index.md) are set by `forge_cpus`, `forge_memory
 `forge_job_memory`, `forge_job_pids_limit` and `forge_job_omp_num_threads`. Their defaults and types are in
 [`defaults/main.yml`](defaults/main.yml) and [`meta/argument_specs.yml`](meta/argument_specs.yml).
 
-The runner takes `forge_runner_capacity` jobs at once, 2 by default, which fit the 16 processors of the server Porelo
-rents. Before its configuration is written, the role
+Unset `forge_runner_capacity`, `forge_job_cpus` and `forge_job_memory` fit half the host beside the VM pool:
+2 jobs when two minimum jobs fit, otherwise 1; then up to 4 CPUs and 8 GiB per job, with floors of 1 CPU and
+768 MiB. Memory rounds down to whole MiB. A host with 16 processors and 32 GiB or more gets 2 jobs of 4 CPUs and
+8 GiB when the VM pool fits the remaining budget. Explicit bounds stay unchanged; `forge_job_omp_num_threads`
+defaults to the job's CPU quota. Before its configuration is written, the role
 checks one budget with the VM pool: capacity × `forge_job_cpus` stays within half the host's processors, and capacity
 × `forge_job_memory` plus the pool's VMs within half its `MemTotal`, so Forgejo, the runner and Porelo's own tasks keep
 the other half. A refusal names both sides; the `capacity` entry point runs this check alone. A job's `actions/cache`
@@ -107,14 +108,9 @@ token of the account `porelo-publisher`, whose team may write the organization's
 own token is refused there. The token is made inside Forgejo's container and never read out, so it stays with the
 forge and the runner's jobs and reaches no task.
 
-`porelo_host_forge_agents` supplies `forge_agents`, a list of unique lower case names matching
-`^[a-z][a-z0-9-]{0,30}$`, default `[]`. With repositories configured, each gets a Forgejo account `agent-<name>`
-and membership in the owner's `agents` team: write access to code, pulls and issues on all its repositories,
-read access to actions and packages, and no repository creation. Each token has scopes
-`write:repository,read:package,read:organization` and stays in `/etc/porelo-host/forge/agents/<name>.token`,
-root:root `0600`, in a root:root `0700` directory. Up keeps an existing token file and makes a missing one;
-removing a name from the inventory leaves its account and token alone. Down removes the token directory with
-the forge's settings and volumes.
+Registration gives each new organization the teams `developers`, `gates` and `agents`, and `forge_variables` and
+`forge_placeholder_secrets`, where `{project}` in a value is the project's name; a migrated repository's `main` takes no
+direct push, needs one approval from `Owners` or `developers`, and merges by fast-forward alone.
 
 `forge_variables` defaults to `PORELO_PUBLISH: "false"`, `JF_URL: "https://jfrog.invalid"`, `PORELO_DEPLOY_PROFILE:
 forge-release` and `MAVEN_SNAPSHOTS_URL`, the forge's own Maven registry; GitHub holds the same names with its values.

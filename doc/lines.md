@@ -60,15 +60,10 @@ with one line in place of a failure:
     {"v": 1, "state": "waiting", "needs": ["vault-new", "keys"]}
 
 `needs` names what is missing: `vault-new` with `keys` when the account has no vault yet, `vault` when its vault is
-shut, and `forge-central-token` while a `bring` waits for repositories from the central forge. `up` installs
-agents without stopping for
-their sign-ins and starts no task. `ansible-playbook` itself exits 2 on a waiting stop, as on any failure, so a program
+shut. `up` starts no task. `ansible-playbook` itself exits 2 on a waiting stop, as on any failure, so a program
 tells the stop from a failure by this line, never by the exit code. A second `up` after the person's step runs both
 plays from the top; what is done is done, so it goes on where it stopped.
 
-`bring` and `join`, run in the person's own account, stop the same way: `vault-new` with `keys` when the account has
-no vault, `vault` when it is shut, `keys` when the open vault lacks a key the machine file names, and, in a `bring`,
-`forge-central-token` while a repository is still to migrate and no token for the central forge is given.
 Any other answer about the vault is a failure with words.
 
 A person at the host's terminal may instead run `porelo-host-stop NEED...` as the account, with `vault-new` or
@@ -79,14 +74,13 @@ The command exits 0 when every named need is done, 75 on `n`, `N` or Ctrl+C, 64 
 required command is missing. Its last line on success is "The host's stop is done; close this terminal, and setup
 goes on." On cancellation it is "Cancelled; the host waits at this stop. Running up again comes back here."
 
-Push and pull run in the person's own account: `/usr/local/sbin/porelo-host-push [--pull] <project> [repos...]`,
-as does `porelo-host-push --migrate <project>`; root running them is refused with 77. They read the central token on
+Push and pull run in the person's own account: `/usr/local/sbin/porelo-host-push [--pull] <project> [repos...]`;
+root running them is refused with 77. They read the central token on
 stdin and only the caller's private push config, and get the local token through
 `sudo -n /usr/local/sbin/porelo-host-person forge-token`, which refuses a locked person or one no project holds. That
 token replaces the person's last one, so it goes on a pipe into their vault as `<forge>.person`; a vault that takes
 none is said on stderr and the push goes on. Local Git reaches the forge on `127.0.0.1:<git_port>`, the same token-only gate `git.sock` is; API requests use the
-socket directly. No local CA or vault token is used. The stop pipes the central token
-into that migration verb. Neither push nor pull stores the central token.
+socket directly. No local CA or vault token is used. Neither push nor pull stores the central token.
 
 **The stop on standard input.** Every need is given from the person's secrets file by one pipeline, as the person:
 
@@ -100,20 +94,17 @@ with the needs as `up` names them. Standard input holds one line per secret, `<n
 | `vault-new` | `vault-new <passphrase>` | `porelo vault init --passphrase-stdin`, as the account |
 | `vault` | `vault <passphrase>` | `porelo vault unlock --passphrase-stdin`, as the account |
 | `keys` | `key <name> <key>`, one per key of the machine, none or more | `porelo vault put <name>`, as the account, once the vault is open |
-| `forge-central-token` | `forge-central-token <token>` | Migrate the waiting bring's list as the caller, on a pipe |
 
 Every line is checked before any is used: a need not named, an unknown need, a line given twice, a key name other than
 letters, digits, `.`, `_` and `-`, or a value that is not base64 is refused, naming the line and never the value, and so
 is a named need no line gives; only `keys` beside `vault-new` may come with no line, for a machine without keys. `drive`
 is refused, as is a call made as root. The values then go in the table's order, each decoded on a pipe into its
-user, and nothing is asked. A key the vault lacks later, or the central token, is given by another call with that need
-alone: `forge-central-token` is named only by a `bring`'s own stop, since only the running forge knows whether a
-repository is still to migrate; `up` fails with a message beginning `keys:` for a missing key. Matrix access uses
+user, and nothing is asked. A key the vault lacks later is given by another call with `keys`;
+`up` fails with a message beginning `keys:` for a missing key. Matrix access uses
 the transport's Unix socket gate and asks for no machine or registration token at the stop.
 
 It exits 0 when every line is used, printing "Your stop is done."; 64 for a wrong call or a wrong line, with nothing
-used; 65 when the vault refuses a value (`vault-new`, `vault`, a key), naming it, or the migration the central token
-was for stops; and 69 when a required command is missing, or no single bring waits for the central token.
+used; 65 when the vault refuses a value (`vault-new`, `vault`, a key), naming it; and 69 when a required command is missing.
 
 **The version.** `v` is the contract's version. An added field or state keeps it; a field that changes or goes away
 raises it. A reader skips a `state` it does not know, as it skips a field.

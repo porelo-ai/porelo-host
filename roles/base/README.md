@@ -20,8 +20,8 @@ Ubuntu 26.04, run as root on the host itself (`-c local`). A CPU with virtualiza
 | `base_host_path` | `/etc/porelo-host/host.json` | Where `tasks_from: host` writes the host's public summary JSON. |
 
 `base_host_admin_key_file` defaults to root's `authorized_keys` in the SSH folder, which setup must populate with the pinned
-host admin key. Every `up` copies it to `/etc/ssh/authorized_keys/root` before enabling the SSH policy. A handover
-updates this source as well as the active root-owned key file. See [SSH access](../../doc/ssh.md).
+host admin key. Until a follow has taken a state, every `up` adds it to `/etc/ssh/authorized_keys/root` before enabling
+the SSH policy, removing no other key; after that the follow owns the file. See [SSH access](../../doc/ssh.md).
 
 ## Example
 

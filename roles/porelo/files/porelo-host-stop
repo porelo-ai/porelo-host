@@ -29,13 +29,12 @@ stdin_stop() {
 own_stop() {
     local -A named=() given=()
     local -a key_names=()
-    local need line count=0 rest name value project
-    local -a waiting=()
-    [ "$#" -gt 0 ] || stdin_refuse 'at least one need is required: vault-new, vault, keys, forge-central-token'
+    local need line count=0 rest name value
+    [ "$#" -gt 0 ] || stdin_refuse 'at least one need is required: vault-new, vault, keys'
     for need in "$@"; do
         case "$need" in
-            vault-new|vault|keys|forge-central-token) ;;
-            # A person's forge token is made at each bring and join, a task's at its start: none waits for a stop.
+            vault-new|vault|keys) ;;
+            # A person's forge token is made when needed, a task's at its start: none waits for a stop.
             wireguard|forge-certificate|identities) stdin_refuse "$need is no need of the host any more" ;;
             drive) stdin_refuse 'drive is no need of the host any more' ;;
             *) stdin_refuse "unknown need or option: $need" ;;
@@ -64,7 +63,7 @@ own_stop() {
                 [ "$value" != "$rest" ] || stdin_refuse "line $count holds no value"
                 [[ $name =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || stdin_refuse "line $count names no valid key"
                 ;;
-            vault-new|vault|forge-central-token)
+            vault-new|vault)
                 [ -n "${named[$need]+x}" ] || stdin_refuse "line $count gives $need, which is not named"
                 value=$rest
                 ;;
@@ -78,7 +77,7 @@ own_stop() {
         given["$need $name"]=$value
         [ "$need" != key ] || key_names+=("$name")
     done
-    for need in vault-new vault forge-central-token; do
+    for need in vault-new vault; do
         if [ -n "${named[$need]+x}" ] && [ -z "${given["$need "]+x}" ]; then
             stdin_refuse "no line gives $need"
         fi
@@ -87,16 +86,6 @@ own_stop() {
         stdin_refuse 'no line gives keys'
     fi
 
-    # The bring that waits left its list of repositories to migrate; porelo-host-push checks it again before use.
-    if [ -n "${named[forge-central-token]+x}" ]; then
-        shopt -s nullglob
-        waiting=("${HOME-}"/.config/porelo-host/push/*.migrate)
-        shopt -u nullglob
-        [ "${#waiting[@]}" = 1 ] || stdin_refuse 'no single bring waits for the central token; run the bring again' 69
-        project=${waiting[0]##*/}
-        project=${project%.migrate}
-        require_command porelo-host-push
-    fi
     if [ -n "${named[vault-new]+x}" ] || [ -n "${named[vault]+x}" ] || [ -n "${named[keys]+x}" ]; then
         require_command porelo
         export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$EUID}
@@ -114,12 +103,6 @@ own_stop() {
         stdin_decode "${given["key $name"]}" | porelo vault put "$name" > /dev/null \
             || stdin_refuse "porelo vault put refused the key $name" 65
     done
-    # Used once, on a pipe: the token is in no file, and the bring run again finds the repositories there.
-    if [ -n "${named[forge-central-token]+x}" ]; then
-        if ! stdin_decode "${given["forge-central-token "]}" | porelo-host-push --migrate "$project"; then
-            stdin_refuse "the migration of $project stopped; porelo-host-push said why above" 65
-        fi
-    fi
     printf '%s\n' "Your stop is done."
     exit 0
 }

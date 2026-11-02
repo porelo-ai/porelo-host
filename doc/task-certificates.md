@@ -3,7 +3,7 @@
 The root helper accepts a task certificate through `sudo porelo-host-person task <task>`. Standard input is bounded
 at 16 KiB and contains one Ed25519 SSH user certificate. Task names match `[a-z0-9][a-z0-9._-]{0,63}`.
 OpenSSH reads the certificate from a private temporary file and verifies its signature. Its signing CA must be the
-calling person's current, unrevoked key in `/etc/porelo-host/registry/applied.json`. Its one principal
+calling person's current, unrevoked key in `/etc/porelo-host/organization/applied.json`. Its one principal
 is `task:<project>:<task>`, with `default` for a task without a project, and its validity must include the current
 time and have a finite end. The project must be one the person is a member of on this host.
 
@@ -33,23 +33,21 @@ the remaining deletions; any failure still returns nonzero. Expiration cleanup c
 
 Admission creates the person's forge users without tokens. `sudo porelo-host-person forge-token` replaces all tokens
 of the calling person's forge login and answers one token alone on stdout. Its scopes are `write:repository`,
-`write:issue`, `write:organization` and `read:user`; organization and user access support the existing bring.
+`write:issue`, `write:organization` and `read:user`; organization and user access support the person's own forge calls.
 Task tokens belong to `porelo-<login>`, have distinct names and use `write:repository`. The existing token-generation
 command supplies API scopes with no repository selector. Repository write access reaches repositories granted to that
 forge identity by its teams; the gate must restrict use to the repository certified for the task. A token scope alone
 does not provide that gate restriction. The pinned server's additional token restriction options remain unverified.
 
-Registry revocation locks the account, ends its sessions and deletes every token of the person's forge users after
-recording the applied state. An API failure is reported and the next registry intake retries it. A failed service
-revocation leaves the local record locked, so a project sync cannot restore host access. Lock, last-membership removal
+Organization revocation locks the account, ends its sessions and deletes every token of the person's forge users after
+recording the applied state. An API failure is reported and the next organization intake retries it. A failed service
+revocation leaves the local record locked, so a follow cannot restore host access. Lock, last-membership removal
 and purge retain their all-token revocation paths. Lock and purge remove legacy token delivery directories without
 following links.
 
 Porelo's task start is the consumer: it keeps the answered token in the task's vault entry for its gate, which pushes
 as `porelo-<login>` on the host's loopback. The host keeps no lasting gate token.
 
-bring and join take the person's token from `sudo -n porelo-host-person forge-token` at each run, and so do push,
-pull and migration. Each puts it into the vault entry `<forge>.person` at once for the person's own tools, since it
-replaces the one before. For the play's forge calls
-it also lies in a 0600 file in the person's runtime directory, on tmpfs, until the play removes it at its end. No stop
+Push, pull and migration take the person's token from `sudo -n porelo-host-person forge-token` at each run. Each puts it into the vault entry `<forge>.person` at once for the person's own tools, since it
+replaces the one before. No stop
 waits for an identity's token any more.

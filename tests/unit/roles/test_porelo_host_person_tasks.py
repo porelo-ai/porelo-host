@@ -336,7 +336,7 @@ def tasks(tmp_path, monkeypatch):
         ],
         "revoked": [],
     }
-    write(root, "/etc/porelo-host/registry/applied.json", json.dumps(applied))
+    write(root, "/etc/porelo-host/organization/applied.json", json.dumps(applied))
     monkeypatch.setattr(scope["ssl"], "create_default_context", lambda *, cafile: ("CA", cafile))
     monkeypatch.setattr(scope["urllib"].request, "HTTPSHandler", lambda *, context: context)
     monkeypatch.setattr(scope["urllib"].request, "build_opener", lambda *handlers: forge)
@@ -406,7 +406,7 @@ def test_a_certificate_signed_by_the_persons_key_is_recorded_and_its_token_answe
         (["task:default:t1"], 0),
         (["task:alpha:t1"], 0),
         (["task:beta:t1"], 65),
-        (["task:hand:t1"], 65),
+        (["task:host-admin:t1"], 65),
         (["task:t1"], 65),
         (["task:alpha:t1", "task:beta:t1"], 65),
         (["task:Alpha:t1"], 65),
@@ -418,7 +418,7 @@ def test_a_certificate_signed_by_the_persons_key_is_recorded_and_its_token_answe
         "default",
         "member",
         "not a member",
-        "hand admission",
+        "host admin membership",
         "old form",
         "two",
         "invalid project",
@@ -447,7 +447,7 @@ def test_a_task_names_exactly_one_principal_by_its_project(tasks, capsys, princi
         ("host certificate", 65),
         ("bad signature", 65),
         ("revoked person", 65),
-        ("person not in the registry", 65),
+        ("person not in the organization", 65),
         ("plain key", 64),
         ("too long", 64),
         ("two lines", 64),
@@ -467,7 +467,7 @@ def test_a_certificate_the_persons_current_key_did_not_sign_for_this_task_now_is
         "host certificate": lambda: task_certificate(tasks, host=True),
         "bad signature": lambda: tampered(task_certificate(tasks)),
         "revoked person": lambda: revoke(tasks) or task_certificate(tasks),
-        "person not in the registry": lambda: forget(tasks) or task_certificate(tasks),
+        "person not in the organization": lambda: forget(tasks) or task_certificate(tasks),
         "plain key": (tasks.keys.directory / "task.pub").read_text,
         "too long": lambda: task_certificate(tasks).strip() + " " + "x" * 16384 + "\n",
         "two lines": lambda: task_certificate(tasks) * 2,
@@ -492,12 +492,12 @@ def tampered(certificate):
 def revoke(tasks):
     tasks.applied["revoked"] = ["alice"]
     tasks.applied["persons"][0]["revoked"] = True
-    write(tasks.root, "/etc/porelo-host/registry/applied.json", json.dumps(tasks.applied))
+    write(tasks.root, "/etc/porelo-host/organization/applied.json", json.dumps(tasks.applied))
 
 
 def forget(tasks):
     tasks.applied["persons"] = tasks.applied["persons"][1:]
-    write(tasks.root, "/etc/porelo-host/registry/applied.json", json.dumps(tasks.applied))
+    write(tasks.root, "/etc/porelo-host/organization/applied.json", json.dumps(tasks.applied))
 
 
 def test_the_same_certificate_again_replaces_its_token_and_another_for_a_recorded_task_is_refused(tasks, capsys):
@@ -612,7 +612,7 @@ def test_forge_token_replaces_the_persons_one_token_and_answers_it_alone(tasks, 
     [(None, None, 64), ("alice", "locked", 65), ("alice", "revoked", 65), ("carol", None, 65)],
 )
 def test_forge_token_is_refused_to_root_a_locked_revoked_or_unknown_person(tasks, capsys, caller, change, code):
-    """Prevent a token for someone the host locked or the registry revoked, or one root could hand to anyone."""
+    """Prevent a token for someone the host locked or the organization revoked, or one root could hand to anyone."""
     if change == "locked":
         write(tasks.root, "/etc/porelo-host/people/alice.conf", record(locked=True))
     elif change == "revoked":
@@ -676,11 +676,11 @@ def test_task_record_links_cannot_redirect_root_writes_or_reads(tasks, tmp_path,
     assert [call[0] for call in tasks.forge.calls[calls:]] == ["env", "systemd-run"], "only the checks run"
 
 
-def test_a_rotated_registry_key_cannot_authorize_the_previous_keys_certificate(tasks, capsys):
+def test_a_rotated_org_key_cannot_authorize_the_previous_keys_certificate(tasks, capsys):
     """Prevent a certificate signed by a superseded person key from obtaining a task token."""
     certificate = task_certificate(tasks)
     tasks.applied["persons"][0]["ssh"] = tasks.keys.make("replacement")
-    write(tasks.root, "/etc/porelo-host/registry/applied.json", json.dumps(tasks.applied))
+    write(tasks.root, "/etc/porelo-host/organization/applied.json", json.dumps(tasks.applied))
     before = snapshot(tasks.root)
     assert tasks.call("task", "t1", data=certificate.encode()) == 65
     assert capsys.readouterr().out == ""
@@ -798,7 +798,7 @@ def test_a_missing_krl_refuses_the_task_before_porelo_runs(tasks, capsys, change
     assert tasks.forge.checks == [] and not (records(tasks) / "t1.json").exists()
 
 
-@pytest.mark.parametrize("member", ["hand", "beta developer", "alphabet developer"])
+@pytest.mark.parametrize("member", ["host-admin", "beta developer", "alphabet developer"])
 def test_a_certificate_for_a_project_the_person_is_no_member_of_is_refused_before_porelo_runs(tasks, capsys, member):
     """Prevent a person's task token for another project's task, which the host checks itself."""
     write(tasks.root, "/etc/porelo-host/people/alice.conf", record(member=member))
@@ -839,8 +839,11 @@ def judged_project(tasks):
         "/etc/porelo-host/projects/alpha.conf",
         f"admin=alice\nsigned_by={tasks.applied['persons'][0]['ssh']}\npublisher=porelo-publisher-alpha\n",
     )
-    current = {"alice": {"ssh": tasks.applied["persons"][0]["ssh"], "expires": None}}
-    write(tasks.root, "/etc/porelo-host/signers/alpha.json", json.dumps({"current": current, "history": []}))
+    key = tasks.applied["persons"][0]["ssh"]
+    write(tasks.root, "/etc/porelo-host/signers/alpha.allowed", f'alice namespaces="git" {key}\n')
+    write(
+        tasks.root, "/etc/porelo-host/signers/alpha.certifiers", f'task:alpha:* cert-authority,namespaces="git" {key}\n'
+    )
     # The forge's volume is the test's own, so the forge account is the test's uid.
     tasks.entries["porelo-forge"].pw_uid = os.getuid()
     write(tasks.root, "/etc/subuid", "porelo-runner:300000:65536\n")
@@ -992,20 +995,6 @@ def test_a_volume_of_another_uid_in_the_forges_range_is_refused_unjudged(tasks, 
     assert hook.status() == 403 and tasks.forge.verifies == []
 
 
-def test_an_expired_card_signs_nothing_and_certifies_no_task(tasks, capsys):
-    """Prevent a person whose card has ended from signing a commit the host takes."""
-    judged_project(tasks)
-    current = {
-        "alice": {"ssh": tasks.applied["persons"][0]["ssh"], "expires": "2026-10-29"},
-        "bob": {"ssh": tasks.applied["persons"][1]["ssh"], "expires": None},
-    }
-    write(tasks.root, "/etc/porelo-host/signers/alpha.json", json.dumps({"current": current, "history": []}))
-    judge(tasks)
-    given = tasks.forge.verifies[-1]["given"]
-    assert given["--signers"] == f'bob namespaces="git" {tasks.applied["persons"][1]["ssh"]}\n'.encode()
-    assert tasks.applied["persons"][0]["ssh"].encode() not in given["--certifiers"]
-
-
 def test_only_the_projects_task_certificates_valid_now_reach_porelo(tasks, capsys):
     """Prevent a plain task key of another project, or one whose certificate ended, from signing for this one."""
     judged_project(tasks)
@@ -1106,7 +1095,7 @@ def test_any_other_answer_of_porelo_refuses_the_push(tasks, capsys, answer):
         ("systemd-run", lambda tasks: tasks.host.commands.discard("systemd-run")),
         ("KRL", lambda tasks: (tasks.root / "etc/ssh/porelo-revoked.krl").unlink()),
         ("KRL", lambda tasks: (tasks.root / "etc/ssh/porelo-revoked.krl").chmod(0o200)),
-        ("signers", lambda tasks: (tasks.root / "etc/porelo-host/signers/alpha.json").unlink()),
+        ("signers", lambda tasks: (tasks.root / "etc/porelo-host/signers/alpha.certifiers").unlink()),
     ],
     ids=["no porelo", "no systemd-run", "no KRL", "unreadable KRL", "no signers"],
 )
@@ -1428,10 +1417,10 @@ def test_a_projects_person_reads_its_arrivals_and_no_one_else(tasks, capsys):
     assert capsys.readouterr().out == ""
 
 
-def test_a_hand_admitted_person_reads_no_project_named_hand(tasks, capsys):
-    """Prevent the hand admission's marker from passing for membership of a project spelt like it."""
-    write(tasks.root, "/etc/porelo-host/people/bob.conf", record(member="hand"))
-    assert tasks.call("arrivals", "hand", "app", caller="bob") == 65
+def test_a_host_admin_reads_no_project_named_host_admin(tasks, capsys):
+    """Prevent the host admin membership's marker from passing for membership of a project spelt like it."""
+    write(tasks.root, "/etc/porelo-host/people/bob.conf", record(member="host-admin"))
+    assert tasks.call("arrivals", "host-admin", "app", caller="bob") == 65
     capsys.readouterr()
 
 

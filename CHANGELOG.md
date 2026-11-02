@@ -7,11 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Root's `org follow` and `org refresh` take the signed organization through Porelo's fetch command, reconcile
+  persons and project memberships, publish member-readable project files and Porelo's signers, and purge accounts
+  seven days after their last membership is lost. Status includes the organization's state, carried projects and the
+  account deletion day. `org refresh` takes the host admin's central token once to add the host's read key.
+  A persistent five-minute follow timer uses the organization's deploy key, settings, pinned forge keys and host
+  admin keys installed at setup; the host summary includes the deploy key's public half. `org pin` is removed.
+
 ### Changed
 
-- `porelo-host-person registry status`, root's alone, answers the host, the applied registry commit, the pinned
-  fingerprint and each person's state (`active`, `locked`, `pending`, `purged` or `named`), memberships by hand and
-  per project; `registry` answers `host` and `persons` the same way.
+- `porelo-host-person org status`, root's alone, answers the host, the applied organization commit, the pinned
+  fingerprint and each person's state (`active`, `locked`, `pending`, `purged` or `named`), whether they are host admin
+  and their project memberships; `org` answers `host` and `persons` the same way.
+- The host follows the organization alone. It puts a project on when the state names it: members admitted, its forge
+  organization with teams, variables and publisher, its repository migrated with the central token `org refresh` takes
+  once, `main` protected, its room kept with `keep-room`. It takes one off when the state no longer does, unless a
+  commit on its forge is unpushed, then the project stays `held` and named. The public read-only deploy key stays at
+  the central forge for a person to remove by hand. A forge organization now belongs to the forge's administrator as
+  well, as Forgejo keeps a last owner.
+- Root's login follows the state's host admins at each follow, and a later `up` leaves it so. Before the first follow
+  `up` adds the seed to root's keys and removes none.
+- A purge also deletes the person's and their task gates' forge users, and needs no transport on a host with no
+  homeserver.
+- With `forge_runner_capacity`, `forge_job_cpus` or `forge_job_memory` unset, the forge takes the largest that fits
+  half the machine beside the VM pool, 2 jobs of 4 CPUs and 8g on a large one, with a floor of 1 job, 1 CPU and `768m`;
+  it refuses only if that floor does not fit, or a value set does not. `forge_job_omp_num_threads` follows the CPUs.
+- `down` also removes the follow, its units, the organization's keys and the setup's files, and takes the record of a
+  person locked with a day.
 - Each push to the host's forge is judged when it arrives: a pre-receive hook asks root's `porelo-host-person
   verify-push`, which has Porelo's `commit verify` judge every new commit against the project's keys in force, their
   certifiers of the project's own tasks, the KRL and the project's task certificates valid now, refuses the push
@@ -32,6 +56,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `down` stops a running follow before it checks memberships, so a follow's first state cannot admit anyone while the
+  host is taken down, and starts its timer again when the check refuses.
+- A repository named with capitals reaches members' push configuration and its removal, on the forge's lower-case path.
+- An interrupted read key generation or manifest write no longer leaves a project that cannot be taken off.
+- An organization admission retried finishes subordinate IDs and linger before access is restored.
+- Project migration accepts a quoted `repository:` setting, keeps an explicit SSH port for the comparison at removal, and
+  refuses the repository name `repositories.json`.
 - `porelo-host-person add`, and sync for each person it admits or unlocks, starts the person's `porelod` with `porelo
   setup` (`systemctl`, `runuser` and `env` checked on the fixed path first), so their tunnel reaches a daemon before
   their first bring; an admitted account gets `umask=0022` in its GECOS field, so
@@ -64,7 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Gathered push refuses sudo callers of the root-only check, bounds caller configuration reads and isolates token
   helpers from credential stdin. Namespace forwarding preserves early gate responses on socket errors, times out
   idle sockets and stops Git descendants and removes temporary clones when the helper receives a signal.
-- Project sync requires each person's key and expiry to match the applied host registry. SSH revocations remain
+- Project sync requires each person's key and expiry to match the host's applied organization. SSH revocations remain
   cumulative, project removal clears membership and signer publications, and person locks preserve verified Matrix
   admins while attempting each service revocation independently. Forgejo team sessions include organization scopes,
   unlock skips absent identities, and lock and purge recover when a locked person's Linux account is gone.
@@ -78,8 +109,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   check-certificate` judges it against the person's key in force and the KRL in a unit with no home and no network.
 - Bring and join take the person's forge token from `sudo -n porelo-host-person forge-token` at each run into their
   vault entry `<forge>.person`; the play keeps it in the person's runtime directory until its end.
-- Root alone brings a registry bundle on stdin with `registry --stdin`, so a fresh host can take its first registry
-  before any account holds a setup directory.
+- Root alone brings an organization bundle on stdin with `org --stdin`, so a fresh host can take its first
+  organization before any account holds a setup directory.
 - Gathered push and pull run through sudo for the current project developer. Local API traffic uses the forge gate's
   Unix socket; each local Git transfer uses a private root network namespace and a credential pipe, with no host TCP
   listener, local CA or vault token. Migration stays in the person's account and obtains its local token on demand.
@@ -90,10 +121,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   return. Replaced signer keys remain bounded to their historical validity.
 - SSH on port 22 is the public entry point. Root-owned key files, an atomically published KRL, private person
   return-socket directories and forwarding restrictions replace VPN access. Lock ends sessions and the user manager;
-  the registry reader can supply card keys, expiries and host-wide revocations through the person helper.
+  the organization reader can supply card keys, expiries and host-wide revocations through the person helper.
 
 ### Removed
 
+- `porelo-host-person add` and `lock`, `porelo-host-project`'s handling of person locks, the host's bring and join, the
+  access file, the Matrix admins file, the forge's role tasks for one project's organization and the options
+  `forge_repositories`, `forge_owner` and `forge_agents`, the task entry point of the Porelo role with its host and trust tasks, the migration stop in
+  `porelo-host-stop` and `porelo-host-push`, and every reading of the old record, registration and signer shapes.
 - Device records, per-device credentials and addresses, and credential stdin for person admission. Project sync no
   longer reads access-file host CA values or grants commit-signing authority to the project's verification key.
 - The VPN role and the WireGuard stop. Up and down remove a legacy WireGuard interface and its files.
@@ -110,17 +145,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from the admitted host account; caller identity headers are removed and browser credential-setting routes refused.
   Forgejo uses a private Unix socket with no TLS or SSH listener; certificate requests and the password helper go.
 - Host task certificate recording, lookup by task key fingerprint, per-task forge token creation and deletion, and a
-  daily expiration sweep. Certificate validation uses OpenSSH and the person's current key in the applied registry;
+  daily expiration sweep. Certificate validation uses OpenSSH and the person's current key in the applied organization;
   records are private and append-only.
-- On-demand person forge tokens answered directly on stdout, token-free admission, and all-token deletion on registry
-  revocation with retry after an API failure.
-- `porelo-host-person registry`, run by root or `sudo -n` by the host admin pinned once at setup with `registry pin
-  <login> <key>`, takes the host's projects and persons from the registry bundle the host admin uploads into
+- On-demand person forge tokens answered directly on stdout, token-free admission, and all-token deletion on
+  organization revocation with retry after an API failure.
+- `porelo-host-person org`, run by root or `sudo -n` by the host admin pinned once at setup with `org pin <login>
+  <key>`, takes the host's projects and persons from the organization bundle the host admin uploads into
   `porelo-host/setup/registry.bundle` in the data folder: Porelo's `registry verify` checks it in the sync's isolated unit
   against the pinned key and the last applied commit, refusing a foreign signer or an older or forked state whole. Bad
   entries are named alone while the rest applies, a revoked login stays revoked, a verified handover moves the pin,
-  and the answer is recorded root-only in `/etc/porelo-host/registry/applied.json`. A project the registry no longer
-  names for its admin is named in the answer and kept.
+  and the answer is recorded root-only in `/etc/porelo-host/organization/applied.json`. A project the organization no
+  longer names for its admin is named in the answer and kept.
 
 - `porelo-host-person sync <project>`, callable by root or `sudo -n` by the project's unlocked recorded admin through
   the `porelo-people` sudoers rule, copies the admin's plain private `project.bundle` and `access.bundle` into a
@@ -132,10 +167,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `porelo-host-project` registers a project for a recorded person, with its pinned SSH Ed25519 signing key, forge
   organization and package-only publisher. Removal checks every repository's commits against the central forge
   before deleting its repositories, packages, organization, publisher and root-only record.
-- A root person helper admits project admins with root-owned SSH key files
-  and private records, and locks or purges their host accounts. Admission creates their forge login and gate, and
-  makes no forge token. Lock disables the forge identities and deletes their tokens, expels Matrix accounts and revokes registration in one operation, and removes delivered
-  credentials and their runtime directory. A separate install task provides the helper, SSH key lookup and a
+- A root person helper admits project admins with root-owned SSH key files and private records, and locks or purges
+  their host accounts. Admission creates their forge login and gate, and makes no forge token. Lock disables the forge
+  identities and deletes their tokens, expels Matrix accounts and revokes registration in one operation, and removes
+  delivered credentials and their runtime directory. A separate install task provides the helper, SSH key lookup and a
   no-argument forge-password sudo rule.
 - `porelo.host.bring` and `porelo.host.join` run in the person's own account with no `sudo` but forge-token's and
   sync's: the setup's files in `porelo-host/setup/<project>/` in the data folder checked, Porelo's verify on the project and
@@ -149,7 +184,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `porelo-host-person sync <project>` and `porelo-host-project add <project> <admin>` refuse a project the applied
-  registry does not name for that admin.
+  organization does not name for that admin.
 
 - The forge runner, registration and jobs share a loopback proxy to a dedicated token-only gate socket. Checkout,
   package access and the Actions cache no longer depend on the VPN address or published runner ports; jobs no longer
@@ -163,14 +198,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installs `/usr/local/sbin/porelo-host-push` (`0755`) and `/etc/porelo-host/forge/central-ca.conf` (`0644`), and
   `porelo-host-project remove`'s `--check` reads each repository's central address from Forgejo's `original_url`
   instead of `/etc/porelo-host/forge/push.conf`, refusing any repository without one by name.
-- Person records in `/etc/porelo-host/people/` store ordered `member=hand` and `member=<project> project-admin|developer`
-  memberships in place of `role=` and `projects=`; an existing `role=project-admin` record with no `member=` line is
-  read as `member=hand` and rewritten on its next write. `porelo-host-person add` records `member=hand`, `lock` keeps
-  memberships, `porelo-host-project add` records `member=<project> project-admin` for any unlocked member, and
-  `porelo-host-project remove` drops the project's memberships, locks anyone left with none, and reports `"locked"` in
-  its JSON answer. `porelo.host.down` checks `/etc/porelo-host/people/` first and refuses before stopping anything
-  while any record holds a membership, naming each person and their memberships with `"Take the project off"` and
-  `"Purge"`.
+- Person records in `/etc/porelo-host/people/` store ordered `member=hand` and `member=<project>
+  project-admin|developer` memberships in place of `role=` and `projects=`; an existing `role=project-admin` record with
+  no `member=` line is read as `member=hand` and rewritten on its next write. `porelo-host-person add` records
+  `member=hand`, `lock` keeps memberships, `porelo-host-project add` records `member=<project> project-admin` for any
+  unlocked member, and `porelo-host-project remove` drops the project's memberships, locks anyone left with none, and
+  reports `"locked"` in its JSON answer. `porelo.host.down` checks `/etc/porelo-host/people/` first and refuses before
+  stopping anything while any record holds a membership, naming each person and their memberships with `"Take the
+  project off"` and `"Purge"`.
 
 ### Removed
 

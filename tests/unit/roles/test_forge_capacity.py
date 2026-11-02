@@ -1,28 +1,91 @@
-"""The forge's capacity check, run by the real ansible-playbook against cpuinfo and meminfo files of a host."""
+"""Prevent runner quotas from exhausting a host or refusing a host that can carry bounded jobs."""
 
+import json
 import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 HERE = Path(__file__).parent
 
 
-def test_the_defaults_fit_the_server_porelo_rents():
-    # The rented server's 16 processors and MemTotal, as its refusal of the old defaults named them.
-    done = subprocess.run(
+def capacity(tmp_path, processors, memory_mib, explicit=None, expected=None):
+    """Run the real tasks twice against invented host measurements and a 256 MiB VM pool."""
+    cpuinfo = tmp_path / "cpuinfo"
+    cpuinfo.write_text("".join(f"processor : {number}\n" for number in range(processors)))
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text(f"MemTotal: {memory_mib * 1024} kB\n")
+    variables = {
+        "__forge_cpuinfo": str(cpuinfo),
+        "__forge_meminfo": str(meminfo),
+        "vm_pool_systems": ["fixture-system"],
+        "vm_pool_accounts": 1,
+        "vm_pool_memory": 256,
+        **(explicit or {}),
+    }
+    if expected is not None:
+        variables["expected_capacity"] = expected
+    return subprocess.run(
         [
             "ansible-playbook",
             "-i",
             "localhost,",
-            str(HERE / "plays" / "capacity.yml"),
+            str(HERE / "plays/capacity.yml"),
             "-e",
-            f"__forge_cpuinfo={HERE / 'cpuinfo' / 'sixteen-processors.txt'}",
-            "-e",
-            f"__forge_meminfo={HERE / 'meminfo' / 'rented-server.txt'}",
+            json.dumps(variables),
         ],
         env=dict(os.environ, ANSIBLE_NOCOLOR="1"),
         capture_output=True,
         text=True,
         check=False,
     )
+
+
+@pytest.mark.parametrize(
+    "processors,memory_mib,explicit,expected",
+    [
+        (4, 8192, {}, [2, 1, "1920m"]),
+        (2, 4096, {}, [1, 1, "1792m"]),
+        (16, 65536, {}, [2, 4, "8192m"]),
+        (32, 131072, {}, [2, 4, "8192m"]),
+        (4, 8192, {"forge_runner_capacity": 1}, [1, 2, "3840m"]),
+        (4, 8192, {"forge_job_cpus": 2}, [1, 2, "3840m"]),
+        (4, 8192, {"forge_job_memory": "3g"}, [1, 2, "3g"]),
+    ],
+)
+def test_unset_bounds_fit_without_changing_explicit_limits(tmp_path, processors, memory_mib, explicit, expected):
+    """Prevent small hosts being refused or explicit quotas being silently changed; keep retries stable."""
+    done = capacity(tmp_path, processors, memory_mib, explicit, expected)
     assert done.returncode == 0, done.stdout + done.stderr
+
+
+@pytest.mark.parametrize("processors,memory_mib", [(1, 4096), (2, 1024)])
+def test_a_host_below_the_floor_refuses_with_its_measurements(tmp_path, processors, memory_mib):
+    """Prevent starting jobs when even the floor exceeds half the host beside the pool."""
+    done = capacity(tmp_path, processors, memory_mib)
+    output = done.stdout + done.stderr
+    assert done.returncode != 0, output
+    assert f"{processors} processors and {memory_mib * 1024} KiB total" in output
+    assert "cannot carry one job of 1 CPU and 768m beside the VM pool" in output
+    refusal = output[output.index("cannot carry one job") : output.index("KiB total")]
+    assert "forge_runner_capacity" not in refusal and "forge_job_" not in refusal
+
+
+@pytest.mark.parametrize(
+    "explicit",
+    [
+        {"forge_runner_capacity": 2, "forge_job_cpus": 4, "forge_job_memory": "8g"},
+        {"forge_runner_capacity": 3},
+        {"forge_job_cpus": 3},
+        {"forge_job_memory": "4g"},
+    ],
+)
+def test_explicit_bounds_that_do_not_fit_are_refused(tmp_path, explicit):
+    """Prevent automatic sizing from accepting a host by shrinking a person's explicit bounds."""
+    done = capacity(tmp_path, 4, 8192, explicit)
+    output = done.stdout + done.stderr
+    assert done.returncode != 0, output
+    assert "asked for" in output and "lower forge_runner_capacity or the job bounds" in output
+    if len(explicit) == 3:
+        assert "2 jobs of 4 CPUs and 8g" in output

@@ -15,6 +15,11 @@ only once libvirt lists none of them; otherwise it names what it left and exits 
 of that name is still there. What it keeps is a cache, named by its digest: the Ubuntu 26.04 cloud image in
 the build's cache folder in the developer's home, and its base volume `porelo-host-base-<digest>.qcow2` in the pool.
 
+`PORELO_HOST_MOLECULE_KEEP=on` keeps the VM and its files when the run fails, so the failing scenario can be run again
+on it; a later run refuses until that VM is deleted.
+`PORELO_HOST_MOLECULE_TRANSPORT` names a transport executable inside the checkout, as the run sees it, to install in
+place of the published one.
+
 **The VM** is Ubuntu 26.04 from the cloud image `build/test-image` pins by URL and SHA-256, 4 vCPUs and 4 GB, with the
 host's CPU passed through so KVM runs inside it, as on a rented host. Its ssh host key is made for the run and is the
 only one accepted.
@@ -22,8 +27,7 @@ only one accepted.
 **What the scenario does** is what `host up` does on a host: Ubuntu's own `ansible-core`, the collection installed from
 its tarball, and `porelo.host.up` run on the machine itself with `-c local`. A second converge must change nothing,
 and `verify` reads on the machine what `up` promises. The run's own files stand in for what the person keeps on the
-desktop: the secrets file's values under `/root`, given to the stop on standard input, and the project with its bundle
-and machine file, uploaded into the host's setup directory as the interface does.
+desktop: the secrets file's values under `/root`, given to the stop on standard input, and the machine file, uploaded into the host's setup directory as the interface does.
 
 **In the Build** the same script runs on GitHub's runner, after the linters and the tarball, on `main` and on the
 project's own pull requests: about three minutes, the runner adding libvirt by pinned versions first.

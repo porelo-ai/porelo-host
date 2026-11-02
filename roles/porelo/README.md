@@ -3,24 +3,62 @@
 Porelo's packages and person records on the host: `tasks_from: install` adds Porelo's apt repository by its pinned key,
 installs `porelo` (and `porelo-adapter-forgejo`, providing `/usr/libexec/porelo/builds/forgejo`, when
 `porelo_host_forge` is true), makes `/etc/porelo-host`, and installs `/usr/local/bin/porelo-host-stop`, running no setup
-script for an account. `tasks_from: person` installs `/usr/local/sbin/porelo-host-person` (`add`, `lock`, `purge`, `sync
-<project>`, `registry`, `registry pin <login> <key>` and `registry status`), private return-socket directories with the daemon link and the `porelo-people`
-sudoers rules for `porelo-host-person sync *` (checked by the helper to the project's unlocked recorded admin) and the
-bare `porelo-host-person registry` (checked to the host admin pinned in `/etc/porelo-host/registry/pin.conf`, whose
-verified registry state lands in `/etc/porelo-host/registry/applied.json`; see
-[the host's state taken from the registry](../../doc/local-forge.md#the-hosts-state-taken-from-the-registry));
-`/etc/porelo-host/people/<user>.conf` records each person's `member=hand` and `member=<project> project-admin|developer`
+script for an account. `tasks_from: person` installs `/usr/local/sbin/porelo-host-person` (`purge`, `org follow`,
+`org refresh` and `org status`), private return-socket directories with the daemon link
+and the `porelo-people` group; the verified organization state lands in
+`/etc/porelo-host/organization/applied.json`, see
+[the host's state taken from the organization](../../doc/local-forge.md#the-hosts-state-taken-from-the-organization);
+`/etc/porelo-host/people/<user>.conf` records each person's `member=host-admin` and `member=<project> project-admin|developer`
 memberships, `locked=` state, the one card's `ssh=` key and `expires=`, with an optional lock `reason=`.
-`add` reads the current card from the registry and accepts no credential input on stdin. `tasks_from: people`
+`tasks_from: people`
 runs at the start of `down` and refuses before
 anything is stopped while any record in `/etc/porelo-host/people/` holds a membership, naming each person and their
 memberships with `"Take the project off"` and `"Purge"`.
 
-Matrix admission stores no machine or registration token. Sync atomically publishes the verified access file's
-`admins` list into `/etc/porelo-host/matrix/<project>.admins`, root:porelo-matrix `0640` in a `0750` directory;
-project removal deletes it. Lock and purge run `porelo-message-transport-matrix expel <login>` as `porelo-matrix`,
-including purge after a prior lock, with the homeserver administrator's token from the gate's
-`~porelo-matrix/.config/porelo/matrix/gate/admin-token` on its stdin alone. Every command run as another account
+Root's persistent `porelo-host-follow.timer` runs `org follow` every five minutes. It fetches the organization using
+the host's deploy key in an isolated unit with network access, reconciles cards and project memberships, and publishes
+`organization/projects/<project>.json` with a read ACL for each unlocked member. Accounts with no membership or host
+admin role are locked when the host takes the change, within five minutes or at once on `org refresh`, and purged on
+the first follow seven days after the recorded lock day; readmission
+before then restores the existing account, completing subordinate IDs and linger after an interrupted admission.
+Purge deletes the person's Forgejo users and their tokens, including the task gate's user.
+A person still listed in a project, locked there or holding a revoked card,
+is locked and never purged. A card replaced under another key takes the login back, while the old key stays on the KRL
+for good. Nothing is followed until `org refresh`, given the host admin's central token once on
+standard input, has had `porelo org add-read-key` add the host's read key; the token is kept nowhere, and until then
+`org status` answers `"organization":"waiting-for-token"`. Each follow also compares the projects in the taken
+state with the host's project records. With a forge, it registers each new project under an unlocked project admin
+and that admin's current signing key. The project stands as `waiting-for-token` until `org refresh` receives the host
+admin's central token on standard input and migrates the repository the state names. The token is kept in memory
+for that refresh alone. Empty standard input follows immediately without migrating a waiting repository.
+A host without a forge admits the members without running a forge command.
+
+Taking a project off runs the project helper's removal after membership revocation. An unpushed commit keeps the
+project `held`; `org status` names its repositories and commits, and each follow checks again with root's read-only
+deploy keys. A missing key or unavailable comparison keeps the project
+and names the failed check. No central write
+token is needed for that comparison. A follow that fails part-way has still taken the state: it takes members' read
+access away first, and the next follow retries the rest. Root's `0600` `organization/host-projects.json` retains
+unfinished registration, migration and room work independently of the accepted revision. Status includes these
+projects and each person's scheduled `purge_on` day.
+
+At `up`, the root-owned `0600` machine file's `organization` mapping supplies `settings` (the unparsed text of
+`organization.yml`), `known_hosts` (the central forge's SSH host key lines) and `pin` (one `login key` line per admin
+key, including backups). They become root-only files under `/etc/porelo-host/organization/`; repeated setup preserves
+the pin advanced by a successful follow. Setup generates `read/organization` once as an Ed25519 key and returns its
+public half as `organization_read_key` in `host.json`. `org pin` is unavailable. The directory and its `projects`
+subdirectory permit traversal so member ACLs work; credentials and applied state remain root-only.
+
+Where the host has its Matrix gate installed, follow runs `keep-room --project <project> --persons <logins>` as
+`porelo-matrix`, with only unlocked members, on every follow, and names who left the room in its journal. The project
+file then names the gate as `homeserver` and the room `keep-room` answered; on a host with no gate both are null, and
+Porelo decides at start whether a project's own homeserver goes first. A departing project's room first loses its
+members, even if unpushed work holds the forge. Its conversation stays until forge removal succeeds, then the room is
+dropped. Exit 75 is retried at the next follow; exit 78 is named in status and the room is left alone. No Matrix admins file is written.
+
+Matrix admission stores no machine or registration token. Purge runs `porelo-message-transport-matrix expel <login>`
+as `porelo-matrix`, including after a prior lock, with the homeserver administrator's token from
+`porelo/matrix/gate/admin-token` in the `porelo-matrix` account's config folder on stdin alone. Every command run as another account
 starts in `/` with that account's own `HOME`. See [Matrix access](../../doc/matrix.md) for the gate boundary.
 
 The helper also provides `forge-token`, `task <task>`, `task --end <task>`, `task --show <fingerprint>` and root's
@@ -31,7 +69,7 @@ Certificates stay in root's private task records; token answers leave through st
 <repository>`, through sudo for a person of the project, reads the verdicts in `/var/lib/porelo-host/arrivals`; see
 [each push judged](../../doc/local-forge.md#each-push-judged-when-it-arrives).
 
-The account-bound entry points (`main`, `project`, `tasks`, `down`) remain on disk for an explicit `porelo_account`
+The account-bound entry points (`main`, `project`, `down`) remain on disk for an explicit `porelo_account`
 when called directly; `up` and `down` do not call them.
 
 ## Requirements
@@ -75,9 +113,8 @@ SSH policy and initial key/KRL installation belong to `base`. The person helper 
 `/run/porelo-host/people/<login>` (0700, owned by the person) with the link `porelod.sock` to the person's
 `/run/user/<uid>/porelo/porelod.sock`, and a per-person tmpfiles rule for both at admission; lock and purge remove
 them. Lock terminates sessions and stops the user manager even if a service hook refuses.
-Registry intake applies card keys and expiries, rebuilds the KRL and locks revoked accounts. Project sync applies
-verified person roles and locks to that project's forge teams, room admins and allowed signers; the Matrix room's
-members are the project admin's Porelo's to keep. Other projects,
+The follow applies card keys and expiries, rebuilds the KRL and locks revoked accounts, and applies each project's
+person roles and locks to its forge teams and allowed signers. Other projects,
 sessions and tokens stay until a host lock or last-membership removal. A project can restore a membership-only lock;
 it cannot undo a host lock. `porelo-people` holds exactly unlocked admitted logins. Purge permanently records the login
 in root's `0600` `/etc/porelo-host/people/purged` and refuses later admission.

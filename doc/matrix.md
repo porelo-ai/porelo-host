@@ -17,15 +17,13 @@ homeserver, and once more after it answers, until `gate --prepare` reports `"adm
 its admin token; only then is the preparation recorded in a private `gate.prepared` file. Gate services receive the
 service account's `XDG_RUNTIME_DIR` explicitly and start after its user manager.
 
-`porelo-host-person sync <project>` takes the `admins` list of logins from `porelo project verify --json`
-after verification of the project's access bundle. Invalid or duplicate logins are refused before access changes.
-It writes `/etc/porelo-host/matrix/<project>.admins`, one login per line, using a temporary file beside the target,
-flush, fsync and rename. The directory is root:porelo-matrix `0750`; files are root:porelo-matrix `0640`. An unchanged
-sync repairs a missing file without replaying developer admission. `porelo-host-project remove <project>` deletes
-only that project's admins file. Links and paths writable by other accounts are refused.
+Each follow runs `keep-room --project <project> --persons <logins>` as `porelo-matrix` with the unlocked members.
+It publishes the answered room in the project's member-readable file. When a project leaves, `keep-room` first
+removes its members; after forge removal succeeds, `drop-room --project <project>` drops the room. No admins file
+is written. Exit 75 is retried at the next follow; exit 78 leaves the room alone and is named in status.
 
-Admission issues no Matrix machine or registration credential. Lock and purge run
-`/usr/libexec/porelo/transports/porelo-message-transport-matrix expel <login>` as `porelo-matrix`; purge repeats expulsion after an earlier
+Admission issues no Matrix machine or registration credential. Purge runs
+`/usr/libexec/porelo/transports/porelo-message-transport-matrix expel <login>` as `porelo-matrix`, including after an earlier
 lock. Expel takes the homeserver administrator's token on its stdin alone, as
 `{"secrets":{"PORELO_MATRIX_ADMIN_TOKEN":"<token>"}}`; the helper reads it as `porelo-matrix` from the gate's
 `gate/admin-token` and refuses a missing, empty or multi-word token before expel starts. A transport failure stops removal without repeating captured output. The transport owns deactivation of the

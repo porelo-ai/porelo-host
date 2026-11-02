@@ -43,6 +43,9 @@ class Forge:
         self.organizations = {}
         self.teams = {}
         self.secrets = {}
+        self.variables = {}
+        self.merge_style = {}
+        self.protected = {}
         self.repositories = {}
         self.packages = {}
         self.calls = []
@@ -94,6 +97,17 @@ class Forge:
                 self.organizations[org] = {"username": org}
                 self.teams[len(self.teams) + 1] = {"org": org, "name": "Owners", "members": [parts[2]]}
                 return 201, self.organizations[org]
+        if parts[0] == "repos" and method == "PATCH" and len(parts) == 3:
+            self.merge_style[(parts[1], parts[2])] = body
+            return 200, {}
+        if parts[0] == "repos" and method == "GET" and parts[3:] == ["branch_protections", "main"]:
+            return (200, {}) if (parts[1], parts[2]) in self.protected else (404, {})
+        if parts[0] == "repos" and method == "POST" and parts[3:] == ["branch_protections"]:
+            self.protected[(parts[1], parts[2])] = body
+            return 201, {}
+        if method == "POST" and parts[0] == "orgs" and parts[2:4] == ["actions", "variables"]:
+            self.variables[(parts[1], parts[4])] = body["value"]
+            return 204, None
         if method == "POST" and parts[0] == "orgs" and parts[2] == "teams":
             team_id = len(self.teams) + 1
             self.teams[team_id] = dict(body, org=parts[1], members=[])
@@ -177,17 +191,17 @@ def forge(tmp_path):
     return state
 
 
-def write_registry(etc, projects):
-    """The registry state porelo-host-person applied, as root keeps it."""
-    (etc / "registry").mkdir(mode=0o700, exist_ok=True)
-    applied = etc / "registry/applied.json"
+def write_organization(etc, projects):
+    """The organization state porelo-host-person applied, as root keeps it."""
+    (etc / "organization").mkdir(mode=0o711, exist_ok=True)
+    applied = etc / "organization/applied.json"
     applied.write_text(
         json.dumps(
             {
                 "commit": "a" * 40,
                 "host_card": {"host": "host"},
                 "projects": [
-                    {"name": name, "admin": admin, "access_repository": f"{name}-access"}
+                    {"project": name, "members": [{"login": admin, "role": "admin", "locked": False}]}
                     for name, admin in projects.items()
                 ],
                 "persons": [],
@@ -198,7 +212,7 @@ def write_registry(etc, projects):
     applied.chmod(0o600)
 
 
-PERSON_RECORD = "role=project-admin\nprojects=\nlocked=false\nlaptop=laptop ssh-ed25519 AAAA wg= 10.73.7.3\n"
+PERSON_RECORD = f"member=host-admin\nlocked=false\nssh={KEY}\nexpires=\n"
 
 
 @pytest.fixture
@@ -206,12 +220,16 @@ def project_host(tmp_path, forge, push_host):
     etc = tmp_path / "project-etc"
     etc.mkdir(mode=0o700)
     (etc / "people").mkdir(mode=0o700)
+    (etc / "forge").mkdir(mode=0o755)
+    (etc / "forge/organization.json").write_text(
+        json.dumps({"variables": {"MAVEN_URL": "http://f/{project}/maven"}, "placeholder_secrets": ["JF_ACCESS_TOKEN"]})
+    )
     for person in ("alice", "bob"):
         (etc / "people" / f"{person}.conf").write_text(PERSON_RECORD)
         (etc / "people" / f"{person}.conf").chmod(0o600)
     (etc / "forge.conf").write_text(f"address=127.0.0.1\nport={forge.port}\naccount=porelo-forge\n")
     (etc / "forge.conf").chmod(0o600)
-    write_registry(etc, {"alpha": "alice", "beta": "bob", "gamma": "carol"})
+    write_organization(etc, {"alpha": "alice", "beta": "bob", "gamma": "carol"})
     (push_host["root"] / "uid").write_text("0\n")
     push_host["api_token"].write_text(ADMIN_TOKEN + "\n")
     (push_host["forge_etc"] / "ca.pem").write_bytes(forge.ca.read_bytes())
@@ -437,7 +455,7 @@ def test_an_untrusted_person_record_changes_nothing(project_host, monkeypatch, c
 
 @pytest.mark.parametrize(
     "record",
-    [PERSON_RECORD.replace("locked=false", "locked=true"), PERSON_RECORD.replace("role=project-admin", "role=x")],
+    [PERSON_RECORD.replace("locked=false", "locked=true"), PERSON_RECORD.replace("member=host-admin\n", "")],
 )
 def test_a_locked_or_other_person_cannot_own_a_project(project_host, monkeypatch, capsys, record):
     """Prevent registering a project for an admin the host has locked out, or who is no project admin."""
@@ -511,9 +529,9 @@ def test_add_creates_only_the_project_owner_and_package_publisher(api_host, monk
         assert record.stat().st_mode & 0o777 == 0o600
         assert record.stat().st_uid == os.getuid()
         teams = [team for team in forge.teams.values() if team["org"] == name]
-        assert len(teams) == 2
+        assert len(teams) == 5
         owner = next(team for team in teams if team["name"] == "Owners")
-        assert owner["members"] == [admin]
+        assert owner["members"] == ["porelo-admin", admin]
         team = next(team for team in teams if team["name"] == "publishers")
         assert team == dict(
             org=name,
@@ -565,12 +583,12 @@ def test_remove_refuses_unpushed_commits_then_removes_only_the_project(api_host,
     git("--git-dir", str(local), "push", str(central), f"{reference}:{reference}")
     code, out, err = project(host, monkeypatch, capsys, "remove", "alpha")
     assert code == 0, err
-    assert json.loads(out) == {"project": "alpha", "removed": True, "locked": []}
-    assert out == '{"project":"alpha","removed":true,"locked":[]}\n'
+    assert json.loads(out) == {"project": "alpha", "removed": True}
+    assert out == '{"project":"alpha","removed":true}\n'
     assert not (host["etc"] / "projects/alpha.conf").exists()
     assert set(forge.organizations) == {"beta"}
     assert set(forge.users) == {"alice", "bob", "porelo-publisher-beta"}
-    assert set(forge.secrets) == {("beta", "PORELO_PUBLISHER_TOKEN")}
+    assert set(forge.secrets) == {("beta", "PORELO_PUBLISHER_TOKEN"), ("beta", "JF_ACCESS_TOKEN")}
     assert not forge.packages["alpha"]
     assert forge.packages["beta"] == [{"type": "maven", "name": "org.example:other", "version": "1.0"}]
     assert list(host["push"]["temporary"].iterdir()) == []
@@ -986,20 +1004,20 @@ def test_a_piped_token_is_its_one_line_and_never_prompted(memory_host, monkeypat
 def test_add_accepts_any_unlocked_member_and_records_project_admin_in_fixed_order(memory_host, monkeypatch, capsys):
     """Prevent rejecting an unlocked project member without legacy role= lines, or omitting their admin membership."""
     host = memory_host
-    laptop_line = "laptop=laptop ssh-ed25519 AAAA wg= 10.73.7.3\n"
-    (host["etc"] / "people/bob.conf").write_text("member=zeta developer\nlocked=false\n" + laptop_line)
+    card_lines = f"ssh={KEY}\nexpires=\n"
+    (host["etc"] / "people/bob.conf").write_text("member=zeta developer\nlocked=false\n" + card_lines)
     carol = host["etc"] / "people/carol.conf"
-    carol.write_text("locked=false\n" + laptop_line)
+    carol.write_text("locked=false\n" + card_lines)
     carol.chmod(0o600)
     host["forge"].users["carol"] = {}
 
     assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
     assert (host["etc"] / "people/alice.conf").read_text() == (
-        "member=hand\nmember=alpha project-admin\nlocked=false\n" + laptop_line
+        "member=host-admin\nmember=alpha project-admin\nlocked=false\n" + card_lines
     )
     assert project(host, monkeypatch, capsys, "add", "beta", "bob", "--signed-by", KEY)[0] == 0
     assert (host["etc"] / "people/bob.conf").read_text() == (
-        "member=beta project-admin\nmember=zeta developer\nlocked=false\n" + laptop_line
+        "member=beta project-admin\nmember=zeta developer\nlocked=false\n" + card_lines
     )
     host["forge"].calls.clear()
     host["cli_calls"].clear()
@@ -1008,190 +1026,77 @@ def test_add_accepts_any_unlocked_member_and_records_project_admin_in_fixed_orde
     assert not (host["etc"] / "projects/gamma.conf").exists()
 
 
-def test_remove_drops_the_project_and_locks_only_people_left_with_no_membership_after_releasing_the_lock(
-    memory_host, monkeypatch, capsys
-):
-    """Prevent leaving a zero-membership person unlocked, locking remaining members, or deadlocking on forge.conf."""
+def test_a_registered_organization_can_take_its_people_and_run_its_workflows(memory_host, monkeypatch, capsys, forge):
+    """Prevent a new organization lacking the teams the follow fills or the variables its workflows read."""
+    assert project(memory_host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+
+    teams = {team["name"] for team in forge.teams.values() if team["org"] == "alpha"}
+    assert {"Owners", "developers", "gates", "agents", "publishers"} <= teams
+    owners = next(team for team in forge.teams.values() if team["org"] == "alpha" and team["name"] == "Owners")
+    assert owners["members"] == ["porelo-admin", "alice"], "Forgejo keeps a last owner, so the admin could never leave"
+    assert forge.variables[("alpha", "MAVEN_URL")] == "http://f/alpha/maven"
+    assert forge.secrets[("alpha", "JF_ACCESS_TOKEN")] == "porelo-host-placeholder"
+
+
+def test_a_locked_persons_record_survives_a_projects_removal(memory_host, monkeypatch, capsys):
+    """Prevent the record of a person locked by the follow from stopping a project's removal or losing its lock."""
     host = memory_host
-    laptop_line = "laptop=laptop ssh-ed25519 AAAA wg= 10.73.7.3\n"
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    tail = f"locked=true\nssh={KEY}\nexpires=2030-01-01\nreason=key\nlocked_on=2026-11-02\n"
+    record = host["etc"] / "people/bob.conf"
+    record.write_text("member=alpha developer\n" + tail)
+    record.chmod(0o600)
+
+    code, _, err = project(host, monkeypatch, capsys, "remove", "alpha")
+
+    assert code == 0, err
+    assert record.read_text() == tail
+
+
+def test_remove_drops_only_its_memberships_and_leaves_locks_to_follow(memory_host, monkeypatch, capsys):
+    """Prevent project removal from changing other memberships or taking over organization revocation."""
+    host = memory_host
+    card_lines = f"ssh={KEY}\nexpires=\n"
     people = host["etc"] / "people"
     assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
     assert project(host, monkeypatch, capsys, "add", "beta", "bob", "--signed-by", KEY)[0] == 0
     records = {
-        "alice": "member=hand\nmember=alpha project-admin\nlocked=false\n" + laptop_line,
-        "bob": "member=alpha developer\nmember=beta project-admin\nlocked=false\n" + laptop_line,
-        "carol": "member=alpha developer\nlocked=false\n" + laptop_line,
-        "dan": "member=alpha project-admin\nmember=alpha developer\nlocked=false\n" + laptop_line,
-        "eve": "locked=true\n" + laptop_line,
+        "alice": "member=host-admin\nmember=alpha project-admin\nlocked=false\n" + card_lines,
+        "bob": "member=alpha developer\nmember=beta project-admin\nlocked=false\n" + card_lines,
+        "carol": "member=alpha developer\nlocked=false\n" + card_lines,
+        "dan": "member=alpha project-admin\nmember=alpha developer\nlocked=false\n" + card_lines,
+        "eve": "locked=true\n" + card_lines,
     }
     for name, content in records.items():
         path = people / f"{name}.conf"
         path.write_text(content)
         path.chmod(0o600)
 
-    person_helper = host["tmp"] / "porelo-host-person"
-    calls_file = host["tmp"] / "person-lock-calls.txt"
-    person_helper.write_text(
-        "#!/usr/bin/python3 -I\n"
-        "import fcntl, json, pathlib, sys\n"
-        f"conf = pathlib.Path({str(host['etc'] / 'forge.conf')!r})\n"
-        f"people = pathlib.Path({str(people)!r})\n"
-        f"log = pathlib.Path({str(calls_file)!r})\n"
-        "assert sys.argv[1:] and sys.argv[1] == 'lock' and len(sys.argv) == 3\n"
-        "user = sys.argv[2]\n"
-        "with conf.open('rb') as mutex:\n"
-        "    fcntl.flock(mutex, fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
-        "    record = people / f'{user}.conf'\n"
-        "    text = record.read_text(encoding='utf-8')\n"
-        "    assert 'member=' not in text and 'locked=false\\n' in text\n"
-        "    record.write_text(text.replace('locked=false\\n', 'locked=true\\n', 1), encoding='utf-8')\n"
-        "with log.open('a', encoding='utf-8') as out:\n"
-        "    out.write(user + '\\n')\n"
-        "print(json.dumps({'person': user, 'locked': True}, separators=(',', ':')))\n"
-    )
-    person_helper.chmod(0o700)
-
-    code, out, err = project(host, monkeypatch, capsys, "remove", "alpha", overrides={"PERSON": str(person_helper)})
+    code, out, err = project(host, monkeypatch, capsys, "remove", "alpha")
     assert code == 0, err
-    assert json.loads(out) == {"project": "alpha", "removed": True, "locked": ["carol", "dan"]}
-    assert out == '{"project":"alpha","removed":true,"locked":["carol","dan"]}\n'
-    assert calls_file.read_text().splitlines() == ["carol", "dan"]
-    assert (people / "alice.conf").read_text() == "member=hand\nlocked=false\n" + laptop_line
-    assert (people / "bob.conf").read_text() == "member=beta project-admin\nlocked=false\n" + laptop_line
-    assert (people / "carol.conf").read_text() == "locked=true\n" + laptop_line
-    assert (people / "dan.conf").read_text() == "locked=true\n" + laptop_line
-    assert (people / "eve.conf").read_text() == "locked=true\n" + laptop_line
+    assert json.loads(out) == {"project": "alpha", "removed": True}
+    assert out == '{"project":"alpha","removed":true}\n'
+    assert (people / "alice.conf").read_text() == "member=host-admin\nlocked=false\n" + card_lines
+    assert (people / "bob.conf").read_text() == "member=beta project-admin\nlocked=false\n" + card_lines
+    assert (people / "carol.conf").read_text() == "locked=false\n" + card_lines
+    assert (people / "dan.conf").read_text() == "locked=false\n" + card_lines
+    assert (people / "eve.conf").read_text() == "locked=true\n" + card_lines
+    assert not any("porelo-host-person" in str(call) for call in host["cli_calls"])
 
 
-@pytest.mark.parametrize("defect, expected", [("corrupt-person", 65), ("missing-person-helper", 69)])
-def test_remove_refuses_corrupt_people_or_missing_person_helper_before_deleting_the_project(
-    memory_host, monkeypatch, capsys, defect, expected
-):
-    """Prevent deleting a project on the forge when a person's record is corrupt or the lock helper is missing."""
+def test_remove_refuses_corrupt_people_before_deleting_the_project(memory_host, monkeypatch, capsys):
+    """Prevent deleting a project on the forge when a person's record is corrupt."""
     host = memory_host
     assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
     carol = host["etc"] / "people/carol.conf"
-    if defect == "corrupt-person":
-        carol.write_text("member=alpha unknown\nlocked=false\nlaptop=laptop ssh-ed25519 AAAA wg= 10.73.7.5\n")
-    else:
-        carol.write_text("member=alpha developer\nlocked=false\nlaptop=laptop ssh-ed25519 AAAA wg= 10.73.7.5\n")
+    carol.write_text(f"member=alpha unknown\nlocked=false\nssh={KEY}\nexpires=\n")
     carol.chmod(0o600)
     host["forge"].calls.clear()
     host["cli_calls"].clear()
-    missing = host["tmp"] / "missing-porelo-host-person"
-    result = project(host, monkeypatch, capsys, "remove", "alpha", overrides={"PERSON": str(missing)})
-    assert result[0] == expected and not result[1], result
+    result = project(host, monkeypatch, capsys, "remove", "alpha")
+    assert result[0] == 65 and not result[1], result
     assert not [call for call in host["forge"].calls if call[0] == "DELETE"]
     assert (host["etc"] / "projects/alpha.conf").exists()
-
-
-def test_remove_attempts_every_lock_and_fails_when_locking_a_person_fails(memory_host, monkeypatch, capsys):
-    """Prevent one failed person lock from leaving another zero-membership person unlocked or claiming success."""
-    host = memory_host
-    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
-    laptop_line = "laptop=laptop ssh-ed25519 AAAA wg= 10.73.7.5\n"
-    for name in ("carol", "dan"):
-        path = host["etc"] / "people" / f"{name}.conf"
-        path.write_text("member=alpha developer\nlocked=false\n" + laptop_line)
-        path.chmod(0o600)
-    calls_file = host["tmp"] / "person-lock-attempts.txt"
-    person_helper = host["tmp"] / "porelo-host-person"
-    person_helper.write_text(
-        "#!/usr/bin/python3 -I\n"
-        "import json, pathlib, sys\n"
-        "user = sys.argv[2]\n"
-        f"with pathlib.Path({str(calls_file)!r}).open('a', encoding='utf-8') as out:\n"
-        "    out.write(user + '\\n')\n"
-        "if user == 'carol':\n"
-        "    sys.exit(69)\n"
-        f"record = pathlib.Path({str(host['etc'] / 'people')!r}) / f'{{user}}.conf'\n"
-        "record.write_text(record.read_text(encoding='utf-8').replace('locked=false', 'locked=true', 1))\n"
-        "print(json.dumps({'person': user, 'locked': True}, separators=(',', ':')))\n"
-    )
-    person_helper.chmod(0o700)
-
-    code, out, err = project(host, monkeypatch, capsys, "remove", "alpha", overrides={"PERSON": str(person_helper)})
-    assert code == 69 and not out and "carol" in err, (code, out, err)
-    assert calls_file.read_text().splitlines() == ["carol", "dan"]
-    assert "locked=true\n" in (host["etc"] / "people/dan.conf").read_text()
-
-
-def test_remove_accepts_recorded_sync_commits_and_rotated_signers(memory_host, monkeypatch, capsys):
-    """Prevent sync state written to a project record from blocking project removal, while add keeps its initial lines."""
-    host = memory_host
-    second_wire = KEY_WIRE[:19] + bytes(reversed(range(32)))
-    second_key = "ssh-ed25519 " + base64.b64encode(second_wire).decode("ascii")
-    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
-    record = host["etc"] / "projects/alpha.conf"
-    assert record.read_text() == f"admin=alice\nsigned_by={KEY}\npublisher=porelo-publisher-alpha\n"
-    record.write_text(
-        record.read_text()
-        + f"commit={'1' * 40}\n"
-        + f"access_commit={'2' * 40}\n"
-        + f"signer={KEY}\n"
-        + f"signer={second_key}\n"
-    )
-    record.chmod(0o600)
-    code, out, err = project(host, monkeypatch, capsys, "remove", "alpha")
-    assert code == 0, (code, out, err)
-    assert json.loads(out) == {"project": "alpha", "removed": True, "locked": []}
-    assert not record.exists()
-
-
-@pytest.mark.parametrize(
-    "extra",
-    [
-        f"commit={'1' * 40}\n",
-        f"commit={'1' * 40}\naccess_commit={'2' * 40}\n",
-        f"signer={KEY}\n",
-        f"commit=not-a-commit\naccess_commit={'2' * 40}\nsigner={KEY}\n",
-        f"commit={'1' * 40}\naccess_commit=UPPER{'2' * 35}\nsigner={KEY}\n",
-        f"commit={'1' * 40}\naccess_commit={'2' * 40}\nsigner=not-a-key\n",
-        f"commit={'1' * 40}\naccess_commit={'2' * 40}\nsigner={KEY}\nsigner={KEY}\n",
-        f"commit={'1' * 40}\ncommit={'3' * 40}\naccess_commit={'2' * 40}\nsigner={KEY}\n",
-        f"commit={'1' * 40}\naccess_commit={'2' * 40}\nsigner={KEY}\nextra=unexpected\n",
-    ],
-    ids=[
-        "commit-only",
-        "missing-signer",
-        "signer-only",
-        "bad-commit",
-        "bad-access-commit",
-        "bad-signer",
-        "duplicate-signer",
-        "duplicate-commit",
-        "unknown-field",
-    ],
-)
-def test_remove_refuses_incomplete_duplicate_or_malformed_sync_lines(memory_host, monkeypatch, capsys, extra):
-    """Prevent a half-written or tampered sync state in a project record from authorizing project deletion."""
-    host = memory_host
-    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
-    record = host["etc"] / "projects/alpha.conf"
-    record.write_text(record.read_text() + extra)
-    record.chmod(0o600)
-    host["forge"].calls.clear()
-    host["cli_calls"].clear()
-    code, out, err = project(host, monkeypatch, capsys, "remove", "alpha")
-    assert code == 65 and not out and err.startswith("porelo-host-project: "), (code, out, err)
-    assert not host["forge"].calls
-    assert record.exists()
-
-
-def test_remove_deletes_only_its_matrix_admins_file(memory_host, monkeypatch, capsys):
-    """Prevent a removed project retaining room administration or deleting another project's admins."""
-    host = memory_host
-    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
-    directory = host["etc"] / "matrix"
-    directory.mkdir(mode=0o750)
-    for name in ("alpha", "beta"):
-        path = directory / f"{name}.admins"
-        path.write_text("alice\n")
-        path.chmod(0o640)
-    code, _, err = project(host, monkeypatch, capsys, "remove", "alpha")
-    assert code == 0, err
-    assert not (directory / "alpha.admins").exists()
-    assert (directory / "beta.admins").read_text() == "alice\n"
 
 
 def test_project_admin_transport_connects_only_to_a_unix_socket(monkeypatch):
@@ -1215,23 +1120,23 @@ def test_project_admin_transport_connects_only_to_a_unix_socket(monkeypatch):
 @pytest.mark.parametrize(
     "projects, diagnostic, code",
     [
-        ({"beta": "bob"}, "registry names no project alpha for alice", 65),
-        ({"alpha": "bob"}, "registry names no project alpha for alice", 65),
-        (None, "registry names no project alpha for alice", 65),
+        ({"beta": "bob"}, "organization names no project alpha for alice", 65),
+        ({"alpha": "bob"}, "organization names no project alpha for alice", 65),
+        (None, "organization names no project alpha for alice", 65),
         ("readable", "root", 69),
     ],
 )
-def test_add_registers_only_a_project_the_hosts_registry_names_for_its_admin(
+def test_add_registers_only_a_project_the_hosts_org_names_for_its_admin(
     project_host, monkeypatch, capsys, projects, diagnostic, code
 ):
-    """Prevent registering a project, or a project for an admin, that the host admin's signed registry does not name."""
-    applied = project_host["etc"] / "registry/applied.json"
+    """Prevent registering a project, or a project for an admin, that the host admin's signed organization does not name."""
+    applied = project_host["etc"] / "organization/applied.json"
     if projects is None:
         applied.unlink()
     elif projects == "readable":
         applied.chmod(0o644)
     else:
-        write_registry(project_host["etc"], projects)
+        write_organization(project_host["etc"], projects)
     result = project(project_host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)
     assert_refused(project_host, result, diagnostic, code)
     assert not project_host["forge"].calls
@@ -1240,14 +1145,18 @@ def test_add_registers_only_a_project_the_hosts_registry_names_for_its_admin(
 
 @pytest.mark.parametrize(
     "revoked, diagnostic",
-    [(["alice"], "alice is revoked"), ("alice", "no valid applied registry"), (None, "no valid applied registry")],
+    [
+        (["alice"], "alice is revoked"),
+        ("alice", "no valid applied organization"),
+        (None, "no valid applied organization"),
+    ],
 )
-def test_add_registers_no_project_for_an_admin_the_hosts_registry_revoked(
+def test_add_registers_no_project_for_an_admin_the_hosts_org_revoked(
     project_host, monkeypatch, capsys, revoked, diagnostic
 ):
     """Prevent a revoked admin, or one an unreadable revocation list may hide, from registering a project it names."""
-    write_registry(project_host["etc"], {"alpha": "alice"})
-    applied = project_host["etc"] / "registry/applied.json"
+    write_organization(project_host["etc"], {"alpha": "alice"})
+    applied = project_host["etc"] / "organization/applied.json"
     state = json.loads(applied.read_text())
     state["revoked"] = revoked
     applied.write_text(json.dumps(state))
@@ -1298,39 +1207,25 @@ def test_remove_keeps_everything_when_a_projects_arrivals_are_not_roots_alone(me
 
 @pytest.mark.parametrize("locked", [False, True])
 @pytest.mark.parametrize("remaining", [False, True])
-def test_remove_preserves_pending_state_and_retries_last_membership_lock(
-    memory_host, monkeypatch, capsys, locked, remaining
-):
-    """Prevent removal from falsifying local revocation state or abandoning the last pending lock."""
+def test_remove_preserves_pending_state_after_membership_removal(memory_host, monkeypatch, capsys, locked, remaining):
+    """Prevent removal from falsifying local revocation state or dispatching a removed person verb."""
     host = memory_host
     assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
     path = host["etc"] / "people/bob.conf"
-    tail = f"locked={str(locked).lower()}\nlaptop=laptop ssh-ed25519 AAAA wg= 192.0.2.3\nlock=pending\n"
+    tail = f"locked={str(locked).lower()}\nssh={KEY}\nexpires=\nlock=pending\n"
     membership = "member=beta developer\n" if remaining else ""
     path.write_text("member=alpha developer\n" + membership + tail)
-    helper = host["tmp"] / "person-lock"
-    captured = host["tmp"] / "lock-record"
-    helper.write_text(
-        "#!/usr/bin/python3 -I\n"
-        "import pathlib, sys\n"
-        "assert sys.argv[1:] == ['lock', 'bob']\n"
-        f"pathlib.Path({str(captured)!r}).write_bytes(pathlib.Path({str(path)!r}).read_bytes())\n"
-        'print(\'{"person":"bob","locked":true}\')\n'
-    )
-    helper.chmod(0o700)
-    code, out, err = project(host, monkeypatch, capsys, "remove", "alpha", overrides={"PERSON": str(helper)})
+    code, out, err = project(host, monkeypatch, capsys, "remove", "alpha")
     assert code == 0, err
     assert path.read_text() == membership + tail
-    assert json.loads(out)["locked"] == ([] if remaining else ["bob"])
-    assert captured.exists() == (not remaining)
-    if not remaining:
-        assert captured.read_text() == tail
+    assert json.loads(out) == {"project": "alpha", "removed": True}
+    assert not any("porelo-host-person" in str(call) for call in host["cli_calls"])
 
 
 def test_pending_admin_cannot_add_a_project(memory_host, monkeypatch, capsys):
     """Prevent pending local revocation from retaining project administration."""
     path = memory_host["etc"] / "people/alice.conf"
-    path.write_text("member=hand\nlocked=false\nlaptop=laptop ssh-ed25519 AAAA wg= 192.0.2.3\nlock=pending\n")
+    path.write_text(f"member=host-admin\nlocked=false\nssh={KEY}\nexpires=\nlock=pending\n")
     result = project(memory_host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)
     assert_refused(memory_host, result, "locked", 65)
 
@@ -1354,3 +1249,452 @@ def test_a_forge_account_without_a_usable_home_is_refused(monkeypatch, home):
     with pytest.raises(values["Refusal"]) as refused:
         namespace["forge_home"]("porelo-forge")
     assert refused.value.code == 69, str(refused.value)
+
+
+def test_registration_uses_the_project_admin_in_the_fetched_members(memory_host, monkeypatch, capsys):
+    """Prevent the fetched members contract from blocking registration or assigning ownership to a developer."""
+    path = memory_host["etc"] / "organization/applied.json"
+    state = json.loads(path.read_text())
+    state["projects"] = [
+        {
+            "project": "alpha",
+            "members": [
+                {"login": "alice", "role": "admin", "locked": False},
+                {"login": "bob", "role": "developer", "locked": False},
+            ],
+        }
+    ]
+    path.write_text(json.dumps(state))
+    result = project(memory_host, monkeypatch, capsys, "add", "alpha", "bob", "--signed-by", KEY)
+    assert result[0] == 65 and not memory_host["forge"].organizations
+    result = project(memory_host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)
+    assert result[0] == 0, result
+    assert memory_host["forge"].teams[1]["members"] == ["porelo-admin", "alice"]
+
+
+def test_a_follow_lends_its_existing_lock_to_registration(memory_host, monkeypatch, capsys):
+    """Prevent follow and its project child from deadlocking on separate opens of forge.conf."""
+    with (memory_host["etc"] / "forge.conf").open("rb") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        result = project(
+            memory_host,
+            monkeypatch,
+            capsys,
+            "add",
+            "alpha",
+            "alice",
+            "--signed-by",
+            KEY,
+            "--lock-fd",
+            str(held.fileno()),
+        )
+        assert result[0] == 0, result
+        with (memory_host["etc"] / "forge.conf").open("rb") as other:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    assert "alpha" in memory_host["forge"].organizations
+
+
+def test_an_unrelated_descriptor_cannot_bypass_the_project_lock(memory_host, monkeypatch, capsys):
+    """Prevent a mistaken inherited descriptor from changing the forge outside follow's shared lock."""
+    with (memory_host["etc"] / "people/alice.conf").open("rb") as unrelated:
+        result = project(
+            memory_host,
+            monkeypatch,
+            capsys,
+            "add",
+            "alpha",
+            "alice",
+            "--signed-by",
+            KEY,
+            "--lock-fd",
+            str(unrelated.fileno()),
+        )
+    assert result[0] == 65 and "inherited project lock" in result[2]
+    assert not memory_host["forge"].organizations
+
+
+def read_key_project(host):
+    """Install an independent central read-key manifest and a valid registered project."""
+    directory = host["etc"] / "organization/read/projects/alpha"
+    directory.mkdir(parents=True, mode=0o700)
+    for ancestor in (directory.parent, directory.parent.parent):
+        ancestor.chmod(0o700)
+    address = "https://forge.example.org/acme/code.git"
+    (directory / "repositories.json").write_text(json.dumps([{"name": "code", "address": address, "key_id": 7}]))
+    (directory / "repositories.json").chmod(0o600)
+    (directory / "code").write_text("fixture-private-key")
+    (directory / "code").chmod(0o600)
+    (directory / "code.pub").write_text(KEY + "\n")
+    (directory / "code.pub").chmod(0o644)
+    host["forge"].repositories["alpha"] = [{"name": "code", "original_url": address}]
+    return directory, address
+
+
+def test_a_project_is_held_until_every_local_ref_has_reached_the_central_forge(memory_host, monkeypatch, capsys):
+    """Prevent loss of a task branch's commits, and keep removal possible once the work has been pushed."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    directory, _ = read_key_project(host)
+    local = {"a" * 40, "b" * 40}
+    central = {"a" * 40}
+    overrides = {
+        "forge_git": lambda *args: "\n".join(sorted(local)) + "\n",
+        "central_commits": lambda *args: set(central),
+    }
+    before = len(host["forge"].calls)
+    result = project(host, monkeypatch, capsys, "remove", "alpha", overrides=overrides)
+    assert result[0] == 65 and "unpushed" in result[2]
+    assert not [call for call in host["forge"].calls[before:] if call[0] == "DELETE"]
+    assert directory.exists()
+    central.add("b" * 40)
+    result = project(host, monkeypatch, capsys, "remove", "alpha", overrides=overrides)
+    assert result[0] == 0, result
+    assert not host["forge"].organizations and not directory.exists()
+    assert not (host["etc"] / "projects/alpha.conf").exists()
+
+
+def test_an_unreachable_central_forge_cannot_be_treated_as_all_work_pushed(memory_host, monkeypatch, capsys):
+    """Prevent a failed central read from authorizing deletion of every local repository."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    read_key_project(host)
+
+    def refused(*args):
+        raise OSError("central read unavailable")
+
+    result = project(
+        host,
+        monkeypatch,
+        capsys,
+        "remove",
+        "alpha",
+        overrides={"central_commits": refused, "forge_git": lambda *args: "a" * 40 + "\n"},
+    )
+    assert result[0] == 69 and "alpha" in host["forge"].organizations
+    assert (host["etc"] / "projects/alpha.conf").exists()
+
+
+@pytest.mark.parametrize("quote", ["", "'", '"'])
+@pytest.mark.parametrize(
+    "supplied",
+    [
+        "https://forge.example.org/acme/code.git",
+        "ssh://git@central.example:2222/acme/code.git",
+        "https://forge.example.org/acme/Code.git",
+    ],
+)
+@pytest.mark.parametrize("missing_public", [False, True])
+def test_migration_uses_only_a_pipe_and_memory_for_the_central_token(
+    memory_host, monkeypatch, capsys, quote, supplied, missing_public
+):
+    """Prevent leaked tokens, unprotected main branches, and removal reading the wrong SSH service."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    directory, address = read_key_project(host)
+    server = "central.example" if supplied.startswith("ssh:") else "forge.example.org"
+    name = supplied.rsplit("/", 1)[-1].removesuffix(".git")
+    address = f"https://{server}/acme/{name}.git"
+    public = KEY
+    private = (directory / "code").read_bytes()
+    if missing_public:
+        (directory / "code").unlink()
+        (directory / "code.pub").unlink()
+        made = subprocess.run(
+            ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "", "-f", str(directory / "code")],
+            capture_output=True,
+            check=False,
+        )
+        assert made.returncode == 0
+        public = (directory / "code.pub").read_text().strip()
+        private = (directory / "code").read_bytes()
+        (directory / "code.pub").unlink()
+    (directory / "repositories.json").unlink()
+    host["forge"].repositories["alpha"] = []
+    host["forge"].responses[("GET", f"/api/v1/repos/alpha/{name}")] = (404, {})
+    settings = host["etc"] / "organization/organization.yml"
+    settings.write_text(f"adapter: git\nsettings:\n  repository: {quote}git@{server}:acme/organization.git{quote}\n")
+    settings.chmod(0o600)
+    seen = []
+
+    class Central:
+        def __init__(self, token, origin):
+            assert token == CENTRAL_TOKEN and origin == "https://" + server
+
+        def request(self, method, path, body=None, expected=(200,)):
+            seen.append((method, path, body))
+            if method == "GET":
+                return []
+            assert body["key"] == public and body["read_only"] is True
+            return {"id": 7, "key": public, "read_only": True}
+
+    original = host["forge"].request
+
+    def requests(method, path, body):
+        if method == "POST" and path == "/api/v1/repos/migrate":
+            assert body["auth_password"] == CENTRAL_TOKEN
+            assert body["mirror"] is False and body["clone_addr"] == address
+            host["forge"].calls.append((method, path, {"clone_addr": address}))
+            host["forge"].responses[("GET", f"/api/v1/repos/alpha/{name}")] = (200, {"original_url": address})
+            return 201, {"name": name, "original_url": address}
+        return original(method, path, body)
+
+    host["forge"].request = requests
+    result = project(
+        host,
+        monkeypatch,
+        capsys,
+        "migrate",
+        "alpha",
+        overrides={"Central": Central},
+        piped=json.dumps({"address": supplied, "token": CENTRAL_TOKEN}),
+    )
+    assert result[0] == 0, result
+    assert [call[0] for call in seen] == ["GET", "POST"]
+    assert (directory / "code").read_bytes() == private, "recovery must preserve the existing private key"
+    assert (directory / "code.pub").read_text().strip() == public
+    assert not (directory / "Code").exists(), "API casing must not change credential paths"
+    assert private.decode() not in result[1] + result[2]
+    assert all(private.decode() not in str(call) for call in host["cli_calls"])
+    assert json.loads((directory / "repositories.json").read_text())[0]["key_id"] == 7
+    assert host["forge"].merge_style[("alpha", name)]["default_merge_style"] == "fast-forward-only"
+    assert host["forge"].protected[("alpha", name)]["enable_push"] is False
+    assert all(CENTRAL_TOKEN.encode() not in path.read_bytes() for path in host["etc"].rglob("*") if path.is_file())
+    assert all(CENTRAL_TOKEN not in str(call) for call in host["cli_calls"])
+    # An equivalent HTTPS retry must retain the original SSH endpoint for removal.
+    result = project(
+        host,
+        monkeypatch,
+        capsys,
+        "migrate",
+        "alpha",
+        overrides={"Central": Central},
+        piped=json.dumps({"address": address, "token": CENTRAL_TOKEN}),
+    )
+    assert result[0] == 0, result
+    assert len([call for call in host["forge"].calls if call[:2] == ("POST", "/api/v1/repos/migrate")]) == 1
+    scope = runpy.run_path(str(SCRIPT), run_name="read_port_tests")
+    commands = []
+    scope["central_commits"].__globals__.update(
+        ETC=str(host["etc"]),
+        ROOT_UID=os.getuid(),
+        TRUST_ANCHOR=str(host["tmp"]),
+        project_git=lambda arguments, **kwargs: commands.append(arguments) or "a" * 40 + "\n",
+    )
+    known = host["etc"] / "organization/known_hosts"
+    known.write_text("fixture-host-key\n")
+    known.chmod(0o600)
+    item = json.loads((directory / "repositories.json").read_text())[0]
+    scope["central_commits"](str(directory), item)
+    expected = supplied if supplied.startswith("ssh:") else f"ssh://git@{server}/acme/{name}.git"
+    assert commands[0][-2] == expected, "removal must read the same SSH port migration recorded"
+    host["forge"].repositories["alpha"] = [{"name": name, "original_url": address}]
+    result = project(
+        host,
+        monkeypatch,
+        capsys,
+        "remove",
+        "alpha",
+        overrides={"forge_git": lambda *args: "a" * 40 + "\n", "central_commits": scope["central_commits"]},
+    )
+    assert result[0] == 0, result
+    assert not directory.exists(), "mixed-case API names must not strand lower-case read credentials"
+
+
+@pytest.mark.parametrize("name", ["repositories.json", "Repositories.json"])
+def test_a_repository_cannot_overwrite_its_read_key_manifest(memory_host, monkeypatch, capsys, name):
+    """Prevent a repository name from overwriting the manifest with a private key."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    settings = host["etc"] / "organization/organization.yml"
+    settings.write_text("adapter: git\nsettings:\n  repository: git@forge.example.org:acme/organization.git\n")
+    settings.chmod(0o600)
+    result = project(
+        host,
+        monkeypatch,
+        capsys,
+        "migrate",
+        "alpha",
+        piped=json.dumps({"address": f"https://forge.example.org/acme/{name}.git", "token": CENTRAL_TOKEN}),
+    )
+    assert result[0] == 65, result
+    assert not (host["etc"] / "organization/read").exists()
+
+
+def test_registration_preserves_the_membership_follow_already_admitted(memory_host, monkeypatch, capsys):
+    """Prevent a repeated membership line from making the new project's admin record unreadable."""
+    host = memory_host
+    person = host["etc"] / "people/alice.conf"
+    person.write_text(f"member=host-admin\nmember=alpha project-admin\nlocked=false\nssh={KEY}\nexpires=\n")
+    result = project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)
+    assert result[0] == 0, result
+    assert person.read_text().count("member=alpha project-admin\n") == 1
+
+
+@pytest.mark.parametrize("name", ["code", "Code"])
+def test_read_only_local_git_uses_the_forge_accounts_user_manager(memory_host, monkeypatch, name):
+    """Prevent a missing rootless runtime from turning every project removal into an unverifiable hold."""
+    host = memory_host
+    scope = runpy.run_path(str(SCRIPT), run_name="git_tests")
+    scope["forge_git"].__globals__.update(RUN_USER=str(host["tmp"] / "run-user"))
+    bus = host["tmp"] / "run-user/1234/bus"
+    bus.parent.mkdir(parents=True, exist_ok=True)
+    os.mknod(bus, stat.S_IFSOCK | 0o600)
+    calls = []
+
+    def commands(arguments, **kwargs):
+        calls.append(arguments)
+        return subprocess.CompletedProcess(
+            arguments, 0, "1234\n" if arguments[0] == "/usr/bin/id" else "a" * 40 + "\n", ""
+        )
+
+    monkeypatch.setattr(subprocess, "run", commands)
+    monkeypatch.setattr(scope["pwd"], "getpwnam", lambda account: SimpleNamespace(pw_dir="/home/porelo-forge"))
+    assert scope["forge_git"]("porelo-forge", "alpha", name) == "a" * 40 + "\n"
+    assert "XDG_RUNTIME_DIR=/run/user/1234" in calls[-1]
+    assert "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1234/bus" in calls[-1]
+    assert calls[-1][-3:] == ["--git-dir=/var/lib/gitea/git/repositories/alpha/code.git", "rev-list", "--all"]
+
+
+def test_migration_never_sends_the_token_to_another_projects_forge(memory_host, monkeypatch, capsys):
+    """Prevent a project address from sending the host admin's central credential to another server."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    settings = host["etc"] / "organization/organization.yml"
+    settings.write_text("adapter: git\nsettings:\n  repository: git@forge.example.org:acme/organization.git\n")
+    settings.chmod(0o600)
+
+    class UnusedCentral:
+        def __init__(self, *args):
+            pytest.fail("a central credential reached an unrelated forge")
+
+    result = project(
+        host,
+        monkeypatch,
+        capsys,
+        "migrate",
+        "alpha",
+        overrides={"Central": UnusedCentral},
+        piped=json.dumps({"address": "https://elsewhere.example.org/acme/code.git", "token": CENTRAL_TOKEN}),
+    )
+    assert result[0] == 65 and "differs" in result[2]
+    assert not (host["etc"] / "organization/read").exists()
+
+
+def test_a_read_key_cannot_be_replaced_by_a_link_when_comparing_central_commits(tmp_path):
+    """Prevent root's central-read command from using a private key reached through an untrusted link."""
+    scope = runpy.run_path(str(SCRIPT), run_name="read_key_tests")
+    scope["central_commits"].__globals__.update(
+        ROOT_UID=os.getuid(), TRUST_ANCHOR=str(tmp_path), ETC=str(tmp_path / "etc")
+    )
+    known = tmp_path / "etc/organization/known_hosts"
+    known.parent.mkdir(parents=True, mode=0o700)
+    known.write_text("fixture-host-key\n")
+    known.chmod(0o600)
+    scope["central_commits"].__globals__["project_git"] = lambda *args, **kwargs: "a" * 40 + "\n"
+    directory = tmp_path / "read"
+    directory.mkdir(mode=0o700)
+    other = tmp_path / "unrelated"
+    other.write_text("fixture-key")
+    (directory / "code").symlink_to(other)
+    with pytest.raises(scope["Refusal"], match="plain file"):
+        scope["central_commits"](str(directory), {"name": "code", "address": "https://forge.example.org/acme/code.git"})
+
+
+def test_removal_resumes_after_the_organization_is_gone_but_its_publisher_remains(memory_host, monkeypatch, capsys):
+    """Prevent a failed publisher deletion from leaving its credential and the project record forever."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    host["forge"].failure = ("DELETE", "/api/v1/admin/users/porelo-publisher-alpha")
+    first = project(host, monkeypatch, capsys, "remove", "alpha")
+    assert first[0] == 69 and "alpha" not in host["forge"].organizations
+    assert "porelo-publisher-alpha" in host["forge"].users
+    host["forge"].failure = None
+    second = project(host, monkeypatch, capsys, "remove", "alpha")
+    assert second[0] == 0, second
+    assert "porelo-publisher-alpha" not in host["forge"].users
+    assert not (host["etc"] / "projects/alpha.conf").exists()
+
+
+def test_private_key_cleanup_resumes_without_losing_its_manifest(memory_host, monkeypatch):
+    """Prevent an interrupted cleanup from stranding a project's remaining private credentials forever."""
+    host = memory_host
+    directory, _ = read_key_project(host)
+    scope = runpy.run_path(str(SCRIPT), run_name="cleanup_tests")
+    scope["drop_read_keys"].__globals__.update(
+        ETC=str(host["etc"]), ROOT_UID=os.getuid(), TRUST_ANCHOR=str(host["tmp"])
+    )
+    unlink = os.unlink
+
+    def interrupted(path, *args, **kwargs):
+        if str(path) == str(directory / "code.pub"):
+            raise OSError("fixture interrupted cleanup")
+        return unlink(path, *args, **kwargs)
+
+    listdir = os.listdir
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            os,
+            "listdir",
+            lambda path: ["repositories.json", "code", "code.pub"] if str(path) == str(directory) else listdir(path),
+        )
+        patch.setattr(os, "unlink", interrupted)
+        with pytest.raises(OSError):
+            scope["drop_read_keys"]("alpha")
+    assert (directory / "repositories.json").exists()
+    assert not (directory / "code").exists()
+    scope["drop_read_keys"]("alpha")
+    assert not directory.exists()
+
+
+def test_a_broken_private_key_refuses_recovery_without_disclosing_it(memory_host, monkeypatch, capsys):
+    """Prevent a failed public-key recovery leaking private bytes or contacting a forge with an invalid key."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    directory, address = read_key_project(host)
+    (directory / "code.pub").unlink()
+    private = (directory / "code").read_bytes()
+    settings = host["etc"] / "organization/organization.yml"
+    settings.write_text("adapter: git\nsettings:\n  repository: git@forge.example.org:acme/organization.git\n")
+    settings.chmod(0o600)
+    before = len(host["forge"].calls)
+    result = project(
+        host,
+        monkeypatch,
+        capsys,
+        "migrate",
+        "alpha",
+        piped=json.dumps({"address": address, "token": CENTRAL_TOKEN}),
+    )
+    assert result[0] == 69 and "public read key could not be recovered" in result[2], result
+    assert (directory / "code").read_bytes() == private and not (directory / "code.pub").exists()
+    assert private.decode() not in result[1] + result[2]
+    assert not [call for call in host["forge"].calls[before:] if call[0] in ("POST", "DELETE")]
+
+
+@pytest.mark.parametrize("residue", [".repositories-interrupted", "notes", ".repositories", ".other-staging"])
+def test_read_directory_residue_cannot_strand_or_partially_delete_a_project(memory_host, monkeypatch, capsys, residue):
+    """Prevent helper staging residue blocking removal, or unknown files being discovered only after deletion."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    directory, _ = read_key_project(host)
+    extra = directory / residue
+    extra.write_text("interrupted fixture write\n")
+    extra.chmod(0o600)
+    before = len(host["forge"].calls)
+    result = project(
+        host,
+        monkeypatch,
+        capsys,
+        "remove",
+        "alpha",
+        overrides={"forge_git": lambda *args: "a" * 40 + "\n", "central_commits": lambda *args: {"a" * 40}},
+    )
+    if residue.startswith(".repositories-"):
+        assert result[0] == 0, result
+        assert not directory.exists() and "alpha" not in host["forge"].organizations
+    else:
+        assert result[0] == 73 and "unknown file" in result[2], result
+        assert not [call for call in host["forge"].calls[before:] if call[0] == "DELETE"]
+        assert extra.exists() and "alpha" in host["forge"].organizations
+        assert (host["etc"] / "projects/alpha.conf").exists()

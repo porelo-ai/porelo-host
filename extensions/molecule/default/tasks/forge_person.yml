@@ -1,6 +1,6 @@
 ---
 # No default operator login, password helper, password file or CA key belongs on the host; the refusal of a person
-# named operator is with the persons, who come from the registry.
+# named operator is with the persons, who come from the organization.
 - name: Read whether a password file or a CA key of a person's is on the host
   ansible.builtin.stat:
     path: "{{ item }}"

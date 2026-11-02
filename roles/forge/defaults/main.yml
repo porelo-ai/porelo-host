@@ -21,31 +21,22 @@ forge_runner_cpus: 1
 forge_runner_memory: 512M
 forge_runner_pids_limit: 256
 
-# How many jobs the runner takes at once, each within the job bounds below: two of 4 CPUs fit half of the 16
-# processors of the server Porelo rents.
-forge_runner_capacity: 2
-
 # The runner's cache, which a job's actions/cache reaches on the forge's address: its server's port and the proxy's
 # port the jobs are given.
 forge_runner_cache_port: 4000
 forge_runner_cache_proxy_port: 4001
 
-# A job gets the same fixed bounds as a Porelo task, whichever host runs it.
-forge_job_cpus: 4
-forge_job_memory: 8g
 forge_job_pids_limit: 2048
-forge_job_omp_num_threads: 4
+# The CPU fallback lets main's argument validation run before capacity computes the job quota.
+forge_job_omp_num_threads: "{{ forge_job_cpus | default(1) }}"
 
 # The repositories migrated once from the central forge into the owner's organization, each {name, url}, and that
 # owner; from porelo-frontend's first inventory. No push mirrors are configured. A url is https:// with no user in it.
-forge_repositories: "{{ porelo_host_forge_repositories | default([]) }}"
-forge_owner: "{{ porelo_host_forge_owner | default('porelo') }}"
 
 # The authority the gathered push trusts for the central forge: the system's own, never the host's.
 forge_central_ca: "{{ porelo_host_forge_central_ca | default('/etc/ssl/certs/ca-certificates.crt') }}"
 
 # Each agent gets a forge account and a token kept on the host, only where the owner's repositories are configured.
-forge_agents: "{{ porelo_host_forge_agents | default([]) }}"
 
 # Workflows differ between the forges only by variables; GitHub enables publishing with the same variable set true.
 forge_variables:
@@ -54,7 +45,7 @@ forge_variables:
   JF_URL: https://jfrog.invalid
   # Snapshots go to the forge's own Maven registry, at the address a job reaches; GitHub's names Sonatype's.
   PORELO_DEPLOY_PROFILE: forge-release
-  MAVEN_SNAPSHOTS_URL: "http://{{ forge_name }}:{{ forge_http_port }}/api/packages/{{ forge_owner }}/maven"
+  MAVEN_SNAPSHOTS_URL: "http://{{ forge_name }}:{{ forge_http_port }}/api/packages/{project}/maven"
 
 forge_placeholder_secrets: [JF_ACCESS_TOKEN]
 

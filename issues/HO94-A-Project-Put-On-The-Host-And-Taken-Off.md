@@ -1,6 +1,6 @@
 # HO94 — A Project Put On The Host And Taken Off
 
-**Status:** Backlog.
+**Status:** Review.
 **Size:** M - the follow's handling of the host's projects, today's project helper behind it, the migration with the
 host admin's token, Molecule.
 

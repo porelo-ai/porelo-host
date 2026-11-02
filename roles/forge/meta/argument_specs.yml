@@ -60,8 +60,8 @@ argument_specs:
         description: The runner daemon's maximum number of processes and threads.
       forge_runner_capacity:
         type: int
-        default: 2
-        description: How many jobs the runner takes at once, each within the job bounds.
+        description: >-
+          Concurrent jobs; unset chooses 2 when two minimum jobs fit half the host beside the VM pool, else 1.
       forge_runner_cache_port:
         type: int
         default: 4000
@@ -72,44 +72,22 @@ argument_specs:
         description: The port of the runner's cache proxy, the one a job's actions/cache is given.
       forge_job_cpus:
         type: int
-        default: 4
-        description: Each job container's CPU time quota in cores.
+        description: CPU quota per job; unset fits half the processors across the jobs, from 1 to 4 cores.
       forge_job_memory:
         type: str
-        default: 8g
-        description: Each job container's memory limit, in podman's size notation.
+        description: Memory per job; unset fits half the host beside the VM pool, from 768 MiB to 8 GiB in whole MiB.
       forge_job_pids_limit:
         type: int
         default: 2048
         description: Each job container's maximum number of processes and threads.
       forge_job_omp_num_threads:
         type: int
-        default: 4
+        default: "{{ forge_job_cpus | default(1) }}"
         description: OMP_NUM_THREADS in each job container, so nproc reports its bounded core count.
       forge_runner_labels:
         type: list
         elements: str
         description: The labels the runner's jobs run on, each name:docker://image pinned by digest.
-      forge_repositories:
-        type: list
-        elements: dict
-        default: []
-        description: >-
-          The repositories migrated once from the central forge, with no push mirrors,
-          from porelo_host_forge_repositories.
-        options:
-          name:
-            type: str
-            required: true
-            description: The repository's name on the forge, letters, digits, '.', '_' or '-'.
-          url:
-            type: str
-            required: true
-            description: Its address on the central forge, https:// with no user in it.
-      forge_owner:
-        type: str
-        default: porelo
-        description: The organization the repositories are migrated into, from porelo_host_forge_owner.
       forge_central_ca:
         type: path
         default: /etc/ssl/certs/ca-certificates.crt
@@ -122,16 +100,9 @@ argument_specs:
           PORELO_PUBLISH: "false"
           JF_URL: "https://jfrog.invalid"
           PORELO_DEPLOY_PROFILE: forge-release
-          MAVEN_SNAPSHOTS_URL: "http://localhost/api/packages/{{ forge_owner }}/maven"
+          MAVEN_SNAPSHOTS_URL: "http://localhost/api/packages/{project}/maven"
         description: >-
           Nonsecret organization Actions variables; uppercase names and nonempty string values, only with repositories.
-      forge_agents:
-        type: list
-        elements: str
-        default: []
-        description: >-
-          Unique agent names matching ^[a-z][a-z0-9-]{0,30}$, from porelo_host_forge_agents, only with repositories.
-          Each gets agent-<name> in the agents team and a root-only token at /etc/porelo-host/forge/agents/<name>.token.
       forge_placeholder_secrets:
         type: list
         elements: str
@@ -147,16 +118,14 @@ argument_specs:
     options:
       forge_runner_capacity:
         type: int
-        default: 2
-        description: How many jobs the runner takes at once, each within the job bounds.
+        description: >-
+          Concurrent jobs; unset chooses 2 when two minimum jobs fit half the host beside the VM pool, else 1.
       forge_job_cpus:
         type: int
-        default: 4
-        description: Each job container's CPU time quota in cores.
+        description: CPU quota per job; unset fits half the processors across the jobs, from 1 to 4 cores.
       forge_job_memory:
         type: str
-        default: 8g
-        description: Each job container's memory limit, in podman's size notation.
+        description: Memory per job; unset fits half the host beside the VM pool, from 768 MiB to 8 GiB in whole MiB.
   down:
     short_description: The forge taken off the host before it is given back, its secrets and units with it.
     options:
