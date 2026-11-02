@@ -950,6 +950,7 @@ def test_a_person_a_sync_unlocks_gets_their_daemon_started_again(cards):
     sync(cards)
     assert not host.records()["alice"]["locked"]
     assert started == ["alice"]
+    assert any(args == ["usermod", "--comment", ",,,,umask=0022", "alice"] for args, _ in cards.calls)
 
 
 def test_sync_existing_unlock_requires_usermod_before_execution(cards):
