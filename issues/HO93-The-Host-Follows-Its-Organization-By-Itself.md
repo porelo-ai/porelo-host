@@ -1,6 +1,6 @@
 # HO93 — The Host Follows Its Organization By Itself
 
-**Status:** Backlog.
+**Status:** Implementing.
 **Size:** L - root's timer, the adapter's call and its verification, the apply step replacing today's brought state and
 per-project sync, Molecule; it builds against Porelo's organization contract.
 

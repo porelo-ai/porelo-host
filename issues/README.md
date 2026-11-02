@@ -38,6 +38,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho93"></a>[HO93](HO93-The-Host-Follows-Its-Organization-By-Itself.md) | L | - | Root fetches the signed state of the host's organization and projects through the adapter every five minutes and on refresh, and applies it. |
 | <a id="ho95"></a>[HO95](HO95-No-Access-File-Bring-Or-Join-On-The-Host.md) | M | - | Nothing on the host reads an access file, takes a bundle, or runs a bring or a join; the host's `admins` name host admins alone. |
 | <a id="ho96"></a>[HO96](HO96-The-Registry-Named-The-Organization-On-The-Host.md) | M | - | The host's verbs, files, answers and documents name the organization, never a registry; the forge's package registry keeps its name. |
 | <a id="ho74"></a>[HO74](HO74-Every-Role-Tested-Without-The-VPN.md) | M | [HO63](#ho63) | Molecule shows every role over SSH alone, and the guide's checks pass on a rented host. |
@@ -46,7 +47,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho93"></a>[HO93](HO93-The-Host-Follows-Its-Organization-By-Itself.md) | L | - | Root fetches the signed state of the host's organization and projects through the adapter every five minutes and on refresh, and applies it. |
 | <a id="ho94"></a>[HO94](HO94-A-Project-Put-On-The-Host-And-Taken-Off.md) | M | [HO93](#ho93) | A project put on the host stands with its repositories and members at once; taken off, it goes once nothing is unpushed. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | [HO37](#ho37) | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho60"></a>[HO60](HO60-Each-Repositorys-Review-Set-On-The-Forge.md) | M | - | Each repository's `main` on the local forge and the project repository's protected from the signed project file's `review`: one approval by another person, dismissed by a later commit, or none; only owners and developers merge; set again at each sync. |
