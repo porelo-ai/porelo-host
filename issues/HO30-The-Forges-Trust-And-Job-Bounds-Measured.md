@@ -9,5 +9,5 @@ in the running system: a job's container carries its bounds, and Porelo picks up
 
 - That a job container the runner starts takes `--cpus`, `--memory` and `--pids-limit` from `container.options` under
   rootless podman, read with `podman inspect` of a running job; Molecule reads them from the runner's configuration.
-- Whether Porelo reads `~/.config/porelo/ca-certificates.pem` at each task start or once per `vault serve` (a running
+- Whether Porelo reads `porelo/ca-certificates.pem` in the config folder at each task start or once per `vault serve` (a running
   vault after `up`).

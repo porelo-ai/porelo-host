@@ -22,7 +22,7 @@ Porelo runs only in a person's own account; the project admin brings, the develo
 - **`playbooks/bring.yml`** (`-c local`, as the project admin): follow with both bundles; the project's keys; with
   their own forge token the repositories migrated (`forge-central-token` used in that process only), `main` protected
   (fast-forward only, an approval from `Owners` or `developers`, QH61 b), the teams `developers`, `gates` and
-  `agents`, the organization's Actions variables; the push config in `~/.config/porelo-host/push/<project>.conf`; one
+  `agents`, the organization's Actions variables; the push config in `porelo-host/push/<project>.conf` in the config folder; one
   `sync` ([HO46](README.md#ho46)) at the end.
 - **`playbooks/join.yml`** (as the developer): follow with both bundles, the keys, the identities' tokens, their own
   forge write token, the push config. No forge change.

@@ -57,10 +57,10 @@ provider and from a company's own tooling, outside the interface.
   The providers come by `tofu init` from the registry, checked against the lock file's hashes.
 - **`down`'s last step:** with the module, `porelo-host down` plays `porelo.host.down` first and keeps the host when
   the play does not finish, as today; only a finished play, or `--give-back-anyway`, runs `tofu destroy`.
-- **The state, decided:** it lies in the person's drive (today a Tresorit tresor), in a folder per project,
+- **The state, decided:** it lies in the person's drive (a synchronized folder), in a folder per project,
   encrypted by OpenTofu's own state encryption, `aes_gcm` with a `pbkdf2` key, `enforced` so a plain state is
   refused. Its passphrase lives in the system's secret store (Secret Service, Keychain, Credential Manager) beside the
-  Scaleway key, and reaches `tofu` only in `TF_ENCRYPTION`; never a file, an argument or the tresor. On another
+  Scaleway key, and reaches `tofu` only in `TF_ENCRYPTION`; never a file, an argument or the folder. On another
   computer the passphrase is entered once, into that computer's store. The state holds the host's private key and
   the server's id, so it never lies anywhere unencrypted.
 - **Two computers on one state:** OpenTofu's local lock does not reach across a synced folder, so `porelo-host` guards
@@ -100,4 +100,4 @@ provider and from a company's own tooling, outside the interface.
 - That `scaleway_baremetal_server` takes a cloud-config and tags as the API does, and that its create waits for the
   install to complete; read in the pinned provider's documentation and its source.
 - The current OpenTofu release whose state encryption and mocked providers in `tofu test` are both available.
-- How Tresorit's client names a conflict copy, so the refusal finds it; measured with two clients on one tresor.
+- How the drive's client names a conflict copy, so the refusal finds it; measured with two clients on one folder.

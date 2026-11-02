@@ -178,7 +178,7 @@ and the repositories are private.
 ## How the stop's secrets reach the host
 
 The vault's passphrase, the machine's keys and the central forge's token are kept in the person's
-`secrets.kdbx` on the desktop, which only `keepassxc-cli` unlocks, and the interface holds none of them. At the stop a
+password database on the desktop, which only its own tool unlocks, and the interface holds none of them. At the stop a
 terminal on the desktop pipes them, one base64 line each, into `porelo-host-stop --stdin` on the host, run as root over
 the admin's ssh as `up` itself is run, and the script passes each through a pipe straight into what uses it: the vault
 as the account, or a file of root's for the central token. So no secret passes through a drive, an

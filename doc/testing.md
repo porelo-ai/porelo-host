@@ -13,7 +13,7 @@ started on (`qemu:///system`, pool `images`, network `default`). It needs libvir
 `porelo-host-molecule-<run>`. It deletes them at its end, after a failure and on an interrupt too, and believes that
 only once libvirt lists none of them; otherwise it names what it left and exits 1. It refuses to start while anything
 of that name is still there. What it keeps is a cache, named by its digest: the Ubuntu 26.04 cloud image in
-`~/.porelo/cache/`, and its base volume `porelo-host-base-<digest>.qcow2` in the pool.
+the build's cache folder in the developer's home, and its base volume `porelo-host-base-<digest>.qcow2` in the pool.
 
 **The VM** is Ubuntu 26.04 from the cloud image `build/test-image` pins by URL and SHA-256, 4 vCPUs and 4 GB, with the
 host's CPU passed through so KVM runs inside it, as on a rented host. Its ssh host key is made for the run and is the

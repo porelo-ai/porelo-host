@@ -10,7 +10,7 @@ The system socket `/run/porelo-matrix/client.sock` belongs to `matrix_account:po
 the connected socket on standard input and `NoNewPrivileges=yes`. The gate program belongs to the transport package.
 Task containers must never receive this socket: its peer credentials would identify the person running the container.
 
-`~/.config/porelo/matrix/homeserver.conf` is private (`0600` inside `0700` directories). The role sets
+`porelo/matrix/homeserver.conf` in the config folder is private (`0600` inside `0700` directories). The role sets
 `PORELO_MATRIX_GATE=1`, in which the transport's unit starts Tuwunel on
 `$XDG_RUNTIME_DIR/porelo-matrix-gate/homeserver.sock` (mode `600`), with nothing behind its loopback port, removes
 the TLS settings, and keeps `PORELO_MATRIX_SERVER_NAME` equal to `matrix_name`. The transport's unit makes the

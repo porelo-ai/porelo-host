@@ -38,7 +38,7 @@ secrets file on the stop's standard input, never through Ansible.
   appeared within 60 s, which fails that run, 78 when the unit is not installed; `restore <dir>` before the
   homeserver's `setup`, 0 with `{"restore": <id>}`, or with `{"restore": "present"}` on a second `up` where the
   database already is, which counts as unchanged; 78 for anything really wrong.
-- **The store's address and keys** (decided: `--stdin` lines of the person's stop, from `secrets.kdbx`, since the
+- **The store's address and keys** (decided: `--stdin` lines of the person's stop, from the person's password database, since the
   host has no drive and the vault hands no value out) are written by `porelo-host-stop --stdin` root-only into
   `/etc/porelo-host/store/` for the host's life, since the hourly copy and the last copy at `down` need them
   unattended, and `down` removes them. The need is `store`, its lines in [HO37](README.md#ho37)'s form `store <name>

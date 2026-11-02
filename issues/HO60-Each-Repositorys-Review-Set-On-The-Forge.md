@@ -34,7 +34,7 @@ name keeps `required`.
 - The forge's readback compares every field the host sets, including the dismissed approval, so a protection changed
   by hand on the forge is set back at the next sync.
 
-## Contract with Porelo (agreed with Agent Core)
+## Contract with Porelo (agreed)
 
 - `porelo project verify --json`, which root's `sync` already runs on the admin's bundles in its isolated unit,
   answers beside its fields of today:

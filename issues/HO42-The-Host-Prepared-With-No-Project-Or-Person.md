@@ -58,7 +58,7 @@ Read in the code (`9f883ec`), nothing measured.
   (`10.73.<n>.0/24`), `ssh_host_key` (`ssh-ed25519 …`), `ca_sha256` (64 lower-case hex digits of the CA's DER) and
   `homeserver` (`matrix.<host>.porelo.internal`).
 - **The homeserver** (`porelo-matrix`): porelo-host writes `PORELO_MATRIX_PORT` and `PORELO_MATRIX_SERVER_NAME` into
-  `~/.config/porelo/matrix/homeserver.conf` before the first start, and places `ca.crt` (`0644`), `tls/server.crt`
+  `porelo/matrix/homeserver.conf` in the config folder before the first start, and places `ca.crt` (`0644`), `tls/server.crt`
   and `tls/server.key` (`0600`, `tls/` `0700`) beside it, owned by the account and with no `ca.key`; `publish` keeps them
   while they verify, fit and name its address and name. That last part waits on the homeserver serving a certificate
   made elsewhere.

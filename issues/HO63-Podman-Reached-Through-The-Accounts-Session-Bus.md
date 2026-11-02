@@ -41,7 +41,7 @@ The roles (forge, matrix) and the helpers (`porelo-host-person`, `porelo-host-fo
 
 ## Acceptance
 
-- [ ] On walk6m (Ubuntu 26.04) a fresh `up` passes, and `podman info` as `porelo-forge` names the systemd cgroup
+- [ ] On a rented host (Ubuntu 26.04) a fresh `up` passes, and `podman info` as `porelo-forge` names the systemd cgroup
   manager.
 - [ ] With the forge account's user manager stopped, `porelo-host-person forge-token` refuses naming `porelo-forge`
   instead of crun's cgroup error.

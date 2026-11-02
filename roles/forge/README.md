@@ -42,10 +42,10 @@ forge CA trust block and task CA file.
 
 `up` prepares the forge without repositories (`forge_repositories` stays empty on the host) and installs
 `/usr/local/sbin/porelo-host-push` (`0755`, push, `--pull` and `--migrate` in a project developer's own account,
-reading `~/.config/porelo-host/push/<project>.conf` from the caller's home, and as root with `--check` by
+reading `porelo-host/push/<project>.conf` from the caller's config folder, and as root with `--check` by
 `porelo-host-project remove` against Forgejo's `original_url`) together with `/etc/porelo-host/forge/central-ca.conf`
 (`0644`, holding `forge_central_ca`). `porelo.host.bring` and `porelo.host.join` write each person's
-`~/.config/porelo-host/push/<project>.conf` from the repositories they reach on the forge.
+`porelo-host/push/<project>.conf` in the config folder from the repositories they reach on the forge.
 The helper gets the caller's local token through `sudo -n porelo-host-person forge-token`.
 APIs use `git.sock`; local Git uses `127.0.0.1:<git_port>`, a second listener of `porelo-forge-git.socket` with the
 same token-only gate, since Git has no Unix-socket transport. Forgejo itself never listens on TCP, and the browser's

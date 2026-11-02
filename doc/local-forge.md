@@ -260,7 +260,7 @@ the central forge. Root pins the host admin once, at setup, with the key that si
 `porelo-host-person registry pin <login> "ssh-ed25519 <base64>"` writes `/etc/porelo-host/registry/pin.conf` (`0600`,
 `admin=` and `key=`, in a `0700` directory) and refuses a second pin.
 
-The host admin's Porelo uploads `registry.bundle` into `~/.local/share/porelo-host/setup/`, and root or the pinned host
+The host admin's Porelo uploads `registry.bundle` into `porelo-host/setup/` in the data folder, and root or the pinned host
 admin (`sudo -n /usr/local/sbin/porelo-host-person registry`, the sudoers rule's bare form alone) runs `registry`. On a
 fresh host no account holds a setup directory yet: root, logged in with the pinned host admin's key, gives the first
 bundle on stdin with `registry --stdin` (at most 16 MiB, refused through `sudo`). Root
@@ -356,7 +356,7 @@ SSH, naming the project and optionally the repositories in their order; a root c
     /usr/local/sbin/porelo-host-push porelo
     /usr/local/sbin/porelo-host-push porelo porelo-message-sluice
 
-Without repository names it pushes every repository `~/.config/porelo-host/push/<project>.conf` names, in the config's
+Without repository names it pushes every repository `porelo-host/push/<project>.conf` in the config folder names, in the config's
 order; with names, those, refusing an unknown or duplicate name before asking for credentials. The config is read only
 from the caller's `getent passwd` home (never `$HOME`): a plain file of theirs, not a link, mode `0600`, in a `0700`
 directory of theirs, written by `porelo.host.bring` and `porelo.host.join` from the repositories the person reaches on
@@ -408,7 +408,7 @@ documentation](https://github.com/porelo-ai/porelo/blob/main/doc/credentials.md)
 The gathered push asks for the central token with hidden input in the SSH terminal and stores it nowhere; git
 receives it only as a header in its environment, never on a command line, and the command's output names no token. The
 token for the initial repository migration is used the same way, once: a `bring` with a repository still to migrate
-lists it in `~/.config/porelo-host/push/<project>.migrate` (no secret) and waits, naming `forge-central-token`; the
+lists it in `porelo-host/push/<project>.migrate` in the config folder (no secret) and waits, naming `forge-central-token`; the
 person's stop pipes the token into `porelo-host-push --migrate <project>`, which has Forgejo migrate each listed
 repository it lacks, with the token in the request body on a pipe alone, and removes the list; the `bring` run again
 goes on. `/usr/local/sbin/porelo-host-push --pull <project> [repositories...]` brings central `main` locally as

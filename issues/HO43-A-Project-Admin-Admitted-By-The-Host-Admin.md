@@ -28,7 +28,7 @@ project's signed `access.yml` ([HO46](README.md#ho46)), through the same helper.
     `people` directory, for the person's own act to pipe into their own vault and remove; links and a directory not
     owned by the person are refused, and lock and purge remove the delivery directory without following its links;
   - the Matrix token, `machine-token issue <host>-<user>` (QB77 a) run as `porelo-matrix`, into the person's
-    `~/.config/porelo/matrix/host-registration-token`, `0600` in a `0700` directory.
+    `porelo/matrix/host-registration-token` in the config folder, `0600` in a `0700` directory.
 - **Lock** (a person in no project any more, QH65 a): the ssh keys and peers out, the forge login disabled, their
   tasks stopped (`task stop --all`), `machine-token expel` expelling the accounts and revoking registration together.
   An answer `"known": false` (exit 0, nothing expelled) means there is no machine to take away; every refusal stops

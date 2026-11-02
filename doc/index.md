@@ -21,7 +21,7 @@ codes and `--json` output, so resuming is idempotence, with no marker file of th
 **`porelo.host.bring` and `porelo.host.join`, in the person's own account.** The project admin runs `ansible-playbook -c
 local porelo.host.bring -e porelo_project=<project>` on the host as themselves, with no `sudo` but `forge-token`'s and
 sync's; a developer runs `porelo.host.join` the same way. Both read the setup the interface uploaded into
-`~/.local/share/porelo-host/setup/<project>/`: `machine.yml`, `project.bundle` and `access.bundle`, the directory the
+`porelo-host/setup/<project>/` in the data folder: `machine.yml`, `project.bundle` and `access.bundle`, the directory the
 person's own of mode `0700` below directories nobody else can write, each file their own plain file of mode `0600`; a
 link, a missing file or another owner or mode is refused, naming what was found. The machine file names the project at
 `project.bundle` and `access: {bundle: access.bundle}`. Then `porelo setup`, the vault the person's stop opened
@@ -32,7 +32,7 @@ anew by `sudo -n porelo-host-person forge-token` at each run, put into their vau
 runtime directory for the run alone, the bring has each repository migrated into the project's organization (registered
 first by `porelo-host-project add`) by `porelo-host-push --migrate`, into which the stop pipes the central token,
 protects `main` (fast-forward only, one approval from `Owners` or `developers`), makes the teams `developers`, `gates`
-and `agents`, and sets the Actions variables. Both write `~/.config/porelo-host/push/<project>.conf` from the
+and `agents`, and sets the Actions variables. Both write `porelo-host/push/<project>.conf` in the config folder from the
 repositories the forge lists with their `original_url`. The bring ends with `sudo -n porelo-host-person sync <project>`,
 a user timer that runs it again for each upload, and the project's room through `porelo talk room` once Porelo has that
 command.
@@ -43,8 +43,8 @@ decisions.
 The shared [Matrix homeserver](matrix.md) accepts clients through the Matrix transport's Unix socket gate. Project
 sync publishes its verified admins; admission needs no host registration token.
 
-Where the host runs a forge, `~/.config/porelo/ca-certificates.pem` of Porelo's account keeps the forge's CA in a
-marked block beside the person's certificates, and `~/.config/porelo/task-ca-certificates.pem` holds that CA alone;
+Where the host runs a forge, `porelo/ca-certificates.pem` in the config folder of Porelo's account keeps the forge's CA in a
+marked block beside the person's certificates, and `porelo/task-ca-certificates.pem` in the config folder holds that CA alone;
 both are mode `0600` in the account's `0700` Porelo configuration directory. `down` removes the marked block and the
 task CA file, and removes the account's CA bundle if only whitespace remains.
 

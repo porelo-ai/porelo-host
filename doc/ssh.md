@@ -4,7 +4,7 @@ The host's public interfaces accept SSH on TCP port 22. The base role installs
 `/etc/ssh/sshd_config.d/10-porelo-host.conf` before cloud-init's drop-in, validates the daemon configuration and
 reloads it before continuing. Password and keyboard-interactive authentication are disabled. Every account uses
 `/etc/ssh/authorized_keys/%u`, owned by root, and `/etc/ssh/porelo-revoked.krl`. Setup must pin the host admin's key
-in `/root/.ssh/authorized_keys` (or `base_host_admin_key_file`); up copies this file before changing SSH's key source.
+in root's `authorized_keys` in the SSH folder (or `base_host_admin_key_file`); up copies this file before changing SSH's key source.
 A host admin handover replaces both the seed and the active root file. Installation seeds a valid empty KRL through
 `ssh-keygen -k` and an atomic rename, without requiring registry synchronization. A later up preserves the KRL.
 

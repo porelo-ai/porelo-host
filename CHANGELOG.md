@@ -116,7 +116,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   revocation with retry after an API failure.
 - `porelo-host-person registry`, run by root or `sudo -n` by the host admin pinned once at setup with `registry pin
   <login> <key>`, takes the host's projects and persons from the registry bundle the host admin uploads into
-  `~/.local/share/porelo-host/setup/registry.bundle`: Porelo's `registry verify` checks it in the sync's isolated unit
+  `porelo-host/setup/registry.bundle` in the data folder: Porelo's `registry verify` checks it in the sync's isolated unit
   against the pinned key and the last applied commit, refusing a foreign signer or an older or forked state whole. Bad
   entries are named alone while the rest applies, a revoked login stays revoked, a verified handover moves the pin,
   and the answer is recorded root-only in `/etc/porelo-host/registry/applied.json`. A project the registry no longer
@@ -138,7 +138,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   credentials and their runtime directory. A separate install task provides the helper, SSH key lookup and a
   no-argument forge-password sudo rule.
 - `porelo.host.bring` and `porelo.host.join` run in the person's own account with no `sudo` but forge-token's and
-  sync's: the setup's files in `~/.local/share/porelo-host/setup/<project>/` checked, Porelo's verify on the project and
+  sync's: the setup's files in `porelo-host/setup/<project>/` in the data folder checked, Porelo's verify on the project and
   access bundles and the project followed; the bring migrates the project's repositories with the admin's own forge
   token, protects `main`, makes the teams `developers`, `gates` and `agents`, sets the Actions variables, runs `sync`
   with a user timer and makes the room once Porelo can; both write the person's push config. `porelo-host-stop --stdin`,
@@ -156,7 +156,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   receive forge CA trust mounts. Existing runner registrations keep their token and use the loopback web port.
 
 - `porelo-host-push <project> [<repository>...]` runs in any project developer's own account (refusing root and `sudo`
-  with `77`), reading `~/.config/porelo-host/push/<project>.conf` (`0600` plain file in a `0700` directory of the
+  with `77`), reading `porelo-host/push/<project>.conf` in the config folder (`0600` plain file in a `0700` directory of the
   caller's `getent passwd` home, never `$HOME`) and the caller's `<forge_name>.person` token from their vault (refusing
   a missing entry with `69`, naming it and `porelo-host-stop --stdin identities`) while prompting hidden on the terminal
   for their central forge token; without repository names it pushes every repository in the config's order. `up`

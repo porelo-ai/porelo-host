@@ -11,7 +11,7 @@ or a join; the host's `admins` name its host admins alone, and no developer is p
 
 - Go: `playbooks/bring.yml`, `playbooks/join.yml`, `roles/porelo/tasks/own.yml`, `own_sync.yml`, `project.yml`'s
   bundle handling, `roles/forge/tasks/own.yml` and `own_push.yml`'s bring parts, the setup directory
-  `~/.local/share/porelo-host/setup/<project>/`, the per-person sync timer, and the `host:` block `up` prints.
+  `porelo-host/setup/<project>/` in the data folder, the per-person sync timer, and the `host:` block `up` prints.
 - `roles/porelo/files/porelo-host-person`: `sync <project>` stops reading the access file through Porelo's verify;
   persons and roles come from the state the host follows. A developer under the host's `admins` is no longer read.
 - The push config each person's push reads is written by the host for each member, not by a bring.

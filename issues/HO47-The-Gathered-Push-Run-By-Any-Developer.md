@@ -13,7 +13,7 @@ Any developer of a project runs the gathered push. Today it is root's, configure
 
 ## Plan
 
-- `porelo-host-push <project>` reads `~/.config/porelo-host/push/<project>.conf` (written by
+- `porelo-host-push <project>` reads `porelo-host/push/<project>.conf` in the config folder (written by
   [HO45](README.md#ho45)) and the person's own write token from their own vault, never from a root file; the
   local forge is read with their own forge token.
 - `porelo-host-project remove <project>` stops reading the central addresses from root's

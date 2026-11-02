@@ -10,7 +10,7 @@ interface then replaces it with a new upload, and the next bring runs to its end
 host. A setup directory still in use is never replaced. That is one whose bring runs now, or one another account
 could have changed.
 
-## Contract with the interface (proposed, for Agent Frontend)
+## Contract with the interface (proposed)
 
 - The bring writes `bring.state` into the setup directory, the person's own plain file of mode 0600, before its
   first change: `started <UTC>`. After its last step it writes `done <UTC>`. A bring that stops on a refusal writes

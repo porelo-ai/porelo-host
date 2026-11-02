@@ -8,6 +8,6 @@ under test. The README names that place.
 
 ## Why
 
-Walk 23: `porelo.host.bring` was not found in walkadmin's account, as the collection was only under `/var/tmp`.
-Molecule hid the gap: `tasks/bring.yml` installs the tarball into bo's and cy's `~/.ansible/collections` itself, which
+`porelo.host.bring` was not found in the admin's account, as the collection was only under `/var/tmp`.
+Molecule hid the gap: `tasks/bring.yml` installs the tarball into bo's and cy's Ansible collections folder itself, which
 no product code does, and the README says to install the tarball without saying where.

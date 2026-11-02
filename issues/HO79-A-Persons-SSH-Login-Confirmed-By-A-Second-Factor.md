@@ -64,8 +64,8 @@ dies, the next call asks again, so the interface needs a code prompt and must ro
 
 ## Open questions
 
-- Which of the two michi wants first, and whether a person may choose.
-- The interface's side, for TOTP (as Agent Frontend set it out, about M there):
+- Which of the two comes first, and whether a person may choose.
+- The interface's side, for TOTP (about M there):
   - the code is typed in a terminal the interface opens, never in a form of its own;
   - that terminal opens one ControlMaster per host;
   - every later call uses `ControlMaster=no` with `BatchMode=yes`, and fails at once with a line the interface
