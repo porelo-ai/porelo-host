@@ -18,8 +18,14 @@ took, and applies it.
   way state arrives. It runs the adapter as today's verify runs Porelo, as a throwaway user with no network but the
   forge's, reads its JSON answer, refuses anything not signed for the pinned host, and then admits, locks and sets
   memberships through today's code paths. `registry status` answers the state last followed.
-- The organization's repository is read with a read-only deploy key made on the host at `up`, root's alone, its public
-  half added with the host admin's token sent once; the follow's unit alone reaches the central forge with it.
+- `up` takes from the machine file the interface writes: the person's `organization.yml`, handed unread; the central
+  forge's SSH host key lines as the person's machine trusts them; and the pin, one `login key` line per host admin of
+  this host as `porelo org` names them, backup keys included. It writes them root-only under
+  `/etc/porelo-host/organization/`; `org pin` goes. It makes the host's read-only deploy key for the organization's
+  repository and answers its public half in `host.json`. The host admin's central token comes once, on standard input of
+  `org refresh` right after `up`; the host adds the deploy key with it and keeps none. Until then `org status` answers
+  `"organization": "waiting-for-token"` and the host follows nothing. The follow's unit alone reaches the central forge
+  with that key.
 - From `signingKeys` in the state taken, a Porelo command builds each project's allowed signers and certifiers; the
   follow writes them where `commit verify` and the task certificates' check read them, in place of today's
   `push_signers` from `project.signers`.
