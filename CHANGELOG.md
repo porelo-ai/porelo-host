@@ -214,7 +214,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The host joins the project's room on the person's own computer during the move: the VPN role writes the marked
   line `<the person's VPN address> matrix.porelo.internal` into `/etc/hosts`, the stop takes `--stdin matrix-token`
-  into the account's `~/.config/porelo/matrix/host-registration-token`, `up` refuses with `matrix-token:` while a
+  into `porelo/matrix/host-registration-token` in the account's config folder, `up` refuses with `matrix-token:` while a
   project naming that file finds it missing, and `down` removes both.
 
 ### Changed
