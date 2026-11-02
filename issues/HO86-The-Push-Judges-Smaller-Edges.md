@@ -16,3 +16,10 @@ green:
   string, no signer, a signer without a fingerprint);
 - each mode, link and unknown-entry check of the arrivals and of the forge's repositories directory is pinned by a
   case, and the texts claim no more than the tests show.
+
+## Not taken in
+
+- `core.hooksPath` read without `--includes`, or relative to another directory than the one Git resolves it in, and
+  an arming that finds no repositories directory although arrivals were recorded: each needs the forge account, or
+  its container's root, to write a repository's config, Forgejo's `.gitconfig` or the volume's layout. That account
+  can remove the hook outright, so the judge does not guard against it, and an arming check cannot either.

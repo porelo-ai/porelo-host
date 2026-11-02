@@ -1,6 +1,6 @@
 # HO88 — A Project Registered From The Admin's Own Account
 
-**Status:** Idea; blocked by [HO70](README.md#ho70).
+**Status:** Idea.
 **Severity:** high - the interface's Register ends in the host's refusal, so a project is registered only by root on
 the host.
 

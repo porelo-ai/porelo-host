@@ -1,6 +1,6 @@
 # HO85 — The Push Judge Armed Only Where It Holds
 
-**Status:** Review; blocked by [HO76](README.md#ho76).
+**Status:** Review.
 **Size:** S - checks in the arming script, the removal's arrivals, one lock, the verdict's fields, handler order and
 tests.
 

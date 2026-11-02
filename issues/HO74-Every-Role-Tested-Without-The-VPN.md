@@ -4,8 +4,7 @@
 reaches the homeserver through the gate.
 **Size:** M - Molecule's scenario and the host's guide rewritten for SSH alone; measured M median 63 min, from three M
 builds (47, 63, 75).
-**Blocked by:** [HO63](README.md#ho63), [HO68](README.md#ho68), [HO69](README.md#ho69), [HO70](README.md#ho70),
-[HO71](README.md#ho71), [HO72](README.md#ho72), [HO73](README.md#ho73), [HO75](README.md#ho75), [HO76](README.md#ho76).
+**Blocked by:** [HO63](README.md#ho63).
 
 Part of the project's decision that a person joins with one click: one SSH key per person, no VPN, the state signed in
 Git on the central forge, every service on the host behind a Unix socket.
@@ -21,7 +20,7 @@ host without hand patches.
 
 ## Notes
 
-- Forwarding differs from [HO68](README.md#ho68), accepted for the 6m test: `porelo-people` gets `AllowTcpForwarding yes` and `PermitListen none` besides socket forwarding.
+- Forwarding differs from socket forwards alone, an accepted risk (see the decisions): `porelo-people` gets `AllowTcpForwarding yes` and `PermitListen none` besides socket forwarding.
   OpenSSH 10.2 opens no Unix-socket forward while TCP forwarding is off, and `PermitOpen none` refuses socket paths
   too, as a debug `sshd` on the test VM showed. Residual risk: a person's local TCP forward reaches every address the
   host reaches, such as the homeserver's empty loopback port, other hosts on its networks and the internet, which is
@@ -31,7 +30,7 @@ host without hand patches.
   `tasks/reboot.yml`, `people.yml`, `projects.yml` (with `bring.yml`), `push.yml` and `two_projects.yml` carry the
   tag `notest`, and the operator admission in `forge_person.yml` is off. Each still builds the VPN host's input
   (WireGuard keys, `10.73.7.0/24`, the forge CA, laptop lines on `add`'s stdin). This rewrite takes the tags off.
-  `push.yml` also waits for [HO80](README.md#ho80), which changes the push.
+  `push.yml` also takes the push without sudo over the forge's loopback port.
 
 ## Part 2 also takes
 

@@ -1,6 +1,6 @@
 # HO81 — The Gate's Route Match Holds For Every Decoded Byte
 
-**Status:** Review; blocked by [HO69](README.md#ho69).
+**Status:** Review.
 **Size:** XS - one module (the forge gate): a stricter path check, two patterns and one answer, with unit tests.
 
 **What must be true.** No byte a request's path decodes to takes a refused route of the forge gate past its match.
@@ -8,7 +8,7 @@ A package or Git client on `web.sock` that waits for a challenge before it sends
 
 ## Analysis
 
-The fourth reading of [HO69](README.md#ho69)'s gate found two things.
+The fourth reading of the forge's gate found two things.
 
 - **A decoded control character escapes the match.** `%0a` is a valid escape, so `unsafe_path` passes it. The gate's
   patterns end in `(/.*)?`, compiled without `re.DOTALL`, and `.` does not match the decoded newline. Forgejo's
@@ -34,6 +34,6 @@ The fourth reading of [HO69](README.md#ho69)'s gate found two things.
 ## Acceptance
 
 - A refused route with `%0a`, `%0d` or `%09` in a later segment is refused on every socket. Seen to fail: the tests
-  against [HO69](README.md#ho69)'s gate.
+  against the forge's gate.
 - `GET /api/packages/<owner>/maven/.../maven-metadata.xml` without a token on `web.sock` answers `401` with a Basic
   challenge and reaches no upstream.

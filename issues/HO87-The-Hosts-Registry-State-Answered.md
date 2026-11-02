@@ -1,6 +1,6 @@
 # HO87 — The Host's Registry State Answered
 
-**Status:** Review; blocked by [HO70](README.md#ho70).
+**Status:** Review.
 **Size:** S - one read-only verb and two fields of the registry's answer, from records the helper reads already.
 
 **What must be true.** The interface learns, over SSH as root with the card's key alone, which registry the host

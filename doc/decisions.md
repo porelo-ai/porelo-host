@@ -24,6 +24,9 @@ says why.
 | How a job publishes to the registry | With the account `porelo-publisher`'s package token, an organization Actions secret, on every branch. | [Why](#how-a-job-publishes-to-the-registry) |
 | No push mirrors | The forge pushes nothing to the central forge; the gathered push is a plain `git push` without force. | [Why](#no-push-mirrors) |
 | The same workflows on both forges | GitHub's workflows run unchanged on the forge; only variables and secrets differ. | [Why](#the-same-workflows-on-both-forges) |
+| The forge's tokens | The forge's routes that turn a token into another, `/v2/token` and Conan's `authenticate`, are refused on every socket; every forge credential is made and revocable by the host. | [Why](#the-forges-tokens) |
+| Git and the API on the host's loopback | An accepted risk: every process on the host reaches the forge's gate on `127.0.0.1:<git_port>`; a token is the bound. | [Why](#git-and-the-api-on-the-hosts-loopback) |
+| A person's SSH forwarding | An accepted risk: `porelo-people` may forward TCP locally beside its sockets, never listen remotely. | [Why](#a-persons-ssh-forwarding) |
 
 ## The Ansible tools
 
@@ -195,3 +198,25 @@ only in the secrets file, unlocked on the desktop, is as safe as that file, and 
 
 **What would change the answer.** A public CA's certificate for the forge's name, or a browser that can pin one
 certificate per host without a CA.
+
+## The forge's tokens
+
+`/v2/token` and Conan's `authenticate` turn a token into a signed 24-hour token that Forgejo does not record, so the
+host could not revoke it. The gate refuses both on `web.sock`, `git.sock`, `runner.sock` and the loopback port. Container
+or Conan publishing on a host becomes an issue of its own when a project needs it.
+
+## Git and the API on the host's loopback
+
+Git cannot speak to a Unix socket, so the forge's gate also listens on `127.0.0.1:<git_port>`, answering only with a
+token as `git.sock` does; Forgejo itself never listens on TCP. The exposure: every login, host admin, service account
+and daemon on the host reaches that port, where only persons and the forge reach `git.sock`. It stays because without a
+token a connection gets 401 and nothing else, and a rootless container with pasta's defaults does not reach the host's
+loopback. A rule that narrows the port to the persons' and the forge's uids would change the answer.
+
+## A person's SSH forwarding
+
+OpenSSH 10.2 opens no Unix-socket forward while TCP forwarding is off, and `PermitOpen none` refuses socket paths too.
+So `porelo-people` gets `AllowTcpForwarding yes` and `PermitListen none` beside its socket forwards. The exposure: a
+person's local TCP forward reaches every address the host reaches, such as the homeserver's empty loopback port, other
+hosts on its networks and the internet. It stays because that is what their login shell reaches already, and remote
+listeners stay refused. Forwards limited to the gates' sockets would change the answer.

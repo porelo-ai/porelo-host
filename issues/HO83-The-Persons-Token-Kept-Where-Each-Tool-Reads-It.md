@@ -1,6 +1,6 @@
 # HO83 — The Person's Token Kept Where Each Tool Reads It
 
-**Status:** Review; blocked by [HO71](README.md#ho71).
+**Status:** Review.
 **Size:** S - one line of the push, one helper check and the tests that pin six existing checks.
 
 **What must be true.** The person's forge token in their vault is the one in force after every host command that

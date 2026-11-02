@@ -16,7 +16,6 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho63"></a>[HO63](HO63-Podman-Reached-Through-The-Accounts-Session-Bus.md) | S | - | Every podman call as a service account reaches its user manager's bus, and a missing bus refuses by name. |
-| <a id="ho80"></a>[HO80](HO80-Git-And-The-API-On-The-Hosts-Loopback-With-A-Token.md) | M | - | Git, the API and the pass-on reach the forge on `127.0.0.1:<git_port>` through the token-only gate; Forgejo never on TCP, the browser on `web.sock`. |
 | <a id="ho42"></a>[HO42](HO42-The-Host-Prepared-With-No-Project-Or-Person.md) | L | - | The host admin prepares a host with no project or person: the VPN per host, the shared forge, runner, pool and Matrix homeserver, under the host's names and the host admin's constrained CA. The homeserver's certificate waits on the homeserver serving one made elsewhere. |
 | <a id="ho44"></a>[HO44](HO44-A-Project-Registered-On-The-Host.md) | M | [HO42](#ho42) | `porelo-host-project`: a project's forge organization and publisher with its pinned signing key, deleted once nothing is unpushed. |
 | <a id="ho43"></a>[HO43](HO43-A-Project-Admin-Admitted-By-The-Host-Admin.md) | L | [HO42](#ho42) | `porelo-host-person`: a person admitted from their public keys (account, laptops' ssh keys and VPN peers, forge login and identities, Matrix token), locked and purged. |
@@ -28,26 +27,17 @@ it is left out.
 | <a id="ho46"></a>[HO46](HO46-The-Developers-Kept-In-Step-With-The-Signed-Access-File.md) | L | [HO45](#ho45) | `sync`: the developers on the host kept to the signed `access.yml`, verified by Porelo's own check as a throwaway user, added or locked. |
 | <a id="ho47"></a>[HO47](HO47-The-Gathered-Push-Run-By-Any-Developer.md) | S | [HO45](#ho45) | `porelo-host-push` as a user tool with the person's own config and token. |
 | <a id="ho48"></a>[HO48](HO48-Every-Role-Tested-On-One-Host.md) | L | [HO46](#ho46), [HO47](#ho47) | The Molecule scenario with a host admin, two project admins and a developer with two laptops, every act and refusal. |
-| <a id="ho68"></a>[HO68](HO68-SSH-The-Hosts-Only-Way-In.md) | L | [HO70](#ho70) | A person reaches the host only over SSH on port 22, with the one key of their card; nothing listens on TCP for persons. |
-| <a id="ho70"></a>[HO70](HO70-The-Hosts-State-Taken-From-The-Registry.md) | M | Porelo's registry verify | The host takes its project admins and projects from the signed registry state the host admin brings, verified by Porelo. |
-| <a id="ho73"></a>[HO73](HO73-The-Homeserver-Reached-Through-Its-Gate.md) | M | porelo-message-matrix's gate | The homeserver is reached only through the Matrix transport's gate on its socket, and Tuwunel listens on no TCP port. |
-| <a id="ho75"></a>[HO75](HO75-The-Persons-Taken-From-Their-Cards.md) | M | [HO68](#ho68), [HO70](#ho70), [HO71](#ho71); Porelo's verify answering persons by key | Persons, keys, signers and per-project locks come from the cards and access files, with no laptop anywhere. |
-| <a id="ho69"></a>[HO69](HO69-The-Forge-Behind-Its-Gate-Without-TLS.md) | L | [HO71](#ho71) | The forge has no TLS and no password: a person's browser is signed in through `web.sock`, Git and the API take a token through `git.sock`. |
-| <a id="ho81"></a>[HO81](HO81-The-Gates-Route-Match-Holds-For-Every-Decoded-Byte.md) | XS | [HO69](#ho69) | No decoded byte takes a refused route past the forge gate's match, and `web.sock` challenges a client that waits for one. |
-| <a id="ho71"></a>[HO71](HO71-A-Task-Recorded-And-Given-Its-Forge-Token-By-The-Host.md) | M | [HO70](#ho70); Porelo's task certificate check | Every forge token on the host is made there and goes with its person or task; each task's certificate is recorded at its start. |
+| <a id="ho81"></a>[HO81](HO81-The-Gates-Route-Match-Holds-For-Every-Decoded-Byte.md) | XS | - | No decoded byte takes a refused route past the forge gate's match, and `web.sock` challenges a client that waits for one. |
 | <a id="ho84"></a>[HO84](HO84-The-Persons-Daemon-By-A-Fixed-Name.md) | S | - | A person's tunnel reaches their daemon and binds its return socket by names that follow from the login alone. |
-| <a id="ho83"></a>[HO83](HO83-The-Persons-Token-Kept-Where-Each-Tool-Reads-It.md) | S | [HO71](#ho71) | The vault's person token stays the one in force after every remake; each task-start and token-handling check is tested by its absence. |
-| <a id="ho76"></a>[HO76](HO76-Each-Push-Judged-When-It-Arrives.md) | L | [HO71](#ho71), [HO75](#ho75); Porelo's commit verify against signers and KRL | The first accepted push of a commit to the host's forge judges it against the signers and KRL in force, and records the verdict. |
-| <a id="ho85"></a>[HO85](HO85-The-Push-Judge-Armed-Only-Where-It-Holds.md) | S | [HO76](#ho76) | A repository is armed only where the judge's hook holds, a removal takes the arrivals along, and each verdict is recorded only whole. |
-| <a id="ho87"></a>[HO87](HO87-The-Hosts-Registry-State-Answered.md) | S | [HO70](#ho70) | The interface reads, as root over SSH, which registry the host applied and each person's standing on it. |
-| <a id="ho89"></a>[HO89](HO89-A-Person-Locked-And-Purged-Through-The-Transports-Expel.md) | M | - | Lock and purge give the Matrix transport's expel its administrator's token on stdin, and run as the person from `/`. |
+| <a id="ho83"></a>[HO83](HO83-The-Persons-Token-Kept-Where-Each-Tool-Reads-It.md) | S | - | The vault's person token stays the one in force after every remake; each task-start and token-handling check is tested by its absence. |
+| <a id="ho85"></a>[HO85](HO85-The-Push-Judge-Armed-Only-Where-It-Holds.md) | S | - | A repository is armed only where the judge's hook holds, a removal takes the arrivals along, and each verdict is recorded only whole. |
+| <a id="ho87"></a>[HO87](HO87-The-Hosts-Registry-State-Answered.md) | S | - | The interface reads, as root over SSH, which registry the host applied and each person's standing on it. |
 
 ## Implementing
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho72"></a>[HO72](HO72-The-Central-Forge-Reached-Only-On-A-Persons-Word.md) | M | - | No token for the central forge lies on the host: migration, push and pull take the starting person's own on stdin, once. |
-| <a id="ho74"></a>[HO74](HO74-Every-Role-Tested-Without-The-VPN.md) | M | [HO63](#ho63), [HO68](#ho68), [HO69](#ho69), [HO70](#ho70), [HO71](#ho71), [HO72](#ho72), [HO73](#ho73), [HO75](#ho75), [HO76](#ho76), [HO89](#ho89) | Molecule shows every role over SSH alone, and the guide's checks pass on a rented host. |
+| <a id="ho74"></a>[HO74](HO74-Every-Role-Tested-Without-The-VPN.md) | M | [HO63](#ho63) | Molecule shows every role over SSH alone, and the guide's checks pass on a rented host. |
 
 ## Backlog
 
@@ -57,7 +47,7 @@ it is left out.
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | [HO37](#ho37) | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho60"></a>[HO60](HO60-Each-Repositorys-Review-Set-On-The-Forge.md) | M | - | Each repository's `main` on the local forge and the project repository's protected from the signed project file's `review`: one approval by another person, dismissed by a later commit, or none; only owners and developers merge; set again at each sync. |
 | <a id="ho61"></a>[HO61](HO61-A-Purged-Persons-Matrix-Account-Taken-Off.md) | S | - | A purged person's account on the host's own Matrix homeserver is taken off or named, not left without a word when the transport refused to clear it. |
-| <a id="ho82"></a>[HO82](HO82-A-Bring-With-No-Token-File.md) | - | [HO71](#ho71) | bring and join reach the host's forge with the person's token read from the vault per call, never from a file. |
+| <a id="ho82"></a>[HO82](HO82-A-Bring-With-No-Token-File.md) | - | - | bring and join reach the host's forge with the person's token read from the vault per call, never from a file. |
 
 ## Analyzed
 
@@ -77,11 +67,13 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho91"></a>[HO91](HO91-SSHs-Edges-Left-From-Its-Readings.md) | - | - | The KRL validated before sshd reads it, a root key with an options prefix refused, and a lock ordered against a concurrent sync. |
+| <a id="ho92"></a>[HO92](HO92-The-Forges-Loopback-Port-Narrowed-To-Persons.md) | - | - | Only the persons and the forge account reach the forge on `127.0.0.1:<git_port>`, by an nftables rule on their uids. |
 | <a id="ho86"></a>[HO86](HO86-The-Push-Judges-Smaller-Edges.md) | - | [HO85](#ho85) | The push judge's smaller edges from its reading, gathered: links in the arming, the removal's checks, a first-push race, the null object, the answer's field and record checks pinned by tests. |
-| <a id="ho88"></a>[HO88](HO88-A-Project-Registered-From-The-Admins-Own-Account.md) | - | [HO70](#ho70) | A project admin registers their project from their own account, its forge organization and teams made with it. |
+| <a id="ho88"></a>[HO88](HO88-A-Project-Registered-From-The-Admins-Own-Account.md) | - | - | A project admin registers their project from their own account, its forge organization and teams made with it. |
 | <a id="ho78"></a>[HO78](HO78-Only-The-Gates-Sockets-Forwarded.md) | - | [HO74](#ho74) | A person's SSH connection forwards only to the gates' sockets and their own return socket, and to no TCP address. |
 | <a id="ho79"></a>[HO79](HO79-A-Persons-SSH-Login-Confirmed-By-A-Second-Factor.md) | - | [HO63](#ho63) | A person's SSH login needs a second factor beside their key: FIDO2 touch, or TOTP through PAM. |
-| <a id="ho77"></a>[HO77](HO77-Each-Job-In-A-Network-Of-Its-Own.md) | - | [HO69](#ho69) | Concurrent jobs on a host cannot reach one another's network, and no host login reaches Forgejo over TCP. |
+| <a id="ho77"></a>[HO77](HO77-Each-Job-In-A-Network-Of-Its-Own.md) | - | - | Concurrent jobs on a host cannot reach one another's network, and no host login reaches Forgejo over TCP. |
 | <a id="ho64"></a>[HO64](HO64-The-Collection-Tested-Where-Up-Puts-It.md) | - | - | Once the interface installs the collection for every account, Molecule installs the collection as `up` does and shows a person's account finds it there; the README names the place. |
 | <a id="ho58"></a>[HO58](HO58-The-Services-Podman-Kept-Small.md) | - | - | Once a day, and after a missed day, each service account's Podman loses the images and volumes no container used for a set time. |
 | <a id="ho54"></a>[HO54](HO54-The-Host-Helpers-Hardened.md) | - | - | The stop's certificate and path checks, the people's SSH drop-in read first, a project registration retried after a forge timeout, and the password helper held to the project helper's checks. |
@@ -105,6 +97,16 @@ it is left out.
 
 | # | Title | What was built |
 |---|---|---|
+| <a id="ho68"></a>HO68 | SSH The Host's Only Way In | A person reaches the host only over SSH on port 22, with the one key of their card; nothing listens on TCP for persons; tested in sprint 6m: passed. |
+| <a id="ho69"></a>HO69 | The Forge Behind Its Gate Without TLS | The forge has no TLS and no password: a person's browser is signed in through `web.sock`, Git and the API take a token through `git.sock`; tested in sprint 6m: passed. |
+| <a id="ho70"></a>HO70 | The Host's State Taken From The Registry | The host takes its project admins and projects from the signed registry state the host admin brings, verified by Porelo; tested in sprint 6m: passed. |
+| <a id="ho71"></a>HO71 | A Task Recorded And Given Its Forge Token By The Host | Every forge token on the host is made there and goes with its person or task; each task's certificate is recorded at its start; tested in sprint 6m: passed. |
+| <a id="ho72"></a>HO72 | The Central Forge Reached Only On A Person's Word | No token for the central forge lies on the host: migration, push and pull take the starting person's own on stdin, once; tested in sprint 6m: passed. |
+| <a id="ho73"></a>HO73 | The Homeserver Reached Through Its Gate | The homeserver is reached only through the Matrix transport's gate on its socket, and Tuwunel listens on no TCP port; tested in sprint 6m: passed. |
+| <a id="ho75"></a>HO75 | The Persons Taken From Their Cards | Persons, keys, signers and per-project locks come from the cards and access files, with no laptop anywhere; tested in sprint 6m: passed. |
+| <a id="ho76"></a>HO76 | Each Push Judged When It Arrives | The first accepted push of a commit to the host's forge judges it against the signers and KRL in force, and records the verdict; tested in sprint 6m: passed. |
+| <a id="ho80"></a>HO80 | Git And The API On The Host's Loopback With A Token | Git, the API and the pass-on reach the forge on `127.0.0.1:<git_port>` through the token-only gate; Forgejo never on TCP, the browser on `web.sock`; tested in sprint 6m: passed. |
+| <a id="ho89"></a>HO89 | A Person Locked And Purged Through The Transport's Expel | Lock and purge give the Matrix transport's expel its administrator's token on stdin, and run as the person from `/`; tested in sprint 6m: passed. |
 | <a id="ho50"></a>HO50 | Down Gives Back When Only A Transport Could Not Clear | `down` clears the vault and gives the server back where only a transport could not clear what it keeps, through `porelo vault clear --json`, and with `--force` in a step of its own where Porelo kept the vault for its transports; any other refusal still stops it. |
 | <a id="ho37"></a>HO37 | The Host's Secrets Given On Standard Input At The Stop | The secrets the stop names given from `secrets.kdbx` by a desktop terminal through `keepassxc-cli`, the interface holding none, in one root pipeline of base64 lines, each passed straight to its user; the WireGuard key and every token off the drive. |
 | <a id="ho36"></a>HO36 | The Host Reads The Files Its Setup Uploaded | The host's setup reads nothing from the drive: `machine.yml` and the project's bundle uploaded by the interface into `/etc/porelo-host/setup/`, root's and readable by the account alone, refused where the account can write them, removed at `down`. |
@@ -139,10 +141,10 @@ it is left out.
 
 | # | Title | Why |
 |---|---|---|
-| <a id="ho22"></a>HO22 | Ssh Reached Only Through The VPN Once It Is Up | replaced by the one-key design; there is no VPN, and SSH on port 22 is the host's only way in, [HO68](#ho68). |
-| <a id="ho62"></a>HO62 | The Forge's Own Reason For A Refused Password | replaced by the one-key design; the forge has no password, [HO69](#ho69). |
-| <a id="ho65"></a>HO65 | The Host's Tunnel Addresses Answered | replaced by the one-key design; the host has no tunnel addresses, [HO68](#ho68). |
-| <a id="ho66"></a>HO66 | The Forge's Links Reach The Laptop | replaced by the one-key design; the forge's links follow `ROOT_URL` at `<host>.localhost`, [HO69](#ho69). |
+| <a id="ho22"></a>HO22 | Ssh Reached Only Through The VPN Once It Is Up | replaced by the one-key design; there is no VPN, and SSH on port 22 is the host's only way in. |
+| <a id="ho62"></a>HO62 | The Forge's Own Reason For A Refused Password | replaced by the one-key design; the forge has no password. |
+| <a id="ho65"></a>HO65 | The Host's Tunnel Addresses Answered | replaced by the one-key design; the host has no tunnel addresses. |
+| <a id="ho66"></a>HO66 | The Forge's Links Reach The Laptop | replaced by the one-key design; the forge's links follow `ROOT_URL` at `<host>.localhost`. |
 | <a id="ho67"></a>HO67 | The Walk's Host Checks Hold On A Rented Host | replaced by the one-key design; the forge's session bus is [HO63](#ho63), and [HO74](#ho74) keeps the rented-host run and the check of the helpers' version. |
 | <a id="ho16"></a>HO16 | The Person's Drive On OneDrive | The host has no drive any more; OneDrive as a user's own drive may come later as a new idea beside the interface's. |
 
