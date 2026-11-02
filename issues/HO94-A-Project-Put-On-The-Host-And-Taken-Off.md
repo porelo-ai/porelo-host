@@ -22,13 +22,15 @@ a host without them takes and drops the project's members alone.
 - Taking off, where the host runs a forge: `porelo-host-project remove` as today, refused while any repository holds a
   commit the central forge lacks, read with the project repository's deploy key, with the refusal named in the follow's
   answer.
-- The project's room, where the host runs the Matrix gate: on putting on, on each change of its members and on
-  *Refresh*, the follow runs the Matrix gate's `keep-room --project <project> --persons <logins>` with the logins of the
-  members not locked, and tries a 75 again at the next follow. No admins file is written under
+- The project's room, where the host runs the Matrix gate and the project's `project.yml` names no homeserver of its own
+  under `mail.transports.matrix` (otherwise its room is kept where it names, not here): on putting on, on each change of
+  its members and on *Refresh*, the follow runs the Matrix gate's `keep-room --project <project> --persons <logins>`
+  with the logins of the members not locked, and tries a 75 again at the next follow. No admins file is written under
   `/etc/porelo-host/matrix/` any more.
-- Taking off also deletes the project's room on this host with its conversation: once the project is gone, the follow
-  runs the gate's `drop-room --project <project>`, which takes every member out; a 75 is tried again at the next follow,
-  a 78 (a room under the alias the gate's administrator did not make) is named in the follow's answer and left alone.
+- Taking off also deletes, under the same condition, the project's room on this host with its conversation: once the
+  project is gone, the follow runs the gate's `drop-room --project <project>`, which takes every member out; a 75 is
+  tried again at the next follow, a 78 (a room under the alias the gate's administrator did not make) is named in the
+  follow's answer and left alone.
 - Red first: on a host with no forge, a project put on admits its members and takes nothing else; a project the card no
   longer names, holding an unpushed commit on the host's forge, stays and is named; one taken off has its room dropped.
 
