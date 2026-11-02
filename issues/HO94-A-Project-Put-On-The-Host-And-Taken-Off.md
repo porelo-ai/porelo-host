@@ -20,7 +20,12 @@ it off, it goes once nothing of it is unpushed, and each member with no other me
 - The project's room: on putting on, on each change of its members and on *Refresh*, the follow runs the Matrix
   gate's `keep-room --project <project> --persons <logins>` with the members' logins, and tries a 75 again at the
   next follow. No admins file is written under `/etc/porelo-host/matrix/` any more.
-- Red first: a project the card no longer names, holding an unpushed commit, stays and is named.
+- Taking off also deletes the project's room on this host with its conversation: once the project is gone, the
+  follow runs the gate's `drop-room --project <project>`, which takes every member out; a 75 is tried again at the
+  next follow, a 78 (a room under the alias the gate's administrator did not make) is named in the follow's answer
+  and left alone. A project on two hosts has a room on each, and taking it off one leaves the other's.
+- Red first: a project the card no longer names, holding an unpushed commit, stays and is named; one taken off has
+  its room dropped.
 
 ## Acceptance
 
