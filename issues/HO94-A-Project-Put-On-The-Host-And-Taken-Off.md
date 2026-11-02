@@ -17,7 +17,9 @@ it off, it goes once nothing of it is unpushed, and each member with no other me
   token, sent once through their tunnel on standard input, as the push takes it today; it never lies on the host.
 - Taking off: `porelo-host-project remove` as today, refused while any repository holds a commit the central forge
   lacks, with the refusal named in the follow's answer.
-- The room's admins file is written from the project's members with their role.
+- The project's room: on putting on, on each change of its members and on *Refresh*, the follow runs the Matrix
+  gate's `keep-room --project <project> --persons <logins>` with the members' logins, and tries a 75 again at the
+  next follow. No admins file is written under `/etc/porelo-host/matrix/` any more.
 - Red first: a project the card no longer names, holding an unpushed commit, stays and is named.
 
 ## Acceptance
@@ -29,3 +31,5 @@ it off, it goes once nothing of it is unpushed, and each member with no other me
 
 - How the interface sends the host admin's token at the moment of putting on: the same stop as the push, or one of
   its own.
+- Where Porelo on the host takes its transport's `homeserver` and `room` from, now that no access file names them:
+  settled with Core.
