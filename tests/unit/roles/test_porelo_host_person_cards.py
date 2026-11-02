@@ -938,6 +938,20 @@ def test_a_person_sync_admits_gets_their_daemon_started(cards):
     assert started == ["carol"], "a person already admitted is not set up again at each sync"
 
 
+def test_a_person_a_sync_unlocks_gets_their_daemon_started_again(cards):
+    """Prevent a person a sync unlocks from finding the daemon their lock stopped still down."""
+    host = cards.host
+    sync(cards)
+    record = host.records()["alice"]
+    record.update(locked=True, reason="membership")
+    host.record("alice", record)
+    started = []
+    host.start_daemon = started.append
+    sync(cards)
+    assert not host.records()["alice"]["locked"]
+    assert started == ["alice"]
+
+
 def test_sync_existing_unlock_requires_usermod_before_execution(cards):
     """Prevent an existing person's unlock from running an unchecked executable."""
     host = cards.host

@@ -1068,8 +1068,7 @@ class Host:
         Not a refusal: the person's access stands, and 'porelo setup' in their own account starts it later.
         """
         try:
-            if not self.available("porelo"):
-                refuse("porelo is missing from the fixed PATH", 69)
+            self.require(["porelo", "systemctl", "runuser", "env"])
             uid = self.uid(user)
             # Linger starts the manager in the background; start it here and wait for it, then for its bus.
             self.command(["systemctl", "start", f"user@{uid}.service"])
@@ -2061,7 +2060,8 @@ class Host:
                 records[user] = {"members": [membership], "locked": False, **card}
                 self.start_daemon(user)
             else:
-                if rec["locked"]:
+                unlocked = rec["locked"]
+                if unlocked:
                     if rec.get("reason") in ("key", "membership"):
                         self.hooks["forge_drop_tokens"](user)
                     self.require(["usermod"])
@@ -2074,6 +2074,10 @@ class Host:
                 self.admit_runtime(user)
                 self.write_authorized_key(user, card["ssh"], self.card_expiry(card["expires"]))
                 self.record(user, rec)
+                if unlocked:
+                    # The lock stopped the person's manager; their tunnel finds porelod again only once it runs.
+                    self.private_umask(user)
+                    self.start_daemon(user)
         for user in dropped:
             if user in failed:
                 continue
@@ -3171,6 +3175,7 @@ class Host:
                 if record is not None:
                     if record["locked"] or record.get("lock") == "pending" or uid is None:
                         refuse("the recorded person is locked or has no account", 65)
+                    self.require(["usermod"])
                     record["members"] = ["hand", *[m for m in record["members"] if m != "hand"]]
                     self.record(user, {**record, **card})
                     self.write_authorized_key(user, card["ssh"], self.card_expiry(card["expires"]))

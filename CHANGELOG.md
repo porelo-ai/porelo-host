@@ -32,8 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `porelo-host-person add`, and sync for each person it admits, starts the person's `porelod` with `porelo setup`, so
-  their tunnel reaches a daemon before their first bring; an admitted account gets `umask=0022` in its GECOS field, so
+- `porelo-host-person add`, and sync for each person it admits or unlocks, starts the person's `porelod` with `porelo
+  setup` (`systemctl`, `runuser` and `env` checked on the fixed path first), so their tunnel reaches a daemon before
+  their first bring; an admitted account gets `umask=0022` in its GECOS field, so
   Ubuntu's usergroups `002` no longer makes directories Porelo refuses as group writable.
 - Sync arms a repository through Forgejo 17's shared hooks directory (its git's `core.hooksPath`), whose `pre-receive`
   runs each repository's `hooks/pre-receive.d`; it no longer waits for a `hooks/pre-receive` Forgejo 17 never writes

@@ -1129,12 +1129,40 @@ def test_a_daemon_that_does_not_start_leaves_the_admission_standing(host, capsys
 
 def test_readmission_gives_an_older_account_the_umask_and_its_daemon(host, capsys):
     """Prevent a person admitted before either from keeping group write or a daemon nobody started."""
+    host.path("/run/user/1000").mkdir(parents=True)
+    os.mknod(host.path("/run/user/1000/bus"), stat.S_IFSOCK | 0o600)
     assert host.invoke("add", "alice", "--role", "project-admin") == 0
     capsys.readouterr()
     host.calls.clear()
     assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    assert not capsys.readouterr().err
     assert ["usermod", "--comment", ",,,,umask=0022", "alice"] in host.calls
-    assert ["systemctl", "start", "user@1000.service"] in host.calls
+    start = host.calls.index(["systemctl", "start", "user@1000.service"])
+    assert host.calls[start + 1] == as_alice(host, "setup")
+
+
+def test_readmission_refuses_without_usermod_before_it_writes_anything(host, capsys):
+    """Prevent a readmission from rewriting the person's key and record, then running an unchecked usermod."""
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    capsys.readouterr()
+    key, record = host.path("/etc/ssh/authorized_keys/alice"), host.path("/etc/porelo-host/people/alice.conf")
+    before = [(path.stat().st_ino, path.stat().st_mtime_ns) for path in (key, record)]
+    host.commands.remove("usermod")
+    host.calls.clear()
+    assert host.invoke("add", "alice", "--role", "project-admin") == 69
+    assert "usermod is missing" in capsys.readouterr().err
+    assert [(path.stat().st_ino, path.stat().st_mtime_ns) for path in (key, record)] == before
+    assert not any(call[0] == "usermod" for call in host.calls)
+
+
+def test_a_daemon_start_without_a_checked_runuser_runs_none(host, capsys):
+    """Prevent root from running a runuser the fixed path's check never saw, to start a person's daemon."""
+    host.path("/run/user/1000").mkdir(parents=True)
+    os.mknod(host.path("/run/user/1000/bus"), stat.S_IFSOCK | 0o600)
+    host.commands.remove("runuser")
+    assert host.invoke("add", "alice", "--role", "project-admin") == 0
+    assert "runuser is missing" in capsys.readouterr().err
+    assert not any(call[0] == "runuser" for call in host.calls)
 
 
 @pytest.mark.parametrize(
