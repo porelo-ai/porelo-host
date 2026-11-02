@@ -1,6 +1,6 @@
 # HO96 — The Registry Named The Organization On The Host
 
-**Status:** Backlog.
+**Status:** Implementing.
 **Size:** M - the person helper's verbs and files, the sudoers line, the interface's status answer, the documents and
 tests; a hard cut with no transition.
 
