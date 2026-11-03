@@ -32,7 +32,8 @@ is known and decided.
 
 - The tests above, seen failing without the change, and Molecule's follow unchanged with no list.
 
-## To be checked
+## A server with no Machine Admin left
 
-- **A server with no Machine Admin left:** today a state with empty `admins` is refused and the last state stays. Whether
-  an Organization Admin may leave a server so is Porelo's to say.
+Porelo's `org host admin remove` keeps the last admin, but a machine's only admin who withdrew or lost their card can
+leave `admins` empty. The host refuses that state and keeps the last it took, and an Organization Admin ends it by adding
+a new admin. Agent Core read this and did not run it.

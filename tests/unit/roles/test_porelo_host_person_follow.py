@@ -1740,3 +1740,16 @@ def test_a_malformed_list_changes_nothing(following, damage):
     with pytest.raises(state.scope["Refusal"], match="organization admin"):
         state.host.execute(["org", "follow"], b"")
     assert pin_and_root(state) == before
+
+
+def test_a_machine_with_no_admin_left_is_refused_though_the_organization_has_admins(following):
+    """Prevent the role's keys carrying a state in which nobody holds the machine, and so nobody root."""
+    state = following
+    follow(state)
+    before = pin_and_root(state)
+    state.reply["admins"] = []
+    state.reply["organization_admins"] = [organization_admin(state, "olivia", 7)]
+    state.reply["revision"] = "b" * 40
+    with pytest.raises(state.scope["Refusal"], match="no host admin keys"):
+        state.host.execute(["org", "follow"], b"")
+    assert pin_and_root(state) == before
