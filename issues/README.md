@@ -42,6 +42,9 @@ it is left out.
 | <a id="ho95"></a>[HO95](HO95-No-Access-File-Bring-Or-Join-On-The-Host.md) | M | - | Nothing on the host reads an access file, takes a bundle, or runs a bring or a join; the host's `admins` name host admins alone. |
 | <a id="ho96"></a>[HO96](HO96-The-Registry-Named-The-Organization-On-The-Host.md) | M | - | The host's verbs, files, answers and documents name the organization, never a registry; the forge's package registry keeps its name. |
 | <a id="ho74"></a>[HO74](HO74-Every-Role-Tested-Without-The-VPN.md) | M | [HO63](#ho63) | Molecule shows every role over SSH alone, and the guide's checks pass on a rented host. |
+| <a id="ho103"></a>[HO103](HO103-A-Project-Put-On-Again-After-Off.md) | M | - | A project put on a host, taken off and put on again is taken, and no deploy key of the host's stays behind unsaid. |
+| <a id="ho100"></a>[HO100](HO100-A-Project-Helpers-Own-Words-In-Status.md) | S | - | A project helper's refusal reaches `org status`'s `why` in its own words. |
+| <a id="ho104"></a>[HO104](HO104-A-Refusals-Why-Lasts.md) | S | - | A refused migration's `why` in `org status` stands until a later try ends otherwise |
 
 ## Backlog
 
@@ -67,9 +70,6 @@ it is left out.
 | <a id="ho56"></a>[HO56](HO56-Remove-Takes-The-Persons-Push-And-Sync-Away.md) | M | [HO46](#ho46), [HO47](#ho47) | Removing a project takes the push config and the sync timer out of each person's own account. |
 | <a id="ho57"></a>[HO57](HO57-The-Bring-Checks-With-The-Keys-In-Force-After-A-Handover.md) | S | - | A second bring verifies only what is new since the followed commit, with `following --json`'s `signed_by_keys`. |
 | <a id="ho102"></a>[HO102](HO102-A-Persons-Projects-Named-On-The-Host.md) | - | - | A person's host account names their projects before their first start there. |
-| <a id="ho103"></a>[HO103](HO103-A-Project-Put-On-Again-After-Off.md) | - | - | A project put on a host, taken off and put on again is taken, and no deploy key of the host's stays behind unsaid. |
-| <a id="ho100"></a>[HO100](HO100-A-Project-Helpers-Own-Words-In-Status.md) | - | - | A project helper's refusal reaches `org status`'s `why` in its own words. |
-| <a id="ho104"></a>[HO104](HO104-A-Refusals-Why-Lasts.md) | - | - | A refused migration's `why` in `org status` stands until a later try ends otherwise |
 
 ## Idea
 
