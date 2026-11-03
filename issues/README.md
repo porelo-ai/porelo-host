@@ -76,6 +76,8 @@ it is left out.
 | <a id="ho97"></a>[HO97](HO97-A-Host-Reached-By-IPv6-Alone.md) | - | - | A server reached by IPv6 alone is prepared: its public interface told by the IPv6 default route, the firewall and the forge holding for it. |
 | <a id="ho98"></a>[HO98](HO98-A-Projects-Central-Address-Changed.md) | - | - | A signed change of a project's central address is named, not called carried over an absent repository. |
 | <a id="ho99"></a>[HO99](HO99-A-Central-Forge-On-A-Private-Authority.md) | - | - | A central forge on a private authority is reached by the fetch, the read key, the migration and the push, from one setting. |
+| <a id="ho100"></a>[HO100](HO100-A-Project-Helpers-Own-Words-In-Status.md) | - | - | A project helper's refusal reaches `org status`'s `why` in its own words. |
+| <a id="ho101"></a>[HO101](HO101-One-Forge-Over-SSH-And-HTTPS-On-A-Port.md) | - | - | One forge's ssh address and its https address on a port count as one forge. |
 | <a id="ho86"></a>[HO86](HO86-The-Push-Judges-Smaller-Edges.md) | - | [HO85](#ho85) | The push judge's smaller edges from its reading, gathered: links in the arming, the removal's checks, a first-push race, the null object, the answer's field and record checks pinned by tests. |
 | <a id="ho88"></a>[HO88](HO88-A-Project-Registered-From-The-Admins-Own-Account.md) | - | - | A project admin registers their project from their own account, its forge organization and teams made with it. |
 | <a id="ho78"></a>[HO78](HO78-Only-The-Gates-Sockets-Forwarded.md) | - | [HO74](#ho74) | A person's SSH connection forwards only to the gates' sockets and their own return socket, and to no TCP address. |
