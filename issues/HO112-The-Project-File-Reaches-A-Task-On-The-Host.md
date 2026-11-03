@@ -1,6 +1,6 @@
 # HO112 — The Project File Reaches A Task On The Host
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** M - one verb of the project helper, the follow calling it once Porelo accepted the file, the documents.
 
 **What must be true.** What a Project Admin files in the project's own repository at the central forge reaches a task on
@@ -23,6 +23,6 @@ named or a review changed after the first follow was unknown there, as the rehea
 
 ## Acceptance
 
-- The verb against real Git repositories: each of its four answers, a commit that is not the copy's, nothing left behind.
+- The verb against real Git repositories: each of its answers, a commit that is not the copy's, nothing left behind.
 - The follow: no call for a refused file, none when nothing changed, a retry after a refusal, the copy still there.
 - The rehearsal: a filing at central reached by a person's read on the host, and a real task's start.

@@ -30,9 +30,9 @@ it is left out.
 | <a id="ho108"></a>[HO108](HO108-Approved-Commits-Not-Yet-At-The-Central-Forge.md) | M | - | A person or the interface asks the host, with no root and no central token, how many approved commits on `main` the central forge lacks, with up to date, gone apart and cannot say as the other answers |
 | <a id="ho110"></a>[HO110](HO110-A-Server-Follows-The-Organization-Admins-Keys.md) | S | - | A server's pin holds the Organization Admins' keys beside its Machine Admins, so a Machine Admin they replace takes effect at the next follow |
 | <a id="ho60"></a>[HO60](HO60-Each-Repositorys-Review-Set-On-The-Forge.md) | L | - | The host takes every repository the signed project file names, and protects each one's `main` as that file says |
+| <a id="ho112"></a>[HO112](HO112-The-Project-File-Reaches-A-Task-On-The-Host.md) | M | - | What a Project Admin files at the central forge reaches a task on the host at the next follow. |
 
 ## Implementing
-| <a id="ho112"></a>[HO112](HO112-The-Project-File-Reaches-A-Task-On-The-Host.md) | M | - | What a Project Admin files at the central forge reaches a task on the host at the next follow. |
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
