@@ -294,7 +294,7 @@ def forge_command(account, *arguments):
     return forge_exec(account, "forgejo", "admin", "user", *arguments)
 
 
-def forge_exec(account, *arguments):
+def forge_exec(account, *arguments, given=None):
     """Run a container command with the forge account's fixed environment and user manager."""
     uid = subprocess.run(
         ["/usr/bin/id", "-u", account],
@@ -329,6 +329,7 @@ def forge_exec(account, *arguments):
             f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{number}/bus",
             "/usr/bin/podman",
             "exec",
+            *(["-i"] if given is not None else []),
             "forgejo",
             *arguments,
         ],
@@ -337,7 +338,7 @@ def forge_exec(account, *arguments):
         check=False,
         cwd="/",
         env=SAFE_ENV,
-        stdin=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL if given is None else given,
         timeout=60,
     )
 
@@ -1023,6 +1024,74 @@ def project_copy(project, address, known):
     return {"commit": commit, "copy": path}
 
 
+# In Forgejo's container, on the repository's own folder: no hook or branch rule runs, as main stays closed to any push.
+# Only forward, and only to the commit Porelo verified. Each exit is one answer of ADVANCE_ANSWERS; a temporary ref
+# holds the commit while it is compared, and goes with the bundle.
+ADVANCE_SCRIPT = r"""
+umask 077
+dir=$1
+commit=$2
+bundle="$dir/porelo-advance.bundle"
+git() { command git --git-dir="$dir" "$@"; }
+done_with() { git update-ref -d refs/porelo/central; exit "$1"; }
+cat >"$bundle" || { rm -f "$bundle"; exit 69; }
+git fetch -q --no-tags "$bundle" "+refs/heads/main:refs/porelo/central"
+fetched=$?
+rm -f "$bundle"
+[ "$fetched" = 0 ] || done_with 69
+[ "$(git rev-parse --verify --quiet refs/porelo/central^{commit})" = "$commit" ] || done_with 65
+local=$(git rev-parse --verify --quiet refs/heads/main^{commit})
+[ -n "$local" ] || done_with 69
+[ "$local" != "$commit" ] || done_with 0
+if git merge-base --is-ancestor "$local" "$commit"; then
+    git update-ref refs/heads/main "$commit" "$local" || done_with 69
+    done_with 10
+fi
+if git merge-base --is-ancestor "$commit" "$local"; then
+    done_with 11
+fi
+done_with 12
+"""
+ADVANCE_ANSWERS = {0: "up-to-date", 10: "moved", 11: "ahead", 12: "diverged"}
+
+
+def bundle_copy(account, path, output):
+    """Have the copy's owner write its main into a file root opened, so root follows no path of theirs."""
+    result = subprocess.run(
+        ["/usr/sbin/runuser", "-u", account, "--", "/usr/bin/env", "-C", "/", "/usr/bin/git", f"--git-dir={path}",
+         "bundle", "create", "-", "refs/heads/main"],
+        stdout=output,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+        check=False,
+        cwd="/",
+        env=SAFE_ENV,
+        timeout=60,
+    )
+    if result.returncode:
+        refuse("the verified copy could not be read", 69)
+
+
+def project_advance(project, name, commit, path):
+    """Bring a repository's main on the host's forge up to the commit Porelo verified in the copy, and only forward."""
+    directory, entries = project_manifest(project)
+    item = next((entry for entry in entries if entry["name"] == name), None)
+    if item is None or item["key_id"] <= 0:
+        refuse(f"the project has no read key for {name}", 69)
+    account = setting(read_values(CONF), "account", r"[a-z_][a-z0-9_-]{0,31}")
+    with tempfile.TemporaryFile() as bundle:
+        bundle_copy(account, path, bundle)
+        bundle.seek(0)
+        result = forge_exec(account, "sh", "-c", ADVANCE_SCRIPT, "advance",
+                            "/var/lib/gitea/git/repositories/" + project + "/" + name.lower() + ".git", commit,
+                            given=bundle)
+    if result.returncode == 65:
+        refuse("the copy no longer holds the commit Porelo verified", 65)
+    if result.returncode not in ADVANCE_ANSWERS:
+        refuse(f"the local forge could not bring {name} up to the commit verified", 69)
+    return {"state": ADVANCE_ANSWERS[result.returncode]}
+
+
 def repository_state(account, project, name, directory, item):
     """Tell one repository's local main against the central forge's; what cannot be told never reads as up to date."""
     if item["key_id"] <= 0:
@@ -1293,6 +1362,12 @@ def run():
         admin = key = None
         if known != "-" and not re.fullmatch(COMMIT_PATTERN, known):
             refuse("project-copy takes a known commit or -", 64)
+    elif len(arguments) == 5 and arguments[0] == "project-advance":
+        action, project, named, commit, copied = arguments
+        admin = key = None
+        if (not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", named) or not re.fullmatch(COMMIT_PATTERN, commit)
+                or not re.fullmatch(re.escape(PROJECT_COPIES) + r"/[0-9a-f]{32}/central\.git", copied)):
+            refuse("project-advance takes a repository's name, a commit and a copy of this helper's", 64)
     else:
         refuse('usage: add <project> <admin> --signed-by "ssh-ed25519 <base64>" | remove <project> | central-state <project>', 64)
     if not re.fullmatch(PROJECT_PATTERN, project):
@@ -1332,7 +1407,7 @@ def run():
             person_content = format_person([*members, f"{project} project-admin"], locked, pending, card)
             affected = None
             publisher = None
-        elif action in ("central-state", "project-copy"):
+        elif action in ("central-state", "project-copy", "project-advance"):
             publisher = affected = person_content = None
         else:
             publisher = registered_publisher(project, record)
@@ -1347,6 +1422,10 @@ def run():
         if action == "project-copy":
             with writing("standard output"):
                 print(json.dumps(project_copy(project, copied, known), separators=(",", ":")), flush=True)
+            return
+        if action == "project-advance":
+            with writing("standard output"):
+                print(json.dumps(project_advance(project, named, commit, copied), separators=(",", ":")), flush=True)
             return
         forge = Forge(read_values(CONF))
         if action == "add":

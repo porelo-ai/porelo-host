@@ -2051,7 +2051,7 @@ class Host:
             admin, key = self.follow_project_admin(project, self.records())
             self.follow_project_command(["add", name, admin, "--signed-by", key])
             # A new forge organization holds no repository, whatever a record that outlived the old one says.
-            for done in ("migrated", "migrate_refused", "taken", "repositories_why"):
+            for done in ("migrated", "migrate_refused", "taken", "repositories_why", "advanced", "advance_refused"):
                 item.pop(done, None)
         if item.get("migrated"):
             item["state"] = "carried"
@@ -2330,6 +2330,7 @@ class Host:
         """All that stands in a project's way, as org status says it."""
         repositories = item.get("repositories_why") or {}
         return "; ".join(filter(None, (item.get("migrate_refused"), project.get("why"), item.get("file_refused"),
+                                       item.get("advance_refused"),
                                        *(f"{name}: {why}" for name, why in sorted(repositories.items()))))) or None
 
     def follow_read_project_file(self, project, item, signers, account, deadline):
@@ -2352,7 +2353,9 @@ class Host:
                 self.check(path, required=True)
                 result = self.runner(
                     [str(path), "project-copy", name, project["address"],
-                     known.get("commit", "-") if known.get("signers") == signed else "-",
+                     # Asked again until the copy a task reads holds it as well.
+                     known.get("commit", "-") if known.get("signers") == signed
+                     and known.get("commit") == item.get("advanced") else "-",
                      "--lock-fd", str(descriptor)],
                     input=None, pass_fds=(descriptor,), timeout=remaining)
                 if result.returncode:
@@ -2379,6 +2382,7 @@ class Host:
                     )
                     item["file"] = {"commit": commit, "signers": signed, "address": project["address"],
                                     **project_file_values(verified, name)}
+                    self.follow_advance_project_copy(project, item, copied, descriptor, deadline)
                 item.pop("file_refused", None)
             except Refusal as error:
                 item["file_refused"] = f"the project file: {error.shown()}"[:512]
@@ -2387,6 +2391,28 @@ class Host:
             finally:
                 if removable is not None:
                     shutil.rmtree(self.path(removable).parent, ignore_errors=True)
+
+    def follow_advance_project_copy(self, project, item, copied, descriptor, deadline):
+        """Bring the project's own main on the host's forge up to the file Porelo just accepted, as tasks read it there."""
+        commit = item["file"]["commit"]
+        repository = CENTRAL_ADDRESS.fullmatch(project["address"]).group("repository")
+        older = f"a task here reads an older project file than {commit[:12]}: "
+        item.pop("advance_refused", None)
+        try:
+            result = self.runner(
+                [str(self.path(PROJECT_HELPER)), "project-advance", project["project"], repository, commit, copied,
+                 "--lock-fd", str(descriptor)],
+                input=None, pass_fds=(descriptor,), timeout=max(1, (deadline - self.now()).total_seconds()))
+            answer = json.loads(result.stdout) if result.returncode == 0 else None
+            state = answer.get("state") if isinstance(answer, dict) else None
+        except (OSError, subprocess.TimeoutExpired, UnicodeError, ValueError):
+            state = None
+        if state in ("moved", "up-to-date", "ahead"):
+            item["advanced"] = commit
+        elif state == "diverged":
+            item["advance_refused"] = older + "main on this host's forge holds commits the central forge lacks"
+        else:
+            item["advance_refused"] = older + "the host's forge could not be brought up to it"
 
     def follow_take_named_repositories(self, project, item, token):
         """Take each repository the file names with the one token at hand; each stands alone, and what waits says so."""

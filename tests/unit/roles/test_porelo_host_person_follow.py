@@ -1779,6 +1779,8 @@ class FileForge:
         self.repositories = ["alpha"]
         self.protection = {}
         self.written = []
+        self.advances = []
+        self.advance = "moved"
         host = self.host
         helper = host.path("/usr/local/sbin/porelo-host-project")
         helper.parent.mkdir(parents=True, exist_ok=True)
@@ -1793,6 +1795,11 @@ class FileForge:
                 raise_if_failure(self.main)
                 copy = None if arguments[4] == self.main else COPY
                 return subprocess.CompletedProcess(arguments, 0, json.dumps({"commit": self.main, "copy": copy}), "")
+            if len(arguments) > 1 and arguments[1] == "project-advance":
+                self.advances.append(arguments[2:6])
+                if self.advance is None:
+                    return subprocess.CompletedProcess(arguments, 69, "", "porelo-host-project: the forge said no\n")
+                return subprocess.CompletedProcess(arguments, 0, json.dumps({"state": self.advance}), "")
             return original(arguments, **kwargs)
 
         host.runner = runner
@@ -2264,3 +2271,87 @@ def test_a_project_with_no_admin_key_reads_no_file(files):
     files.main = "2" * 40
     files.run("b")
     assert len(files.verified) == before and "signed" in files.item()["why"]
+
+
+def test_a_file_porelo_accepted_reaches_the_copy_a_task_reads(files):
+    """A task reads the project's file from the host's forge, so what the follow accepted must stand there."""
+    assert files.advances == [["alpha", "alpha", "1" * 40, COPY]]
+    assert files.item()["advanced"] == "1" * 40
+    files.main = "2" * 40
+    files.run("b")
+    assert files.advances[-1] == ["alpha", "alpha", "2" * 40, COPY]
+    assert files.item()["advanced"] == "2" * 40
+
+
+def test_an_unchanged_main_asks_for_no_copy_and_no_move(files):
+    before = len(files.advances)
+    files.run("b")
+    assert len(files.advances) == before
+    assert files.copies[-1][2] == "1" * 40, "the known commit is passed on"
+
+
+def test_a_refused_file_does_not_reach_the_copy(files):
+    """Only what Porelo verified moves the repository tasks read."""
+    before = len(files.advances)
+    files.main = "3" * 40
+    files.answer = files.state.scope["Refusal"]("no signer of this project", 65)
+    files.run("b")
+    assert len(files.advances) == before
+    assert files.item()["advanced"] == "1" * 40
+    assert "no signer" in files.item()["file_refused"]
+
+
+def test_a_copy_gone_another_way_says_so_and_asks_again(files):
+    """Both lines stand until a person joins them, and a task meanwhile reads an older file: status says that."""
+    files.main = "4" * 40
+    files.advance = "diverged"
+    files.run("b")
+    item = files.item()
+    assert item["file"]["commit"] == "4" * 40, "the rules still take what the file says"
+    assert "older project file" in item["why"] and "lacks" in item["why"]
+    assert item.get("advanced") != "4" * 40
+    before = len(files.advances)
+    files.run("c")
+    assert files.copies[-1][2] == "-" and len(files.advances) == before + 1
+    files.advance = "moved"
+    files.run("d")
+    item = files.item()
+    assert item["advanced"] == "4" * 40 and not item.get("advance_refused") and "older" not in (item.get("why") or "")
+
+
+def test_a_main_ahead_of_central_is_no_complaint(files):
+    """Approved work waiting for a gathered push holds every commit of central's."""
+    files.main = "5" * 40
+    files.advance = "ahead"
+    files.run("b")
+    item = files.item()
+    assert item["advanced"] == "5" * 40 and "older" not in (item.get("why") or "")
+
+
+def test_a_failed_move_is_said_and_retried(files):
+    files.main = "6" * 40
+    files.advance = None
+    files.run("b")
+    item = files.item()
+    assert "older project file" in item["why"] and item.get("advanced") != "6" * 40
+    assert files.copies[-1][2] == "1" * 40, "the commit known until now"
+    files.advance = "moved"
+    files.run("c")
+    assert files.copies[-1][2] == "-"
+    assert files.item()["advanced"] == "6" * 40
+
+
+@pytest.mark.parametrize("answer", ["not json", '{"state":"sideways"}', '["moved"]'])
+def test_a_garbled_move_answer_counts_as_none(files, answer):
+    files.main = "7" * 40
+    original = files.host.runner
+
+    def runner(arguments, **kwargs):
+        if len(arguments) > 1 and arguments[1] == "project-advance":
+            return subprocess.CompletedProcess(arguments, 0, answer, "")
+        return original(arguments, **kwargs)
+
+    files.host.runner = runner
+    files.run("b")
+    item = files.item()
+    assert "older project file" in item["why"] and item.get("advanced") != "7" * 40

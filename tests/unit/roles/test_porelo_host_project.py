@@ -2072,3 +2072,166 @@ def test_a_known_commit_must_be_a_commit(memory_host, monkeypatch, capsys):
     assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
     read_key_project(host)
     assert copying(host, monkeypatch, capsys, "c" * 40, known="--all")[0][0] == 64
+
+
+# The advance runs its script against real Git repositories: what it does there is the whole of the verb.
+def advancing(tmp_path, monkeypatch, host, capsys, *, local, central, commit=None, copy_name="d" * 32):
+    copies = tmp_path / "advance-copies"
+    copy = copies / copy_name / "central.git"
+    copy.parent.mkdir(parents=True)
+    subprocess.run(["git", "clone", "-q", "--bare", str(central), str(copy)], check=True)
+    wanted = commit or git_out(central, "rev-parse", "main")
+    seen = []
+
+    def forge_exec(account, *arguments, given=None):
+        seen.append(arguments)
+        script = [part.replace("/var/lib/gitea/git/repositories/alpha/code.git", str(local)) for part in arguments]
+        return subprocess.run(script, stdin=given, capture_output=True, text=True, check=False, timeout=60)
+
+    def bundle(account, path, output):
+        subprocess.run(
+            ["git", f"--git-dir={path}", "bundle", "create", "-", "refs/heads/main"],
+            stdout=output,
+            stderr=subprocess.DEVNULL,
+            check=True,
+            timeout=60,
+        )
+
+    result = project(
+        host,
+        monkeypatch,
+        capsys,
+        "project-advance",
+        "alpha",
+        "code",
+        wanted,
+        str(copy),
+        overrides={"PROJECT_COPIES": str(copies), "forge_exec": forge_exec, "bundle_copy": bundle},
+    )
+    return result, wanted, seen
+
+
+def git_out(path, *arguments):
+    return subprocess.run(
+        ["git", f"--git-dir={path}" if path.name.endswith(".git") else f"--git-dir={path}/.git", *arguments],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def repositories(tmp_path):
+    """A central main of two commits, and the host's bare copy holding the first of them."""
+    work = tmp_path / "advance-central"
+    work.mkdir()
+    identity = ["-c", "user.name=a", "-c", "user.email=a@example.org", "-c", "commit.gpgsign=false"]
+    subprocess.run(["git", "init", "-q", "-b", "main", str(work)], check=True)
+    subprocess.run(["git", "-C", str(work), *identity, "commit", "-q", "--allow-empty", "-m", "first"], check=True)
+    local = tmp_path / "advance-local.git"
+    subprocess.run(["git", "clone", "-q", "--bare", str(work), str(local)], check=True)
+    subprocess.run(["git", "-C", str(work), *identity, "commit", "-q", "--allow-empty", "-m", "second"], check=True)
+    return work, local, identity
+
+
+def advance_ready(host, monkeypatch, capsys):
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    read_key_project(host)
+
+
+def test_the_hosts_copy_moves_to_what_was_verified(memory_host, monkeypatch, capsys, tmp_path):
+    """Keep a task from reading an older project file than the one Porelo accepted."""
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local, _ = repositories(tmp_path)
+    result, wanted, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work)
+    assert result[0] == 0, result
+    assert json.loads(result[1]) == {"state": "moved"}
+    assert git_out(local, "rev-parse", "refs/heads/main") == wanted
+    refs = git_out(local, "for-each-ref", "--format=%(refname)").split()
+    assert refs == ["refs/heads/main"], "the advance leaves no ref of its own"
+    assert not list(local.glob("*.bundle")), "nor its bundle"
+
+
+def test_a_copy_already_there_is_up_to_date(memory_host, monkeypatch, capsys, tmp_path):
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local, _ = repositories(tmp_path)
+    subprocess.run(["git", f"--git-dir={local}", "fetch", "-q", str(work), "main:main"], check=True)
+    result, wanted, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work)
+    assert result[0] == 0 and json.loads(result[1]) == {"state": "up-to-date"}, result
+    assert git_out(local, "rev-parse", "refs/heads/main") == wanted
+
+
+def local_commit(local, identity):
+    """A commit only the host's forge holds, on its main."""
+    tree = git_out(local, "rev-parse", "main^{tree}")
+    parent = git_out(local, "rev-parse", "main")
+    made = subprocess.run(
+        ["git", f"--git-dir={local}", *identity, "commit-tree", tree, "-p", parent, "-m", "local"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    subprocess.run(["git", f"--git-dir={local}", "update-ref", "refs/heads/main", made], check=True)
+    return made
+
+
+def test_a_main_ahead_of_central_stays(memory_host, monkeypatch, capsys, tmp_path):
+    """Approved work not yet sent to the central forge is never taken back by a follow."""
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local, identity = repositories(tmp_path)
+    subprocess.run(["git", f"--git-dir={local}", "fetch", "-q", str(work), "main:main"], check=True)
+    made = local_commit(local, identity)
+    result, _, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work)
+    assert result[0] == 0 and json.loads(result[1]) == {"state": "ahead"}, result
+    assert git_out(local, "rev-parse", "refs/heads/main") == made
+
+
+def test_a_main_gone_another_way_stays_and_says_so(memory_host, monkeypatch, capsys, tmp_path):
+    """Moving such a main would lose what the host approved; both lines stand until a person joins them."""
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local, identity = repositories(tmp_path)
+    made = local_commit(local, identity)
+    result, _, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work)
+    assert result[0] == 0 and json.loads(result[1]) == {"state": "diverged"}, result
+    assert git_out(local, "rev-parse", "refs/heads/main") == made
+    assert git_out(local, "for-each-ref", "--format=%(refname)").split() == ["refs/heads/main"]
+
+
+def test_a_copy_holding_another_commit_moves_nothing(memory_host, monkeypatch, capsys, tmp_path):
+    """What moves is only what Porelo verified: a copy changed since then is refused."""
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local, _ = repositories(tmp_path)
+    before = git_out(local, "rev-parse", "refs/heads/main")
+    result, _, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work, commit="e" * 40)
+    assert result[0] == 65, result
+    assert git_out(local, "rev-parse", "refs/heads/main") == before
+    assert git_out(local, "for-each-ref", "--format=%(refname)").split() == ["refs/heads/main"]
+
+
+@pytest.mark.parametrize(
+    "words",
+    [
+        ("alpha", "code", "not-a-commit", "/run/porelo-host-project-copy/" + "d" * 32 + "/central.git"),
+        ("alpha", "../alpha", "c" * 40, "/run/porelo-host-project-copy/" + "d" * 32 + "/central.git"),
+        ("alpha", "code", "c" * 40, "/etc/passwd"),
+        ("alpha", "code", "c" * 40, "/run/porelo-host-project-copy/../../etc/central.git"),
+    ],
+)
+def test_the_advance_takes_no_other_words(memory_host, monkeypatch, capsys, words):
+    """Root passes these into Git's commands inside the forge's container."""
+    advance_ready(memory_host, monkeypatch, capsys)
+    assert project(memory_host, monkeypatch, capsys, "project-advance", *words)[0] == 64
+
+
+def test_the_advance_is_for_a_repository_with_a_read_key(memory_host, monkeypatch, capsys):
+    """Only a repository the host took; another in the project's organization is not its to move."""
+    advance_ready(memory_host, monkeypatch, capsys)
+    words = ("alpha", "other", "c" * 40, "/run/porelo-host-project-copy/" + "d" * 32 + "/central.git")
+    result = project(
+        memory_host,
+        monkeypatch,
+        capsys,
+        "project-advance",
+        *words,
+        overrides={"forge_exec": lambda *a, **k: pytest.fail("the forge was asked")},
+    )
+    assert result[0] == 69, result

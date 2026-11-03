@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- What a Project Admin files at the central forge reaches a task on the host at the next follow, once Porelo accepted it.
+  A task reads the project's file from the host's forge, whose copy was taken once.
 - A project put on a host, taken off and put on again is taken: its migration replaces the read-only key this host made
   for it, where the central forge refused a second key of that title. Another host's key stays.
 
