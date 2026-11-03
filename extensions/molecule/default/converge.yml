@@ -115,7 +115,8 @@
       vars:
         converge_organization:
           settings: "organization: {address: 'git@central.example:acme/organization.git', forge: central.example}\n"
-          known_hosts: "central.example {{ (converge_machine_keys.results[1].content | b64decode).split()[:2] | join(' ') }}\n"
+          known_hosts: "central.example {{ (converge_machine_keys.results[1].content | b64decode).split()[:2]
+            | join(' ') }}\n"
           pin: "hostadmin {{ (converge_machine_keys.results[0].content | b64decode).split()[:2] | join(' ') }}\n"
 
     # Stands in for the host admin: Molecule's own key is pinned for root, as `host up` pins the card's key. Once SSH

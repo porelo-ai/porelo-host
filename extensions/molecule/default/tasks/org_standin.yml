@@ -25,7 +25,8 @@
     group: root
     mode: "0700"
 
-# Until the published transport has the room verbs, a run can name a build of its own, in the checkout's target directory.
+# Until the published transport has the room verbs, a run can name a build of its own, in the checkout's target
+# directory.
 - name: Install the transport this run names
   ansible.builtin.copy:
     src: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_TRANSPORT') }}"

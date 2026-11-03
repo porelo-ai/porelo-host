@@ -72,8 +72,8 @@
           {% else %}
           asked for {{ forge_runner_capacity }} jobs of {{ forge_job_cpus }} CPUs and {{ forge_job_memory }}
           ({{ __forge_job_kib }} KiB each) beside a VM pool of {{ __forge_pool_kib }} KiB within half the host:
-          {{ (__forge_host_cpus | int) // 2 }} of {{ __forge_host_cpus }} processors and {{ (__forge_host_kib | int) // 2 }}
-          of {{ __forge_host_kib }} KiB;
+          {{ (__forge_host_cpus | int) // 2 }} of {{ __forge_host_cpus }} processors and
+          {{ (__forge_host_kib | int) // 2 }} of {{ __forge_host_kib }} KiB;
           lower forge_runner_capacity or the job bounds
           {% endif %}
         quiet: true
