@@ -1,6 +1,6 @@
 # HO108 — Approved Commits Not Yet At The Central Forge
 
-**Status:** Idea.
+**Status:** Accepted.
 
 **What must be true.** A project's person, or the interface on their behalf, can ask the host without root and without a
 central token how each repository's approved `main` stands against the central forge, and gets one of four answers: how

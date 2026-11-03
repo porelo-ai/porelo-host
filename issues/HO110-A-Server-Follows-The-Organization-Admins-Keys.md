@@ -5,7 +5,8 @@
 **What must be true.** A server's pin holds the keys of the organization's Organization Admins beside its own Machine
 Admins, so a Machine Admin changed or replaced by an Organization Admin takes effect on a running server at its next
 follow, with no confirmation by the former admin, who may be gone. Taking that list needs no person on the server, and
-it makes no account for anyone on it. One stolen key of this role reaches every server; that is known and decided.
+it makes no account for anyone on it. A Machine Admin names no further Machine Admin; that is the Organization Admin's alone,
+so a list a Machine Admin alone has changed is not taken. One stolen key of this role reaches every server; that is known and decided.
 
 ## To be checked
 
