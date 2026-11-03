@@ -28,6 +28,7 @@ it is left out.
 | <a id="ho100"></a>[HO100](HO100-A-Project-Helpers-Own-Words-In-Status.md) | S | - | A project helper's refusal reaches `org status`'s `why` in its own words. |
 | <a id="ho104"></a>[HO104](HO104-A-Refusals-Why-Lasts.md) | S | - | A refused migration's `why` in `org status` stands until a later try ends otherwise |
 | <a id="ho108"></a>[HO108](HO108-Approved-Commits-Not-Yet-At-The-Central-Forge.md) | M | - | A person or the interface asks the host, with no root and no central token, how many approved commits on `main` the central forge lacks, with up to date, gone apart and cannot say as the other answers |
+| <a id="ho110"></a>[HO110](HO110-A-Server-Follows-The-Organization-Admins-Keys.md) | S | - | A server's pin holds the Organization Admins' keys beside its Machine Admins, so a Machine Admin they replace takes effect at the next follow |
 
 ## Implementing
 
@@ -57,7 +58,6 @@ it is left out.
 | <a id="ho56"></a>[HO56](HO56-Remove-Takes-The-Persons-Push-And-Sync-Away.md) | M | [HO46](#ho46) | Removing a project takes the push config and the sync timer out of each person's own account. |
 | <a id="ho57"></a>[HO57](HO57-The-Bring-Checks-With-The-Keys-In-Force-After-A-Handover.md) | S | - | A second bring verifies only what is new since the followed commit, with `following --json`'s `signed_by_keys`. |
 | <a id="ho102"></a>[HO102](HO102-A-Persons-Projects-Named-On-The-Host.md) | - | - | A person's host account names their projects before their first start there. |
-| <a id="ho110"></a>[HO110](HO110-A-Server-Follows-The-Organization-Admins-Keys.md) | - | - | A server's pin holds the Organization Admins' keys beside its Machine Admins, so a Machine Admin they replace takes effect at the next follow |
 
 ## Idea
 

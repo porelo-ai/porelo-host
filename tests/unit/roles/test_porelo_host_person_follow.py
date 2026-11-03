@@ -1641,3 +1641,100 @@ def test_what_a_killed_write_left_among_the_answers_stops_no_later_follow(follow
     left.write_text("half\n")
     follow(state, "b")
     assert not left.exists()
+
+
+def organization_admin(state, login, number, **changed):
+    row = {
+        "login": login,
+        "key": ssh_key(number),
+        "fingerprint": state.scope["fingerprint"](ssh_key(number)),
+        "backup": False,
+    }
+    return {**row, **changed}
+
+
+def pin_and_root(state):
+    return (
+        state.host.path("/etc/porelo-host/organization/pin").read_text(),
+        state.host.path("/etc/ssh/authorized_keys/root").read_text(),
+    )
+
+
+def test_the_pin_holds_the_organization_admins_and_root_stays_with_the_machines(following):
+    """Prevent a dismissed machine admin needing to confirm their replacement, or the role getting root unseen."""
+    state = following
+    state.reply["organization_admins"] = [organization_admin(state, "olivia", 7), organization_admin(state, "oscar", 8)]
+    follow(state)
+    pin, root = pin_and_root(state)
+    assert pin == f"alice {ssh_key(1)}\nolivia {ssh_key(7)}\noscar {ssh_key(8)}\n"
+    assert root == f"{ssh_key(1)}\n"
+    assert not {"olivia", "oscar"} & set(state.host.records()), "the role makes no account"
+    assert state.host.execute(["org", "status"], b"")["pinned"] == state.scope["fingerprint"](ssh_key(1))
+
+
+def test_a_list_that_arrives_on_a_server_already_set_up_is_taken_by_the_follow(following):
+    """Prevent a server already running staying outside the role until someone stands on it."""
+    state = following
+    follow(state)
+    assert pin_and_root(state)[0] == f"alice {ssh_key(1)}\n"
+    state.reply["organization_admins"] = [organization_admin(state, "olivia", 7)]
+    follow(state, "b")
+    assert pin_and_root(state) == (f"alice {ssh_key(1)}\nolivia {ssh_key(7)}\n", f"{ssh_key(1)}\n")
+
+
+def test_a_build_with_no_list_keeps_todays_pin_and_an_empty_list_is_the_same(following):
+    """Prevent an older Porelo, or a list emptied, leaving a removed admin's key in the pin."""
+    state = following
+    state.reply["organization_admins"] = [organization_admin(state, "olivia", 7)]
+    follow(state)
+    state.reply["organization_admins"] = []
+    follow(state, "b")
+    assert pin_and_root(state)[0] == f"alice {ssh_key(1)}\n"
+    state.reply["organization_admins"] = [organization_admin(state, "olivia", 7)]
+    follow(state, "c")
+    del state.reply["organization_admins"]
+    follow(state, "d")
+    assert pin_and_root(state)[0] == f"alice {ssh_key(1)}\n"
+
+
+def test_a_person_in_both_lists_stands_in_the_pin_once_with_root(following):
+    """Prevent one key twice in the pin, which the pin's own reader and renewal refuse."""
+    state = following
+    state.reply["organization_admins"] = [organization_admin(state, "alice", 1)]
+    follow(state)
+    assert pin_and_root(state) == (f"alice {ssh_key(1)}\n", f"{ssh_key(1)}\n")
+
+
+def test_a_machine_admin_replaced_leaves_root_and_the_pin_with_no_step_of_theirs(following):
+    """Prevent a dismissed admin keeping root, or the role losing the pin, when the machine's admin changes."""
+    state = following
+    state.reply["organization_admins"] = [organization_admin(state, "olivia", 7)]
+    follow(state)
+    state.reply["admins"] = [organization_admin(state, "charlie", 3)]
+    follow(state, "b")
+    assert pin_and_root(state) == (f"charlie {ssh_key(3)}\nolivia {ssh_key(7)}\n", f"{ssh_key(3)}\n")
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        lambda state: "none",
+        lambda state: ["olivia"],
+        lambda state: [{**organization_admin(state, "olivia", 7), "login": "root"}],
+        lambda state: [{**organization_admin(state, "olivia", 7), "login": "Not A Login"}],
+        lambda state: [{**organization_admin(state, "olivia", 7), "key": "ssh-rsa AAAA"}],
+        lambda state: [{**organization_admin(state, "olivia", 7), "fingerprint": "SHA256:other"}],
+        lambda state: [{**organization_admin(state, "olivia", 7), "backup": "no"}],
+        lambda state: [organization_admin(state, "olivia", 7), organization_admin(state, "oscar", 7)],
+    ],
+)
+def test_a_malformed_list_changes_nothing(following, damage):
+    """Prevent an unreadable answer widening the pin, or leaving a pin no later fetch could read."""
+    state = following
+    follow(state)
+    before = pin_and_root(state)
+    state.reply["organization_admins"] = damage(state)
+    state.reply["revision"] = "b" * 40
+    with pytest.raises(state.scope["Refusal"], match="organization admin"):
+        state.host.execute(["org", "follow"], b"")
+    assert pin_and_root(state) == before

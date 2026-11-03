@@ -6,7 +6,8 @@ reloads it before continuing. Password and keyboard-interactive authentication a
 `/etc/ssh/authorized_keys/%u`, owned by root, and `/etc/ssh/porelo-revoked.krl`. Setup must pin the host admin's key
 in root's `authorized_keys` in the SSH folder (or `base_host_admin_key_file`); up adds its key before changing SSH's key source.
 A follow replaces root's active key file with the organization's current host admin keys, and a host admin handover
-takes effect at that follow. Before the first follow each `up` adds the seed to the keys there and removes none, so
+takes effect at that follow. The Organization Admins' keys stand in the pin, not in root's file: one who needs root lists
+themselves as that machine's admin, a signed change anyone can read. Before the first follow each `up` adds the seed to the keys there and removes none, so
 another key that already reaches root keeps its way in. After a follow `up` leaves the file to the follow, and
 a host admin it replaced does not come back with an old seed.
 Installation seeds a valid empty KRL through

@@ -1606,6 +1606,20 @@ class Host:
             admin_keys.add(admin["key"])
         if not admins:
             refuse("porelo org fetch answered no host admin keys", 65)
+        organization_admins, organization_keys = [], set()
+        # Absent from a build older than the list, which leaves the pin as it was before the list.
+        rows = answer.get("organization_admins", [])
+        if not isinstance(rows, list):
+            refuse("porelo org fetch answered malformed organization admin keys", 65)
+        for admin in rows:
+            if (not isinstance(admin, dict) or not isinstance(admin.get("login"), str)
+                    or not re.fullmatch(USER, admin["login"]) or admin["login"] == "root"
+                    or not valid_ssh_key(admin.get("key")) or admin["key"] in organization_keys
+                    or admin.get("fingerprint") != fingerprint(admin["key"])
+                    or type(admin.get("backup")) is not bool):
+                refuse("porelo org fetch answered malformed organization admin keys", 65)
+            organization_admins.append(admin)
+            organization_keys.add(admin["key"])
         projects, names, project_refusals = [], set(), {}
         old_projects = {} if previous is None else {
             item["project"]: item for item in previous["projects"]
@@ -1649,7 +1663,7 @@ class Host:
         for person in persons:
             person["revoked"] = person["login"] in revoked
         return {"revision": revision, "commit": revision, "host_card": card, "persons": persons,
-                "admins": admins, "projects": projects, "project_refusals": project_refusals, "revoked": sorted(revoked),
+                "admins": admins, "organization_admins": organization_admins, "projects": projects, "project_refusals": project_refusals, "revoked": sorted(revoked),
                 "revisions": list(dict.fromkeys([*revisions, revision]))}
 
     def follow_project_state(self, project, logins, duplicates):
@@ -2067,10 +2081,13 @@ class Host:
     def write_follow_pin(self, applied):
         """Write the pin only from a state already taken, and only when it differs, as the fetch reads it each time."""
         path = self.path("/etc/porelo-host/organization/pin")
-        text = "".join(f'{admin["login"]} {admin["key"]}\n' for admin in applied["admins"])
+        held = {admin["key"] for admin in applied["admins"]}
+        rows = [*applied["admins"], *(admin for admin in applied["organization_admins"] if admin["key"] not in held)]
+        text = "".join(f'{admin["login"]} {admin["key"]}\n' for admin in rows)
         if self.read(path) != text:
             self.write(path, text, 0o600)
-        # Root's login follows the same list, so a host admin the organization replaced does not keep it.
+        # Root's login follows the machine's admins alone, so a host admin replaced does not keep it, and an
+        # organization admin who needs it first lists themselves there, which anyone can see.
         root = self.path("/etc/ssh/authorized_keys/root")
         self.directories(root.parent)
         if not root.exists() or self.read(root) != text_keys(applied):

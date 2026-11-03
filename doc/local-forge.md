@@ -264,6 +264,10 @@ card, the projects, the persons and every revoked login; the persons' keys and r
 KRL. An entry that names a login revoked counts even where its card is unusable for another fault, and its last key
 stays recorded for the KRL.
 
+The pin holds the machine's host admins first, then the keys of the organization's Organization Admins when `org fetch`
+names them, so a host admin they replace is replaced at the next follow, with no step of the former admin's. The role
+gets no account and no root here.
+
 When an owner has replaced a host admin's card, no key the host holds signed that change, so every fetch is refused.
 The way out is on the machine: root gives the host admins' keys, one `login key` line each, on standard input of
 `porelo-host-person org renew-pin`, root's alone, which replaces the pin and the keys in the state taken, and answers as

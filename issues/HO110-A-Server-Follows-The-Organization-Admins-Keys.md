@@ -1,30 +1,38 @@
 # HO110 — A Server Follows The Organization Admins' Keys
 
-**Status:** Accepted.
+**Status:** Review.
+**Size:** S - one optional list read and checked in the follow, the pin written from two lists, the documents.
 
 **What must be true.** A server's pin holds the keys of the organization's Organization Admins beside its own Machine
 Admins, so a Machine Admin changed or replaced by an Organization Admin takes effect on a running server at its next
 follow, with no confirmation by the former admin, who may be gone. Taking that list needs no person on the server, and
-it makes no account for anyone on it. A Machine Admin names no further Machine Admin; that is the Organization Admin's alone,
-so a list a Machine Admin alone has changed is not taken. One stolen key of this role reaches every server; that is known and decided.
+it makes no account for anyone on it. A Machine Admin names no further Machine Admin; that is the Organization Admin's
+alone, so a list a Machine Admin alone has changed is not taken. One stolen key of this role reaches every server; that
+is known and decided.
+
+## Plan
+
+- `org fetch` answers `organization_admins` beside `admins`, rows of `login`, `key`, `fingerprint` and `backup`, absent
+  from a build older than the list. `follow_state` checks it, and any malformed row refuses the state with nothing changed.
+- `write_follow_pin` writes the pin from the machine's admins first, then the role's keys not already held, one line a key.
+  The machine's admins stay first, as `org status`'s `pinned` and the forge's owner read the first.
+- **Root, decided:** root's key file reads `admins` alone. An Organization Admin who needs root lists themselves as that
+  machine's Machine Admin, a visible signed change, one server at a time. A stolen key of this role can do the same,
+  visibly; that cost is accepted.
+- The memberships keep reading `admins` alone, so the role gets no account and its logins need not be among `persons`.
+- **A server already set up, and a new one:** both take the list at their next follow, as adding it moves no pin by
+  itself; Porelo judges a pin's move by the list as it stood before that commit. `up` and its machine file do not change.
+  An owner not listed still moves no pin and leaves the host refusing.
+- **An older helper** writes the pin from `admins` alone, so a change only the role signed is refused and said; it does
+  not read wrongly.
+- Red first: both lists in the pin and only one in root's file; a list arriving on a running server; a list emptied or
+  gone; a person in both lists; a machine admin replaced; each malformed row.
+
+## Acceptance
+
+- The tests above, seen failing without the change, and Molecule's follow unchanged with no list.
 
 ## To be checked
 
-- **The new list:** `org fetch` answers the role's keys beside `admins`. `write_follow_pin` writes today's one list to
-  both the pin and root's key file; it comes apart into two. The memberships keep reading `admins` alone, so the role
-  gets no account, and its logins need not be among the state's `persons`, which `admins` must be. `admins[0]` still
-  names the forge's account owner.
-- **Root, decided:** the pin holds and follows the role's keys; root stays with the listed Machine Admins, so root's key
-  file reads `admins` alone. An Organization Admin who needs root lists themselves as that machine's Machine Admin, a
-  visible signed change, one server at a time. A stolen key of this role can do the same, visibly; that cost is accepted.
-- **A server already set up:** its pin holds only its Machine Admins, so a commit the role signs is signed by no key it
-  holds and is refused. It takes the list once, by one of those admins signing it, or by root's `org renew-pin`, whose
-  input then carries both lists. Which of them, and what becomes of a server whose admin has gone, is to be read
-  together with Porelo's judging of the pin.
-- **How a server first takes it:** a server set up later gets the role's keys in the machine file `up` reads for its
-  first pin, and the host's refusal of a pin with no key stays.
-- **A server with no Machine Admin left:** today a state with empty `admins` is refused; whether an Organization Admin
-  may leave a server so, and with what root's key file then holds.
-- **A helper older than the fetch:** an older follow writes the pin from `admins` alone, and the next fetch judges by it.
-  In what order a package and the collection may arrive, and that neither reads the other's list wrongly.
-- **A follow that cannot fetch** keeps the old list, so a dismissed admin keeps root for as long as that lasts.
+- **A server with no Machine Admin left:** today a state with empty `admins` is refused and the last state stays. Whether
+  an Organization Admin may leave a server so is Porelo's to say.
