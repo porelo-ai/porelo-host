@@ -288,7 +288,7 @@ Behind the socket, which only the forge account may connect to, root's `porelo-h
 that account's peer. It maps the paths into the forge volume, refuses one outside the pushed repository, of an
 organization no project registered or through a link on the way, and runs
 `porelo commit verify --json` in a throwaway unit as the forge account, with no network and no home but that
-repository read-only. Porelo gets the project's keys in force without a `valid-before` (`--signers`), their
+repository read-only. Porelo gets the project's keys, each with its validity period (`--signers`), their
 `cert-authority` lines for the project's own tasks (`--certifiers`), the KRL and each task certificate the host
 recorded for the project and valid now, as `task --show` answers it (`--certificates`). Pushes are judged side by
 side, each with its own staging directory; a follow waits for them and they for it. Every new commit, merges too, must be signed so that it holds now: by a person's key, by a task

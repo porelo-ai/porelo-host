@@ -2639,7 +2639,7 @@ class Host:
         refuse(f"no task certificate is recorded for {key}", 65)
 
     def push_signers(self, project):
-        """The project's keys in force now, without a valid-before: persons' keys and their task certifiers apart."""
+        """The project's keys as Porelo gave them, each with its dates: persons' keys and task certifiers apart."""
         certifiers = self.path(f"/etc/porelo-host/signers/{project}.certifiers")
         self.check(certifiers, 69, required=True)
         return self.read(self.path(f"/etc/porelo-host/signers/{project}.allowed")), self.read(certifiers)
