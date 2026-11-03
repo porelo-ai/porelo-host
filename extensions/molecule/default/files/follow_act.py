@@ -6,8 +6,10 @@ asked, and the run ends naming every wrong answer, with nothing of the token in 
 import datetime
 import json
 import os
+import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 HELPER = "/usr/local/sbin/porelo-host-person"
@@ -221,7 +223,7 @@ if FORGE.exists():
         entries[PROJECT].update(
             migrated=True,
             state="carried",
-            file={"commit": "1" * 40, "signers": "", "review": review, "repositories": {}},
+            file={"commit": "1" * 40, "signers": "", "address": address, "review": review, "repositories": {}},
         )
         PROGRESS.write_text(json.dumps(entries), encoding="utf-8")
         followed()
@@ -249,12 +251,60 @@ if FORGE.exists():
         },
     )
 
-    def merged_alone(branch):
-        forge(
-            "POST", f"{repository}/contents/{branch}.txt", {"content": "YQ==", "branch": "main", "new_branch": branch}
+    # The host's judge takes only signed commits, so the author signs as a person the project's signers name.
+    checkout = tempfile.TemporaryDirectory(prefix="follow-act-")
+    git_port = re.search(r"^git_port=(\d+)$", FORGE.read_text(encoding="utf-8"), re.M).group(1)
+
+    def git(*words):
+        return subprocess.run(
+            [
+                "git",
+                "-C",
+                checkout.name,
+                "-c",
+                "gpg.format=ssh",
+                "-c",
+                f"user.signingkey={KEYS / 'fa'}",
+                "-c",
+                "commit.gpgsign=true",
+                "-c",
+                "user.name=fa",
+                "-c",
+                "user.email=fa@example.org",
+                *words,
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=120,
+            env={
+                **ENVIRON,
+                "GIT_TERMINAL_PROMPT": "0",
+                "GIT_CONFIG_COUNT": "1",
+                "GIT_CONFIG_KEY_0": "http.extraHeader",
+                "GIT_CONFIG_VALUE_0": f"Authorization: token {forge_token}",
+            },
         )
+
+    cloned = git("clone", "-q", f"http://127.0.0.1:{git_port}/{PROJECT}/{code_name}.git", ".")
+    check(cloned.returncode == 0, "the act's repository to clone", cloned.stderr)
+
+    def commit_on_main(name):
+        for words in (("fetch", "-q", "origin", "main"), ("checkout", "-q", "-B", name, "origin/main")):
+            git(*words)
+        Path(checkout.name, f"{name}.txt").write_text(name, encoding="utf-8")
+        git("add", ".")
+        made = git("commit", "-q", "-m", name)
+        check(made.returncode == 0, f"a signed commit for {name}", made.stderr)
+
+    def merged_alone(branch):
+        commit_on_main(branch)
+        pushed = git("push", "-q", "origin", branch)
+        check(pushed.returncode == 0, f"the judge to take the signed branch {branch}", pushed.stderr)
         code, pull = forge("POST", f"{repository}/pulls", {"head": branch, "base": "main", "title": branch})
         check(code == 201, f"a pull request from {branch}", [code, pull])
+        if code != 201:
+            return 0
         return forge("POST", f"{repository}/pulls/{pull['number']}/merge", {"Do": "fast-forward-only"})[0]
 
     in_force("optional")
@@ -265,8 +315,8 @@ if FORGE.exists():
         [code, rule],
     )
     check(merged_alone("alone") == 200, "the author to merge their own when optional")
-    code, unused = forge("POST", f"{repository}/contents/direct.txt", {"content": "YQ==", "branch": "main"})
-    check(400 <= code < 500, "no direct push to main when optional", code)
+    commit_on_main("direct")
+    check(git("push", "-q", "origin", "HEAD:main").returncode != 0, "no direct push to main when optional")
     in_force("required")
     code, rule = forge("GET", f"{repository}/branch_protections/main")
     check(code == 200 and rule["required_approvals"] == 1, "required to need an approval on the forge", [code, rule])
@@ -279,6 +329,7 @@ if FORGE.exists():
         "a rule changed by hand to be set back",
         rule,
     )
+    checkout.cleanup()
     check(forge("DELETE", repository)[0] == 204, "the act's repository removed")
     forge("DELETE", "users/porelo-admin/tokens/follow-act")
     entries = json.loads(PROGRESS.read_text(encoding="utf-8"))
