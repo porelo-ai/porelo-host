@@ -1,6 +1,6 @@
 # HO102 — A Person's Projects Named On The Host
 
-**Status:** Idea.
+**Status:** Accepted.
 
 **What must be true.** In a person's host account, `porelo project list` shows every project the host carries for that
 person, also before their first start there. Today the account knows no name until then, and the projects' directory

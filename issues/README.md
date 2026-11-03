@@ -66,6 +66,7 @@ it is left out.
 | <a id="ho59"></a>[HO59](HO59-An-Interrupted-Bring-Replaced-Safely.md) | M | - | A bring leaves `bring.state` in its setup directory, so an interrupted one is recognized and replaced by a new upload instead of refused. |
 | <a id="ho56"></a>[HO56](HO56-Remove-Takes-The-Persons-Push-And-Sync-Away.md) | M | [HO46](#ho46), [HO47](#ho47) | Removing a project takes the push config and the sync timer out of each person's own account. |
 | <a id="ho57"></a>[HO57](HO57-The-Bring-Checks-With-The-Keys-In-Force-After-A-Handover.md) | S | - | A second bring verifies only what is new since the followed commit, with `following --json`'s `signed_by_keys`. |
+| <a id="ho102"></a>[HO102](HO102-A-Persons-Projects-Named-On-The-Host.md) | - | - | A person's host account names their projects before their first start there. |
 
 ## Idea
 
@@ -78,7 +79,6 @@ it is left out.
 | <a id="ho99"></a>[HO99](HO99-A-Central-Forge-On-A-Private-Authority.md) | - | - | A central forge on a private authority is reached by the fetch, the read key, the migration and the push, from one setting. |
 | <a id="ho100"></a>[HO100](HO100-A-Project-Helpers-Own-Words-In-Status.md) | - | - | A project helper's refusal reaches `org status`'s `why` in its own words. |
 | <a id="ho101"></a>[HO101](HO101-One-Forge-Over-SSH-And-HTTPS-On-A-Port.md) | - | - | One forge's ssh address and its https address on a port count as one forge. |
-| <a id="ho102"></a>[HO102](HO102-A-Persons-Projects-Named-On-The-Host.md) | - | - | A person's host account names their projects before their first start there. |
 | <a id="ho103"></a>[HO103](HO103-A-Project-Put-On-Again-After-Off.md) | - | - | A project put on a host, taken off and put on again is taken, and no deploy key of the host's stays behind unsaid. |
 | <a id="ho104"></a>[HO104](HO104-A-Project-That-No-Token-Can-Cure.md) | - | - | A project with no usable address says so rather than waiting for a token, and a refusal's reason outlasts the next follow. |
 | <a id="ho106"></a>[HO106](HO106-A-Refused-Root-Key-File-Says-Why.md) | - | - | `up` refusing root's key file says how many keys it found and what to do, not only `non-zero return code` |
