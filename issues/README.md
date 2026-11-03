@@ -82,6 +82,7 @@ it is left out.
 | <a id="ho103"></a>[HO103](HO103-A-Project-Put-On-Again-After-Off.md) | - | - | A project put on a host, taken off and put on again is taken, and no deploy key of the host's stays behind unsaid. |
 | <a id="ho104"></a>[HO104](HO104-A-Project-That-No-Token-Can-Cure.md) | - | - | A project with no usable address says so rather than waiting for a token, and a refusal's reason outlasts the next follow. |
 | <a id="ho105"></a>[HO105](HO105-A-Hosts-Name-On-The-LAN.md) | - | - | A host's `.local` name after `up`, which its firewall stops answering on a LAN: allowed on request, or said plainly |
+| <a id="ho106"></a>[HO106](HO106-A-Refused-Root-Key-File-Says-Why.md) | - | - | `up` refusing root's key file says how many keys it found and what to do, not only `non-zero return code` |
 | <a id="ho86"></a>[HO86](HO86-The-Push-Judges-Smaller-Edges.md) | - | [HO85](#ho85) | The push judge's smaller edges from its reading, gathered: links in the arming, the removal's checks, a first-push race, the null object, the answer's field and record checks pinned by tests. |
 | <a id="ho88"></a>[HO88](HO88-A-Project-Registered-From-The-Admins-Own-Account.md) | - | - | A project admin registers their project from their own account, its forge organization and teams made with it. |
 | <a id="ho78"></a>[HO78](HO78-Only-The-Gates-Sockets-Forwarded.md) | - | [HO74](#ho74) | A person's SSH connection forwards only to the gates' sockets and their own return socket, and to no TCP address. |
