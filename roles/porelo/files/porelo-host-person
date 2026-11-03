@@ -108,6 +108,8 @@ ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "
 USER = r"(?!porelo(?:-|$))[a-z][a-z0-9-]{0,31}"
 PROJECT = r"[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?"
 HOST = r"[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?"
+HELPER_PREFIX = "porelo-host-project: "
+HELPER_WORDS_LIMIT = 300
 COMMIT = r"[0-9a-f]{40}([0-9a-f]{24})?"
 FINGERPRINT = r"SHA256:[A-Za-z0-9+/]{43}"
 SHOWN = r"[!-~]{1,64}"
@@ -170,15 +172,32 @@ def text_keys(applied):
 class Refusal(Exception):
     """A safe diagnostic and the interface's exit code."""
 
-    def __init__(self, message, code=64):
-        """Keep the interface exit code with the diagnostic."""
+    def __init__(self, message, code=64, told=None):
+        """Keep the interface exit code with the diagnostic, and the exit a person is told where a helper's differs."""
         super().__init__(message)
         self.code = code
+        self.told = code if told is None else told
+
+    def shown(self):
+        """The diagnostic as status and the journal give it."""
+        return f"{self} (exit {self.told})"
 
 
 def refuse(message, code=64):
     """Stop without echoing the input or a command's potentially sensitive output."""
     raise Refusal(message, code)
+
+
+def helper_words(stderr, supplied):
+    """The project helper's own refusal, or None: its last line alone, as anything before it may repeat a credential."""
+    lines = stderr.splitlines()
+    if not lines or not lines[-1].startswith(HELPER_PREFIX):
+        return None
+    words = "".join(char if char.isprintable() else " " for char in lines[-1][len(HELPER_PREFIX) :])
+    token = (supplied or {}).get("token")
+    if token and token in "".join(char for char in lines[-1] if char.isprintable()):
+        return None
+    return words[:HELPER_WORDS_LIMIT].strip() or None
 
 
 def run_command(arguments, input=None, timeout=60, pass_fds=()):
@@ -1865,7 +1884,7 @@ class Host:
         except (OSError, subprocess.TimeoutExpired, UnicodeError) as error:
             refuse(f"the project helper failed to complete ({type(error).__name__})", 69)
         if result.returncode:
-            # Only removal's structured refusal may name commits; migration diagnostics can contain credentials.
+            # Only removal's structured refusal may name commits.
             if arguments[0] == "remove" and result.returncode == 65:
                 try:
                     held = json.loads(result.stdout)
@@ -1878,11 +1897,35 @@ class Host:
                 except (ValueError, TypeError, KeyError, AttributeError):
                     refuse("project removal was refused or could not verify every commit", 69)
                 if not commits:
-                    refuse("project removal was refused without a verified commit comparison", 65)
+                    words = helper_words(result.stderr, supplied)
+                    if words is None:
+                        refuse("project removal was refused without a verified commit comparison", 65)
+                    print(f"porelo-host-person: {arguments[1]}: {words} (exit 65)", file=sys.stderr)
+                    refuse(words, 65)
                 refuse("unpushed commits: " + "; ".join(f"{name}: {', '.join(values)}"
                                                         for name, values in commits.items()), 65)
-            refuse(f"the project helper {arguments[0]} exited {result.returncode}", 69)
+            words = helper_words(result.stderr, supplied)
+            if words is None:
+                refuse(f"the project helper {arguments[0]} exited {result.returncode}", 69)
+            print(f"porelo-host-person: {arguments[1]}: {words} (exit {result.returncode})", file=sys.stderr)
+            # The follow reads its own codes as held or as a refused room, which a helper's exit must not become.
+            raise Refusal(words, 69, told=result.returncode)
+        if arguments[0] == "remove":
+            self.say_left_at_central(arguments[1], result.stdout)
         return {}
+
+    def say_left_at_central(self, project, answer):
+        """Name what taking a project off leaves at the central forge, as no token is at hand then to remove it."""
+        try:
+            left = json.loads(answer).get("left_at_central", [])
+            keys = [("".join(char for char in item[field] if char.isprintable()) for field in ("title", "address"))
+                    for item in left]
+            for title, address in keys:
+                print(f'porelo-host-person: {project}: taken off the host; its read-only deploy key "{title}" stays at '
+                      f"{address} until that repository's owner removes it", file=sys.stderr)
+        except (ValueError, TypeError, KeyError, AttributeError):
+            print(f"porelo-host-person: {project}: taken off the host; what it left at the central forge does not read",
+                  file=sys.stderr)
 
     def follow_project_admin(self, project, records):
         """Choose a current unlocked project admin and that admin's current signing key from the taken state."""
@@ -1905,20 +1948,29 @@ class Host:
         """Put one project on the host's forge, and its repository as soon as a token is at hand."""
         name = project["project"]
         if not has_forge:
+            item.pop("migrate_refused", None)
             item["state"] = "carried"
             return
         if name not in physical:
             admin, key = self.follow_project_admin(project, self.records())
             self.follow_project_command(["add", name, admin, "--signed-by", key])
+            # A new forge organization holds no repository, whatever a record that outlived the old one says.
+            for done in ("migrated", "migrate_refused"):
+                item.pop(done, None)
         if item.get("migrated"):
             item["state"] = "carried"
             return
         item["state"] = "waiting-for-token"
         if token is None:
             return
-        if project["address"] is None:
-            refuse("the project names no usable central address", 65)
-        self.follow_project_command(["migrate", name], {"address": project["address"], "token": token})
+        try:
+            if project["address"] is None:
+                refuse("the project names no usable central address", 65)
+            self.follow_project_command(["migrate", name], {"address": project["address"], "token": token})
+        except Refusal as error:
+            item["migrate_refused"] = error.shown()
+            raise
+        item.pop("migrate_refused", None)
         item["migrated"] = True
         item["state"] = "carried"
 
@@ -1951,13 +2003,14 @@ class Host:
             item = entries[name]
             try:
                 if project is not None:
-                    item["why"] = project.get("why")
                     # A forge that cannot go on yet keeps nobody out of the room: its refusal comes after.
                     forge_refusal = None
                     try:
                         self.follow_project_forge(project, item, has_forge, physical, token)
                     except Refusal as error:
                         forge_refusal = error
+                    # A follow without a token makes no try, so the last try's refusal still stands.
+                    item["why"] = "; ".join(filter(None, (item.get("migrate_refused"), project.get("why")))) or None
                     item["gate"] = self.follow_uses_gate(project)
                     if item["gate"] and not item.get("room_refused"):
                         records = self.records()
@@ -1985,7 +2038,7 @@ class Host:
                     item["state"] = "held"
                 elif error.code == 78:
                     item["room_refused"] = True
-                item["why"] = f"{error} (exit {error.code})"
+                item["why"] = error.shown()
             if item.get("room_refused"):
                 item["why"] = "the gate refused the room (exit 78); left alone"
             self.write_host_projects(entries)

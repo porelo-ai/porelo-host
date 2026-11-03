@@ -33,6 +33,9 @@ it is left out.
 | <a id="ho83"></a>[HO83](HO83-The-Persons-Token-Kept-Where-Each-Tool-Reads-It.md) | S | - | The vault's person token stays the one in force after every remake; each task-start and token-handling check is tested by its absence. |
 | <a id="ho85"></a>[HO85](HO85-The-Push-Judge-Armed-Only-Where-It-Holds.md) | S | - | A repository is armed only where the judge's hook holds, a removal takes the arrivals along, and each verdict is recorded only whole. |
 | <a id="ho87"></a>[HO87](HO87-The-Hosts-Registry-State-Answered.md) | S | - | The interface reads, as root over SSH, which registry the host applied and each person's standing on it. |
+| <a id="ho103"></a>[HO103](HO103-A-Project-Put-On-Again-After-Off.md) | M | - | A project put on a host, taken off and put on again is taken, and no deploy key of the host's stays behind unsaid. |
+| <a id="ho100"></a>[HO100](HO100-A-Project-Helpers-Own-Words-In-Status.md) | S | - | A project helper's refusal reaches `org status`'s `why` in its own words. |
+| <a id="ho104"></a>[HO104](HO104-A-Refusals-Why-Lasts.md) | S | - | A refused migration's `why` in `org status` stands until a later try ends otherwise |
 
 ## Implementing
 
@@ -42,9 +45,6 @@ it is left out.
 | <a id="ho95"></a>[HO95](HO95-No-Access-File-Bring-Or-Join-On-The-Host.md) | M | - | Nothing on the host reads an access file, takes a bundle, or runs a bring or a join; the host's `admins` name host admins alone. |
 | <a id="ho96"></a>[HO96](HO96-The-Registry-Named-The-Organization-On-The-Host.md) | M | - | The host's verbs, files, answers and documents name the organization, never a registry; the forge's package registry keeps its name. |
 | <a id="ho74"></a>[HO74](HO74-Every-Role-Tested-Without-The-VPN.md) | M | [HO63](#ho63) | Molecule shows every role over SSH alone, and the guide's checks pass on a rented host. |
-| <a id="ho103"></a>[HO103](HO103-A-Project-Put-On-Again-After-Off.md) | M | - | A project put on a host, taken off and put on again is taken, and no deploy key of the host's stays behind unsaid. |
-| <a id="ho100"></a>[HO100](HO100-A-Project-Helpers-Own-Words-In-Status.md) | S | - | A project helper's refusal reaches `org status`'s `why` in its own words. |
-| <a id="ho104"></a>[HO104](HO104-A-Refusals-Why-Lasts.md) | S | - | A refused migration's `why` in `org status` stands until a later try ends otherwise |
 
 ## Backlog
 

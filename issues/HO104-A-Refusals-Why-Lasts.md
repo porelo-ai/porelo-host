@@ -1,6 +1,6 @@
 # HO104 — A Refusal's Why Lasts
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** S - one state field in the follow and its tests, no contract other repositories read.
 
 **What must be true.** A refused migration's `why` in `org status` stands until a later try ends otherwise. Today the next

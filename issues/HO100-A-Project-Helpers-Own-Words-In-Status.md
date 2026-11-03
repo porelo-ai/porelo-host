@@ -1,6 +1,6 @@
 # HO100 — A Project Helper's Own Words In Status
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** S - one helper's refusal path and its tests, no contract other repositories read.
 
 **What must be true.** When the project helper refuses, `org status` gives that project's `why` in the helper's own

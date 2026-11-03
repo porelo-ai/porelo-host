@@ -227,7 +227,7 @@ def project_host(tmp_path, forge, push_host):
     for person in ("alice", "bob"):
         (etc / "people" / f"{person}.conf").write_text(PERSON_RECORD)
         (etc / "people" / f"{person}.conf").chmod(0o600)
-    (etc / "forge.conf").write_text(f"address=127.0.0.1\nport={forge.port}\naccount=porelo-forge\n")
+    (etc / "forge.conf").write_text(f"host=build\naddress=127.0.0.1\nport={forge.port}\naccount=porelo-forge\n")
     (etc / "forge.conf").chmod(0o600)
     write_organization(etc, {"alpha": "alice", "beta": "bob", "gamma": "carol"})
     (push_host["root"] / "uid").write_text("0\n")
@@ -1499,6 +1499,105 @@ def test_migration_uses_only_a_pipe_and_memory_for_the_central_token(
     )
     assert result[0] == 0, result
     assert not directory.exists(), "mixed-case API names must not strand lower-case read credentials"
+
+
+class CentralKeys:
+    """The central forge's deploy keys, answering as the pinned Forgejo was measured to: one key to a title."""
+
+    def __init__(self):
+        self.keys, self.deleted, self.posted = [], [], []
+
+    def __call__(self, unused_token, unused_origin):
+        return self
+
+    def request(self, method, path, body=None, expected=(200,)):
+        if method == "GET":
+            return list(self.keys) if "page=1&" in path else []
+        if method == "DELETE":
+            number = int(path.rsplit("/", 1)[1])
+            self.deleted.append(number)
+            self.keys = [key for key in self.keys if key["id"] != number]
+            return None
+        if any(key["title"] == body["title"] for key in self.keys):
+            raise OSError("the central forge answered HTTP 422")
+        self.posted.append(body["title"])
+        self.keys.append({**body, "id": 100 + len(self.posted)})
+        return self.keys[-1]
+
+
+def central_settings(host):
+    settings = host["etc"] / "organization/organization.yml"
+    (settings.parent / "read").mkdir(mode=0o700, parents=True, exist_ok=True)
+    settings.write_text("adapter: git\nsettings:\n  repository: git@central.example:acme/organization.git\n")
+    settings.chmod(0o600)
+
+
+def migrate_to(central, host, monkeypatch, capsys, **kwargs):
+    """Put the project on and migrate it, with the forge answering as a migrated repository does."""
+    address = "https://central.example/acme/code.git"
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY, **kwargs)[0] == 0
+    host["forge"].responses[("GET", "/api/v1/repos/alpha/code")] = (200, {"original_url": address})
+    return project(
+        host,
+        monkeypatch,
+        capsys,
+        "migrate",
+        "alpha",
+        overrides={"Central": central},
+        piped=json.dumps({"address": "git@central.example:acme/code.git", "token": CENTRAL_TOKEN}),
+    )
+
+
+def taken_off(host, monkeypatch, capsys):
+    """Take the project off with its work all pushed, as the follow does with no central token."""
+    host["forge"].repositories["alpha"] = []
+    result = project(host, monkeypatch, capsys, "remove", "alpha", overrides={"check_read_keys": lambda *args: None})
+    assert result[0] == 0, result
+    return json.loads(result[1])
+
+
+def test_a_project_put_on_again_after_off_replaces_its_own_key_and_says_what_stayed(memory_host, monkeypatch, capsys):
+    """Prevent a project being refused for good on its way back, or its key staying behind unsaid."""
+    central_settings(memory_host)
+    central = CentralKeys()
+    assert migrate_to(central, memory_host, monkeypatch, capsys)[0] == 0
+    first = central.keys[0]
+    assert first["title"] == "porelo host build project alpha" and first["read_only"] is True
+    assert taken_off(memory_host, monkeypatch, capsys)["left_at_central"] == [
+        {"address": "git@central.example:acme/code.git", "title": first["title"]}
+    ]
+    assert central.deleted == [], "a follow holds no central token, so off must not have reached the central forge"
+    result = migrate_to(central, memory_host, monkeypatch, capsys)
+    assert result[0] == 0, result
+    assert central.deleted == [first["id"]], "only the key whose private half this host dropped"
+    assert len(central.keys) == 1 and central.keys[0]["key"] != first["key"]
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        {"id": 5, "title": "porelo host other project alpha", "read_only": True},
+        {"id": 5, "title": "porelo-host-alpha", "read_only": True},
+    ],
+)
+def test_a_migration_leaves_a_key_of_another_host_or_of_a_person(memory_host, monkeypatch, capsys, other):
+    """Prevent one host deleting the key another host still compares with while the project it left is held."""
+    central_settings(memory_host)
+    central = CentralKeys()
+    central.keys.append({**other, "key": "ssh-ed25519 other"})
+    assert migrate_to(central, memory_host, monkeypatch, capsys)[0] == 0
+    assert central.deleted == [] and [key["id"] for key in central.keys][0] == 5
+
+
+def test_a_writable_key_under_the_hosts_own_title_is_refused_and_kept(memory_host, monkeypatch, capsys):
+    """Prevent a migration deleting a key with write access that this host cannot have made."""
+    central_settings(memory_host)
+    central = CentralKeys()
+    title = "porelo host build project alpha"
+    central.keys.append({"id": 5, "title": title, "read_only": False, "key": "ssh-ed25519 other"})
+    code, unused, err = migrate_to(central, memory_host, monkeypatch, capsys)
+    assert code == 65 and "write" in err
+    assert central.deleted == [] and central.posted == []
 
 
 @pytest.mark.parametrize("name", ["repositories.json", "Repositories.json"])

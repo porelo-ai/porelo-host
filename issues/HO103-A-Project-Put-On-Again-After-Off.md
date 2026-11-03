@@ -1,6 +1,6 @@
 # HO103 — A Project Put On Again After Off
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** M - the helper's migration and removal, the follow's journal, the document and a check on a real forge.
 
 **What must be true.** A project put on a host, taken off and put on again is taken. Today taking it off leaves the
@@ -18,6 +18,9 @@ measured. So `off` must also say truthfully what stays: nothing on the host, a d
   only a read-only key of exactly that title with another public key; a writable one is refused and kept.
 - `remove` answers each deploy key it leaves behind, by address and title, and the follow writes that to its journal.
 - `doc/local-forge.md` says what stays, for a project and for the organization.
+- A record that outlives a removal, as a refused room leaves it, is cleared when the project's forge organization is
+  made anew, so the project is migrated again.
+- GitHub's answer to a repeated title is not measured; deleting before adding does not depend on it.
 - Red first in `test_porelo_host_project.py`: the round on a request-level forge that answers 422 as measured; and it is
   run once on the pinned Forgejo.
 
@@ -30,7 +33,3 @@ Porelo and names the key's fingerprint, so a new host's key never collides; the 
 - On, off and on again succeeds against the pinned Forgejo and leaves one key; another host's key under its own title is
   untouched, seen failing with the title check broken on purpose.
 - The journal and the document name the key `off` leaves at the central forge.
-
-## To be checked
-
-- GitHub's answer to a repeated title is not measured. Deleting before adding does not depend on it.

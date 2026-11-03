@@ -40,6 +40,7 @@ TRUST_ANCHOR = "/"
 PROJECT_PATTERN = r"[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?"
 PERSON_PATTERN = r"(?!porelo(?:-|$))[a-z][a-z0-9-]{0,31}"
 COMMIT_PATTERN = r"[0-9a-f]{40}([0-9a-f]{24})?"
+HOST_PATTERN = r"[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?"
 ED25519_HEADER = b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20"
 SAFE_ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
 
@@ -911,7 +912,8 @@ def project_manifest(project):
         if (not isinstance(item, dict) or not isinstance(item.get("name"), str)
                 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", item["name"])
                 or item["name"] in names or not isinstance(item.get("address"), str)
-                or type(item.get("key_id")) is not int or item["key_id"] < 0):
+                or type(item.get("key_id")) is not int or item["key_id"] < 0
+                or not isinstance(item.get("title", ""), str)):
             refuse("the project's read-key manifest is malformed", 65)
         central_address(item["address"])
         names.add(item["name"])
@@ -1000,6 +1002,24 @@ def forge_git(account, project, repository):
     return result.stdout
 
 
+def replace_own_keys(central, route, stale):
+    """Delete this host's earlier key for this project, whose private half left with the project."""
+    for value in stale:
+        if value.get("read_only") is not True or type(value.get("id")) is not int or value["id"] <= 0:
+            refuse("the central forge holds a key with write access under this host's title; keeping it", 65)
+    for value in stale:
+        central.request("DELETE", f"{route}/{value['id']}", expected=(204,))
+
+
+def left_at_central(project):
+    """What removal cannot delete without a central token: a read key under the title it was made with."""
+    return [
+        {"address": item["address"], "title": item.get("title", "porelo-host-" + project)}
+        for item in project_manifest(project)[1]
+        if item["key_id"] > 0
+    ]
+
+
 def migrate(forge, project, supplied):
     """Migrate the state's project repository once, with a central token used only in memory."""
     try:
@@ -1057,7 +1077,8 @@ def migrate(forge, project, supplied):
     central = Central(request["token"], origin)
     route = f"/repos/{owner}/{name}/keys"
     if item["key_id"] == 0:
-        existing = []
+        title = f"porelo host {setting(read_values(CONF), 'host', HOST_PATTERN)} project {project}"
+        existing, stale = [], []
         seen = set()
         for page in range(1, 101):
             keys = central.request("GET", route + f"?page={page}&per_page=50&limit=50")
@@ -1070,15 +1091,18 @@ def migrate(forge, project, supplied):
                 refuse("the central forge repeated a deploy-key page", 69)
             seen.add(digest)
             existing.extend(value for value in keys if value.get("key") == public)
+            stale.extend(value for value in keys if value.get("title") == title and value.get("key") != public)
         else:
             refuse("the central forge did not finish listing deploy keys", 69)
+        replace_own_keys(central, route, stale)
         made = existing[0] if len(existing) == 1 else central.request("POST", route, {
-            "title": "porelo-host-" + project, "key": public, "read_only": True,
+            "title": title, "key": public, "read_only": True,
         }, expected=(201,)) if not existing else None
         if (not isinstance(made, dict) or type(made.get("id")) is not int or made["id"] <= 0
                 or made.get("read_only") is not True or made.get("key") != public):
             refuse("the central forge confirmed no matching read-only deploy key", 69)
         item["key_id"] = made["id"]
+        item["title"] = made["title"] if isinstance(made.get("title"), str) else title
         write_manifest(directory, entries)
     local = forge.request("GET", f"/repos/{project}/{name}", expected=(200, 404))
     if local is None:
@@ -1192,6 +1216,7 @@ def run():
             publisher = registered_publisher(project, record)
             affected = people_after_removal(project)
             person_content = None
+        left = left_at_central(project) if action == "remove" else []
         forge = Forge(read_values(CONF))
         if action == "add":
             add(forge, project, admin, key, record, person, person_content)
@@ -1201,7 +1226,10 @@ def run():
             remove(forge, project, record, publisher, affected)
     if action == "remove":
         with writing("standard output"):
-            print(json.dumps(dict(project=project, removed=True), separators=(",", ":")), flush=True)
+            answer = dict(project=project, removed=True)
+            if left:
+                answer["left_at_central"] = left
+            print(json.dumps(answer, separators=(",", ":")), flush=True)
 
 
 def main():

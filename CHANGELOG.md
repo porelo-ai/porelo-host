@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- A refused project helper gives its own last line and exit code as the project's `why` in `org status` and in the
+  follow's journal, never its other output or the central token. A refused migration's `why` stands until a later try
+  ends, instead of ending with the next follow.
+- A project's deploy key at the central forge is titled `porelo host <host> project <project>`. `porelo-host-project
+  remove` answers each key it leaves there in `left_at_central`, and the follow writes it to its journal.
+
+### Fixed
+
+- A project put on a host, taken off and put on again is taken: its migration replaces the read-only key this host made
+  for it, where the central forge refused a second key of that title. Another host's key stays.
+
 ## [0.5.9] - 2026-11-03
 
 ### Added

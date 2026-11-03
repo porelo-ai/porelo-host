@@ -177,7 +177,9 @@ removal before any deletion. Unpushed work keeps the project `held` in `org stat
 commits; the next follow tries again. Memberships and member file access are revoked even while the forge is held.
 The comparison pushes nothing and uses no central write token. Taking a project off deletes the host's private read
 keys but not their public deploy keys at the central forge, as no central token is at hand then: they are read-only
-and can no longer be used, and a person with admin rights on the central repository removes them by hand.
+and can no longer be used, and a person with admin rights on the central repository removes them by hand. Success's
+JSON names each one in `left_at_central`, by address and title, and the follow writes that to its journal. Putting the
+project on the same host again replaces that key.
 Manual removal of a legacy registration without
 read keys retains the gathered push's `--check` comparison and hidden central-token input.
 
@@ -249,6 +251,10 @@ add the organization's read key after setup or migrate projects waiting for that
 admin pin and organization deploy key; a taken state advances the pin. Project files are readable through
 per-member ACLs, and membership loss locks an account for seven days before automatic purge. See the porelo role's README for the machine
 file handover and host summary. `org pin` is unavailable.
+
+The host's read key on the organization's repository is taken off by nobody. Porelo titles it by its fingerprint, so a
+host set up anew adds its new key beside the old one, and a host set up anew or given up leaves its old key able to read
+until the repository's owner removes it.
 
 Each project and person entry is checked alone: a bad or duplicated project is named with state `refused` in the
 answer's projects and left out while the rest applies; unusable person cards are named on stderr. A revoked key
@@ -395,7 +401,13 @@ a read-only deploy key to the central repository and migrates the repository the
 Forgejo's private socket API, with the token in the request body alone. HTTPS and git SSH project addresses are
 normalized to the central forge's HTTPS clone address. The central forge must match the organization's adapter
 settings, which this helper reads as an indented `repository:` setting, optionally single- or double-quoted; other spellings are refused before
-sending the token. An existing matching migration and deploy key are kept on retry. The follow then writes members'
+sending the token. An existing matching migration and deploy key are kept on retry. The key's title is
+`porelo host <host> project <project>`. A read-only key of exactly that title with another public half was this host's
+before, and the token that adds the new key deletes it; one with write access is refused and kept. A key of another host
+stays, since that host may still hold the project for unpushed work and compare with it, and so does one titled
+`porelo-host-<project>`, as earlier versions made it, which names no host. The repository's owner removes those. A
+refusal stands as the project's `why` in `org status` until a later try ends, in the helper's last line and with its
+exit code, and reaches the journal; its other output never does. The follow then writes members'
 push configs from Forgejo's repositories and their `original_url`. The state supplies no additional repository
 list; repositories inside a project file are not expanded by this helper. Removing a project deletes its local
 private read keys; the recorded address retains an explicit SSH port for the removal comparison. The repository name

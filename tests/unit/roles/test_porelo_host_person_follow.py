@@ -1166,6 +1166,225 @@ def test_the_root_project_child_inherits_the_lock_and_receives_the_token_only_on
         assert json.loads(supplied)["token"] == secret and secret not in str(arguments)
 
 
+def helper_answering(following, monkeypatch, code, stdout, stderr):
+    """Stand in for the installed root helper's process alone, so its output reaches the real reading of it."""
+    host = following.host
+    host.write(host.path("/usr/local/sbin/porelo-host-project"), "#!/usr/bin/python3\n", 0o755)
+    monkeypatch.setattr(
+        host, "runner", lambda arguments, **kwargs: subprocess.CompletedProcess(arguments, code, stdout, stderr)
+    )
+    return host.path("/etc/porelo-host/forge.conf").open("rb")
+
+
+def refused_words(following, supplied=None):
+    host = following.host
+    with pytest.raises(following.scope["Refusal"]) as failure:
+        host.follow_project_command(["migrate", "alpha"], supplied)
+    return failure.value
+
+
+def test_a_helpers_refusal_is_given_in_its_own_words_with_its_exit(following, monkeypatch, capsys):
+    """Prevent a person being told only that a helper exited, with the reason lost in a captured stream."""
+    words = "the central forge refused the deploy-key request (HTTP 403)"
+    other = "a line before it\n"
+    with helper_answering(following, monkeypatch, 65, "", f"{other}porelo-host-project: {words}\n") as lock:
+        following.host.project_lock_fd = lock.fileno()
+        error = refused_words(following)
+    assert error.shown() == f"{words} (exit 65)"
+    assert error.code == 69, "a helper's 65 or 78 must not read as the follow's held or refused room"
+    journal = capsys.readouterr().err
+    assert words in journal and other.strip() not in journal
+
+
+@pytest.mark.parametrize(
+    "stderr",
+    [
+        "central-fixture-private-token\nporelo-host-project: the forge refused\n",
+        "porelo-host-project: the forge said central-fixture-private-token\n",
+        "porelo-host-project: the forge said central-fixture\x07-private-token\n",
+        "Traceback (most recent call last):\nValueError: central-fixture-private-token\n",
+        "central-fixture-private-token",
+        "",
+    ],
+)
+def test_no_token_in_a_helpers_output_reaches_why_or_the_journal(following, monkeypatch, capsys, stderr):
+    """Prevent the central token reaching status or a journal through a helper's diagnostic."""
+    token = "central-fixture-private-token"
+    with helper_answering(following, monkeypatch, 65, "", stderr) as lock:
+        following.host.project_lock_fd = lock.fileno()
+        error = refused_words(following, {"address": "git@example.org:acme/alpha.git", "token": token})
+    assert token not in error.shown() and token not in capsys.readouterr().err
+    if "the forge refused" in stderr:
+        assert error.shown() == "the forge refused (exit 65)"
+    else:
+        assert error.shown() == "the project helper migrate exited 65 (exit 69)"
+
+
+def test_a_last_line_not_the_helpers_own_is_never_given(following, monkeypatch, capsys):
+    """Prevent a crash's last line, which may repeat any credential the process held, reaching status or the journal."""
+    with helper_answering(following, monkeypatch, 1, "", "Traceback:\nValueError: an-admin-credential\n") as lock:
+        following.host.project_lock_fd = lock.fileno()
+        error = refused_words(following)
+    assert "credential" not in error.shown() + capsys.readouterr().err
+    assert error.shown() == "the project helper migrate exited 1 (exit 69)"
+
+
+def test_a_helpers_words_are_bounded_and_carry_no_control_characters(following, monkeypatch):
+    """Prevent a helper's line forging a status line or a journal entry of its own."""
+    with helper_answering(following, monkeypatch, 65, "", "porelo-host-project: a\x1b[31m\tb" + "c" * 900) as lock:
+        following.host.project_lock_fd = lock.fileno()
+        shown = refused_words(following).shown()
+    assert len(shown) < 330 and all(char.isprintable() for char in shown)
+
+
+def test_off_says_in_the_journal_which_key_stays_at_the_central_forge(following, monkeypatch, capsys):
+    """Prevent a host's deploy key staying able to read with nobody told it is there."""
+    answer = {
+        "project": "alpha",
+        "removed": True,
+        "left_at_central": [{"address": "git@example.org:acme/alpha.git", "title": "porelo host\x1b build"}],
+    }
+    with helper_answering(following, monkeypatch, 0, json.dumps(answer), "") as lock:
+        following.host.project_lock_fd = lock.fileno()
+        following.host.follow_project_command(["remove", "alpha"])
+    journal = capsys.readouterr().err
+    assert "git@example.org:acme/alpha.git" in journal and "porelo host build" in journal.replace("\x1b", "")
+    assert "\x1b" not in journal and "stays" in journal
+
+
+def status_why(host):
+    return next(item for item in host.org_status("host")["projects"] if item["project"] == "alpha")
+
+
+def test_a_refused_migrations_why_lasts_until_a_later_try_ends(following, monkeypatch):
+    """Prevent the reason of a refusal vanishing within minutes while its project still waits for a token."""
+    project_services(following, monkeypatch, gate=False)
+    host = following.host
+    follow(following)
+    original = host.follow_project_command
+    answers = iter(["the first refusal", "the second refusal", None])
+
+    def refusing(arguments, supplied=None):
+        if arguments[0] != "migrate":
+            return original(arguments, supplied)
+        words = next(answers)
+        if words:
+            raise following.scope["Refusal"](words, 69)
+        return {}
+
+    monkeypatch.setattr(host, "follow_project_command", refusing)
+    token = b"central-fixture-private-token\n"
+    with contextlib.suppress(following.scope["Refusal"]):
+        host.execute(["org", "refresh"], token)
+    assert "the first refusal" in status_why(host)["why"]
+    follow(following)
+    follow(following)
+    held = status_why(host)
+    assert held["state"] == "waiting-for-token" and "the first refusal" in held["why"]
+    with contextlib.suppress(following.scope["Refusal"]):
+        host.execute(["org", "refresh"], token)
+    assert "the second refusal" in status_why(host)["why"] and "first" not in status_why(host)["why"]
+    with contextlib.suppress(following.scope["Refusal"]):
+        host.execute(["org", "refresh"], token)
+    carried = status_why(host)
+    assert carried["state"] == "carried" and "refusal" not in str(carried["why"])
+
+
+def test_a_removal_refused_for_another_reason_than_commits_gives_its_words_and_stays_held(
+    following, monkeypatch, capsys
+):
+    """Prevent a person being told only that no comparison was made, when the helper said what stands in the way."""
+    words = "the forge has no organization for registered project alpha"
+    stderr = f"porelo-host-project: {words}\n"
+    with helper_answering(following, monkeypatch, 65, '{"project": "alpha", "unpushed": {}}', stderr) as lock:
+        following.host.project_lock_fd = lock.fileno()
+        with pytest.raises(following.scope["Refusal"]) as failure:
+            following.host.follow_project_command(["remove", "alpha"])
+    assert failure.value.code == 65, "the follow reads 65 as a project still held"
+    assert failure.value.shown() == f"{words} (exit 65)"
+    assert words in capsys.readouterr().err
+
+
+def test_a_project_put_on_again_is_migrated_though_its_record_outlived_the_removal(following, monkeypatch):
+    """Prevent an empty forge organization standing as carried, when a refused room kept the old progress record."""
+    actions, unused = project_services(following, monkeypatch)
+    host = following.host
+    named = following.reply["projects"]
+    follow(following)
+    host.execute(["org", "refresh"], b"central-fixture-private-token\n")
+    original = host.follow_room_command
+
+    def no_drop(action, name, persons):
+        if action == "drop-room":
+            raise following.scope["Refusal"]("gate away", 75)
+        return original(action, name, persons)
+
+    monkeypatch.setattr(host, "follow_room_command", no_drop)
+    following.reply["projects"] = []
+    with contextlib.suppress(following.scope["Refusal"]):
+        follow(following)
+    assert not host.path("/etc/porelo-host/projects/alpha.conf").exists()
+    assert "alpha" in host.host_projects(), "the room's retry must keep the record"
+    monkeypatch.setattr(host, "follow_room_command", original)
+    following.reply["projects"] = named
+    actions.clear()
+    # Losing the project locked its members and their forge logins have no stand-in here; their return is not held here.
+    monkeypatch.setattr(host, "follow_project_admin", lambda project, records: ("bob", "ssh-ed25519 fixture"))
+    with contextlib.suppress(following.scope["Refusal"]):
+        follow(following)
+    assert status_why(host)["state"] == "waiting-for-token"
+    with contextlib.suppress(following.scope["Refusal"]):
+        host.execute(["org", "refresh"], b"central-fixture-private-token\n")
+    assert [args[0] for args, unused in actions] == ["add", "migrate"]
+
+
+def status_why_after_follow(following):
+    follow(following)
+    return status_why(following.host)
+
+
+def test_a_kept_refusal_hides_nothing_the_organization_says_now_and_ends_with_the_forge(following, monkeypatch):
+    """Prevent an old refusal hiding a newer reason, or standing on a project no forge will try again."""
+    project_services(following, monkeypatch, gate=False)
+    host = following.host
+    follow(following)
+    original = host.follow_project_command
+
+    def refusing(arguments, supplied=None):
+        if arguments[0] == "migrate":
+            raise following.scope["Refusal"]("the first refusal", 69)
+        return original(arguments, supplied)
+
+    monkeypatch.setattr(host, "follow_project_command", refusing)
+    with contextlib.suppress(following.scope["Refusal"]):
+        host.execute(["org", "refresh"], b"central-fixture-private-token\n")
+    following.reply["projects"][0]["address"] = "has spaces"
+    why = status_why_after_follow(following)["why"]
+    assert "the first refusal" in why and "unusable address" in why
+    following.reply["projects"][0]["address"] = "git@example.org:acme/alpha.git"
+    monkeypatch.setattr(host, "forge_configuration", lambda user: None)
+    carried = status_why_after_follow(following)
+    assert carried["state"] == "carried" and "the first refusal" not in str(carried["why"])
+
+
+def test_a_passing_room_refusal_does_not_last_like_a_migrations(following, monkeypatch):
+    """Prevent a healed fault standing in status for good, which would hide the state a person must act on."""
+    unused, rooms = project_services(following, monkeypatch)
+    host = following.host
+    follow(following)
+    original = host.follow_room_command
+
+    def gate_away(*unused):
+        raise following.scope["Refusal"]("gate away", 75)
+
+    monkeypatch.setattr(host, "follow_room_command", gate_away)
+    follow(following)
+    assert "gate away" in status_why(host)["why"]
+    monkeypatch.setattr(host, "follow_room_command", original)
+    follow(following)
+    assert "gate away" not in str(status_why(host)["why"])
+
+
 @pytest.mark.parametrize("code", [0, 75, 78])
 def test_room_commands_run_as_the_gate_account_with_credentials_on_stdin(following, monkeypatch, code):
     """Prevent root owning a gate room or disclosing the gate's admin credential in an argument or error."""
