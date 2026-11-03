@@ -330,7 +330,7 @@ def test_project_file_acl_tracks_only_unlocked_members(following):
     answer = follow(state)
     path = state.host.path("/etc/porelo-host/organization/projects/alpha.json")
     expected = {key: state.reply["projects"][0][key] for key in ("project", "address", "signing_keys")}
-    expected.update(revision="a" * 40, fetch_from=None, homeserver=None, room=None)
+    expected.update(host="host", revision="a" * 40, fetch_from=None, homeserver=None, room=None)
     assert json.loads(path.read_text()) == expected
     assert readers(state, path) == {1001, 1002}
     assert path.stat().st_mode & 0o077 == 0
@@ -468,6 +468,7 @@ def test_project_file_names_the_hosts_forge_by_the_project_and_the_central_repos
     follow(state)
     written = json.loads(state.host.path("/etc/porelo-host/organization/projects/alpha.json").read_text())
     assert written["fetch_from"] == "http://127.0.0.1:2222/alpha/alpha.git"
+    assert written["host"] == "host"
     assert state.host.path("/etc/porelo-host/signers/alpha.allowed").exists()
 
 

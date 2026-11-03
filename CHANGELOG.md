@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   commit on its forge is unpushed, then the project stays `held` and named. The public read-only deploy key stays at
   the central forge for a person to remove by hand. A forge organization now belongs to the forge's administrator as
   well, as Forgejo keeps a last owner.
+- A project's file on the host names the host, so a member's Porelo can say where the project stands.
 - Root's login follows the state's host admins at each follow, and a later `up` leaves it so. Before the first follow
   `up` adds the seed to root's keys and removes none.
 - A purge also deletes the person's and their task gates' forge users, and needs no transport on a host with no

@@ -17,8 +17,8 @@ memberships with `"Take the project off"` and `"Purge"`.
 
 Root's persistent `porelo-host-follow.timer` runs `org follow` every five minutes. It fetches the organization using
 the host's deploy key in an isolated unit with network access, reconciles cards and project memberships, and publishes
-`organization/projects/<project>.json` with a read ACL for each unlocked member. Accounts with no membership or host
-admin role are locked when the host takes the change, within five minutes or at once on `org refresh`, and purged on
+`organization/projects/<project>.json`, naming the host, with a read ACL for each unlocked member. Accounts with no
+membership or host admin role are locked when the host takes the change, within five minutes or at once on `org refresh`, and purged on
 the first follow seven days after the recorded lock day; readmission
 before then restores the existing account, completing subordinate IDs and linger after an interrupted admission.
 Purge deletes the person's Forgejo users and their tokens, including the task gate's user.

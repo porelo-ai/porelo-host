@@ -2188,8 +2188,8 @@ class Host:
             else:
                 project["why"] = "the host card names no forge git port"
                 print(f'porelo-host-person: {project["project"]}: {project["why"]}', file=sys.stderr)
-        return {"project": project["project"], "revision": applied["revision"], "address": project["address"],
-                "fetch_from": fetch_from, "signing_keys": project["signing_keys"],
+        return {"project": project["project"], "host": applied["host_card"]["host"], "revision": applied["revision"],
+                "address": project["address"], "fetch_from": fetch_from, "signing_keys": project["signing_keys"],
                 **self.follow_project_room(project)}
 
     def follow_publish(self, applied, files, signers, records, accounts):
