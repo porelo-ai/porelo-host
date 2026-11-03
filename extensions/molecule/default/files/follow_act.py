@@ -153,6 +153,139 @@ if FORGE.exists():
             [owner, done.stderr],
         )
 
+    # What a repository's review means on the real forge. The file's value is put where the follow keeps it, as the
+    # central repository and its signed file are the walk's: the repository is made here, on the forge alone.
+    PROGRESS = ORG / "host-projects.json"
+    account = "porelo-forge"
+    uid = run("id", "-u", account).stdout.strip()
+    socket = f"/run/user/{uid}/porelo-forge/http.sock"
+    made = run(
+        "runuser",
+        "-u",
+        account,
+        "--",
+        "env",
+        "-C",
+        "/",
+        f"XDG_RUNTIME_DIR=/run/user/{uid}",
+        "podman",
+        "exec",
+        "forgejo",
+        "forgejo",
+        "admin",
+        "user",
+        "generate-access-token",
+        "--username",
+        "porelo-admin",
+        "--token-name",
+        "follow-act",
+        "--scopes",
+        "all",
+        "--raw",
+    )
+    forge_token = made.stdout.strip()
+    check(made.returncode == 0 and forge_token, "a token for the act's forge calls", made.stderr)
+
+    def forge(method, route, body=None):
+        done = run(
+            "curl",
+            "-sS",
+            "-K",
+            "-",
+            "--unix-socket",
+            socket,
+            "-X",
+            method,
+            "-H",
+            "Content-Type: application/json",
+            "-w",
+            "\n%{http_code}",
+            *(["-d", json.dumps(body)] if body is not None else []),
+            f"http://localhost/api/v1/{route}",
+            given=f'header = "Authorization: token {forge_token}"\n',
+        )
+        text, unused, code = done.stdout.rpartition("\n")
+        return int(code or 0), json.loads(text) if text.strip().startswith(("{", "[")) else None
+
+    def followed():
+        # A repository made here has no central address, so its members' push configs say so; only that may fail.
+        done = run(HELPER, "org", "follow")
+        check(
+            done.returncode == 0 or "no valid central address" in done.stderr,
+            "the follow to reach the rules",
+            done.stderr,
+        )
+
+    def in_force(review):
+        entries = json.loads(PROGRESS.read_text(encoding="utf-8"))
+        entries[PROJECT].update(
+            migrated=True,
+            state="carried",
+            file={"commit": "1" * 40, "signers": "", "review": review, "repositories": {}},
+        )
+        PROGRESS.write_text(json.dumps(entries), encoding="utf-8")
+        followed()
+
+    address = next(
+        item
+        for item in json.loads((SHARED / "answer.json").read_text(encoding="utf-8"))["projects"]
+        if item["project"] == PROJECT
+    )["address"]
+    code_name = address.rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1].removesuffix(".git")
+    repository = f"repos/{PROJECT}/{code_name}"
+    code, unused = forge(
+        "POST", f"orgs/{PROJECT}/repos", {"name": code_name, "auto_init": True, "default_branch": "main"}
+    )
+    check(code == 201, "the act's repository on the forge", code)
+    forge(
+        "PATCH",
+        repository,
+        {
+            "allow_fast_forward_only_merge": True,
+            "allow_merge_commits": False,
+            "allow_rebase": False,
+            "allow_rebase_explicit": False,
+            "allow_squash_merge": False,
+        },
+    )
+
+    def merged_alone(branch):
+        forge(
+            "POST", f"{repository}/contents/{branch}.txt", {"content": "YQ==", "branch": "main", "new_branch": branch}
+        )
+        code, pull = forge("POST", f"{repository}/pulls", {"head": branch, "base": "main", "title": branch})
+        check(code == 201, f"a pull request from {branch}", [code, pull])
+        return forge("POST", f"{repository}/pulls/{pull['number']}/merge", {"Do": "fast-forward-only"})[0]
+
+    in_force("optional")
+    code, rule = forge("GET", f"{repository}/branch_protections/main")
+    check(
+        code == 200 and rule["required_approvals"] == 0 and rule["dismiss_stale_approvals"] is True,
+        "optional to need no approval on the forge",
+        [code, rule],
+    )
+    check(merged_alone("alone") == 200, "the author to merge their own when optional")
+    code, unused = forge("POST", f"{repository}/contents/direct.txt", {"content": "YQ==", "branch": "main"})
+    check(400 <= code < 500, "no direct push to main when optional", code)
+    in_force("required")
+    code, rule = forge("GET", f"{repository}/branch_protections/main")
+    check(code == 200 and rule["required_approvals"] == 1, "required to need an approval on the forge", [code, rule])
+    check(400 <= merged_alone("waits") < 500, "the author not to merge alone when required")
+    forge("PATCH", f"{repository}/branch_protections/main", {"required_approvals": 0, "dismiss_stale_approvals": False})
+    followed()
+    code, rule = forge("GET", f"{repository}/branch_protections/main")
+    check(
+        rule["required_approvals"] == 1 and rule["dismiss_stale_approvals"] is True,
+        "a rule changed by hand to be set back",
+        rule,
+    )
+    check(forge("DELETE", repository)[0] == 204, "the act's repository removed")
+    forge("DELETE", "users/porelo-admin/tokens/follow-act")
+    entries = json.loads(PROGRESS.read_text(encoding="utf-8"))
+    for done_key in ("migrated", "file", "file_refused", "taken", "repositories_why"):
+        entries[PROJECT].pop(done_key, None)
+    PROGRESS.write_text(json.dumps(entries), encoding="utf-8")
+
 # A state the host's keys did not sign: refused, shown to the admin, the state kept; a forge that says nothing is not.
 (SHARED / "words").write_text("refused-state: an owner replaced a host admin's card\n", encoding="utf-8")
 (SHARED / "exit").write_text("65\n", encoding="utf-8")

@@ -1965,3 +1965,110 @@ def test_the_central_main_is_asked_by_the_read_key_and_bounded_in_time(memory_ho
     answer = "not a commit\trefs/heads/main\n"
     with pytest.raises(values["Refusal"]):
         values["central_main"](str(directory), item)
+
+
+def copying(host, monkeypatch, capsys, main, known="-", address="https://forge.example.org/acme/code.git"):
+    """Run the verb with the central forge's answer and its clone stood in; the rest is the real helper's."""
+    copies = host["tmp"] / "copies"
+    cloned, given = [], []
+
+    def project_git(arguments, *, environment=None, timeout=120):
+        cloned.append((arguments, environment, timeout))
+        target = Path(arguments[-1])
+        (target / "objects").mkdir(parents=True)
+        (target / "objects/pack").write_text("pack")
+        return ""
+
+    result = project(
+        host,
+        monkeypatch,
+        capsys,
+        "project-copy",
+        "alpha",
+        address,
+        known,
+        overrides={
+            "central_main": lambda *args: main,
+            "PROJECT_COPIES": str(copies),
+            "project_git": project_git,
+            "read_key_ssh": lambda directory, item: f"ssh -i {directory}/{item['name']}",
+            "give_copy": lambda path, account: given.append((path, account)),
+        },
+    )
+    return result, copies, cloned, given
+
+
+def test_a_copy_of_main_belongs_to_the_forge_account_alone(memory_host, monkeypatch, capsys):
+    """Prevent another local account reading a private repository, its copy's name being on a command line."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    read_key_project(host)
+    result, copies, _, given = copying(host, monkeypatch, capsys, "c" * 40)
+    assert result[0] == 0, result
+    answer = json.loads(result[1])
+    path = Path(answer["copy"])
+    assert answer["commit"] == "c" * 40 and path.name == "central.git" and path.parent.parent == copies
+    assert stat.S_IMODE(copies.stat().st_mode) == 0o711 and stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+    assert given == [(str(path.parent), "porelo-forge")]
+
+
+def test_a_copy_cannot_be_read_from_a_repository_recorded_under_another_address(memory_host, monkeypatch, capsys):
+    """Prevent a moved project's values being read from the repository it left."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    read_key_project(host)
+    result, _, cloned, _ = copying(
+        host, monkeypatch, capsys, "c" * 40, address="https://forge.example.org/new/code.git"
+    )
+    assert result[0] == 65 and not cloned
+
+
+def test_a_main_already_read_makes_no_copy_and_what_was_left_goes(memory_host, monkeypatch, capsys):
+    """Prevent a clone at every follow, and a copy an interrupted follow left staying on the host."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    read_key_project(host)
+    copies = host["tmp"] / "copies"
+    (copies / "left").mkdir(parents=True)
+    result, _, cloned, _ = copying(host, monkeypatch, capsys, "c" * 40, known="c" * 40)
+    assert result[0] == 0, result
+    assert json.loads(result[1]) == {"commit": "c" * 40, "copy": None} and not cloned
+    assert not (copies / "left").exists()
+
+
+def test_the_copy_takes_main_alone_with_the_repositorys_key(memory_host, monkeypatch, capsys):
+    """Prevent another key or every branch being taken, as only main's file counts."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    read_key_project(host)
+    result, _, cloned, _ = copying(host, monkeypatch, capsys, "c" * 40)
+    assert result[0] == 0, result
+    arguments, environment, _ = cloned[0]
+    assert arguments[:5] == ["clone", "--bare", "--single-branch", "--branch", "main"]
+    assert "projects/alpha/code" in environment["GIT_SSH_COMMAND"]
+
+
+@pytest.mark.parametrize(
+    ("main", "address", "code"),
+    [
+        ("c" * 40, "https://forge.example.org/acme/other.git", 69),
+        (None, "https://forge.example.org/acme/code.git", 69),
+        ("c" * 40, "--upload-pack=x", 65),
+    ],
+    ids=["no-read-key", "no-main", "bad-address"],
+)
+def test_a_copy_that_cannot_be_made_refuses_and_clones_nothing(memory_host, monkeypatch, capsys, main, address, code):
+    """Prevent an empty or foreign copy being judged as the project's file."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    read_key_project(host)
+    result, _, cloned, _ = copying(host, monkeypatch, capsys, main, address=address)
+    assert result[0] == code and not cloned
+
+
+def test_a_known_commit_must_be_a_commit(memory_host, monkeypatch, capsys):
+    """Prevent an argument reaching Git's comparison unread."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    read_key_project(host)
+    assert copying(host, monkeypatch, capsys, "c" * 40, known="--all")[0][0] == 64

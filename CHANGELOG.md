@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The follow reads each project's signed file: the host takes every repository it names under `central` with one token,
+  and each repository's `main` needs a review or not as `review` says (`required` by default). Needs a Porelo with
+  `project verify`.
 - A server's pin also holds the Organization Admins' keys, when Porelo names them, so a Machine Admin they replace
   takes effect at the next follow. Root stays with the machine's listed admins, and the role gets no account.
 - `porelo-host-push --central <project>` tells a project's member, with no token and no root, how each repository's

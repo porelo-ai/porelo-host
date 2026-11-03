@@ -19,6 +19,7 @@ import os
 import re
 import secrets
 import shlex
+import shutil
 import socket
 import stat
 import subprocess
@@ -41,6 +42,7 @@ PROJECT_PATTERN = r"[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?"
 PERSON_PATTERN = r"(?!porelo(?:-|$))[a-z][a-z0-9-]{0,31}"
 COMMIT_PATTERN = r"[0-9a-f]{40}([0-9a-f]{24})?"
 CENTRAL_ASK_SECONDS = 30
+PROJECT_COPIES = "/run/porelo-host-project-copy"
 HOST_PATTERN = r"[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?"
 ED25519_HEADER = b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20"
 SAFE_ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
@@ -189,6 +191,7 @@ MAIN_PROTECTION = {
     "rule_name": "main",
     "enable_push": False,
     "required_approvals": 1,
+    "dismiss_stale_approvals": True,
     "enable_approvals_whitelist": True,
     "approvals_whitelist_teams": ["Owners", "developers"],
     "enable_merge_whitelist": True,
@@ -982,6 +985,44 @@ def central_main(directory, item):
     return commit
 
 
+def give_copy(path, account):
+    """Hand a copy to the forge's account alone, which already holds the project's work, for Porelo to read as it."""
+    owner = pwd.getpwnam(account)
+    for folder, _folders, names in os.walk(path):
+        os.chown(folder, owner.pw_uid, owner.pw_gid, follow_symlinks=False)
+        for entry in names:
+            os.chown(os.path.join(folder, entry), owner.pw_uid, owner.pw_gid, follow_symlinks=False)
+
+
+def project_copy(project, address, known):
+    """A bare copy of a repository's main that an isolated Porelo can read, or none if main is still the commit known."""
+    _origin, _owner, name, wanted, _ssh = central_address(address)
+    directory, entries = project_manifest(project)
+    item = next((entry for entry in entries if entry["name"] == name), None)
+    if item is None or item["key_id"] <= 0:
+        refuse(f"the project has no read key for {name}", 69)
+    if central_address(item["address"])[3] != wanted:
+        refuse("the project's recorded central address differs", 65)
+    trusted_directory(PROJECT_COPIES, missing=True)
+    os.makedirs(PROJECT_COPIES, mode=0o711, exist_ok=True)
+    os.chmod(PROJECT_COPIES, 0o711)
+    for left in os.listdir(PROJECT_COPIES):
+        shutil.rmtree(os.path.join(PROJECT_COPIES, left), ignore_errors=True)
+    commit = central_main(directory, item)
+    if commit is None:
+        refuse(f"the central forge holds no main of {name}", 69)
+    if commit == known:
+        return {"commit": commit, "copy": None}
+    secret = os.path.join(PROJECT_COPIES, secrets.token_hex(16))
+    os.mkdir(secret, 0o700)
+    path = os.path.join(secret, "central.git")
+    project_git(["clone", "--bare", "--single-branch", "--branch", "main", "--",
+                 central_address(item["address"])[4], path],
+                environment={"GIT_SSH_COMMAND": read_key_ssh(directory, item)}, timeout=CENTRAL_ASK_SECONDS)
+    give_copy(secret, setting(read_values(CONF), "account", r"[a-z_][a-z0-9_-]{0,31}"))
+    return {"commit": commit, "copy": path}
+
+
 def repository_state(account, project, name, directory, item):
     """Tell one repository's local main against the central forge's; what cannot be told never reads as up to date."""
     if item["key_id"] <= 0:
@@ -1247,6 +1288,11 @@ def run():
     elif len(arguments) == 2 and arguments[0] in ("remove", "migrate", "central-state"):
         action, project = arguments
         admin = key = None
+    elif len(arguments) == 4 and arguments[0] == "project-copy":
+        action, project, copied, known = arguments
+        admin = key = None
+        if known != "-" and not re.fullmatch(COMMIT_PATTERN, known):
+            refuse("project-copy takes a known commit or -", 64)
     else:
         refuse('usage: add <project> <admin> --signed-by "ssh-ed25519 <base64>" | remove <project> | central-state <project>', 64)
     if not re.fullmatch(PROJECT_PATTERN, project):
@@ -1286,7 +1332,7 @@ def run():
             person_content = format_person([*members, f"{project} project-admin"], locked, pending, card)
             affected = None
             publisher = None
-        elif action == "central-state":
+        elif action in ("central-state", "project-copy"):
             publisher = affected = person_content = None
         else:
             publisher = registered_publisher(project, record)
@@ -1297,6 +1343,10 @@ def run():
             account = setting(read_values(CONF), "account", r"[a-z_][a-z0-9_-]{0,31}")
             with writing("standard output"):
                 print(json.dumps(central_state(account, project), separators=(",", ":")), flush=True)
+            return
+        if action == "project-copy":
+            with writing("standard output"):
+                print(json.dumps(project_copy(project, copied, known), separators=(",", ":")), flush=True)
             return
         forge = Forge(read_values(CONF))
         if action == "add":

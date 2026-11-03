@@ -29,6 +29,7 @@ it is left out.
 | <a id="ho104"></a>[HO104](HO104-A-Refusals-Why-Lasts.md) | S | - | A refused migration's `why` in `org status` stands until a later try ends otherwise |
 | <a id="ho108"></a>[HO108](HO108-Approved-Commits-Not-Yet-At-The-Central-Forge.md) | M | - | A person or the interface asks the host, with no root and no central token, how many approved commits on `main` the central forge lacks, with up to date, gone apart and cannot say as the other answers |
 | <a id="ho110"></a>[HO110](HO110-A-Server-Follows-The-Organization-Admins-Keys.md) | S | - | A server's pin holds the Organization Admins' keys beside its Machine Admins, so a Machine Admin they replace takes effect at the next follow |
+| <a id="ho60"></a>[HO60](HO60-Each-Repositorys-Review-Set-On-The-Forge.md) | L | - | The host takes every repository the signed project file names, and protects each one's `main` as that file says |
 
 ## Implementing
 
@@ -40,7 +41,6 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | [HO37](#ho37) | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
-| <a id="ho60"></a>[HO60](HO60-Each-Repositorys-Review-Set-On-The-Forge.md) | M | - | Each repository's `main` on the local forge and the project repository's protected from the signed project file's `review`: one approval by another person, dismissed by a later commit, or none; only owners and developers merge; set again at each sync. |
 | <a id="ho61"></a>[HO61](HO61-A-Purged-Persons-Matrix-Account-Taken-Off.md) | S | - | A purged person's account on the host's own Matrix homeserver is taken off or named, not left without a word when the transport refused to clear it. |
 | <a id="ho82"></a>[HO82](HO82-A-Bring-With-No-Token-File.md) | - | - | bring and join reach the host's forge with the person's token read from the vault per call, never from a file. |
 

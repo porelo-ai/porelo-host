@@ -4,6 +4,7 @@ import copy
 import datetime
 import contextlib
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -901,7 +902,7 @@ def test_account_names_cannot_take_over_an_existing_account(following, login):
     )
 
 
-def project_services(state, monkeypatch, *, forge=True, gate=True):
+def project_services(state, monkeypatch, *, forge=True, gate=True, files=False):
     """Stand in for the root helper and the gate, with independent physical project records."""
     host = state.host
     host.now = lambda: datetime.datetime(2026, 11, 3, tzinfo=datetime.timezone.utc)
@@ -918,6 +919,8 @@ def project_services(state, monkeypatch, *, forge=True, gate=True):
     monkeypatch.setattr(host, "forge_project_apply", lambda *args: None)
     monkeypatch.setattr(host, "arm_pushes", lambda *args: [])
     monkeypatch.setattr(host, "follow_push_configs", lambda *args: None)
+    if not files:
+        monkeypatch.setattr(host, "follow_project_repositories", lambda *args: None)
 
     def helper(arguments, supplied=None):
         actions.append((arguments, supplied))
@@ -1753,3 +1756,437 @@ def test_a_machine_with_no_admin_left_is_refused_though_the_organization_has_adm
     with pytest.raises(state.scope["Refusal"], match="no host admin keys"):
         state.host.execute(["org", "follow"], b"")
     assert pin_and_root(state) == before
+
+
+COPY = "/run/porelo-host-project-copy/" + "c" * 32 + "/central.git"
+
+
+def raise_if_failure(value):
+    if isinstance(value, Exception):
+        raise value
+
+
+class FileForge:
+    """The central main, the verify answer and the host's forge, as a follow on a project's file meets them."""
+
+    def __init__(self, state, monkeypatch):
+        self.state = state
+        self.host = state.host
+        self.actions = project_services(state, monkeypatch, gate=False, files=True)[0]
+        self.main = "1" * 40
+        self.answer = {"project": "alpha", "project_review": "required", "repositories": {}}
+        self.copies, self.verified, self.refused, self.users = [], [], [], []
+        self.repositories = ["alpha"]
+        self.protection = {}
+        self.written = []
+        host = self.host
+        helper = host.path("/usr/local/sbin/porelo-host-project")
+        helper.parent.mkdir(parents=True, exist_ok=True)
+        host.write(helper, "#!/bin/true\n", 0o755)
+        original = host.runner
+
+        def runner(arguments, **kwargs):
+            if len(arguments) > 1 and arguments[1] == "central-state":
+                return subprocess.CompletedProcess(arguments, 0, '{"project":"alpha","repositories":[]}', "")
+            if len(arguments) > 1 and arguments[1] == "project-copy":
+                self.copies.append(arguments[2:5])
+                raise_if_failure(self.main)
+                copy = None if arguments[4] == self.main else COPY
+                return subprocess.CompletedProcess(arguments, 0, json.dumps({"commit": self.main, "copy": copy}), "")
+            return original(arguments, **kwargs)
+
+        host.runner = runner
+
+        def isolated(unit, staged, arguments, what, words, **kwargs):
+            if arguments[:2] != ["project", "verify"]:
+                return original_isolated(unit, staged, arguments, what, words, **kwargs)
+            self.verified.append(arguments)
+            self.users.append(kwargs.get("user"))
+            raise_if_failure(self.answer)
+            return copy.deepcopy(self.answer)
+
+        original_isolated = host.isolated_porelo
+        monkeypatch.setattr(host, "isolated_porelo", isolated)
+
+        @contextlib.contextmanager
+        def session(user, scopes=None):
+            yield "porelo-forge", None, "http://forge/admin/users/", "token"
+
+        def api(opener, base, token, method, route, expected, body=None, not_found=None):
+            name = route.split("/")[2]
+            if method == "GET":
+                if name not in self.protection:
+                    refuse = state.scope["Refusal"]
+                    raise refuse(not_found, 65)
+                return self.protection[name]
+            if name in self.refused:
+                raise state.scope["Refusal"]("Forgejo answered HTTP 500", 69)
+            self.written.append((method, name, body))
+            self.protection[name] = {**self.protection.get(name, {}), **body}
+            return body
+
+        monkeypatch.setattr(host, "forge_session", session)
+        monkeypatch.setattr(host, "forge_api", api)
+        monkeypatch.setattr(host, "forge_pages", lambda *args: [{"name": name} for name in self.repositories])
+
+    def run(self, revision, token=False):
+        self.written.clear()
+        self.state.reply["revision"] = revision * 40
+        if token:
+            return self.host.execute(["org", "refresh"], b"central-fixture-private-token\n")
+        return self.host.execute(["org", "follow"], b"")
+
+    def item(self):
+        return json.loads(self.host.path("/etc/porelo-host/organization/host-projects.json").read_text())["alpha"]
+
+    def migrated(self):
+        return [supplied["address"] for arguments, supplied in self.actions if arguments[0] == "migrate"]
+
+
+@pytest.fixture
+def files(following, monkeypatch):
+    state = following
+    state.reply["projects"][0]["address"] = "git@example.org:acme/alpha.git"
+    forge = FileForge(state, monkeypatch)
+    follow(state)
+    forge.host.execute(["org", "refresh"], b"central-fixture-private-token\n")
+    return forge
+
+
+def named(**repositories):
+    return {
+        name: {"review": review, "upstream": None, "central": f"git@example.org:acme/{name}.git"}
+        for name, review in repositories.items()
+    }
+
+
+def test_each_repository_is_protected_as_the_verified_file_says(files):
+    """Prevent one person being unable to merge where the signed file says no review is needed, or the reverse."""
+    files.answer.update(project_review="optional", repositories=named(code="optional", other="required"))
+    files.main = "2" * 40
+    files.repositories = ["alpha", "code", "other", "unnamed"]
+    files.run("b")
+    assert {name: rule["required_approvals"] for name, rule in files.protection.items()} == {
+        "alpha": 0,
+        "code": 0,
+        "other": 1,
+        "unnamed": 1,
+    }
+    for rule in files.protection.values():
+        assert rule["dismiss_stale_approvals"] is True and rule["enable_push"] is False
+        assert rule["apply_to_admins"] is True
+        assert rule["merge_whitelist_teams"] == rule["approvals_whitelist_teams"] == ["Owners", "developers"]
+
+
+def test_the_file_is_read_with_the_projects_signers_from_a_copy(files):
+    """Prevent values read from anything but a commit Porelo checked against the project's signers."""
+    assert files.copies[-1][:2] == ["alpha", "git@example.org:acme/alpha.git"]
+    assert files.users[-1] == "porelo-forge", "the copy is that account's alone"
+    arguments = files.verified[-1]
+    assert arguments[arguments.index("--repository") + 1] == COPY
+    assert arguments[arguments.index("--signers") + 1].endswith("/signers") and "--json" in arguments
+
+
+def test_a_changed_value_is_set_once_and_an_unchanged_follow_writes_nothing(files):
+    """Prevent a change between the two values not reaching the forge, or every follow rewriting the rule."""
+    files.run("b")
+    files.answer["project_review"] = "optional"
+    files.main = "2" * 40
+    files.run("c")
+    assert [(method, name) for method, name, body in files.written] == [("PATCH", "alpha")]
+    assert files.protection["alpha"]["required_approvals"] == 0
+    files.run("d")
+    assert files.written == []
+
+
+def test_a_rule_changed_by_hand_on_the_forge_is_set_back(files):
+    """Prevent a hand on the forge outlasting the signed file, the dismissed approval among what is compared."""
+    files.run("b")
+    files.protection["alpha"]["dismiss_stale_approvals"] = False
+    files.run("c")
+    assert files.protection["alpha"]["dismiss_stale_approvals"] is True
+
+
+def test_the_same_commit_and_signers_are_not_verified_again_but_new_signers_are(files):
+    """Prevent a clone at every follow, and a signer removed leaving their file believed."""
+    before = len(files.verified)
+    files.run("b")
+    files.run("c")
+    assert len(files.verified) == before
+    files.state.signers["alpha"]["signers"] = f'charlie namespaces="git" {ssh_key(3)}\n'
+    files.run("d")
+    assert len(files.verified) == before + 1
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        lambda forge: setattr(forge, "main", subprocess.TimeoutExpired("helper", 60)),
+        lambda forge: setattr(forge, "answer", forge.state.scope["Refusal"]("not signed by a signer", 65)),
+        lambda forge: forge.answer.update(project_review="maybe"),
+        lambda forge: forge.answer.update(project="another"),
+        lambda forge: forge.answer.update(repositories={"Bad/Name": {"review": "optional", "central": None}}),
+        lambda forge: forge.answer.update(repositories=named(code="sometimes")),
+        lambda forge: forge.answer.update(repositories={"code": {"review": "optional", "central": 7}}),
+    ],
+)
+def test_a_file_that_cannot_be_read_keeps_the_last_values_and_says_so(files, failure):
+    """Prevent a refused or unreadable file relaxing a repository, or stopping the follow."""
+    files.answer["project_review"] = "optional"
+    files.main = "2" * 40
+    files.run("b")
+    assert files.protection["alpha"]["required_approvals"] == 0
+    files.main = "3" * 40
+    failure(files)
+    answer = files.run("c")
+    assert answer["refused"] is None
+    assert files.protection["alpha"]["required_approvals"] == 0
+    assert files.item()["why"]
+
+
+def test_a_file_never_read_leaves_every_repository_required(files):
+    """Prevent a repository being open before anything signed said so."""
+    files.main = files.state.scope["Refusal"]("no way in", 69)
+    files.protection.clear()
+    files.repositories = ["alpha", "code"]
+    files.item()
+    host_projects = files.host.path("/etc/porelo-host/organization/host-projects.json")
+    entries = json.loads(host_projects.read_text())
+    entries["alpha"].pop("file", None)
+    host_projects.write_text(json.dumps(entries))
+    files.run("b")
+    assert {rule["required_approvals"] for rule in files.protection.values()} == {1}
+
+
+def test_a_protection_that_cannot_be_set_refuses_naming_the_repository_and_others_go_on(files):
+    """Prevent a silent difference between the file and the forge, or one repository holding another's protection."""
+    files.answer["repositories"] = named(code="optional", other="optional")
+    files.main = "2" * 40
+    files.repositories = ["alpha", "code", "other"]
+    files.refused = ["code"]
+    files.state.reply["revision"] = "b" * 40
+    with pytest.raises(files.state.scope["Refusal"], match="alpha/code"):
+        files.host.execute(["org", "follow"], b"")
+    assert "code" not in files.protection and files.protection["other"]["required_approvals"] == 0
+
+
+def test_one_token_takes_every_named_repository_after_the_projects_own(following, monkeypatch):
+    """Prevent the person being asked for a second token when the first could add every read key at once."""
+    state = following
+    state.reply["projects"][0]["address"] = "git@example.org:acme/alpha.git"
+    forge = FileForge(state, monkeypatch)
+    forge.answer["repositories"] = named(**{"foo-1": "optional", "foo-2": "required"})
+    follow(state)
+    assert forge.migrated() == []
+    forge.host.execute(["org", "refresh"], b"central-fixture-private-token\n")
+    assert forge.migrated() == [
+        "git@example.org:acme/alpha.git",
+        "git@example.org:acme/foo-1.git",
+        "git@example.org:acme/foo-2.git",
+    ]
+    assert forge.item()["state"] == "carried"
+    forge.run("b")
+    assert len(forge.migrated()) == 3, "what is taken is not taken again"
+
+
+def test_a_repository_named_later_waits_for_a_token_and_the_others_go_on(files):
+    """Prevent a new repository failing silently, or holding up the project's others."""
+    files.answer["repositories"] = named(later="optional")
+    files.main = "2" * 40
+    files.repositories = ["alpha"]
+    files.run("b")
+    assert files.item()["state"] == "waiting-for-token" and "later" in files.item()["why"]
+    assert files.protection["alpha"]["required_approvals"] == 1
+    files.run("c", token=True)
+    assert files.migrated()[-1] == "git@example.org:acme/later.git"
+    assert files.item()["state"] == "carried" and "later" not in files.item()["why"]
+
+
+def test_a_repository_refused_is_named_and_the_next_is_still_taken(files, monkeypatch):
+    """Prevent one bad address, such as another forge's, stopping the rest."""
+    files.answer["repositories"] = named(bad="required", good="required")
+    files.main = "2" * 40
+    helper = files.host.follow_project_command
+
+    def refusing(arguments, supplied=None):
+        if arguments[0] == "migrate" and "bad" in supplied["address"]:
+            raise files.state.scope["Refusal"]("migration's central forge differs", 65)
+        return helper(arguments, supplied)
+
+    monkeypatch.setattr(files.host, "follow_project_command", refusing)
+    files.run("b", token=True)
+    assert files.migrated()[-1] == "git@example.org:acme/good.git"
+    assert "bad" in files.item()["why"] and "differs" in files.item()["why"]
+
+
+def test_a_repository_with_no_central_is_not_taken_and_a_name_gone_from_the_file_stays(files):
+    """Prevent a local-only repository being fetched from nowhere, and a removal from the file deleting work."""
+    files.answer["repositories"] = {"local": {"review": "optional", "upstream": None, "central": None}}
+    files.main = "2" * 40
+    files.repositories = ["alpha", "local"]
+    files.run("b", token=True)
+    assert not [address for address in files.migrated() if "local" in address]
+    assert files.protection["local"]["required_approvals"] == 0
+    files.answer["repositories"] = {}
+    files.main = "3" * 40
+    files.run("c", token=True)
+    assert files.protection["local"]["required_approvals"] == 1
+    assert not [arguments for arguments, supplied in files.actions if arguments[0] == "remove"]
+
+
+def test_review_goes_by_the_name_the_forge_gave_the_central_repository(files):
+    """Prevent a file's own name for a repository leaving the forge's repository required by mistake."""
+    files.answer["repositories"] = {
+        "code": {"review": "optional", "upstream": None, "central": "git@example.org:acme/Central-Code.git"}
+    }
+    files.main = "2" * 40
+    files.repositories = ["alpha", "Central-Code"]
+    files.run("b")
+    assert files.protection["Central-Code"]["required_approvals"] == 0
+
+
+def test_one_row_opens_only_the_repository_it_names_on_the_forge(files):
+    """Prevent a row with a central name also opening another repository that happens to bear the file's name."""
+    files.answer["repositories"] = {
+        "code": {"review": "optional", "upstream": None, "central": "git@example.org:acme/Central-Code.git"}
+    }
+    files.main = "2" * 40
+    files.repositories = ["alpha", "code", "Central-Code"]
+    files.run("b")
+    assert files.protection["code"]["required_approvals"] == 1
+    assert files.protection["Central-Code"]["required_approvals"] == 0
+
+
+@pytest.mark.parametrize(
+    "field", ["merge_whitelist_usernames", "approvals_whitelist_username", "push_whitelist_usernames"]
+)
+def test_a_person_let_through_by_name_is_taken_off_the_rule(files, field):
+    """Prevent an agent's account listed by hand merging or approving past the teams."""
+    files.run("b")
+    files.protection["alpha"][field] = ["agent"]
+    files.run("c")
+    assert files.protection["alpha"][field] == []
+
+
+def test_a_rule_answering_no_list_of_names_is_the_same_as_an_empty_one(files):
+    """Prevent Forgejo's null for an empty list rewriting the rule at every follow."""
+    files.run("b")
+    files.protection["alpha"]["merge_whitelist_usernames"] = None
+    files.run("c")
+    assert files.written == []
+
+
+def test_a_project_moved_to_another_address_loses_the_values_of_the_old_one(files):
+    """Prevent the old repository's signed optional staying in force over a project that moved."""
+    files.answer["project_review"] = "optional"
+    files.main = "2" * 40
+    files.run("b")
+    assert files.protection["alpha"]["required_approvals"] == 0
+    files.state.reply["projects"][0]["address"] = "git@example.org:new/alpha.git"
+    files.main = files.state.scope["Refusal"]("the recorded address differs", 65)
+    files.run("c")
+    assert files.protection["alpha"]["required_approvals"] == 1
+
+
+@pytest.mark.parametrize(
+    "copied",
+    [
+        "/run/porelo-host-project-copy/../../etc/victim/central.git",
+        "/etc/victim/central.git",
+        "/run/porelo-host-project-copy/" + "c" * 32 + "/../../victim/central.git",
+        7,
+    ],
+)
+def test_a_copy_path_that_does_not_read_is_neither_verified_nor_deleted(files, monkeypatch, copied):
+    """Prevent root deleting what a malformed answer names."""
+    removed = []
+    real_rmtree = shutil.rmtree
+
+    def rmtree(path, **kwargs):
+        # A temporary directory's own cleanup comes through here too.
+        if "victim" in str(path) or "porelo-host-project-copy" in str(path):
+            removed.append(path)
+        else:
+            real_rmtree(path, **kwargs)
+
+    monkeypatch.setattr(shutil, "rmtree", rmtree)
+    host_runner = files.host.runner
+    before = len(files.verified)
+
+    def runner(arguments, **kwargs):
+        if len(arguments) > 1 and arguments[1] == "project-copy":
+            return subprocess.CompletedProcess(arguments, 0, json.dumps({"commit": "2" * 40, "copy": copied}), "")
+        return host_runner(arguments, **kwargs)
+
+    files.host.runner = runner
+    files.run("b")
+    assert len(files.verified) == before and removed == [] and "project file" in files.item()["why"]
+
+
+def test_reading_files_shares_one_budget_and_comes_after_members_are_taken_away(files):
+    """Prevent many hanging forges using up the follow's time before a removed member leaves the forge."""
+    host = files.host
+    second = copy.deepcopy(files.state.reply["projects"][0])
+    second["project"] = "beta"
+    files.state.reply["projects"].append(second)
+    follow(files.state, "b")
+    entries = json.loads(host.path("/etc/porelo-host/organization/host-projects.json").read_text())
+    entries["beta"]["migrated"] = True
+    entries["alpha"].pop("file", None)
+    host.write(host.path("/etc/porelo-host/organization/host-projects.json"), json.dumps(entries), 0o600)
+    start = host.now()
+    copies = len(files.copies)
+    order, removals = [], host.follow_forge_members
+    host.follow_forge_members = lambda *args: (order.append("members"), removals(*args))[1]
+    runner = host.runner
+
+    def slow(arguments, **kwargs):
+        if len(arguments) > 1 and arguments[1] == "project-copy":
+            order.append("file")
+            host.now = lambda: start + datetime.timedelta(seconds=kwargs["timeout"])
+            raise subprocess.TimeoutExpired("helper", kwargs["timeout"])
+        return runner(arguments, **kwargs)
+
+    host.runner = slow
+    files.run("c")
+    assert order[:2] == ["members", "file"] and order.count("file") == 1
+    assert len(files.copies) == copies
+
+
+def test_a_token_gives_the_members_their_new_repositories_at_once(files):
+    """Prevent a person's push config lacking what the token just took until the next timer."""
+    files.answer["repositories"] = named(new="optional")
+    files.main = "2" * 40
+    order, removals = [], files.host.follow_forge_members
+    files.host.follow_forge_members = lambda *args: (order.append("members"), removals(*args))[1]
+    files.run("b", token=True)
+    assert order == ["members", "members"]
+    order.clear()
+    files.run("c")
+    assert order == ["members"]
+
+
+def test_a_new_forge_organization_takes_the_named_repositories_again(files):
+    """Prevent a project put back on the forge missing what the old organization held."""
+    files.answer["repositories"] = named(foo="optional")
+    files.main = "2" * 40
+    files.run("b", token=True)
+    assert files.migrated()[-1] == "git@example.org:acme/foo.git"
+    count = len(files.migrated())
+    files.host.path("/etc/porelo-host/projects/alpha.conf").unlink()
+    files.run("c", token=True)
+    assert files.migrated()[count:] == ["git@example.org:acme/alpha.git", "git@example.org:acme/foo.git"]
+
+
+def test_the_verify_unit_runs_as_the_account_that_owns_the_copy_with_no_network(following):
+    """Prevent the copy being opened to everyone for a dynamic user, or Porelo reading it with a way out."""
+    seen = []
+
+    def runner(arguments, **kwargs):
+        seen.append(arguments)
+        return subprocess.CompletedProcess(arguments, 0, "{}", "")
+
+    following.host.runner = runner
+    following.host.isolated_porelo("unit", {}, ["project", "verify"], "what", "words", user="porelo-forge")
+    assert "User=porelo-forge" in seen[0] and "PrivateNetwork=yes" in seen[0] and "DynamicUser=yes" not in seen[0]
+    assert "ProtectSystem=strict" in seen[0] and "NoNewPrivileges=yes" in seen[0]

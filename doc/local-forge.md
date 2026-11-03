@@ -421,8 +421,16 @@ stays, since that host may still hold the project for unpushed work and compare 
 `porelo-host-<project>`, as earlier versions made it, which names no host. The repository's owner removes those. A
 refusal stands as the project's `why` in `org status` until a later try ends, in the helper's last line and with its
 exit code, and reaches the journal; its other output never does. The follow then writes members'
-push configs from Forgejo's repositories and their `original_url`. The state supplies no additional repository
-list; repositories inside a project file are not expanded by this helper. Removing a project deletes its local
+push configs from Forgejo's repositories and their `original_url`. At each follow the host also reads the project's signed file: the
+helper asks for the project's own central `main` with its read key, makes a bare copy that only the forge's account can read if that
+commit or the signers changed, and an isolated `porelo project verify` with no network answers from that copy. The file's
+`repositories.<name>.central` names what else is taken: with the token at hand, all of them in the same follow, each
+with its own read key. One named later waits for a token and says so; one refused is named in `why`, and the rest go on;
+one taken out of the file stays with its work. The forge names each after its central repository. Each `main` needs one
+approval by another person after which a push dismisses it, unless `repositories.<name>.review` or `project.review` is
+`optional`, when the author may merge their own. Either way nobody pushes straight to `main`, and only owners and
+developers merge. A rule changed by hand is set back at the next follow; a file that cannot be read keeps the last values.
+Removing a project deletes its local
 private read keys; the recorded address retains an explicit SSH port for the removal comparison. The repository name
 `repositories.json` is reserved for the read-key manifest. Public deploy-key registrations on the central forge require separate removal with central
 administrative authority. `/usr/local/sbin/porelo-host-push --pull <project> [repositories...]` brings central `main` locally as

@@ -129,6 +129,22 @@ HOST_ADMIN = "host-admin"
 CENTRAL_STATES = "/etc/porelo-host/organization/central"
 # Of the five minutes the follow's unit is given in all, as every project's forge may hang at once.
 CENTRAL_ASK_SECONDS = 120
+PROJECT_FILE_SECONDS = 60
+PROJECT_COPIES = "/run/porelo-host-project-copy/"
+# What the host's forge holds a repository's main to; only the approvals follow the signed project file.
+MAIN_PROTECTION = {
+    "enable_push": False,
+    "enable_approvals_whitelist": True,
+    "approvals_whitelist_teams": ["Owners", "developers"],
+    "enable_merge_whitelist": True,
+    "merge_whitelist_teams": ["Owners", "developers"],
+    "enable_status_check": False,
+    "apply_to_admins": True,
+    "dismiss_stale_approvals": True,
+    "push_whitelist_usernames": [],
+    "merge_whitelist_usernames": [],
+    "approvals_whitelist_username": [],
+}
 HOST_PROJECTS = "/etc/porelo-host/organization/host-projects.json"
 # How a person's Porelo reaches the homeserver behind this host's gate.
 GATE_HOMESERVER = "unix:/run/porelo-matrix/client.sock"
@@ -165,6 +181,34 @@ HEADERS = (
 CENTRAL_ADDRESS = re.compile(r"[!-~]{0,1024}[:/](?P<repository>[A-Za-z0-9_][A-Za-z0-9_.-]{0,95}?)(?:\.git)?/?")
 TOKEN_LIMIT = 4096
 PURGE_AFTER = datetime.timedelta(days=7)
+
+
+def same_rule(found, wanted):
+    """Forgejo may answer a rule's team names in its own order and case."""
+    if isinstance(wanted, list):
+        found = [] if found is None else found
+        return isinstance(found, list) and sorted(str(team).lower() for team in found) == sorted(
+            team.lower() for team in wanted)
+    return found == wanted
+
+
+def project_file_values(answer, name):
+    """The review values and repositories of a verified project file, or a refusal naming what does not read."""
+    if answer.get("project") != name:
+        refuse("porelo project verify answered another project", 65)
+    # Absent from an older build, which reads no such key in a file: every repository then needs its review.
+    review = answer.get("project_review", "required")
+    rows = answer.get("repositories", {})
+    if review not in ("required", "optional") or not isinstance(rows, dict):
+        refuse("porelo project verify answered a malformed review", 65)
+    for repository, row in rows.items():
+        if (not re.fullmatch(REPOSITORY, repository) or not isinstance(row, dict)
+                or row.get("review") not in ("required", "optional")
+                or not (row.get("central") is None or isinstance(row["central"], str))
+                or not (row.get("central") is None or CENTRAL_ADDRESS.fullmatch(row["central"]))):
+            refuse(f"porelo project verify answered a malformed repository {repository[:100]!r}", 65)
+    return {"review": review, "repositories": {repository: {"review": row["review"], "central": row.get("central")}
+                                               for repository, row in rows.items()}}
 
 
 def central_row(row):
@@ -1427,7 +1471,7 @@ class Host:
         return temp_dir
 
     def isolated_porelo(self, unit, staged, arguments, what, refused_words, input=None, network=False, state=None,
-                        refused=None):
+                        refused=None, user=None):
         """Run Porelo without a home, exposing credentials, network and kept state only to the operation that needs them."""
         command = [
             "systemd-run",
@@ -1436,8 +1480,9 @@ class Host:
             "--quiet",
             "--collect",
             f"--unit={unit}",
-            "-p",
-            "DynamicUser=yes",
+            *(["-p", "DynamicUser=yes"] if user is None else
+              ["-p", f"User={user}", "-p", "PrivateTmp=yes", "-p", "ProtectSystem=strict", "-p", "NoNewPrivileges=yes",
+               "-p", "Environment=HOME=/tmp"]),
             "-p",
             "PrivateNetwork=no" if network else "PrivateNetwork=yes",
             "-p",
@@ -1821,7 +1866,11 @@ class Host:
         for step in (lambda: self.apply_org_cards(applied["persons"], applied["revoked"], records, previous),
                      lambda: self.follow_memberships(applied, records, accounts),
                      lambda: self.follow_projects(applied, previous, token),
-                     lambda: self.follow_forge_members(applied, previous, records, self.account_ids())):
+                     lambda: self.follow_forge_members(applied, previous, records, self.account_ids()),
+                     # After the removals above, as this can take long; a token's new repositories reach the members now.
+                     lambda: self.follow_project_repositories(applied, signers, token),
+                     lambda: None if token is None else self.follow_forge_members(applied, previous, records,
+                                                                                  self.account_ids())):
             try:
                 step()
             except Refusal as error:
@@ -1990,7 +2039,7 @@ class Host:
             admin, key = self.follow_project_admin(project, self.records())
             self.follow_project_command(["add", name, admin, "--signed-by", key])
             # A new forge organization holds no repository, whatever a record that outlived the old one says.
-            for done in ("migrated", "migrate_refused"):
+            for done in ("migrated", "migrate_refused", "taken", "repositories_why"):
                 item.pop(done, None)
         if item.get("migrated"):
             item["state"] = "carried"
@@ -2045,7 +2094,7 @@ class Host:
                     except Refusal as error:
                         forge_refusal = error
                     # A follow without a token makes no try, so the last try's refusal still stands.
-                    item["why"] = "; ".join(filter(None, (item.get("migrate_refused"), project.get("why")))) or None
+                    item["why"] = self.project_why(item, project)
                     item["gate"] = self.follow_uses_gate(project)
                     if item["gate"] and not item.get("room_refused"):
                         records = self.records()
@@ -2264,6 +2313,152 @@ class Host:
         if unlocked:
             self.private_umask(login)
             self.start_daemon(login)
+
+    def project_why(self, item, project):
+        """All that stands in a project's way, as org status says it."""
+        repositories = item.get("repositories_why") or {}
+        return "; ".join(filter(None, (item.get("migrate_refused"), project.get("why"), item.get("file_refused"),
+                                       *(f"{name}: {why}" for name, why in sorted(repositories.items()))))) or None
+
+    def follow_read_project_file(self, project, item, signers, account, deadline):
+        """Take the values of the project's own main, as Porelo verified them; the last ones hold if it cannot say."""
+        name = project["project"]
+        path = self.path(PROJECT_HELPER)
+        descriptor = self.project_lock_fd
+        # What another repository's main said is no longer the project's, whatever this read comes to.
+        if (item.get("file") or {}).get("address") != project["address"]:
+            item.pop("file", None)
+        known = item.get("file") or {}
+        remaining = (deadline - self.now()).total_seconds()
+        if remaining <= 0:
+            item["file_refused"] = "the project file: this follow had no time left to read it"
+            return
+        signed = hashlib.sha256(signers.encode()).hexdigest()
+        with tempfile.TemporaryDirectory(prefix="porelo-host-file-") as directory:
+            removable = None
+            try:
+                self.check(path, required=True)
+                result = self.runner(
+                    [str(path), "project-copy", name, project["address"],
+                     known.get("commit", "-") if known.get("signers") == signed else "-",
+                     "--lock-fd", str(descriptor)],
+                    input=None, pass_fds=(descriptor,), timeout=remaining)
+                if result.returncode:
+                    refuse("the project's main could not be read from the central forge", 69)
+                answer = json.loads(result.stdout)
+                copied = answer.get("copy") if isinstance(answer, dict) else None
+                commit = answer.get("commit") if isinstance(answer, dict) else None
+                if not isinstance(commit, str) or not re.fullmatch(COMMIT, commit):
+                    refuse("the project's main could not be read from the central forge", 69)
+                if copied is not None:
+                    if not isinstance(copied, str) or not re.fullmatch(
+                            re.escape(PROJECT_COPIES) + r"[0-9a-f]{32}/central\.git", copied):
+                        refuse("the project helper named no valid copy of the project", 69)
+                    removable = copied
+                    staged = Path(directory) / "signers"
+                    staged.write_text(signers, encoding="utf-8")
+                    staged.chmod(0o600)
+                    unit = "porelo-host-project-file"
+                    verified = self.isolated_porelo(
+                        unit, {"signers": staged},
+                        ["project", "verify", "--repository", copied,
+                         "--signers", f"/run/credentials/{unit}.service/signers", "--json"],
+                        "porelo project verify", "porelo project verify refused the project file", user=account,
+                    )
+                    item["file"] = {"commit": commit, "signers": signed, "address": project["address"],
+                                    **project_file_values(verified, name)}
+                item.pop("file_refused", None)
+            except Refusal as error:
+                item["file_refused"] = f"the project file: {error.shown()}"[:512]
+            except (OSError, subprocess.TimeoutExpired, UnicodeError, ValueError):
+                item["file_refused"] = "the project file: its main could not be read from the central forge"
+            finally:
+                if removable is not None:
+                    shutil.rmtree(self.path(removable).parent, ignore_errors=True)
+
+    def follow_take_named_repositories(self, project, item, token):
+        """Take each repository the file names with the one token at hand; each stands alone, and what waits says so."""
+        taken = set(item.get("taken", []))
+        waiting = {}
+        for repository, row in (item.get("file") or {}).get("repositories", {}).items():
+            central = row["central"]
+            if central is None or central == project["address"] or central in taken:
+                continue
+            if token is None:
+                waiting[repository] = "waits for a central token"
+                continue
+            try:
+                self.follow_project_command(["migrate", project["project"]], {"address": central, "token": token})
+                taken.add(central)
+            except Refusal as error:
+                waiting[repository] = error.shown()
+        item["taken"] = sorted(taken)
+        item["repositories_why"] = waiting
+        if any(why == "waits for a central token" for why in waiting.values()):
+            item["state"] = "waiting-for-token"
+
+    def follow_protect_main(self, project, item, admin):
+        """Hold each repository on the host's forge to its signed value; one left out or never read needs a review."""
+        name = project["project"]
+        file = item.get("file") or {}
+        reviews = {CENTRAL_ADDRESS.fullmatch(project["address"]).group("repository").lower(): file.get("review")}
+        for repository, row in file.get("repositories", {}).items():
+            taken_as = repository if row["central"] is None else CENTRAL_ADDRESS.fullmatch(row["central"]).group("repository")
+            reviews[taken_as.lower()] = row["review"]
+        failed = []
+        with self.forge_session(admin, "write:repository,read:organization") as (_, opener, base, token):
+            root = base.removesuffix("admin/users/")
+            for repository in sorted(row["name"] for row in self.forge_pages(opener, root, token,
+                                                                             f"orgs/{name}/repos", "name")):
+                review = reviews.get(repository.lower()) or "required"
+                wanted = {**MAIN_PROTECTION, "required_approvals": 1 if review == "required" else 0}
+                route = f"repos/{name}/{repository}/branch_protections"
+                try:
+                    try:
+                        found = self.forge_api(opener, root, token, "GET", route + "/main", 200, not_found="absent")
+                    except Refusal as error:
+                        if error.code != 65:
+                            raise
+                        found = None
+                    if found is None:
+                        self.forge_api(opener, root, token, "POST", route, 201, {"rule_name": "main", **wanted})
+                    elif any(not same_rule(found.get(key), value) for key, value in wanted.items()):
+                        self.forge_api(opener, root, token, "PATCH", route + "/main", 200, wanted)
+                    else:
+                        continue
+                    print(f"porelo-host-person: {name}/{repository}: main's review is {review}", file=sys.stderr)
+                except Refusal as error:
+                    failed.append(f"{name}/{repository}: main's protection could not be set: {error}")
+        if failed:
+            refuse("; ".join(failed), 69)
+
+    def follow_project_repositories(self, applied, signers, token):
+        """Read each project's signed file on the host's forge, and take its repositories and protection from it."""
+        entries = self.host_projects()
+        admin = applied["admins"][0]["login"]
+        configuration = self.forge_configuration(admin)
+        if configuration is None:
+            return
+        deadline = self.now() + datetime.timedelta(seconds=PROJECT_FILE_SECONDS)
+        failed = []
+        for project in applied["projects"]:
+            item = entries.get(project["project"])
+            published = signers.get(project["project"])
+            if item is None or not item.get("migrated") or project["address"] is None:
+                continue
+            if published is None:
+                item["file_refused"] = "the project file: the project has no signers"
+            else:
+                self.follow_read_project_file(project, item, published["signers"], configuration[0], deadline)
+            self.follow_take_named_repositories(project, item, token)
+            item["why"] = self.project_why(item, project)
+            self.write_host_projects(entries)
+            try:
+                self.follow_protect_main(project, item, admin)
+            except Refusal as error:
+                failed.append(str(error))
+        if failed:
+            refuse("; ".join(failed), 69)
 
     def follow_project_file(self, project, applied):
         """Build the member contract from accepted organization fields and the host's installed services."""
