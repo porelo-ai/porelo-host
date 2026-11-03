@@ -1825,8 +1825,16 @@ def central_state(host, monkeypatch, capsys, shape):
         return central
 
     result = project(
-        host, monkeypatch, capsys, "central-state", "alpha",
-        overrides={"forge_read": forge_read, "central_main": central_main, "forge_repositories": lambda *args: ["code"]},
+        host,
+        monkeypatch,
+        capsys,
+        "central-state",
+        "alpha",
+        overrides={
+            "forge_read": forge_read,
+            "central_main": central_main,
+            "forge_repositories": lambda *args: ["code"],
+        },
     )
     assert result[0] == 0, result
     answer = json.loads(result[1])
@@ -1897,7 +1905,11 @@ def test_a_repository_with_no_read_key_cannot_say(memory_host, monkeypatch, caps
     assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
     read_key_project(host)
     result = project(
-        host, monkeypatch, capsys, "central-state", "alpha",
+        host,
+        monkeypatch,
+        capsys,
+        "central-state",
+        "alpha",
         overrides={
             "central_main": lambda *args: "a" * 40,
             "forge_read": lambda *args: SimpleNamespace(returncode=0, stdout="a" * 40 + "\n"),
@@ -1922,7 +1934,7 @@ def test_telling_the_state_asks_the_forge_nothing_and_leaves_it_no_token(memory_
 
     central_state(host, monkeypatch, capsys, shape)
     assert len(host["forge"].calls) == before["api"]
-    assert not [call for call in host["cli_calls"][before["cli"]:] if "generate-access-token" in call]
+    assert not [call for call in host["cli_calls"][before["cli"] :] if "generate-access-token" in call]
 
 
 def test_the_central_main_is_asked_by_the_read_key_and_bounded_in_time(memory_host):

@@ -1550,7 +1550,9 @@ def test_how_main_stands_is_published_to_the_projects_unlocked_members_alone(fol
         (subprocess.TimeoutExpired("helper", 300), 0),
     ],
 )
-def test_a_helper_that_cannot_say_leaves_no_repository_and_does_not_fail_the_follow(following, monkeypatch, stdout, code):
+def test_a_helper_that_cannot_say_leaves_no_repository_and_does_not_fail_the_follow(
+    following, monkeypatch, stdout, code
+):
     """Prevent a central forge out of reach stopping the follow, or a malformed answer reading as up to date."""
     state = following
     migrated_project(state, monkeypatch, stdout, code)
