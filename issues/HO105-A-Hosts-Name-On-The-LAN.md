@@ -12,8 +12,9 @@ Measured on an Ubuntu 26.04 host after `up`: `avahi-daemon` is active and listen
 the host itself. The firewall in `roles/base/templates/firewall.nft.j2` ends in `drop` on every interface holding a
 default route and allows only TCP 22, so 5353 is dropped there. Three mDNS queries from a neighbor reached the host's
 interface by `tcpdump`, no answer left it, and `getent` on the neighbor found nothing. The same queries against avahi on a
-machine without this firewall got three answers of three. The rule was not lifted on the host to compare. The collection
-names no avahi, mDNS or 5353 anywhere, so this follows from the port 22 policy and was never decided.
+machine without this firewall got three answers of three, and against the same host before `up` too, where `getent` on
+the neighbor found it. The rule was not lifted after `up` to compare. The collection names no avahi, mDNS or 5353
+anywhere, so this follows from the port 22 policy and was never decided.
 
 ## Acceptance
 
@@ -28,6 +29,5 @@ names no avahi, mDNS or 5353 anywhere, so this follows from the port 22 policy a
 
 ## To be checked
 
-- Whether the name answers before `up` on a host from the same image, and where its avahi comes from: the collection does
-  not install it.
+- Where the host's avahi comes from: the collection does not install it.
 - IPv6 mDNS, which was not measured.
