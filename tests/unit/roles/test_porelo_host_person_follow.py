@@ -2190,3 +2190,31 @@ def test_the_verify_unit_runs_as_the_account_that_owns_the_copy_with_no_network(
     following.host.isolated_porelo("unit", {}, ["project", "verify"], "what", "words", user="porelo-forge")
     assert "User=porelo-forge" in seen[0] and "PrivateNetwork=yes" in seen[0] and "DynamicUser=yes" not in seen[0]
     assert "ProtectSystem=strict" in seen[0] and "NoNewPrivileges=yes" in seen[0]
+
+
+def card_key_file(state):
+    return state.host.path("/etc/ssh/authorized_keys/bob").read_text()
+
+
+def card_of(state):
+    return next(person for person in state.reply["persons"] if person["login"] == "bob")
+
+
+def test_a_renewed_card_moves_the_date_on_the_key_at_the_next_follow(following):
+    """Prevent a person's login stopping at the old date though their card was renewed."""
+    follow(following)
+    assert 'expiry-time="20281102' in card_key_file(following)
+    card_of(following)["expires"] = "2029-01-15"
+    follow(following, "b")
+    assert 'expiry-time="20290115' in card_key_file(following) and ssh_key(2) in card_key_file(following)
+
+
+def test_a_card_renewed_after_its_end_lets_the_person_in_again(following):
+    """Prevent a person whose card ran out staying out of the server after they renewed it."""
+    follow(following)
+    card_of(following)["expires"] = "2020-01-01"
+    follow(following, "b")
+    card_of(following)["expires"] = "2029-01-15"
+    follow(following, "c")
+    record = following.host.records()["bob"]
+    assert not record["locked"] and 'expiry-time="20290115' in card_key_file(following)
