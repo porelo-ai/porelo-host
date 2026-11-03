@@ -14,8 +14,9 @@ so a list a Machine Admin alone has changed is not taken. One stolen key of this
   both the pin and root's key file; it comes apart into two. The memberships keep reading `admins` alone, so the role
   gets no account, and its logins need not be among the state's `persons`, which `admins` must be. `admins[0]` still
   names the forge's account owner.
-- **Root, a proposal, not decided:** the pin holds the role's keys, but root stays with the listed Machine Admins, so
-  such a person gets root only by a visible signed change naming themselves. Otherwise root's key file reads both lists.
+- **Root, decided:** the pin holds and follows the role's keys; root stays with the listed Machine Admins, so root's key
+  file reads `admins` alone. An Organization Admin who needs root lists themselves as that machine's Machine Admin, a
+  visible signed change, one server at a time. A stolen key of this role can do the same, visibly; that cost is accepted.
 - **A server already set up:** its pin holds only its Machine Admins, so a commit the role signs is signed by no key it
   holds and is refused. It takes the list once, by one of those admins signing it, or by root's `org renew-pin`, whose
   input then carries both lists. Which of them, and what becomes of a server whose admin has gone, is to be read
