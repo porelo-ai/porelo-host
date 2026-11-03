@@ -81,7 +81,6 @@ it is left out.
 | <a id="ho102"></a>[HO102](HO102-A-Persons-Projects-Named-On-The-Host.md) | - | - | A person's host account names their projects before their first start there. |
 | <a id="ho103"></a>[HO103](HO103-A-Project-Put-On-Again-After-Off.md) | - | - | A project put on a host, taken off and put on again is taken, and no deploy key of the host's stays behind unsaid. |
 | <a id="ho104"></a>[HO104](HO104-A-Project-That-No-Token-Can-Cure.md) | - | - | A project with no usable address says so rather than waiting for a token, and a refusal's reason outlasts the next follow. |
-| <a id="ho105"></a>[HO105](HO105-A-Hosts-Name-On-The-LAN.md) | - | - | A host's `.local` name after `up`, which its firewall stops answering on a LAN: allowed on request, or said plainly |
 | <a id="ho106"></a>[HO106](HO106-A-Refused-Root-Key-File-Says-Why.md) | - | - | `up` refusing root's key file says how many keys it found and what to do, not only `non-zero return code` |
 | <a id="ho86"></a>[HO86](HO86-The-Push-Judges-Smaller-Edges.md) | - | [HO85](#ho85) | The push judge's smaller edges from its reading, gathered: links in the arming, the removal's checks, a first-push race, the null object, the answer's field and record checks pinned by tests. |
 | <a id="ho88"></a>[HO88](HO88-A-Project-Registered-From-The-Admins-Own-Account.md) | - | - | A project admin registers their project from their own account, its forge organization and teams made with it. |
@@ -161,4 +160,5 @@ it is left out.
 | <a id="ho66"></a>HO66 | The Forge's Links Reach The Laptop | replaced by the one-key design; the forge's links follow `ROOT_URL` at `<host>.localhost`. |
 | <a id="ho67"></a>HO67 | The Walk's Host Checks Hold On A Rented Host | replaced by the one-key design; the forge's session bus is [HO63](#ho63), and [HO74](#ho74) keeps the rented-host run and the check of the helpers' version. |
 | <a id="ho16"></a>HO16 | The Person's Drive On OneDrive | The host has no drive any more; OneDrive as a user's own drive may come later as a new idea beside the interface's. |
+| <a id="ho105"></a>HO105 | A Host's Name On The LAN | The host opens no port for it: a `.local` name does not answer after `up`, and a DNS name or a name entry of one's own takes its place. |
 

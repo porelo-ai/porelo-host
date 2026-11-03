@@ -18,6 +18,8 @@ agents part (every offered agent and the project's transport packages installed,
 sign-in). A second `up` runs both plays from the top and changes only what differs, read from the commands' own exit
 codes and `--json` output, so resuming is idempotence, with no marker file of the playbook's own.
 
+A host's `.local` name does not answer after `up`, as the firewall opens no port for it; use a DNS name or a name entry of your own.
+
 The [local forge](local-forge.md) connects task branches and independent builds to the person's merge and gathered-push
 decisions.
 
