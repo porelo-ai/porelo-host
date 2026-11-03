@@ -87,6 +87,7 @@ it is left out.
 | <a id="ho15"></a>[HO15](HO15-The-Host-On-Fedora.md) | - | - | The host on Fedora as on Ubuntu 26.04: SELinux, firewalld, `dnf` and a Molecule scenario on Fedora to measure. |
 | <a id="ho90"></a>[HO90](HO90-Each-Persons-State-Named-By-Sync-And-Status.md) | S | - | `sync` names each person's state, and `registry status` leaves out revoked and refused logins and names a cut-off purge or a removal's window `pending`. |
 | <a id="ho108"></a>[HO108](HO108-Approved-Commits-Not-Yet-At-The-Central-Forge.md) | - | - | A person or the interface asks the host, with no root and no central token, how many approved commits on `main` the central forge lacks, with up to date, gone apart and cannot say as the other answers |
+| <a id="ho109"></a>[HO109](HO109-How-Long-The-Host-Has-Not-Read-Its-Organization.md) | - | - | `org status` says when the host last read its organization, as a follow that cannot fetch keeps a removed member's login with nothing said |
 
 ## Estimated
 
