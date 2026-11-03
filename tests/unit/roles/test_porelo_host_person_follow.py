@@ -1775,7 +1775,7 @@ class FileForge:
         self.actions = project_services(state, monkeypatch, gate=False, files=True)[0]
         self.main = "1" * 40
         self.answer = {"project": "alpha", "project_review": "required", "repositories": {}}
-        self.copies, self.verified, self.refused, self.users = [], [], [], []
+        self.copies, self.verified, self.refused, self.users, self.signers = [], [], [], [], []
         self.repositories = ["alpha"]
         self.protection = {}
         self.written = []
@@ -1802,6 +1802,7 @@ class FileForge:
                 return original_isolated(unit, staged, arguments, what, words, **kwargs)
             self.verified.append(arguments)
             self.users.append(kwargs.get("user"))
+            self.signers.append(staged["signers"].read_text())
             raise_if_failure(self.answer)
             return copy.deepcopy(self.answer)
 
@@ -1913,7 +1914,7 @@ def test_the_same_commit_and_signers_are_not_verified_again_but_new_signers_are(
     files.run("b")
     files.run("c")
     assert len(files.verified) == before
-    files.state.signers["alpha"]["signers"] = f'charlie namespaces="git" {ssh_key(3)}\n'
+    files.state.reply["projects"][0]["signing_keys"][0]["key"] = ssh_key(3)
     files.run("d")
     assert len(files.verified) == before + 1
 
@@ -2218,3 +2219,48 @@ def test_a_card_renewed_after_its_end_lets_the_person_in_again(following):
     follow(following, "c")
     record = following.host.records()["bob"]
     assert not record["locked"] and 'expiry-time="20290115' in card_key_file(following)
+
+
+def test_only_a_project_admins_keys_that_stand_may_sign_the_file(following, monkeypatch):
+    """Prevent a developer, or a revoked admin, opening a repository to merges with no review."""
+    state = following
+    state.reply["projects"][0]["address"] = "git@example.org:acme/alpha.git"
+    state.reply["projects"][0]["signing_keys"] = [
+        {
+            "login": "bob",
+            "role": "admin",
+            "key": ssh_key(2),
+            "valid_from": "2026-11-02",
+            "valid_until": "2028-11-02",
+            "revoked_since": None,
+        },
+        {
+            "login": "charlie",
+            "role": "developer",
+            "key": ssh_key(3),
+            "valid_from": "2026-11-02",
+            "valid_until": "2028-11-02",
+            "revoked_since": None,
+        },
+        {
+            "login": "bob",
+            "role": "admin",
+            "key": ssh_key(4),
+            "valid_from": "2026-11-02",
+            "valid_until": "2028-11-02",
+            "revoked_since": "2026-11-02",
+        },
+    ]
+    forge = FileForge(state, monkeypatch)
+    follow(state)
+    forge.host.execute(["org", "refresh"], b"central-fixture-private-token\n")
+    assert forge.signers[-1] == f'bob valid-after="20261102",valid-before="20281102" {ssh_key(2)}\n'
+
+
+def test_a_project_with_no_admin_key_reads_no_file(files):
+    """Prevent an empty signers file being handed to Porelo, whatever it then makes of it."""
+    before = len(files.verified)
+    files.state.reply["projects"][0]["signing_keys"][0]["role"] = "developer"
+    files.main = "2" * 40
+    files.run("b")
+    assert len(files.verified) == before and "signed" in files.item()["why"]

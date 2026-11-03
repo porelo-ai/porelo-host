@@ -192,6 +192,18 @@ def same_rule(found, wanted):
     return found == wanted
 
 
+def file_signers(project):
+    """Who may have signed a project's file, as allowed signers: Porelo takes each line as a project admin's."""
+    lines = []
+    for row in project["signing_keys"]:
+        if row["role"] != "admin" or row["revoked_since"] is not None:
+            continue
+        window = [f'{option}="{row[field].replace("-", "")[:8]}"'
+                  for option, field in (("valid-after", "valid_from"), ("valid-before", "valid_until")) if row[field]]
+        lines.append(" ".join([row["login"], *([",".join(window)] if window else []), row["key"]]) + "\n")
+    return "".join(lines)
+
+
 def project_file_values(answer, name):
     """The review values and repositories of a verified project file, or a refusal naming what does not read."""
     if answer.get("project") != name:
@@ -1868,7 +1880,7 @@ class Host:
                      lambda: self.follow_projects(applied, previous, token),
                      lambda: self.follow_forge_members(applied, previous, records, self.account_ids()),
                      # After the removals above, as this can take long; a token's new repositories reach the members now.
-                     lambda: self.follow_project_repositories(applied, signers, token),
+                     lambda: self.follow_project_repositories(applied, token),
                      lambda: None if token is None else self.follow_forge_members(applied, previous, records,
                                                                                   self.account_ids())):
             try:
@@ -2432,7 +2444,7 @@ class Host:
         if failed:
             refuse("; ".join(failed), 69)
 
-    def follow_project_repositories(self, applied, signers, token):
+    def follow_project_repositories(self, applied, token):
         """Read each project's signed file on the host's forge, and take its repositories and protection from it."""
         entries = self.host_projects()
         admin = applied["admins"][0]["login"]
@@ -2443,13 +2455,13 @@ class Host:
         failed = []
         for project in applied["projects"]:
             item = entries.get(project["project"])
-            published = signers.get(project["project"])
+            signers = file_signers(project)
             if item is None or not item.get("migrated") or project["address"] is None:
                 continue
-            if published is None:
-                item["file_refused"] = "the project file: the project has no signers"
+            if signers:
+                self.follow_read_project_file(project, item, signers, configuration[0], deadline)
             else:
-                self.follow_read_project_file(project, item, published["signers"], configuration[0], deadline)
+                item["file_refused"] = "the project file: no project admin's key stands to have signed it"
             self.follow_take_named_repositories(project, item, token)
             item["why"] = self.project_why(item, project)
             self.write_host_projects(entries)
