@@ -1028,7 +1028,8 @@ def project_copy(project, address, known):
 # to any push, and the push judge sees nothing here. So main moves only forward. Where a task works in the repository it
 # reaches `signed`: the newest change of project.yml in the commit Porelo verified, and only if the tree changes in
 # nothing but that file, as other work takes the judged way, a person's pull request from central/main. Where no task
-# works it reaches `tip`, the commit itself, as nothing on the host runs what it holds. Forgejo's own post-receive then
+# works it reaches `tip`, the commit itself, unless something on the host would run part of it: a workflow, which the
+# post-receive below starts, or a snippet file the project's images build from. Forgejo's own post-receive then
 # tells its database. Each exit is one answer of ADVANCE_ANSWERS or a refusal; a temporary ref holds the commit while it
 # is compared, and goes with the bundle.
 ADVANCE_SCRIPT = r"""
@@ -1060,6 +1061,14 @@ signed=$(git log -1 --format=%H refs/porelo/central -- project.yml)
     || done_with 65
 local=$(git rev-parse --verify --quiet 'refs/heads/main^{commit}')
 [ -n "$local" ] || done_with 69
+if [ "$reach" = tip ]; then
+    file=$(git show "$commit:project.yml") || done_with 69
+    workflows=$(git ls-tree --name-only "$commit" -- .forgejo/workflows .gitea/workflows .github/workflows) || done_with 69
+    case $file in
+        *snippet_file*) reach=signed ;;
+        *) [ -z "$workflows" ] || reach=signed ;;
+    esac
+fi
 target=$signed
 [ "$reach" != tip ] || target=$commit
 [ "$local" != "$target" ] || done_with 0

@@ -442,7 +442,9 @@ has accepted central's file, the follow brings local `main` forward to it, past 
 A project that lists repositories works only in those, so nothing on the host runs what its own repository holds. There
 `project.yml` changes only at the central forge, signed, by Porelo or by hand: that repository's `main` takes no merge on
 the host, and the follow brings it up to central's commit, whatever else that commit changes. Other branches can still
-be pushed there, and lead nowhere.
+be pushed there, and lead nowhere. The exceptions run what the repository holds, so there `main` goes by the signed change
+as below: a workflow under `.forgejo`, `.gitea` or `.github`, which the forge would start, and a file naming an
+`image.snippet_file`, from which a task's image is built. So is a row whose name or upstream reads that repository.
 
 A project that lists none works in its own repository, which keeps its merges. There `main` moves only to the newest
 change of `project.yml`, and only if nothing else differs, so a central writer brings no other work past the judge. So

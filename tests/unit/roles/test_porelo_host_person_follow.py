@@ -2429,3 +2429,34 @@ def test_a_row_that_is_the_project_repository_keeps_it_a_place_of_work(files):
     files.run("b")
     assert files.advances[-1][-1] == "signed"
     assert files.protection["alpha"]["merge_whitelist_teams"] == ["Owners", "developers"]
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        {"central": None, "upstream": "http://127.0.0.1:3001/alpha/alpha.git"},
+        {"central": None, "upstream": "git@example.org:acme/ALPHA.git"},
+        {"central": "git@example.org:acme/code.git", "upstream": "http://127.0.0.1:3001/alpha/alpha"},
+        {"central": None, "upstream": None, "name": "alpha"},
+    ],
+)
+def test_a_row_reading_the_project_repository_under_another_name_keeps_it_a_place_of_work(files, row):
+    """A task fetches a row's upstream, whatever the row is called."""
+    name = row.pop("name", "code")
+    files.answer.update(repositories={name: {"review": "optional", **row}})
+    files.main = "2" * 40
+    files.run("b")
+    assert files.advances[-1][-1] == "signed"
+    assert files.protection["alpha"]["merge_whitelist_teams"] == ["Owners", "developers"]
+
+
+def test_a_row_at_a_host_address_of_its_own_leaves_the_project_repository_closed(files):
+    files.answer.update(
+        repositories={
+            "code": {"review": "optional", "central": None, "upstream": "http://127.0.0.1:3001/alpha/code.git"}
+        }
+    )
+    files.main = "2" * 40
+    files.repositories = ["alpha", "code"]
+    files.run("b")
+    assert files.advances[-1][-1] == "tip"

@@ -2223,6 +2223,46 @@ def test_a_repository_no_task_works_in_follows_central_whatever_it_holds(memory_
     only_main(local)
 
 
+@pytest.mark.parametrize("workflows", [".forgejo/workflows", ".gitea/workflows", ".github/workflows"])
+def test_a_workflow_at_central_does_not_reach_the_forge_that_would_run_it(
+    memory_host, monkeypatch, capsys, tmp_path, workflows
+):
+    """Forgejo starts a push's workflows from the commit moved to, with no judge having seen them."""
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local = repositories(tmp_path)
+    signed = git_out(work, "rev-parse", "main")
+    (work / workflows).mkdir(parents=True)
+    central_commit(work, f"{workflows}/run.yml", "on: push")
+    result, tip, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work, reach="tip")
+    assert result[0] == 0 and json.loads(result[1]) == {"state": "moved"}, result
+    assert git_out(local, "rev-parse", "refs/heads/main") == signed != tip
+    only_main(local)
+
+
+def test_a_workflow_taken_away_again_lets_it_follow(memory_host, monkeypatch, capsys, tmp_path):
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local = repositories(tmp_path)
+    (work / ".forgejo/workflows").mkdir(parents=True)
+    central_commit(work, ".forgejo/workflows/run.yml", "on: push")
+    subprocess.run(["git", "-C", str(work), "rm", "-q", "-r", ".forgejo"], check=True)
+    subprocess.run(["git", "-C", str(work), *IDENTITY, "commit", "-q", "-m", "gone"], check=True)
+    result, tip, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work, reach="tip")
+    assert result[0] == 0, result
+    assert git_out(local, "rev-parse", "refs/heads/main") == tip
+
+
+def test_a_file_naming_a_snippet_does_not_follow_what_it_builds_from(memory_host, monkeypatch, capsys, tmp_path):
+    """A task's image takes a snippet file from this repository, though no task works in it."""
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local = repositories(tmp_path)
+    central_commit(work, "project.yml", "image:\n  snippet_file: fragment\n")
+    signed = git_out(work, "rev-parse", "main")
+    central_commit(work, "fragment", "RUN anything")
+    result, tip, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work, reach="tip")
+    assert result[0] == 0 and json.loads(result[1]) == {"state": "moved"}, result
+    assert git_out(local, "rev-parse", "refs/heads/main") == signed != tip
+
+
 def test_following_central_still_never_takes_commits_back(memory_host, monkeypatch, capsys, tmp_path):
     """A copy that already holds its own work keeps it, and the follow says so."""
     advance_ready(memory_host, monkeypatch, capsys)

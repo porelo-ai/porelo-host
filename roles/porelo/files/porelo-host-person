@@ -189,10 +189,15 @@ def taken_as(repository, row):
 
 
 def no_task_in_own(project, file):
-    """A project that lists repositories works only in those, unless one of them is its own repository again."""
+    """A project that lists repositories works only in those, unless one of them reads its own repository again."""
     own = CENTRAL_ADDRESS.fullmatch(project["address"]).group("repository").lower()
     rows = file.get("repositories", {})
-    return bool(rows) and all(taken_as(repository, row).lower() != own for repository, row in rows.items())
+
+    def reads_own(repository, row):
+        upstream = re.split(r"[/:]", (row.get("upstream") or "").rstrip("/"))[-1].lower().removesuffix(".git")
+        return own in (repository.lower(), taken_as(repository, row).lower(), upstream)
+
+    return bool(rows) and not any(reads_own(repository, row) for repository, row in rows.items())
 
 
 def same_rule(found, wanted):
@@ -229,9 +234,11 @@ def project_file_values(answer, name):
         if (not re.fullmatch(REPOSITORY, repository) or not isinstance(row, dict)
                 or row.get("review") not in ("required", "optional")
                 or not (row.get("central") is None or isinstance(row["central"], str))
-                or not (row.get("central") is None or CENTRAL_ADDRESS.fullmatch(row["central"]))):
+                or not (row.get("central") is None or CENTRAL_ADDRESS.fullmatch(row["central"]))
+                or not (row.get("upstream") is None or isinstance(row["upstream"], str))):
             refuse(f"porelo project verify answered a malformed repository {repository[:100]!r}", 65)
-    return {"review": review, "repositories": {repository: {"review": row["review"], "central": row.get("central")}
+    return {"review": review, "repositories": {repository: {"review": row["review"], "central": row.get("central"),
+                                                            "upstream": row.get("upstream")}
                                                for repository, row in rows.items()}}
 
 
