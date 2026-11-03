@@ -32,6 +32,7 @@ it is left out.
 | <a id="ho60"></a>[HO60](HO60-Each-Repositorys-Review-Set-On-The-Forge.md) | L | - | The host takes every repository the signed project file names, and protects each one's `main` as that file says |
 
 ## Implementing
+| <a id="ho112"></a>[HO112](HO112-The-Project-File-Reaches-A-Task-On-The-Host.md) | M | - | What a Project Admin files at the central forge reaches a task on the host at the next follow. |
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|

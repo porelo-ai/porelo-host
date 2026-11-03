@@ -1,0 +1,24 @@
+# HO112 — The Project File Reaches A Task On The Host
+
+**Status:** Implementing.
+**Size:** M - one verb of the project helper, the follow calling it once Porelo accepted the file, the documents.
+
+**What must be true.** What a Project Admin files in the project's own repository at the central forge reaches a task on
+the host at the next follow. A task reads `project.yml` from the host's forge, whose copy was taken once, so a repository
+named or a review changed after the first follow was unknown there, as the rehearsal on a local machine showed.
+
+## Plan
+
+- `porelo-host-project project-advance <project> <repository> <commit> <copy>` brings that repository's local `main` up
+  to the commit in the copy. Only forward. It answers `moved`, `up-to-date`, `ahead` or `diverged`.
+- It writes in Forgejo's folder inside its container, so no hook or branch rule runs: `main` stays closed to every push.
+- `follow_read_project_file` calls it only after `porelo project verify` accepted that commit, for the project's own
+  repository alone; the others keep `central/main` by a person's pull request.
+- `diverged` leaves `main` where it is, and `why` says a task here reads an older file. The follow asks again each time.
+- `doc/local-forge.md` promises `http://127.0.0.1:<git_port>/<project>/<name>.git` as a repository's address on the host.
+
+## Acceptance
+
+- The verb against real Git repositories: each of its four answers, a commit that is not the copy's, nothing left behind.
+- The follow: no call for a refused file, none when nothing changed, a retry after a refusal, the copy still there.
+- The rehearsal: a filing at central reached by a person's read on the host, and a real task's start.
