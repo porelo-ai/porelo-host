@@ -1,6 +1,6 @@
 # HO103 — A Project Put On Again After Off
 
-**Status:** Idea.
+**Status:** Accepted.
 
 **What must be true.** A project put on a host, taken off and put on again is taken. Today taking it off leaves the
 host's deploy key at the central forge, and the new key has the same title, so Forgejo answers 422 and the helper

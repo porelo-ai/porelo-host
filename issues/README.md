@@ -67,6 +67,8 @@ it is left out.
 | <a id="ho56"></a>[HO56](HO56-Remove-Takes-The-Persons-Push-And-Sync-Away.md) | M | [HO46](#ho46), [HO47](#ho47) | Removing a project takes the push config and the sync timer out of each person's own account. |
 | <a id="ho57"></a>[HO57](HO57-The-Bring-Checks-With-The-Keys-In-Force-After-A-Handover.md) | S | - | A second bring verifies only what is new since the followed commit, with `following --json`'s `signed_by_keys`. |
 | <a id="ho102"></a>[HO102](HO102-A-Persons-Projects-Named-On-The-Host.md) | - | - | A person's host account names their projects before their first start there. |
+| <a id="ho103"></a>[HO103](HO103-A-Project-Put-On-Again-After-Off.md) | - | - | A project put on a host, taken off and put on again is taken, and no deploy key of the host's stays behind unsaid. |
+| <a id="ho100"></a>[HO100](HO100-A-Project-Helpers-Own-Words-In-Status.md) | - | - | A project helper's refusal reaches `org status`'s `why` in its own words. |
 
 ## Idea
 
@@ -77,10 +79,9 @@ it is left out.
 | <a id="ho97"></a>[HO97](HO97-A-Host-Reached-By-IPv6-Alone.md) | - | - | A server reached by IPv6 alone is prepared: its public interface told by the IPv6 default route, the firewall and the forge holding for it. |
 | <a id="ho98"></a>[HO98](HO98-A-Projects-Central-Address-Changed.md) | - | - | A signed change of a project's central address is named, not called carried over an absent repository. |
 | <a id="ho99"></a>[HO99](HO99-A-Central-Forge-On-A-Private-Authority.md) | - | - | A central forge on a private authority is reached by the fetch, the read key, the migration and the push, from one setting. |
-| <a id="ho100"></a>[HO100](HO100-A-Project-Helpers-Own-Words-In-Status.md) | - | - | A project helper's refusal reaches `org status`'s `why` in its own words. |
 | <a id="ho101"></a>[HO101](HO101-One-Forge-Over-SSH-And-HTTPS-On-A-Port.md) | - | - | One forge's ssh address and its https address on a port count as one forge. |
-| <a id="ho103"></a>[HO103](HO103-A-Project-Put-On-Again-After-Off.md) | - | - | A project put on a host, taken off and put on again is taken, and no deploy key of the host's stays behind unsaid. |
-| <a id="ho104"></a>[HO104](HO104-A-Project-That-No-Token-Can-Cure.md) | - | - | A project with no usable address says so rather than waiting for a token, and a refusal's reason outlasts the next follow. |
+| <a id="ho104"></a>[HO104](HO104-A-Refusals-Why-Lasts.md) | - | - | A refused migration's `why` in `org status` stands until a later try ends otherwise |
+| <a id="ho107"></a>[HO107](HO107-A-Project-That-No-Token-Can-Cure.md) | - | - | A project with no usable central address has a state of its own, `waiting-for-address`, as no token can cure it |
 | <a id="ho106"></a>[HO106](HO106-A-Refused-Root-Key-File-Says-Why.md) | - | - | `up` refusing root's key file says how many keys it found and what to do, not only `non-zero return code` |
 | <a id="ho86"></a>[HO86](HO86-The-Push-Judges-Smaller-Edges.md) | - | [HO85](#ho85) | The push judge's smaller edges from its reading, gathered: links in the arming, the removal's checks, a first-push race, the null object, the answer's field and record checks pinned by tests. |
 | <a id="ho88"></a>[HO88](HO88-A-Project-Registered-From-The-Admins-Own-Account.md) | - | - | A project admin registers their project from their own account, its forge organization and teams made with it. |
