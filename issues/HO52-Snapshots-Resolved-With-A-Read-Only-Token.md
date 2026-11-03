@@ -1,6 +1,6 @@
 # HO52 — Snapshots Resolved With A Read-Only Token
 
-**Status:** Analyzed; blocked by [HO44](README.md#ho44).
+**Status:** Analyzed.
 **Size:** M - one contract other repositories read (a secret's name and scope, a variable), in one helper with its
 tests and a Molecule act.
 
@@ -18,10 +18,9 @@ build that misses it fails instead of resolving elsewhere.
   - Actions secret `PORELO_PUBLISHER_TOKEN` as today, `write:package`, for the deploying step alone.
   - Actions variable **`MAVEN_SNAPSHOTS_URL`** of each project's organization, `https://<forge>/api/packages/<project>/maven`
     at the address a job reaches, with the other variables a build reads on this forge (`PORELO_PUBLISH`,
-    `PORELO_DEPLOY_PROFILE`, `JF_URL`) and the placeholder secret `JF_ACCESS_TOKEN`, as the role set them for one owner
-    before [HO42](README.md#ho42).
+    `PORELO_DEPLOY_PROFILE`, `JF_URL`) and the placeholder secret `JF_ACCESS_TOKEN`, as the role once set them for one owner.
   - Actions secret **`PORELO_POOL_SSH`** of each project's organization where the host has a VM pool: the pool's run
-    key `/var/lib/porelo-host/pool/run-key`, as `vm_pool` sent it to the one organization before [HO42](README.md#ho42). Since [HO42](README.md#ho42)
+    key `/var/lib/porelo-host/pool/run-key`, as `vm_pool` once sent it to the one organization. Today
     `up` makes no organization, so no organization has it; `porelo-host-project` runs as root and can read the key,
     the project admin's bring cannot.
 - **`roles/forge/files/porelo-host-project`, `add`:** after the publisher's token, a second `token(…, publisher,

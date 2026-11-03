@@ -16,20 +16,11 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho14"></a>[HO14](HO14-The-Collections-Python-Under-Ansible-Test-Sanity.md) | S | - | `ansible-test sanity` on the whole collection in the Build, offline, its requirements taken by hash. |
-| <a id="ho63"></a>[HO63](HO63-Podman-Reached-Through-The-Accounts-Session-Bus.md) | S | - | Every podman call as a service account reaches its user manager's bus, and a missing bus refuses by name. |
-| <a id="ho42"></a>[HO42](HO42-The-Host-Prepared-With-No-Project-Or-Person.md) | L | - | The host admin prepares a host with no project or person: the VPN per host, the shared forge, runner, pool and Matrix homeserver, under the host's names and the host admin's constrained CA. The homeserver's certificate waits on the homeserver serving one made elsewhere. |
-| <a id="ho44"></a>[HO44](HO44-A-Project-Registered-On-The-Host.md) | M | [HO42](#ho42) | `porelo-host-project`: a project's forge organization and publisher with its pinned signing key, deleted once nothing is unpushed. |
-| <a id="ho43"></a>[HO43](HO43-A-Project-Admin-Admitted-By-The-Host-Admin.md) | L | [HO42](#ho42) | `porelo-host-person`: a person admitted from their public keys (account, laptops' ssh keys and VPN peers, forge login and identities, Matrix token), locked and purged. |
 | <a id="ho12"></a>[HO12](HO12-The-VM-Pool.md) | L | - | Role `vm_pool`: VMs with run accounts `porelo-machines` rents from, made by the same code as the test VM, deleted by name at `down`. |
-| <a id="ho49"></a>[HO49](HO49-The-Persons-Forge-Login-Without-Repositories.md) | S | - | Wherever the host runs its own forge, the person's login and the password script are there, repositories or none. |
-| <a id="ho45"></a>[HO45](HO45-The-Project-Brought-And-Joined-In-The-Persons-Own-Account.md) | L | [HO43](#ho43), [HO44](#ho44) | `bring.yml` and `join.yml` in the person's own account, with the stop's own-account mode and two bundles. |
-| <a id="ho53"></a>[HO53](HO53-No-Forge-User-Operator.md) | S | [HO42](#ho42) | `up` makes no forge user `operator` and removes it from a host set up before, once a search shows nothing reads it; each person's login is their own. |
-| <a id="ho55"></a>[HO55](HO55-A-Person-Leaves-When-No-Membership-Is-Left.md) | M | [HO43](#ho43), [HO44](#ho44) | Each person holds memberships, per project and by hand; removing a project locks whoever has none left, and `down` refuses while anyone holds one, naming each. |
+| <a id="ho45"></a>[HO45](HO45-The-Project-Brought-And-Joined-In-The-Persons-Own-Account.md) | L | - | `bring.yml` and `join.yml` in the person's own account, with the stop's own-account mode and two bundles. |
 | <a id="ho46"></a>[HO46](HO46-The-Developers-Kept-In-Step-With-The-Signed-Access-File.md) | L | [HO45](#ho45) | `sync`: the developers on the host kept to the signed `access.yml`, verified by Porelo's own check as a throwaway user, added or locked. |
-| <a id="ho47"></a>[HO47](HO47-The-Gathered-Push-Run-By-Any-Developer.md) | S | [HO45](#ho45) | `porelo-host-push` as a user tool with the person's own config and token. |
-| <a id="ho48"></a>[HO48](HO48-Every-Role-Tested-On-One-Host.md) | L | [HO46](#ho46), [HO47](#ho47) | The Molecule scenario with a host admin, two project admins and a developer with two laptops, every act and refusal. |
+| <a id="ho48"></a>[HO48](HO48-Every-Role-Tested-On-One-Host.md) | L | [HO46](#ho46) | The Molecule scenario with a host admin, two project admins and a developer with two laptops, every act and refusal. |
 | <a id="ho81"></a>[HO81](HO81-The-Gates-Route-Match-Holds-For-Every-Decoded-Byte.md) | XS | - | No decoded byte takes a refused route past the forge gate's match, and `web.sock` challenges a client that waits for one. |
-| <a id="ho84"></a>[HO84](HO84-The-Persons-Daemon-By-A-Fixed-Name.md) | S | - | A person's tunnel reaches their daemon and binds its return socket by names that follow from the login alone. |
 | <a id="ho83"></a>[HO83](HO83-The-Persons-Token-Kept-Where-Each-Tool-Reads-It.md) | S | - | The vault's person token stays the one in force after every remake; each task-start and token-handling check is tested by its absence. |
 | <a id="ho85"></a>[HO85](HO85-The-Push-Judge-Armed-Only-Where-It-Holds.md) | S | - | A repository is armed only where the judge's hook holds, a removal takes the arrivals along, and each verdict is recorded only whole. |
 | <a id="ho87"></a>[HO87](HO87-The-Hosts-Registry-State-Answered.md) | S | - | The interface reads, as root over SSH, which registry the host applied and each person's standing on it. |
@@ -41,16 +32,11 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho93"></a>[HO93](HO93-The-Host-Follows-Its-Organization-By-Itself.md) | L | - | Root fetches the signed state of the host's organization and projects through the adapter every five minutes and on refresh, and applies it. |
-| <a id="ho95"></a>[HO95](HO95-No-Access-File-Bring-Or-Join-On-The-Host.md) | M | - | Nothing on the host reads an access file, takes a bundle, or runs a bring or a join; the host's `admins` name host admins alone. |
-| <a id="ho96"></a>[HO96](HO96-The-Registry-Named-The-Organization-On-The-Host.md) | M | - | The host's verbs, files, answers and documents name the organization, never a registry; the forge's package registry keeps its name. |
-| <a id="ho74"></a>[HO74](HO74-Every-Role-Tested-Without-The-VPN.md) | M | [HO63](#ho63) | Molecule shows every role over SSH alone, and the guide's checks pass on a rented host. |
 
 ## Backlog
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho94"></a>[HO94](HO94-A-Project-Put-On-The-Host-And-Taken-Off.md) | M | [HO93](#ho93) | A project put on the host stands with its repositories and members at once; taken off, it goes once nothing is unpushed. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | [HO37](#ho37) | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho60"></a>[HO60](HO60-Each-Repositorys-Review-Set-On-The-Forge.md) | M | - | Each repository's `main` on the local forge and the project repository's protected from the signed project file's `review`: one approval by another person, dismissed by a later commit, or none; only owners and developers merge; set again at each sync. |
 | <a id="ho61"></a>[HO61](HO61-A-Purged-Persons-Matrix-Account-Taken-Off.md) | S | - | A purged person's account on the host's own Matrix homeserver is taken off or named, not left without a word when the transport refused to clear it. |
@@ -60,14 +46,14 @@ it is left out.
 
 | # | Size | Blocked by | Open questions | What it covers |
 |---|---|---|---|---|
-| <a id="ho52"></a>[HO52](HO52-Snapshots-Resolved-With-A-Read-Only-Token.md) | M | [HO44](#ho44) | 0 | Each project organization holds a `read:package` token as `PORELO_PACKAGES_READ_TOKEN` and its own `MAVEN_SNAPSHOTS_URL`, so builds resolve snapshots without the publisher's token. |
+| <a id="ho52"></a>[HO52](HO52-Snapshots-Resolved-With-A-Read-Only-Token.md) | M | - | 0 | Each project organization holds a `read:package` token as `PORELO_PACKAGES_READ_TOKEN` and its own `MAVEN_SNAPSHOTS_URL`, so builds resolve snapshots without the publisher's token. |
 
 ## Accepted
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho59"></a>[HO59](HO59-An-Interrupted-Bring-Replaced-Safely.md) | M | - | A bring leaves `bring.state` in its setup directory, so an interrupted one is recognized and replaced by a new upload instead of refused. |
-| <a id="ho56"></a>[HO56](HO56-Remove-Takes-The-Persons-Push-And-Sync-Away.md) | M | [HO46](#ho46), [HO47](#ho47) | Removing a project takes the push config and the sync timer out of each person's own account. |
+| <a id="ho56"></a>[HO56](HO56-Remove-Takes-The-Persons-Push-And-Sync-Away.md) | M | [HO46](#ho46) | Removing a project takes the push config and the sync timer out of each person's own account. |
 | <a id="ho57"></a>[HO57](HO57-The-Bring-Checks-With-The-Keys-In-Force-After-A-Handover.md) | S | - | A second bring verifies only what is new since the followed commit, with `following --json`'s `signed_by_keys`. |
 | <a id="ho102"></a>[HO102](HO102-A-Persons-Projects-Named-On-The-Host.md) | - | - | A person's host account names their projects before their first start there. |
 
@@ -85,8 +71,8 @@ it is left out.
 | <a id="ho106"></a>[HO106](HO106-A-Refused-Root-Key-File-Says-Why.md) | - | - | `up` refusing root's key file says how many keys it found and what to do, not only `non-zero return code` |
 | <a id="ho86"></a>[HO86](HO86-The-Push-Judges-Smaller-Edges.md) | - | [HO85](#ho85) | The push judge's smaller edges from its reading, gathered: links in the arming, the removal's checks, a first-push race, the null object, the answer's field and record checks pinned by tests. |
 | <a id="ho88"></a>[HO88](HO88-A-Project-Registered-From-The-Admins-Own-Account.md) | - | - | A project admin registers their project from their own account, its forge organization and teams made with it. |
-| <a id="ho78"></a>[HO78](HO78-Only-The-Gates-Sockets-Forwarded.md) | - | [HO74](#ho74) | A person's SSH connection forwards only to the gates' sockets and their own return socket, and to no TCP address. |
-| <a id="ho79"></a>[HO79](HO79-A-Persons-SSH-Login-Confirmed-By-A-Second-Factor.md) | - | [HO63](#ho63) | A person's SSH login needs a second factor beside their key: FIDO2 touch, or TOTP through PAM. |
+| <a id="ho78"></a>[HO78](HO78-Only-The-Gates-Sockets-Forwarded.md) | - | - | A person's SSH connection forwards only to the gates' sockets and their own return socket, and to no TCP address. |
+| <a id="ho79"></a>[HO79](HO79-A-Persons-SSH-Login-Confirmed-By-A-Second-Factor.md) | - | - | A person's SSH login needs a second factor beside their key: FIDO2 touch, or TOTP through PAM. |
 | <a id="ho77"></a>[HO77](HO77-Each-Job-In-A-Network-Of-Its-Own.md) | - | - | Concurrent jobs on a host cannot reach one another's network, and no host login reaches Forgejo over TCP. |
 | <a id="ho64"></a>[HO64](HO64-The-Collection-Tested-Where-Up-Puts-It.md) | - | - | Once the interface installs the collection for every account, Molecule installs the collection as `up` does and shows a person's account finds it there; the README names the place. |
 | <a id="ho58"></a>[HO58](HO58-The-Services-Podman-Kept-Small.md) | - | - | Once a day, and after a missed day, each service account's Podman loses the images and volumes no container used for a set time. |
@@ -151,6 +137,20 @@ it is left out.
 | <a id="ho06"></a>HO06 | The Person's Drive Mounted | The role `porelo.host.drive` mounts a `noexec` sparse-file filesystem for the drive, installs the drive's client once its signature under the pinned CA checks and runs its daemon as a user unit, stops `up` for `drive` while logged out, syncs only the person's folder into the folder, and at `down` waits until it is synced before logging out with `--unlink` and unmounting. |
 | <a id="ho09"></a>HO09 | Up And Down In Their Order | `playbooks/up.yml` runs in two plays around the waiting stop for what only the person can give and resumes from the top by idempotence, `playbooks/down.yml` takes down what is there in reverse order, and the stdout callback `porelo.host.lines` reports each task and stop as version 1 JSON lines. |
 | <a id="ho02"></a>HO02 | Porelo's Own Commands Called, Never Redone | The role `porelo.host.porelo` installs Porelo by its pinned key and runs its setup script for the account, runs `porelo setup`, stops `up` while the vault is missing or shut, deposits the machine file's keys from the drive into `porelo vault put --from-file` and follows the project by its signature, and clears the vault at `down`, every step through Porelo's own commands and answers with no secret passing through Ansible. |
+| <a id="ho49"></a>HO49 | The Person's Forge Login Without Repositories | Wherever the host runs its own forge, the person signs in with their lasting password whether or not repositories are migrated into it. |
+| <a id="ho84"></a>HO84 | The Person's Daemon By A Fixed Name | A person's tunnel reaches their daemon and binds its return socket by names that follow from the login alone, `porelod.sock` and `return.sock` under `/run/porelo-host/people/<login>/`. |
+| <a id="ho93"></a>HO93 | The Host Follows Its Organization By Itself | Every five minutes and at once on `org refresh`, root fetches the signed state of the host's organization through the adapter, checks it against the pin and the last state taken, and applies its persons, projects and members. |
+| <a id="ho94"></a>HO94 | A Project Put On The Host And Taken Off | A project is on one host at a time: put on, its members are admitted and its forge organization and repositories stand on the host's forge with the host admin's token once; taken off, it goes once nothing of it is unpushed, and whoever has no other membership is locked. |
+| <a id="ho95"></a>HO95 | No Access File, Bring Or Join On The Host | Nothing on the host reads an access file, takes a bundle or runs a bring or a join, and the host's admins name its host admins alone. |
+| <a id="ho96"></a>HO96 | The Registry Named The Organization On The Host | The host's verbs, files, answers and documents speak of its organization, never of a registry. |
+| <a id="ho42"></a>HO42 | The Host Prepared With No Project Or Person | `up` prepares a host once with no project and no person, and the forge, runner, VM pool and a homeserver in an account of its own are shared by whoever is admitted later. |
+| <a id="ho43"></a>HO43 | A Project Admin Admitted By The Host Admin | `porelo-host-person` admits a person from their public keys into an account of their own with a forge login, identities and a Matrix token, and locks and purges them again. |
+| <a id="ho44"></a>HO44 | A Project Registered On The Host | `porelo-host-project` registers a project with one forge organization and one publisher and its pinned signing key, and removes it once nothing of it is unpushed. |
+| <a id="ho47"></a>HO47 | The Gathered Push Run By Any Developer | Each developer of a project runs the gathered push to the central forge with their own write token and config. |
+| <a id="ho53"></a>HO53 | No Forge User Operator | `up` makes no forge user `operator` and removes one a host holds from before, and a person whose name a system group holds is refused. |
+| <a id="ho55"></a>HO55 | A Person Leaves When No Membership Is Left | Every person is on the host by a membership and is locked when none is left, and `down` refuses while anyone holds one, naming each. |
+| <a id="ho63"></a>HO63 | Podman Reached Through The Account's Session Bus | Every podman call as a service account reaches that account's session bus, and a missing bus refuses loudly, naming the account. |
+| <a id="ho74"></a>HO74 | Every Role Tested Without The VPN | Molecule shows every role of the host over SSH alone, through a tunnel with a person's key, with the persons' lock and purge in its act. |
 
 ## Rejected
 
@@ -160,7 +160,7 @@ it is left out.
 | <a id="ho62"></a>HO62 | The Forge's Own Reason For A Refused Password | replaced by the one-key design; the forge has no password. |
 | <a id="ho65"></a>HO65 | The Host's Tunnel Addresses Answered | replaced by the one-key design; the host has no tunnel addresses. |
 | <a id="ho66"></a>HO66 | The Forge's Links Reach The Laptop | replaced by the one-key design; the forge's links follow `ROOT_URL` at `<host>.localhost`. |
-| <a id="ho67"></a>HO67 | The Walk's Host Checks Hold On A Rented Host | replaced by the one-key design; the forge's session bus is [HO63](#ho63), and [HO74](#ho74) keeps the rented-host run and the check of the helpers' version. |
+| <a id="ho67"></a>HO67 | The Walk's Host Checks Hold On A Rented Host | replaced by the one-key design; the forge's session bus was built apart, and the rented-host run and the check of the helpers' version went with the work testing every role without the VPN. |
 | <a id="ho16"></a>HO16 | The Person's Drive On OneDrive | The host has no drive any more; OneDrive as a user's own drive may come later as a new idea beside the interface's. |
 | <a id="ho105"></a>HO105 | A Host's Name On The LAN | The host opens no port for it: a `.local` name does not answer after `up`, and a DNS name or a name entry of one's own takes its place. |
 

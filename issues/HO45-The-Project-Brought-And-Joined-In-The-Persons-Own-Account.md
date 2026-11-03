@@ -16,7 +16,7 @@ Porelo runs only in a person's own account; the project admin brings, the develo
 
 - **The stop's own-account mode:** `porelo-host-stop --stdin`, run without `sudo`, acts on the caller's own account:
   `vault-new`, `vault`, `keys`, `forge-central-token` into `$XDG_RUNTIME_DIR/porelo-host/`, and `identities` from the
-  `/run` file of [HO43](README.md#ho43). It refuses `wireguard` and `forge-certificate`; the root stop refuses the rest.
+  `/run` file the person's admission leaves. It refuses `wireguard` and `forge-certificate`; the root stop refuses the rest.
 - **The setup's files** ([HO36](README.md#ho36)'s checks): the machine file and two bundles, the project's and the
   access repository's, in the person's own home, the person's own and not writable by others.
 - **`playbooks/bring.yml`** (`-c local`, as the project admin): follow with both bundles; the project's keys; with
