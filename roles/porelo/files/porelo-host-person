@@ -2398,6 +2398,7 @@ class Host:
         repository = CENTRAL_ADDRESS.fullmatch(project["address"]).group("repository")
         older = f"a task here reads an older project file than {commit[:12]}: "
         item.pop("advance_refused", None)
+        item.pop("advanced", None)
         try:
             result = self.runner(
                 [str(self.path(PROJECT_HELPER)), "project-advance", project["project"], repository, commit, copied,
@@ -2407,10 +2408,16 @@ class Host:
             state = answer.get("state") if isinstance(answer, dict) else None
         except (OSError, subprocess.TimeoutExpired, UnicodeError, ValueError):
             state = None
-        if state in ("moved", "up-to-date", "ahead"):
+        if state in ("moved", "up-to-date", "ahead", "moved-unseen"):
             item["advanced"] = commit
+            if state == "moved-unseen":
+                print(f'porelo-host-person: {project["project"]}: main moved, and the forge\'s pages may show it late',
+                      file=sys.stderr)
         elif state == "diverged":
             item["advance_refused"] = older + "main on this host's forge holds commits the central forge lacks"
+        elif state == "other-changes":
+            item["advance_refused"] = older + ("central's main changes other files as well, "
+                                               "which come by a person's pull request from central/main")
         else:
             item["advance_refused"] = older + "the host's forge could not be brought up to it"
 

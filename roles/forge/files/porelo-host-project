@@ -1024,35 +1024,66 @@ def project_copy(project, address, known):
     return {"commit": commit, "copy": path}
 
 
-# In Forgejo's container, on the repository's own folder: no hook or branch rule runs, as main stays closed to any push.
-# Only forward, and only to the commit Porelo verified. Each exit is one answer of ADVANCE_ANSWERS; a temporary ref
-# holds the commit while it is compared, and goes with the bundle.
+# In Forgejo's container, on the repository's own folder: no hook or branch rule stands in the way, as main stays closed
+# to any push, and the push judge sees nothing here. So main moves only forward, to the newest change of project.yml in
+# the commit Porelo verified, and only if the tree changes in nothing but that file: other work takes the judged way, a
+# person's pull request from central/main. Forgejo's own post-receive then tells its database. Each exit is one answer
+# of ADVANCE_ANSWERS or a refusal; a temporary ref holds the commit while it is compared, and goes with the bundle.
 ADVANCE_SCRIPT = r"""
 umask 077
 dir=$1
 commit=$2
+owner=$3
+name=$4
 bundle="$dir/porelo-advance.bundle"
 git() { command git --git-dir="$dir" "$@"; }
-done_with() { git update-ref -d refs/porelo/central; exit "$1"; }
-cat >"$bundle" || { rm -f "$bundle"; exit 69; }
-git fetch -q --no-tags "$bundle" "+refs/heads/main:refs/porelo/central"
-fetched=$?
-rm -f "$bundle"
-[ "$fetched" = 0 ] || done_with 69
-[ "$(git rev-parse --verify --quiet refs/porelo/central^{commit})" = "$commit" ] || done_with 65
-local=$(git rev-parse --verify --quiet refs/heads/main^{commit})
+clean() { rm -f "$bundle" && git update-ref -d refs/porelo/central; }
+done_with() { clean || exit 69; exit "$1"; }
+trap 'clean; exit 69' HUP INT TERM
+above() {
+    git merge-base --is-ancestor "$1" "$2"
+    case $? in
+        0) return 0 ;;
+        1) return 1 ;;
+        *) done_with 69 ;;
+    esac
+}
+cat >"$bundle" || done_with 69
+git fetch -q --no-tags "$bundle" "+refs/heads/main:refs/porelo/central" || done_with 69
+[ "$(git rev-parse --verify --quiet 'refs/porelo/central^{commit}')" = "$commit" ] || done_with 65
+signed=$(git log -1 --format=%H refs/porelo/central -- project.yml)
+[ -n "$signed" ] || done_with 65
+[ "$(git rev-parse --verify --quiet "$signed:project.yml")" = "$(git rev-parse --verify --quiet "$commit:project.yml")" ] \
+    || done_with 65
+local=$(git rev-parse --verify --quiet 'refs/heads/main^{commit}')
 [ -n "$local" ] || done_with 69
-[ "$local" != "$commit" ] || done_with 0
-if git merge-base --is-ancestor "$local" "$commit"; then
-    git update-ref refs/heads/main "$commit" "$local" || done_with 69
+[ "$local" != "$signed" ] || done_with 0
+if above "$local" "$signed"; then
+    changed=$(git diff --name-only --no-renames "$local" "$signed") || done_with 69
+    case $changed in
+        "" | project.yml) ;;
+        *) done_with 13 ;;
+    esac
+    git update-ref refs/heads/main "$signed" "$local" || done_with 69
+    # The forge's first user is its admin, which the role makes before any other.
+    (cd "$dir" && printf '%s %s refs/heads/main\n' "$local" "$signed" | env SSH_ORIGINAL_COMMAND=internal \
+        GITEA_REPO_USER_NAME="$owner" GITEA_REPO_NAME="$name" GITEA_REPO_IS_WIKI=false GITEA_PUSHER_NAME=porelo-admin \
+        GITEA_PUSHER_ID=1 GITEA_PR_ID=0 forgejo hook post-receive >/dev/null 2>&1) || done_with 14
     done_with 10
 fi
-if git merge-base --is-ancestor "$commit" "$local"; then
+if above "$signed" "$local"; then
     done_with 11
 fi
 done_with 12
 """
-ADVANCE_ANSWERS = {0: "up-to-date", 10: "moved", 11: "ahead", 12: "diverged"}
+ADVANCE_ANSWERS = {
+    0: "up-to-date",
+    10: "moved",
+    11: "ahead",
+    12: "diverged",
+    13: "other-changes",
+    14: "moved-unseen",
+}
 
 
 def bundle_copy(account, path, output):
@@ -1084,7 +1115,7 @@ def project_advance(project, name, commit, path):
         bundle.seek(0)
         result = forge_exec(account, "sh", "-c", ADVANCE_SCRIPT, "advance",
                             "/var/lib/gitea/git/repositories/" + project + "/" + name.lower() + ".git", commit,
-                            given=bundle)
+                            project, name.lower(), given=bundle)
     if result.returncode == 65:
         refuse("the copy no longer holds the commit Porelo verified", 65)
     if result.returncode not in ADVANCE_ANSWERS:

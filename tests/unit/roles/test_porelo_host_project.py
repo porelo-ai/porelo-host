@@ -9,6 +9,7 @@ import json
 import os
 import stat
 import runpy
+import shutil
 import subprocess
 import sys
 import urllib.error
@@ -2074,19 +2075,37 @@ def test_a_known_commit_must_be_a_commit(memory_host, monkeypatch, capsys):
     assert copying(host, monkeypatch, capsys, "c" * 40, known="--all")[0][0] == 64
 
 
-# The advance runs its script against real Git repositories: what it does there is the whole of the verb.
-def advancing(tmp_path, monkeypatch, host, capsys, *, local, central, commit=None, copy_name="d" * 32):
+# The advance runs its script against real Git repositories: what it does there is the whole of the verb. A `forgejo` on
+# PATH stands in for its post-receive, and a wrapper can make one Git command fail.
+def shims(tmp_path, *, forgejo=0, fail=None):
+    directory = tmp_path / "advance-bin"
+    directory.mkdir(exist_ok=True)
+    told = tmp_path / "advance-told"
+    (directory / "forgejo").write_text(
+        f'#!/bin/sh\n{{ pwd; env | grep -E "^GITEA_REPO_(USER_)?NAME="; cat; }} >> "{told}"\nexit {forgejo}\n'
+    )
+    (directory / "forgejo").chmod(0o755)
+    real = shutil.which("git")
+    if fail:
+        (directory / "git").write_text(f'#!/bin/sh\ncase "$*" in *"{fail}"*) exit 128 ;; esac\nexec {real} "$@"\n')
+        (directory / "git").chmod(0o755)
+    return directory, told
+
+
+def advancing(tmp_path, monkeypatch, host, capsys, *, local, central, commit=None, forgejo=0, fail=None):
     copies = tmp_path / "advance-copies"
-    copy = copies / copy_name / "central.git"
+    copy = copies / ("d" * 32) / "central.git"
     copy.parent.mkdir(parents=True)
     subprocess.run(["git", "clone", "-q", "--bare", str(central), str(copy)], check=True)
     wanted = commit or git_out(central, "rev-parse", "main")
-    seen = []
+    directory, told = shims(tmp_path, forgejo=forgejo, fail=fail)
+    environment = {**os.environ, "PATH": f"{directory}:{os.environ['PATH']}"}
 
     def forge_exec(account, *arguments, given=None):
-        seen.append(arguments)
         script = [part.replace("/var/lib/gitea/git/repositories/alpha/code.git", str(local)) for part in arguments]
-        return subprocess.run(script, stdin=given, capture_output=True, text=True, check=False, timeout=60)
+        return subprocess.run(
+            script, stdin=given, capture_output=True, text=True, check=False, timeout=60, env=environment
+        )
 
     def bundle(account, path, output):
         subprocess.run(
@@ -2108,29 +2127,38 @@ def advancing(tmp_path, monkeypatch, host, capsys, *, local, central, commit=Non
         str(copy),
         overrides={"PROJECT_COPIES": str(copies), "forge_exec": forge_exec, "bundle_copy": bundle},
     )
-    return result, wanted, seen
+    return result, wanted, told
 
 
 def git_out(path, *arguments):
-    return subprocess.run(
-        ["git", f"--git-dir={path}" if path.name.endswith(".git") else f"--git-dir={path}/.git", *arguments],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+    where = f"--git-dir={path}" if path.name.endswith(".git") else f"--git-dir={path}/.git"
+    return subprocess.run(["git", where, *arguments], capture_output=True, text=True, check=True).stdout.strip()
+
+
+IDENTITY = ["-c", "user.name=a", "-c", "user.email=a@example.org", "-c", "commit.gpgsign=false"]
+
+
+def central_commit(work, name, text):
+    (work / name).write_text(text)
+    subprocess.run(["git", "-C", str(work), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(work), *IDENTITY, "commit", "-q", "-m", f"{name} {text}"], check=True)
 
 
 def repositories(tmp_path):
-    """A central main of two commits, and the host's bare copy holding the first of them."""
+    """A central main with a newer project file, and the host's bare copy holding the first."""
     work = tmp_path / "advance-central"
     work.mkdir()
-    identity = ["-c", "user.name=a", "-c", "user.email=a@example.org", "-c", "commit.gpgsign=false"]
     subprocess.run(["git", "init", "-q", "-b", "main", str(work)], check=True)
-    subprocess.run(["git", "-C", str(work), *identity, "commit", "-q", "--allow-empty", "-m", "first"], check=True)
+    central_commit(work, "project.yml", "first")
     local = tmp_path / "advance-local.git"
     subprocess.run(["git", "clone", "-q", "--bare", str(work), str(local)], check=True)
-    subprocess.run(["git", "-C", str(work), *identity, "commit", "-q", "--allow-empty", "-m", "second"], check=True)
-    return work, local, identity
+    central_commit(work, "project.yml", "second")
+    return work, local
+
+
+def only_main(local):
+    assert git_out(local, "for-each-ref", "--format=%(refname)").split() == ["refs/heads/main"], "no ref of its own"
+    assert not list(local.glob("*.bundle")), "nor its bundle"
 
 
 def advance_ready(host, monkeypatch, capsys):
@@ -2139,33 +2167,70 @@ def advance_ready(host, monkeypatch, capsys):
 
 
 def test_the_hosts_copy_moves_to_what_was_verified(memory_host, monkeypatch, capsys, tmp_path):
-    """Keep a task from reading an older project file than the one Porelo accepted."""
+    """Keep a task from reading an older project file than the one Porelo accepted, and Forgejo's pages from lagging."""
     advance_ready(memory_host, monkeypatch, capsys)
-    work, local, _ = repositories(tmp_path)
-    result, wanted, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work)
+    work, local = repositories(tmp_path)
+    before = git_out(local, "rev-parse", "refs/heads/main")
+    result, wanted, told = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work)
     assert result[0] == 0, result
     assert json.loads(result[1]) == {"state": "moved"}
     assert git_out(local, "rev-parse", "refs/heads/main") == wanted
-    refs = git_out(local, "for-each-ref", "--format=%(refname)").split()
-    assert refs == ["refs/heads/main"], "the advance leaves no ref of its own"
-    assert not list(local.glob("*.bundle")), "nor its bundle"
+    only_main(local)
+    said = told.read_text()
+    assert f"{before} {wanted} refs/heads/main" in said and "GITEA_REPO_NAME=code" in said and str(local) in said
+
+
+def test_a_code_change_above_the_signed_file_does_not_move(memory_host, monkeypatch, capsys, tmp_path):
+    """A central writer's commit on top of an admin's: verify takes the file, and the judge never saw this one."""
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local = repositories(tmp_path)
+    signed = git_out(work, "rev-parse", "main")
+    central_commit(work, "build.sh", "anyone's")
+    result, tip, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work)
+    assert result[0] == 0 and json.loads(result[1]) == {"state": "moved"}, result
+    assert git_out(local, "rev-parse", "refs/heads/main") == signed != tip
+    only_main(local)
+
+
+def test_a_code_change_below_the_signed_file_does_not_move(memory_host, monkeypatch, capsys, tmp_path):
+    """An admin who files on top of a writer's commit has not looked at it: the judge has not either."""
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local = repositories(tmp_path)
+    before = git_out(local, "rev-parse", "refs/heads/main")
+    central_commit(work, "build.sh", "anyone's")
+    central_commit(work, "project.yml", "third")
+    result, _, told = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work)
+    assert result[0] == 0 and json.loads(result[1]) == {"state": "other-changes"}, result
+    assert git_out(local, "rev-parse", "refs/heads/main") == before
+    assert not told.exists()
+    only_main(local)
+
+
+def test_a_forgejo_that_was_not_told_is_said(memory_host, monkeypatch, capsys, tmp_path):
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local = repositories(tmp_path)
+    result, wanted, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work, forgejo=1)
+    assert result[0] == 0 and json.loads(result[1]) == {"state": "moved-unseen"}, result
+    assert git_out(local, "rev-parse", "refs/heads/main") == wanted
+    only_main(local)
 
 
 def test_a_copy_already_there_is_up_to_date(memory_host, monkeypatch, capsys, tmp_path):
     advance_ready(memory_host, monkeypatch, capsys)
-    work, local, _ = repositories(tmp_path)
+    work, local = repositories(tmp_path)
     subprocess.run(["git", f"--git-dir={local}", "fetch", "-q", str(work), "main:main"], check=True)
-    result, wanted, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work)
+    result, wanted, told = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work)
     assert result[0] == 0 and json.loads(result[1]) == {"state": "up-to-date"}, result
     assert git_out(local, "rev-parse", "refs/heads/main") == wanted
+    assert not told.exists()
 
 
-def local_commit(local, identity):
+def local_commit(local):
     """A commit only the host's forge holds, on its main."""
     tree = git_out(local, "rev-parse", "main^{tree}")
     parent = git_out(local, "rev-parse", "main")
     made = subprocess.run(
-        ["git", f"--git-dir={local}", *identity, "commit-tree", tree, "-p", parent, "-m", "local"],
+        ["git", f"--git-dir={local}", *IDENTITY, "commit-tree", tree, "-p", parent, "-m", "local"],
         capture_output=True,
         text=True,
         check=True,
@@ -2177,9 +2242,9 @@ def local_commit(local, identity):
 def test_a_main_ahead_of_central_stays(memory_host, monkeypatch, capsys, tmp_path):
     """Approved work not yet sent to the central forge is never taken back by a follow."""
     advance_ready(memory_host, monkeypatch, capsys)
-    work, local, identity = repositories(tmp_path)
+    work, local = repositories(tmp_path)
     subprocess.run(["git", f"--git-dir={local}", "fetch", "-q", str(work), "main:main"], check=True)
-    made = local_commit(local, identity)
+    made = local_commit(local)
     result, _, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work)
     assert result[0] == 0 and json.loads(result[1]) == {"state": "ahead"}, result
     assert git_out(local, "rev-parse", "refs/heads/main") == made
@@ -2188,23 +2253,77 @@ def test_a_main_ahead_of_central_stays(memory_host, monkeypatch, capsys, tmp_pat
 def test_a_main_gone_another_way_stays_and_says_so(memory_host, monkeypatch, capsys, tmp_path):
     """Moving such a main would lose what the host approved; both lines stand until a person joins them."""
     advance_ready(memory_host, monkeypatch, capsys)
-    work, local, identity = repositories(tmp_path)
-    made = local_commit(local, identity)
+    work, local = repositories(tmp_path)
+    made = local_commit(local)
     result, _, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work)
     assert result[0] == 0 and json.loads(result[1]) == {"state": "diverged"}, result
     assert git_out(local, "rev-parse", "refs/heads/main") == made
-    assert git_out(local, "for-each-ref", "--format=%(refname)").split() == ["refs/heads/main"]
+    only_main(local)
 
 
 def test_a_copy_holding_another_commit_moves_nothing(memory_host, monkeypatch, capsys, tmp_path):
     """What moves is only what Porelo verified: a copy changed since then is refused."""
     advance_ready(memory_host, monkeypatch, capsys)
-    work, local, _ = repositories(tmp_path)
+    work, local = repositories(tmp_path)
     before = git_out(local, "rev-parse", "refs/heads/main")
     result, _, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work, commit="e" * 40)
     assert result[0] == 65, result
     assert git_out(local, "rev-parse", "refs/heads/main") == before
-    assert git_out(local, "for-each-ref", "--format=%(refname)").split() == ["refs/heads/main"]
+    only_main(local)
+
+
+def test_a_git_error_is_not_read_as_diverged(memory_host, monkeypatch, capsys, tmp_path):
+    """Git failing to tell the ancestry is the forge's trouble, and asks a person to join nothing."""
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local = repositories(tmp_path)
+    result, _, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work, fail="merge-base")
+    assert result[0] == 69, result
+    assert "diverged" not in result[1]
+
+
+def test_a_cleanup_that_failed_is_not_success(memory_host, monkeypatch, capsys, tmp_path):
+    """A temporary ref left behind would be served to every clone: the follow is told, and asks again."""
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local = repositories(tmp_path)
+    result, _, _ = advancing(
+        tmp_path, monkeypatch, memory_host, capsys, local=local, central=work, fail="update-ref -d"
+    )
+    assert result[0] == 69, result
+
+
+def test_the_advance_reads_the_copy_as_its_owner_and_hands_it_to_the_container(memory_host, monkeypatch, capsys):
+    """Root runs no Git in a tree another account owns, and Podman passes standard input only when told to."""
+    advance_ready(memory_host, monkeypatch, capsys)
+    calls = []
+
+    def run(arguments, **kwargs):
+        calls.append((arguments, kwargs))
+        return subprocess.CompletedProcess(
+            arguments, 0 if arguments[0] != "/usr/sbin/runuser" or "exec" not in arguments else 10, "1234\n", ""
+        )
+
+    namespace = runpy.run_path(str(SCRIPT), run_name="advance_commands")["main"].__globals__
+    namespace["subprocess"] = SimpleNamespace(
+        run=run, DEVNULL=subprocess.DEVNULL, CompletedProcess=subprocess.CompletedProcess
+    )
+    namespace["RUN_USER"] = str(memory_host["tmp"] / "run-user")
+    (memory_host["tmp"] / "run-user/1234").mkdir(parents=True, exist_ok=True)
+    bus = memory_host["tmp"] / "run-user/1234/bus"
+    if not bus.exists():
+        os.mknod(bus, stat.S_IFSOCK | 0o600)
+    with open(os.devnull, "wb") as output:
+        namespace["bundle_copy"]("porelo-forge", "/run/copy/central.git", output)
+    bundled, options = calls[-1]
+    assert bundled[:4] == ["/usr/sbin/runuser", "-u", "porelo-forge", "--"], "as the copy's owner"
+    assert "--git-dir=/run/copy/central.git" in bundled and options["stdout"] is output
+    with open(os.devnull, "rb") as given:
+        namespace["forge_home"] = lambda account: "/home/porelo-forge"
+        namespace["forge_exec"]("porelo-forge", "sh", given=given)
+        exec_with, options = calls[-1]
+        assert exec_with[exec_with.index("exec") + 1] == "-i" and options["stdin"] is given
+    namespace["forge_exec"]("porelo-forge", "sh")
+    exec_without, options = calls[-1]
+    assert "-i" not in exec_without and options["stdin"] == subprocess.DEVNULL
 
 
 @pytest.mark.parametrize(

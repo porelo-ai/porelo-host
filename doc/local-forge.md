@@ -436,9 +436,11 @@ private read keys; the recorded address retains an explicit SSH port for the rem
 administrative authority. `/usr/local/sbin/porelo-host-push --pull <project> [repositories...]` brings central `main` locally as
 `central/main`, in the person's own account with the central token on stdin. Local `main` reaches it by a pull
 request. The project's own repository is the exception, as tasks read `project.yml` there: once Porelo's `project verify`
-has accepted central's file, the follow brings local `main` up to that commit, only forward and with no hook or branch
-rule, as `main` stays closed to every push. If local `main` holds commits central lacks, it stays, and `org status`'s
-`why` says a task here reads an older project file, until a gathered push or a person's pull request joins them.
+has accepted central's file, the follow brings local `main` up to the newest change of that file, only forward and past
+the branch rule and the push judge, as `main` stays closed to every push. So it moves only if nothing but `project.yml`
+differs: a central writer cannot bring other work past the judge this way. Otherwise, or if local `main` holds commits
+central lacks, it stays, and `org status`'s `why` says a task here reads an older project file, until a gathered push or
+a person's pull request joins them.
 A repository's address on the host is `http://127.0.0.1:<git_port>/<project>/<name>.git`, with `git_port` from the host
 card and `<name>` the repository's name at the central forge; a project's `upstream` names it and its `central` the other. Push and pull each call `sudo -n porelo-host-person forge-token` for the local token and put it into the
 person's vault as `<forge>.person`, since it replaces the one there.

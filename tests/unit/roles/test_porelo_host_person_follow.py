@@ -2355,3 +2355,30 @@ def test_a_garbled_move_answer_counts_as_none(files, answer):
     files.run("b")
     item = files.item()
     assert "older project file" in item["why"] and item.get("advanced") != "7" * 40
+
+
+def test_changed_signers_with_a_failed_move_still_ask_again(files):
+    """The same commit read anew: a failure must not leave the earlier success answering for it."""
+    files.state.reply["projects"][0]["signing_keys"][0]["valid_until"] = "2099-02-02"
+    files.advance = None
+    files.run("b")
+    assert files.item().get("advanced") is None and "older project file" in files.item()["why"]
+    files.advance = "moved"
+    files.run("c")
+    assert files.copies[-1][2] == "-"
+    assert files.item()["advanced"] == "1" * 40
+
+
+def test_other_changes_at_central_say_where_they_come_by(files):
+    files.main = "8" * 40
+    files.advance = "other-changes"
+    files.run("b")
+    assert "central/main" in files.item()["why"] and files.item().get("advanced") != "8" * 40
+
+
+def test_a_move_forgejo_was_not_told_of_counts_as_moved(files, capsys):
+    files.main = "9" * 40
+    files.advance = "moved-unseen"
+    files.run("b")
+    assert files.item()["advanced"] == "9" * 40 and "older" not in (files.item().get("why") or "")
+    assert "show it late" in capsys.readouterr().err
