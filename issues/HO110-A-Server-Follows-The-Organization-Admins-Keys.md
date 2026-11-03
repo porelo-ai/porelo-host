@@ -1,6 +1,6 @@
 # HO110 — A Server Follows The Organization Admins' Keys
 
-**Status:** Idea.
+**Status:** Accepted.
 
 **What must be true.** A server's pin holds the keys of the organization's Organization Admins beside its own Machine
 Admins, so a Machine Admin changed or replaced by an Organization Admin takes effect on a running server at its next
