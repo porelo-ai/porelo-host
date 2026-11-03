@@ -393,6 +393,15 @@ The registry publisher is a separate account. Its package token stays with Forge
 credentials have their own routes, described in [Porelo's credential
 documentation](https://github.com/porelo-ai/porelo/blob/main/doc/credentials.md).
 
+`/usr/local/sbin/porelo-host-push --central <project>`, in a member's own account with no token, prints how each
+repository's approved `main` stands against the central forge, as one JSON object with `project`, `read_at` and
+`repositories`. Each repository's `state` is `ahead` with `commits`, `up-to-date`, `moved-on` (the central forge moved on
+or the two went apart, so a push would be refused), or `cannot-say` with `why`: `no-read-key`, `unreachable`,
+`no-central-main` or `local`. No repositories at all means the host could not say. The follow reads it with the
+repository's read key by `git ls-remote`, clones nothing, and writes `/etc/porelo-host/organization/central/<project>.json`
+with a read ACL for each unlocked member, so the answer can be five minutes old, and longer when a follow fails. With no
+answer the account may read it refuses with 69. The push itself still decides.
+
 The gathered push asks for the central token with hidden input in the SSH terminal and stores it nowhere; git
 receives it only as a header in its environment, never on a command line, and the command's output names no token. The
 token for a project's initial repository migration arrives only on `org refresh` standard input. A project stands

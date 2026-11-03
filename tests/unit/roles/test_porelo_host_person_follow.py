@@ -1482,3 +1482,162 @@ def test_a_held_project_revokes_its_room_members_before_its_forge_can_go(followi
     assert not following.host.records()["bob"]["locked"]
     assert ("keep-room", "alpha", []) in rooms
     assert not [verb for verb, name, _persons in rooms if name == "alpha" and verb == "drop-room"]
+
+
+def migrated_project(state, monkeypatch, stdout='{"project":"alpha","repositories":[]}', code=0):
+    """A project on the host's forge, migrated, with the helper's central answer stood in."""
+    project_services(state, monkeypatch, gate=False)
+    host = state.host
+    calls = []
+    helper = host.path("/usr/local/sbin/porelo-host-project")
+    helper.parent.mkdir(parents=True, exist_ok=True)
+    host.write(helper, "#!/bin/true\n", 0o755)
+
+    def runner(arguments, **kwargs):
+        if len(arguments) > 1 and arguments[1] == "central-state":
+            calls.append(arguments[:3])
+            if isinstance(stdout, Exception):
+                raise stdout
+            return subprocess.CompletedProcess(arguments, code, stdout, "")
+        return original(arguments, **kwargs)
+
+    original = host.runner
+    host.runner = runner
+    follow(state)
+    host.execute(["org", "refresh"], b"central-fixture-private-token\n")
+    return calls
+
+
+def central_answer(state):
+    return json.loads(state.host.path("/etc/porelo-host/organization/central/alpha.json").read_text())
+
+
+ROWS = [
+    {"repository": "a", "state": "ahead", "commits": 3},
+    {"repository": "b", "state": "up-to-date"},
+    {"repository": "c", "state": "moved-on"},
+    {"repository": "d", "state": "cannot-say", "why": "no-read-key"},
+]
+
+
+def test_how_main_stands_is_published_to_the_projects_unlocked_members_alone(following, monkeypatch):
+    """Prevent a nonmember reading a project's state, or a locked member keeping sight of it."""
+    state = following
+    stdout = json.dumps({"project": "alpha", "repositories": ROWS})
+    calls = migrated_project(state, monkeypatch, stdout)
+    assert calls and calls[-1][1:] == ["central-state", "alpha"]
+    answer = central_answer(state)
+    assert answer == {"project": "alpha", "read_at": "2026-11-03T00:00:00Z", "repositories": ROWS}
+    path = state.host.path("/etc/porelo-host/organization/central/alpha.json")
+    assert readers(state, path) == {1001, 1002} and path.stat().st_mode & 0o077 == 0
+    state.reply["projects"][0]["members"][0]["locked"] = True
+    follow(state, "b")
+    assert readers(state, path) == {1002}
+
+
+@pytest.mark.parametrize(
+    "stdout, code",
+    [
+        ("", 69),
+        ("not json", 0),
+        (json.dumps({"project": "other", "repositories": ROWS}), 0),
+        (json.dumps({"project": "alpha", "repositories": "none"}), 0),
+        (json.dumps({"project": "alpha", "repositories": [{"repository": "a", "state": "fine"}]}), 0),
+        (json.dumps({"project": "alpha", "repositories": [{"repository": "a", "state": "ahead", "commits": 0}]}), 0),
+        (json.dumps({"project": "alpha", "repositories": [{"repository": "a", "state": "up-to-date", "why": "x"}]}), 0),
+        (json.dumps({"project": "alpha", "repositories": [{"repository": "a/b", "state": "up-to-date"}]}), 0),
+        (json.dumps({"project": "alpha", "repositories": [{"repository": "a", "state": "cannot-say", "why": "?"}]}), 0),
+        (subprocess.TimeoutExpired("helper", 300), 0),
+    ],
+)
+def test_a_helper_that_cannot_say_leaves_no_repository_and_does_not_fail_the_follow(following, monkeypatch, stdout, code):
+    """Prevent a central forge out of reach stopping the follow, or a malformed answer reading as up to date."""
+    state = following
+    migrated_project(state, monkeypatch, stdout, code)
+    assert central_answer(state)["repositories"] == []
+    assert state.host.execute(["org", "follow"], b"")["refused"] is None
+
+
+def test_a_project_not_copied_has_no_central_answer_and_one_taken_off_loses_it(following, monkeypatch):
+    """Prevent a stale prompt outliving its project, and a project with no copy reading as an answer."""
+    state = following
+    path = state.host.path("/etc/porelo-host/organization/central/alpha.json")
+    project_services(state, monkeypatch, gate=False)
+    follow(state)
+    assert not path.exists()
+    migrated_project(state, monkeypatch)
+    assert path.exists()
+    state.reply["projects"] = []
+    follow(state, "c")
+    assert not path.exists()
+
+
+def test_a_person_taken_out_loses_sight_of_the_answer_before_the_central_forge_is_asked(following, monkeypatch):
+    """Prevent a slow or killed read leaving a removed member able to read the project's state."""
+    state = following
+    migrated_project(state, monkeypatch)
+    path = state.host.path("/etc/porelo-host/organization/central/alpha.json")
+    assert readers(state, path) == {1001, 1002}
+    seen = []
+    asking = state.host.runner
+
+    def runner(arguments, **kwargs):
+        if len(arguments) > 1 and arguments[1] == "central-state":
+            seen.append(set(readers(state, path)))
+        return asking(arguments, **kwargs)
+
+    state.host.runner = runner
+    state.reply["projects"][0]["members"][0]["locked"] = True
+    follow(state, "b")
+    assert seen == [{1002}]
+
+
+def test_the_central_questions_of_one_follow_stay_within_a_budget(following, monkeypatch):
+    """Prevent many unreachable projects using up the follow's own time limit before it publishes."""
+    state = following
+    migrated_project(state, monkeypatch)
+    host = state.host
+    second = copy.deepcopy(state.reply["projects"][0])
+    second["project"] = "beta"
+    state.reply["projects"].append(second)
+    follow(state, "b")
+    entries = json.loads(host.path("/etc/porelo-host/organization/host-projects.json").read_text())
+    assert entries["alpha"]["migrated"]
+    entries["beta"]["migrated"] = True
+    host.write(host.path("/etc/porelo-host/organization/host-projects.json"), json.dumps(entries), 0o600)
+    start = host.now()
+    timeouts, asked = [], []
+    asking = host.runner
+
+    def runner(arguments, **kwargs):
+        if len(arguments) > 1 and arguments[1] == "central-state":
+            asked.append(arguments[2])
+            timeouts.append(kwargs["timeout"])
+            host.now = lambda: start + datetime.timedelta(seconds=kwargs["timeout"])
+            raise subprocess.TimeoutExpired("helper", kwargs["timeout"])
+        return asking(arguments, **kwargs)
+
+    host.runner = runner
+    follow(state, "c")
+    assert asked == ["alpha"] and sum(timeouts) <= 120
+    for name in ("alpha", "beta"):
+        answer = json.loads(host.path(f"/etc/porelo-host/organization/central/{name}.json").read_text())
+        assert answer["repositories"] == []
+
+
+def test_a_repository_named_in_capitals_keeps_its_answer(following, monkeypatch):
+    """Prevent a name the migration keeps from throwing away every repository's answer."""
+    rows = [{"repository": "Code.Base", "state": "up-to-date"}]
+    migrated_project(following, monkeypatch, json.dumps({"project": "alpha", "repositories": rows}))
+    assert central_answer(following)["repositories"] == rows
+
+
+def test_what_a_killed_write_left_among_the_answers_stops_no_later_follow(following, monkeypatch):
+    """Prevent one interrupted follow leaving every later answer and its readers stale until someone cleans up."""
+    state = following
+    migrated_project(state, monkeypatch)
+    directory = state.host.path("/etc/porelo-host/organization/central")
+    left = directory / ".porelo-host-person.abc123"
+    left.write_text("half\n")
+    follow(state, "b")
+    assert not left.exists()

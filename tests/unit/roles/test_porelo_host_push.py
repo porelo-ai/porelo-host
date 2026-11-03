@@ -127,6 +127,7 @@ def host(tmp_path):
     script = moved_if_present(script, "/etc/porelo-host/forge/push.conf", str(forge_etc / "push.conf"))
     script = moved_if_present(script, "/home/porelo-forge/.config/porelo-forge/api.token", str(api_token))
     script = moved_if_present(script, "/etc/porelo-host/forge.conf", str(etc / "forge.conf"))
+    script = moved_if_present(script, "/etc/porelo-host/organization/central/", str(etc / "central") + "/")
     script = moved_if_present(script, "/etc/porelo-host/forge/ca.pem", str(forge_etc / "ca.pem"))
     script = moved_if_present(script, "/etc/porelo-host/forge/central-ca.conf", str(forge_etc / "central-ca.conf"))
     script = moved_if_present(script, "/etc/ssl/certs/ca-certificates.crt", str(etc / "system-ca.pem"))
@@ -1119,3 +1120,52 @@ def test_config_read_checks_the_open_descriptor_and_ancestor_directories(host, r
     code, output = push(host, "porelo", "stand-in")
     assert code == 66, (replacement, code, output)
     assert not host["calls"].exists(), "unsafe caller config reached the forge"
+
+
+def published_central_state(host, mode=0o640):
+    directory = Path(host["command"]).parent / "etc" / "central"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "porelo.json"
+    path.write_text(CENTRAL_STATE)
+    path.chmod(mode)
+    return path
+
+
+CENTRAL_STATE = (
+    '{"project": "porelo", "read_at": "2026-11-03T15:00:01Z", '
+    '"repositories": [{"repository": "stand-in", "state": "ahead", "commits": 3}]}\n'
+)
+
+
+def test_a_person_reads_how_main_stands_with_no_token_and_nothing_run(host):
+    """Prevent the row's prompt needing a central token, or touching either forge."""
+    published_central_state(host)
+    code, output = push(host, "--central", "porelo", token="")
+    assert code == 0, output
+    assert output == CENTRAL_STATE
+    assert not host["calls"].exists(), "commands ran for a read"
+
+
+@pytest.mark.parametrize(
+    "arguments, expected",
+    [
+        (("--central",), 64),
+        (("--central", "Not/A/Project"), 64),
+        (("--central", "../porelo"), 64),
+        (("--central", "porelo", "more"), 64),
+        (("--central", "nothing-published"), 69),
+    ],
+)
+def test_a_bad_or_unanswered_central_read_is_refused(host, arguments, expected):
+    """Prevent reading a file outside the published answers, or silence reading as nothing to push."""
+    published_central_state(host)
+    code, output = push(host, *arguments, token="")
+    assert code == expected, output
+    assert output.startswith("porelo-host-push: ") and CENTRAL_STATE not in output
+
+
+def test_a_central_answer_another_can_write_is_refused(host):
+    """Prevent a person trusting a prompt someone else could have written."""
+    published_central_state(host, mode=0o660)
+    code, output = push(host, "--central", "porelo", token="")
+    assert code == 69 and CENTRAL_STATE not in output

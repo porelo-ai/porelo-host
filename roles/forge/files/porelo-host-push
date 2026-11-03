@@ -54,6 +54,13 @@ forge_conf_value() {
 }
 
 caller_uid=$(id -u) || fail "cannot read the calling account id" 69
+# How a project's main stands against the central forge, as the host's follow last read it: no token, nothing changed.
+if [ "${1-}" = --central ]; then
+    [ "$#" = 2 ] && [[ $2 =~ $project_pattern ]] || fail "--central names one project" 64
+    central_state=/etc/porelo-host/organization/central/$2.json
+    trusted_plain "$central_state" || fail "the host holds no answer on $2 this account may read" 69
+    exec cat -- "$central_state"
+fi
 mode=push
 case "${1-}" in --pull) mode=${1#--} && shift ;; esac
 checking=

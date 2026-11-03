@@ -126,6 +126,9 @@ PUSH_CONFIG_REMOVE = 'rm -f "$HOME/.config/porelo-host/push/$1.conf"'
 FOLLOW_REFUSED = "/etc/porelo-host/organization/refused.json"
 # What keeps a host admin on the host with no project: the organization names them, not a project.
 HOST_ADMIN = "host-admin"
+CENTRAL_STATES = "/etc/porelo-host/organization/central"
+# Of the five minutes the follow's unit is given in all, as every project's forge may hang at once.
+CENTRAL_ASK_SECONDS = 120
 HOST_PROJECTS = "/etc/porelo-host/organization/host-projects.json"
 # How a person's Porelo reaches the homeserver behind this host's gate.
 GATE_HOMESERVER = "unix:/run/porelo-matrix/client.sock"
@@ -162,6 +165,20 @@ HEADERS = (
 CENTRAL_ADDRESS = re.compile(r"[!-~]{0,1024}[:/](?P<repository>[A-Za-z0-9_][A-Za-z0-9_.-]{0,95}?)(?:\.git)?/?")
 TOKEN_LIMIT = 4096
 PURGE_AFTER = datetime.timedelta(days=7)
+
+
+def central_row(row):
+    """Whether a repository's row says exactly one of the answers a person may read."""
+    if (not isinstance(row, dict) or not isinstance(row.get("repository"), str)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", row["repository"])):
+        return False
+    state = row.get("state")
+    fields = set(row) - {"repository", "state"}
+    if state == "ahead":
+        return fields == {"commits"} and type(row["commits"]) is int and row["commits"] > 0
+    if state == "cannot-say":
+        return fields == {"why"} and row["why"] in ("no-read-key", "unreachable", "no-central-main", "local")
+    return state in ("up-to-date", "moved-on") and not fields
 
 
 def text_keys(applied):
@@ -1798,6 +1815,10 @@ class Host:
         # Read again: whoever this follow admitted has an account now, and reads the project file from this follow on.
         files = {item["project"]: self.follow_project_file(item, applied) for item in applied["projects"]}
         self.follow_publish(applied, files, signers, records, self.account_ids())
+        try:
+            self.follow_central(applied, records, self.account_ids())
+        except Refusal as error:
+            errors.append(str(error))
         if errors:
             refuse("the organization is taken; the next follow retries: " + "; ".join(errors), 69)
         return self.org_status(host)
@@ -2272,15 +2293,73 @@ class Host:
             path = directory / (name + ".json")
             staged = directory / (name + ".json.new")
             self.write(staged, json.dumps(files[name]) + "\n", 0o600)
-            entries = [f"user:{accounts[member['login']]}:r--" for member in project["members"]
-                       if not member["locked"] and member["login"] in accounts and member["login"] in records
-                       and not records[member["login"]]["locked"] and records[member["login"]].get("lock") != "pending"]
-            if entries:
-                self.command(["setfacl", "--modify", ",".join(entries), str(staged)])
-            os.replace(staged, path)
+            self.publish_to_members(staged, path, project, records, accounts)
             # Only the push judge reads the allowed signers, and a host with no forge has none; the gate reads the rest.
             for suffix, field in [("certifiers", "certifiers")] + ([("allowed", "signers")] if has_forge else []):
                 self.write_signers(name, suffix, signers[name][field])
+
+    def publish_to_members(self, staged, path, project, records, accounts):
+        """Give a staged file its readers, the project's unlocked members, before anyone can see it in place."""
+        entries = [f"user:{accounts[member['login']]}:r--" for member in project["members"]
+                   if not member["locked"] and member["login"] in accounts and member["login"] in records
+                   and not records[member["login"]]["locked"] and records[member["login"]].get("lock") != "pending"]
+        if entries:
+            self.command(["setfacl", "--modify", ",".join(entries), str(staged)])
+        os.replace(staged, path)
+
+    def follow_central_answer(self, name, deadline):
+        """Each repository's main against the central forge, or nothing: this says, and must never stop a follow."""
+        path = self.path(PROJECT_HELPER)
+        descriptor = self.project_lock_fd
+        remaining = (deadline - self.now()).total_seconds()
+        if remaining <= 0:
+            return []
+        try:
+            self.check(path, required=True)
+            result = self.runner([str(path), "central-state", name, "--lock-fd", str(descriptor)], input=None,
+                                 pass_fds=(descriptor,), timeout=remaining)
+            answer = json.loads(result.stdout) if result.returncode == 0 else {}
+        except (Refusal, OSError, subprocess.TimeoutExpired, UnicodeError, ValueError):
+            return []
+        rows = answer.get("repositories") if isinstance(answer, dict) and answer.get("project") == name else None
+        if not isinstance(rows, list) or not all(central_row(row) for row in rows):
+            return []
+        return rows
+
+    def follow_central(self, applied, records, accounts):
+        """Publish, to each project's members, how its main stands against the central forge."""
+        directory = self.path(CENTRAL_STATES)
+        self.check(directory, directory=True)
+        entries = self.host_projects()
+        projects = [project for project in applied["projects"] if entries.get(project["project"], {}).get("migrated")]
+        if not projects and not directory.exists():
+            return
+        self.directories(directory)
+        directory.chmod(0o711)
+        names = {project["project"] for project in projects}
+        for path in directory.iterdir():
+            self.check(path)
+            # What an interrupted follow left beside a file is its own and goes, as is an answer no project has now.
+            if (path.name.startswith(".porelo-host-person.") or path.name.endswith(".json.new")
+                    or (path.suffix == ".json" and path.stem not in names)):
+                path.unlink()
+            elif path.suffix != ".json":
+                refuse("the central states directory holds an unknown file", 65)
+        # Its readers first: the question below can take long or be killed, and a removed member reads nothing meanwhile.
+        for project in projects:
+            path = directory / (project["project"] + ".json")
+            if path.exists():
+                staged = directory / (project["project"] + ".json.new")
+                self.write(staged, self.read(path), 0o600)
+                self.publish_to_members(staged, path, project, records, accounts)
+        deadline = self.now() + datetime.timedelta(seconds=CENTRAL_ASK_SECONDS)
+        for project in projects:
+            name = project["project"]
+            staged = directory / (name + ".json.new")
+            answer = {"project": name, "read_at": self.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                      "repositories": self.follow_central_answer(name, deadline)}
+            self.write(staged, json.dumps(answer) + "\n", 0o600)
+            self.publish_to_members(staged, directory / (name + ".json"), project, records, accounts)
 
     def account_ids(self):
         """Every account on the machine now, login to uid."""

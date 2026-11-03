@@ -40,6 +40,7 @@ TRUST_ANCHOR = "/"
 PROJECT_PATTERN = r"[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?"
 PERSON_PATTERN = r"(?!porelo(?:-|$))[a-z][a-z0-9-]{0,31}"
 COMMIT_PATTERN = r"[0-9a-f]{40}([0-9a-f]{24})?"
+CENTRAL_ASK_SECONDS = 30
 HOST_PATTERN = r"[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?"
 ED25519_HEADER = b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20"
 SAFE_ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
@@ -932,36 +933,91 @@ def write_manifest(directory, entries):
             os.unlink(temporary)
 
 
-def project_git(arguments, *, environment=None):
+def project_git(arguments, *, environment=None, timeout=120):
     """Run read-only Git without global configuration, prompts or inherited credentials."""
     env = dict(SAFE_ENV, GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_SYSTEM="/dev/null", GIT_TERMINAL_PROMPT="0")
     env.update(environment or {})
     result = subprocess.run(["/usr/bin/git", "-c", "core.hooksPath=/dev/null", *arguments],
                             env=env, cwd="/", stdin=subprocess.DEVNULL, capture_output=True, text=True,
-                            check=False, timeout=120)
+                            check=False, timeout=timeout)
     if result.returncode:
         refuse(f"the project read-only Git command failed (exit {result.returncode})", 69)
     return result.stdout
 
 
-def central_commits(directory, item):
-    """Fetch every central ref with the repository's read key and the pinned SSH host keys."""
+def read_key_ssh(directory, item):
+    """The SSH command reaching the central forge with the repository's read key and the pinned host keys."""
     key = os.path.join(directory, item["name"].lower())
     known = os.path.join(ETC, "organization", "known_hosts")
     trusted(key, private=True)
     trusted(known, private=True)
     # All paths have passed the root-owned path checks; quote each for Git's SSH command parser.
-    command = " ".join(shlex.quote(word) for word in [
-        "/usr/bin/ssh", "-F", "/dev/null", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
+    return " ".join(shlex.quote(word) for word in [
+        "/usr/bin/ssh", "-F", "/dev/null", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "ConnectTimeout=10",
         "-o", "IdentityAgent=none", "-o", "StrictHostKeyChecking=yes", "-o", "UpdateHostKeys=no",
         "-o", "GlobalKnownHostsFile=/dev/null", "-o", "UserKnownHostsFile=" + known, "-i", key,
     ])
+
+
+def central_commits(directory, item):
+    """Fetch every central ref with the repository's read key and the pinned SSH host keys."""
+    command = read_key_ssh(directory, item)
     with tempfile.TemporaryDirectory(prefix="porelo-project-read-") as scratch:
         path = os.path.join(scratch, "central.git")
         project_git(["clone", "--mirror", "--", central_address(item["address"])[4], path],
                     environment={"GIT_SSH_COMMAND": command})
         text = project_git(["--git-dir=" + path, "rev-list", "--all"])
     return commit_set(text)
+
+
+def central_main(directory, item):
+    """Ask the central forge for its main alone, bounded in time, as this runs at every follow and clones nothing."""
+    text = project_git(["ls-remote", "--", central_address(item["address"])[4], "refs/heads/main"],
+                       environment={"GIT_SSH_COMMAND": read_key_ssh(directory, item)}, timeout=CENTRAL_ASK_SECONDS)
+    if not text.strip():
+        return None
+    commit = text.split("\t", 1)[0]
+    if not re.fullmatch(COMMIT_PATTERN, commit):
+        refuse("the central forge answered an invalid main", 69)
+    return commit
+
+
+def repository_state(account, project, name, directory, item):
+    """Tell one repository's local main against the central forge's; what cannot be told never reads as up to date."""
+    if item["key_id"] <= 0:
+        return {"state": "cannot-say", "why": "no-read-key"}
+    try:
+        central = central_main(directory, item)
+    except (Refusal, OSError, subprocess.TimeoutExpired):
+        return {"state": "cannot-say", "why": "unreachable"}
+    if central is None:
+        return {"state": "cannot-say", "why": "no-central-main"}
+    try:
+        found = forge_read(account, project, name, "rev-parse", "--verify", "--quiet", "refs/heads/main^{commit}")
+        if found.returncode:
+            return {"state": "cannot-say", "why": "local"}
+        if found.stdout.strip() == central:
+            return {"state": "up-to-date"}
+        # Unknown here or on another line alike: a push of this main would be refused.
+        if forge_read(account, project, name, "merge-base", "--is-ancestor", central, "refs/heads/main").returncode:
+            return {"state": "moved-on"}
+        counted = forge_read(account, project, name, "rev-list", "--count", f"{central}..refs/heads/main")
+        if counted.returncode or not counted.stdout.strip().isdecimal():
+            return {"state": "cannot-say", "why": "local"}
+    except (Refusal, OSError, subprocess.TimeoutExpired):
+        return {"state": "cannot-say", "why": "local"}
+    return {"state": "ahead", "commits": int(counted.stdout)}
+
+
+def central_state(account, project):
+    """Each repository's main against the central forge; as this runs at every follow it makes the forge no token."""
+    directory, entries = project_manifest(project)
+    answers = [{"repository": item["name"], **repository_state(account, project, item["name"], directory, item)}
+               for item in entries]
+    known = {item["name"].lower() for item in entries}
+    answers.extend({"repository": name, "state": "cannot-say", "why": "no-read-key"}
+                   for name in forge_repositories(account, project) if name not in known)
+    return {"project": project, "repositories": answers}
 
 
 def commit_set(text):
@@ -990,6 +1046,24 @@ def check_read_keys(forge, project, repositories):
         error = Refusal(f"{project} has unpushed commits in " + ", ".join(missing), 65)
         error.unpushed = missing
         raise error
+
+
+def forge_read(account, project, repository, *arguments):
+    """Ask one repository inside Forgejo's container, answering Git's exit and output as they are."""
+    return forge_exec(account, "git",
+                      "--git-dir=/var/lib/gitea/git/repositories/" + project + "/" + repository.lower() + ".git",
+                      *arguments)
+
+
+def forge_repositories(account, project):
+    """The names of a project's repositories in Forgejo's own folder, as the API would take a new token to ask."""
+    result = forge_exec(account, "ls", "/var/lib/gitea/git/repositories/" + project)
+    if result.returncode:
+        refuse(f"the local forge could not list the repositories of {project}", 69)
+    names = [line.removesuffix(".git") for line in result.stdout.splitlines()]
+    if any(not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name) for name in names):
+        refuse(f"the local forge holds an invalid repository name for {project}", 69)
+    return names
 
 
 def forge_git(account, project, repository):
@@ -1170,11 +1244,11 @@ def run():
         arguments = arguments[:-2]
     if len(arguments) == 5 and arguments[0] == "add" and arguments[3] == "--signed-by":
         action, project, admin, _, key = arguments
-    elif len(arguments) == 2 and arguments[0] in ("remove", "migrate"):
+    elif len(arguments) == 2 and arguments[0] in ("remove", "migrate", "central-state"):
         action, project = arguments
         admin = key = None
     else:
-        refuse('usage: add <project> <admin> --signed-by "ssh-ed25519 <base64>" | remove <project>', 64)
+        refuse('usage: add <project> <admin> --signed-by "ssh-ed25519 <base64>" | remove <project> | central-state <project>', 64)
     if not re.fullmatch(PROJECT_PATTERN, project):
         refuse("project must be 1 to 40 lowercase letters, digits or internal hyphens", 64)
     if action == "add":
@@ -1184,7 +1258,7 @@ def run():
     record = os.path.join(ETC, "projects", project + ".conf")
     if action == "add" and os.path.lexists(record):
         refuse(f"{record} exists")
-    if action in ("remove", "migrate") and not os.path.lexists(record):
+    if action != "add" and not os.path.lexists(record):
         refuse(f"unknown project {project}")
     for name in ("projects", "people"):
         trusted_directory(os.path.join(ETC, name), private=True, missing=True)
@@ -1204,7 +1278,7 @@ def run():
             inherited_lock(lock_fd)
         if action == "add" and os.path.lexists(record):
             refuse(f"{record} exists")
-        if action in ("remove", "migrate") and not os.path.lexists(record):
+        if action != "add" and not os.path.lexists(record):
             refuse(f"unknown project {project}")
         if action == "add":
             members, locked, pending, card = admitted(admin, person)
@@ -1212,11 +1286,18 @@ def run():
             person_content = format_person([*members, f"{project} project-admin"], locked, pending, card)
             affected = None
             publisher = None
+        elif action == "central-state":
+            publisher = affected = person_content = None
         else:
             publisher = registered_publisher(project, record)
             affected = people_after_removal(project)
             person_content = None
         left = left_at_central(project) if action == "remove" else []
+        if action == "central-state":
+            account = setting(read_values(CONF), "account", r"[a-z_][a-z0-9_-]{0,31}")
+            with writing("standard output"):
+                print(json.dumps(central_state(account, project), separators=(",", ":")), flush=True)
+            return
         forge = Forge(read_values(CONF))
         if action == "add":
             add(forge, project, admin, key, record, person, person_content)

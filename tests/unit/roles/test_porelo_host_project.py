@@ -1797,3 +1797,159 @@ def test_read_directory_residue_cannot_strand_or_partially_delete_a_project(memo
         assert not [call for call in host["forge"].calls[before:] if call[0] == "DELETE"]
         assert extra.exists() and "alpha" in host["forge"].organizations
         assert (host["etc"] / "projects/alpha.conf").exists()
+
+
+def central_state(host, monkeypatch, capsys, shape):
+    """Answer one repository's state from real Git history, with only the two forges' calls stood in."""
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    read_key_project(host)
+    local = host["tmp"] / "local" / "alpha" / "code.git"
+    bare(local)
+    work = host["tmp"] / "project-work"
+
+    def add(message):
+        made = commit(local, work, message)
+        git("--git-dir", str(local), "update-ref", "refs/heads/main", made)
+        return made
+
+    central = shape(local, add)
+
+    def forge_read(_account, _project, _repository, *arguments):
+        return subprocess.run(  # pylint: disable=subprocess-run-check
+            ["/usr/bin/git", f"--git-dir={local}", *arguments], capture_output=True, text=True
+        )
+
+    def central_main(*_args):
+        if isinstance(central, Exception):
+            raise central
+        return central
+
+    result = project(
+        host, monkeypatch, capsys, "central-state", "alpha",
+        overrides={"forge_read": forge_read, "central_main": central_main, "forge_repositories": lambda *args: ["code"]},
+    )
+    assert result[0] == 0, result
+    answer = json.loads(result[1])
+    assert answer["project"] == "alpha" and [item["repository"] for item in answer["repositories"]] == ["code"]
+    state = answer["repositories"][0]
+    del state["repository"]
+    return state
+
+
+def main_ahead_by_three(_local, add):
+    central = add("at the central forge")
+    add("one")
+    add("two")
+    add("three")
+    return central
+
+
+def main_the_same(_local, add):
+    return add("both")
+
+
+def central_unknown_here(_local, add):
+    add("local")
+    return "c" * 40
+
+
+def central_on_another_line(local, add):
+    first = add("first")
+    second = add("second")
+    git("--git-dir", str(local), "update-ref", "refs/heads/central/main", second)
+    git("--git-dir", str(local), "update-ref", "refs/heads/main", first)
+    return second
+
+
+def no_local_main(_local, _add):
+    return "c" * 40
+
+
+def no_central_main(_local, add):
+    add("local")
+
+
+def central_out_of_reach(_local, add):
+    add("local")
+    return subprocess.TimeoutExpired("ssh", 30)
+
+
+@pytest.mark.parametrize(
+    "shape, expected",
+    [
+        (main_ahead_by_three, {"state": "ahead", "commits": 3}),
+        (main_the_same, {"state": "up-to-date"}),
+        (central_unknown_here, {"state": "moved-on"}),
+        (central_on_another_line, {"state": "moved-on"}),
+        (no_local_main, {"state": "cannot-say", "why": "local"}),
+        (no_central_main, {"state": "cannot-say", "why": "no-central-main"}),
+        (central_out_of_reach, {"state": "cannot-say", "why": "unreachable"}),
+    ],
+)
+def test_a_repositorys_main_is_told_against_the_central_forge(memory_host, monkeypatch, capsys, shape, expected):
+    """Prevent a person being offered a push that is refused, or an unknown state reading as up to date."""
+    assert central_state(memory_host, monkeypatch, capsys, shape) == expected
+
+
+def test_a_repository_with_no_read_key_cannot_say(memory_host, monkeypatch, capsys):
+    """Prevent a repository the host holds no read key for from reading as up to date."""
+    host = memory_host
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    read_key_project(host)
+    result = project(
+        host, monkeypatch, capsys, "central-state", "alpha",
+        overrides={
+            "central_main": lambda *args: "a" * 40,
+            "forge_read": lambda *args: SimpleNamespace(returncode=0, stdout="a" * 40 + "\n"),
+            "forge_repositories": lambda *args: ["code", "other"],
+        },
+    )
+    assert result[0] == 0, result
+    assert json.loads(result[1])["repositories"] == [
+        {"repository": "code", "state": "up-to-date"},
+        {"repository": "other", "state": "cannot-say", "why": "no-read-key"},
+    ]
+
+
+def test_telling_the_state_asks_the_forge_nothing_and_leaves_it_no_token(memory_host, monkeypatch, capsys):
+    """Prevent a read at every follow leaving a lasting admin token on the host's forge each time."""
+    host = memory_host
+    before = {}
+
+    def shape(_local, add):
+        before.update(api=len(host["forge"].calls), cli=len(host["cli_calls"]))
+        return add("both")
+
+    central_state(host, monkeypatch, capsys, shape)
+    assert len(host["forge"].calls) == before["api"]
+    assert not [call for call in host["cli_calls"][before["cli"]:] if "generate-access-token" in call]
+
+
+def test_the_central_main_is_asked_by_the_read_key_and_bounded_in_time(memory_host):
+    """Prevent a central forge that hangs from holding the follow, or a clone at each follow."""
+    host = memory_host
+    directory, address = read_key_project(host)
+    known = host["etc"] / "organization/known_hosts"
+    known.write_text("forge.example.org ssh-ed25519 AAAA\n")
+    known.chmod(0o600)
+    values = runpy.run_path(str(SCRIPT), run_name="project_test")["main"].__globals__
+    values.update(ETC=str(host["etc"]), ROOT_UID=os.getuid(), TRUST_ANCHOR=str(host["tmp"]))
+    seen = {}
+
+    def project_git(arguments, *, environment=None, timeout=None):
+        seen.update(arguments=arguments, environment=environment, timeout=timeout)
+        return answer
+
+    values["project_git"] = project_git
+    item = {"name": "code", "address": address}
+    answer = "a" * 40 + "\trefs/heads/main\n"
+    assert values["central_main"](str(directory), item) == "a" * 40
+    assert seen["arguments"][:2] == ["ls-remote", "--"] and seen["arguments"][-1] == "refs/heads/main"
+    assert seen["timeout"] <= 30
+    assert f"-i {directory}/code" in seen["environment"]["GIT_SSH_COMMAND"]
+    assert "ConnectTimeout=" in seen["environment"]["GIT_SSH_COMMAND"]
+    answer = ""
+    assert values["central_main"](str(directory), item) is None
+    answer = "not a commit\trefs/heads/main\n"
+    with pytest.raises(values["Refusal"]):
+        values["central_main"](str(directory), item)

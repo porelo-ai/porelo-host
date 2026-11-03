@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `porelo-host-push --central <project>` tells a project's member, with no token and no root, how each repository's
+  approved `main` stands against the central forge, as the follow last read it with the host's read key.
+
 ### Changed
 
 - A refused project helper gives its own last line and exit code as the project's `why` in `org status` and in the
