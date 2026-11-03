@@ -1,6 +1,6 @@
 # HO104 — A Refusal's Why Lasts
 
-**Status:** Idea.
+**Status:** Accepted.
 
 **What must be true.** A refused migration's `why` in `org status` stands until a later try ends otherwise. Today the next
 five-minute follow, which has no token, sets `why` back to null, so a refusal's reason is gone within minutes while the
