@@ -1025,16 +1025,19 @@ def project_copy(project, address, known):
 
 
 # In Forgejo's container, on the repository's own folder: no hook or branch rule stands in the way, as main stays closed
-# to any push, and the push judge sees nothing here. So main moves only forward, to the newest change of project.yml in
-# the commit Porelo verified, and only if the tree changes in nothing but that file: other work takes the judged way, a
-# person's pull request from central/main. Forgejo's own post-receive then tells its database. Each exit is one answer
-# of ADVANCE_ANSWERS or a refusal; a temporary ref holds the commit while it is compared, and goes with the bundle.
+# to any push, and the push judge sees nothing here. So main moves only forward. Where a task works in the repository it
+# reaches `signed`: the newest change of project.yml in the commit Porelo verified, and only if the tree changes in
+# nothing but that file, as other work takes the judged way, a person's pull request from central/main. Where no task
+# works it reaches `tip`, the commit itself, as nothing on the host runs what it holds. Forgejo's own post-receive then
+# tells its database. Each exit is one answer of ADVANCE_ANSWERS or a refusal; a temporary ref holds the commit while it
+# is compared, and goes with the bundle.
 ADVANCE_SCRIPT = r"""
 umask 077
 dir=$1
 commit=$2
 owner=$3
 name=$4
+reach=$5
 bundle="$dir/porelo-advance.bundle"
 git() { command git --git-dir="$dir" "$@"; }
 clean() { rm -f "$bundle" && git update-ref -d refs/porelo/central; }
@@ -1057,21 +1060,25 @@ signed=$(git log -1 --format=%H refs/porelo/central -- project.yml)
     || done_with 65
 local=$(git rev-parse --verify --quiet 'refs/heads/main^{commit}')
 [ -n "$local" ] || done_with 69
-[ "$local" != "$signed" ] || done_with 0
-if above "$local" "$signed"; then
-    changed=$(git diff --name-only --no-renames "$local" "$signed") || done_with 69
-    case $changed in
-        "" | project.yml) ;;
-        *) done_with 13 ;;
-    esac
-    git update-ref refs/heads/main "$signed" "$local" || done_with 69
+target=$signed
+[ "$reach" != tip ] || target=$commit
+[ "$local" != "$target" ] || done_with 0
+if above "$local" "$target"; then
+    if [ "$reach" != tip ]; then
+        changed=$(git diff --name-only --no-renames "$local" "$target") || done_with 69
+        case $changed in
+            "" | project.yml) ;;
+            *) done_with 13 ;;
+        esac
+    fi
+    git update-ref refs/heads/main "$target" "$local" || done_with 69
     # The forge's first user is its admin, which the role makes before any other.
-    (cd "$dir" && printf '%s %s refs/heads/main\n' "$local" "$signed" | env SSH_ORIGINAL_COMMAND=internal \
+    (cd "$dir" && printf '%s %s refs/heads/main\n' "$local" "$target" | env SSH_ORIGINAL_COMMAND=internal \
         GITEA_REPO_USER_NAME="$owner" GITEA_REPO_NAME="$name" GITEA_REPO_IS_WIKI=false GITEA_PUSHER_NAME=porelo-admin \
         GITEA_PUSHER_ID=1 GITEA_PR_ID=0 forgejo hook post-receive >/dev/null 2>&1) || done_with 14
     done_with 10
 fi
-if above "$signed" "$local"; then
+if above "$target" "$local"; then
     done_with 11
 fi
 done_with 12
@@ -1103,7 +1110,7 @@ def bundle_copy(account, path, output):
         refuse("the verified copy could not be read", 69)
 
 
-def project_advance(project, name, commit, path):
+def project_advance(project, name, commit, path, reach):
     """Bring a repository's main on the host's forge up to the commit Porelo verified in the copy, and only forward."""
     directory, entries = project_manifest(project)
     item = next((entry for entry in entries if entry["name"] == name), None)
@@ -1115,7 +1122,7 @@ def project_advance(project, name, commit, path):
         bundle.seek(0)
         result = forge_exec(account, "sh", "-c", ADVANCE_SCRIPT, "advance",
                             "/var/lib/gitea/git/repositories/" + project + "/" + name.lower() + ".git", commit,
-                            project, name.lower(), given=bundle)
+                            project, name.lower(), reach, given=bundle)
     if result.returncode == 65:
         refuse("the copy no longer holds the commit Porelo verified", 65)
     if result.returncode not in ADVANCE_ANSWERS:
@@ -1393,12 +1400,13 @@ def run():
         admin = key = None
         if known != "-" and not re.fullmatch(COMMIT_PATTERN, known):
             refuse("project-copy takes a known commit or -", 64)
-    elif len(arguments) == 5 and arguments[0] == "project-advance":
-        action, project, named, commit, copied = arguments
+    elif len(arguments) == 6 and arguments[0] == "project-advance":
+        action, project, named, commit, copied, reach = arguments
         admin = key = None
         if (not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", named) or not re.fullmatch(COMMIT_PATTERN, commit)
-                or not re.fullmatch(re.escape(PROJECT_COPIES) + r"/[0-9a-f]{32}/central\.git", copied)):
-            refuse("project-advance takes a repository's name, a commit and a copy of this helper's", 64)
+                or not re.fullmatch(re.escape(PROJECT_COPIES) + r"/[0-9a-f]{32}/central\.git", copied)
+                or reach not in ("signed", "tip")):
+            refuse("project-advance takes a repository's name, a commit, a copy of this helper's and signed or tip", 64)
     else:
         refuse('usage: add <project> <admin> --signed-by "ssh-ed25519 <base64>" | remove <project> | central-state <project>', 64)
     if not re.fullmatch(PROJECT_PATTERN, project):
@@ -1456,7 +1464,7 @@ def run():
             return
         if action == "project-advance":
             with writing("standard output"):
-                print(json.dumps(project_advance(project, named, commit, copied), separators=(",", ":")), flush=True)
+                print(json.dumps(project_advance(project, named, commit, copied, reach), separators=(",", ":")), flush=True)
             return
         forge = Forge(read_values(CONF))
         if action == "add":

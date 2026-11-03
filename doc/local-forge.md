@@ -436,11 +436,20 @@ private read keys; the recorded address retains an explicit SSH port for the rem
 administrative authority. `/usr/local/sbin/porelo-host-push --pull <project> [repositories...]` brings central `main` locally as
 `central/main`, in the person's own account with the central token on stdin. Local `main` reaches it by a pull
 request. The project's own repository is the exception, as tasks read `project.yml` there: once Porelo's `project verify`
-has accepted central's file, the follow brings local `main` up to the newest change of that file, only forward and past
-the branch rule and the push judge, as `main` stays closed to every push. So it moves only if nothing but `project.yml`
-differs: a central writer cannot bring other work past the judge this way. Otherwise, or if local `main` holds commits
-central lacks, it stays, and `org status`'s `why` says a task here reads an older project file, until a gathered push or
-a person's pull request joins them.
+has accepted central's file, the follow brings local `main` forward to it, past the branch rule and the push judge, as
+`main` stays closed to every push.
+
+A project that lists repositories works only in those, so nothing on the host runs what its own repository holds. There
+`project.yml` changes only at the central forge, signed, by Porelo or by hand: that repository's `main` takes no merge on
+the host, and the follow brings it up to central's commit, whatever else that commit changes. Other branches can still
+be pushed there, and lead nowhere.
+
+A project that lists none works in its own repository, which keeps its merges. There `main` moves only to the newest
+change of `project.yml`, and only if nothing else differs, so a central writer brings no other work past the judge. So
+if a project stops listing repositories, what its `main` took meanwhile stands, under its admin's signed change.
+
+If it cannot move, as local `main` holds commits central lacks or other files differ, it stays, and `org status`'s `why`
+says a task here reads an older project file, until a gathered push or a person's pull request joins them.
 A repository's address on the host is `http://127.0.0.1:<git_port>/<project>/<name>.git`, with `git_port` from the host
 card and `<name>` the repository's name at the central forge; a project's `upstream` names it and its `central` the other. Push and pull each call `sudo -n porelo-host-person forge-token` for the local token and put it into the
 person's vault as `<forge>.person`, since it replaces the one there.

@@ -2092,7 +2092,9 @@ def shims(tmp_path, *, forgejo=0, fail=None):
     return directory, told
 
 
-def advancing(tmp_path, monkeypatch, host, capsys, *, local, central, commit=None, forgejo=0, fail=None):
+def advancing(
+    tmp_path, monkeypatch, host, capsys, *, local, central, commit=None, forgejo=0, fail=None, reach="signed"
+):
     copies = tmp_path / "advance-copies"
     copy = copies / ("d" * 32) / "central.git"
     copy.parent.mkdir(parents=True)
@@ -2125,6 +2127,7 @@ def advancing(tmp_path, monkeypatch, host, capsys, *, local, central, commit=Non
         "code",
         wanted,
         str(copy),
+        reach,
         overrides={"PROJECT_COPIES": str(copies), "forge_exec": forge_exec, "bundle_copy": bundle},
     )
     return result, wanted, told
@@ -2204,6 +2207,30 @@ def test_a_code_change_below_the_signed_file_does_not_move(memory_host, monkeypa
     assert git_out(local, "rev-parse", "refs/heads/main") == before
     assert not told.exists()
     only_main(local)
+
+
+def test_a_repository_no_task_works_in_follows_central_whatever_it_holds(memory_host, monkeypatch, capsys, tmp_path):
+    """A hand edit at central must not stop later filings where nothing on the host runs what the repository holds."""
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local = repositories(tmp_path)
+    central_commit(work, "plan.md", "by hand")
+    central_commit(work, "project.yml", "third")
+    central_commit(work, "plan.md", "by hand again")
+    result, tip, told = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work, reach="tip")
+    assert result[0] == 0 and json.loads(result[1]) == {"state": "moved"}, result
+    assert git_out(local, "rev-parse", "refs/heads/main") == tip
+    assert tip in told.read_text()
+    only_main(local)
+
+
+def test_following_central_still_never_takes_commits_back(memory_host, monkeypatch, capsys, tmp_path):
+    """A copy that already holds its own work keeps it, and the follow says so."""
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local = repositories(tmp_path)
+    made = local_commit(local)
+    result, _, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work, reach="tip")
+    assert result[0] == 0 and json.loads(result[1]) == {"state": "diverged"}, result
+    assert git_out(local, "rev-parse", "refs/heads/main") == made
 
 
 def test_a_forgejo_that_was_not_told_is_said(memory_host, monkeypatch, capsys, tmp_path):
@@ -2329,10 +2356,12 @@ def test_the_advance_reads_the_copy_as_its_owner_and_hands_it_to_the_container(m
 @pytest.mark.parametrize(
     "words",
     [
-        ("alpha", "code", "not-a-commit", "/run/porelo-host-project-copy/" + "d" * 32 + "/central.git"),
-        ("alpha", "../alpha", "c" * 40, "/run/porelo-host-project-copy/" + "d" * 32 + "/central.git"),
-        ("alpha", "code", "c" * 40, "/etc/passwd"),
-        ("alpha", "code", "c" * 40, "/run/porelo-host-project-copy/../../etc/central.git"),
+        ("alpha", "code", "not-a-commit", "/run/porelo-host-project-copy/" + "d" * 32 + "/central.git", "signed"),
+        ("alpha", "../alpha", "c" * 40, "/run/porelo-host-project-copy/" + "d" * 32 + "/central.git", "signed"),
+        ("alpha", "code", "c" * 40, "/etc/passwd", "signed"),
+        ("alpha", "code", "c" * 40, "/run/porelo-host-project-copy/../../etc/central.git", "tip"),
+        ("alpha", "code", "c" * 40, "/run/porelo-host-project-copy/" + "d" * 32 + "/central.git", "anything"),
+        ("alpha", "code", "c" * 40, "/run/porelo-host-project-copy/" + "d" * 32 + "/central.git"),
     ],
 )
 def test_the_advance_takes_no_other_words(memory_host, monkeypatch, capsys, words):
@@ -2344,7 +2373,7 @@ def test_the_advance_takes_no_other_words(memory_host, monkeypatch, capsys, word
 def test_the_advance_is_for_a_repository_with_a_read_key(memory_host, monkeypatch, capsys):
     """Only a repository the host took; another in the project's organization is not its to move."""
     advance_ready(memory_host, monkeypatch, capsys)
-    words = ("alpha", "other", "c" * 40, "/run/porelo-host-project-copy/" + "d" * 32 + "/central.git")
+    words = ("alpha", "other", "c" * 40, "/run/porelo-host-project-copy/" + "d" * 32 + "/central.git", "signed")
     result = project(
         memory_host,
         monkeypatch,

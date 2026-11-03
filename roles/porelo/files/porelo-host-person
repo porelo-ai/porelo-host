@@ -183,6 +183,18 @@ TOKEN_LIMIT = 4096
 PURGE_AFTER = datetime.timedelta(days=7)
 
 
+def taken_as(repository, row):
+    """The name a repository of the file goes by on the host's forge."""
+    return repository if row["central"] is None else CENTRAL_ADDRESS.fullmatch(row["central"]).group("repository")
+
+
+def no_task_in_own(project, file):
+    """A project that lists repositories works only in those, unless one of them is its own repository again."""
+    own = CENTRAL_ADDRESS.fullmatch(project["address"]).group("repository").lower()
+    rows = file.get("repositories", {})
+    return bool(rows) and all(taken_as(repository, row).lower() != own for repository, row in rows.items())
+
+
 def same_rule(found, wanted):
     """Forgejo may answer a rule's team names in its own order and case."""
     if isinstance(wanted, list):
@@ -2402,7 +2414,7 @@ class Host:
         try:
             result = self.runner(
                 [str(self.path(PROJECT_HELPER)), "project-advance", project["project"], repository, commit, copied,
-                 "--lock-fd", str(descriptor)],
+                 "tip" if no_task_in_own(project, item["file"]) else "signed", "--lock-fd", str(descriptor)],
                 input=None, pass_fds=(descriptor,), timeout=max(1, (deadline - self.now()).total_seconds()))
             answer = json.loads(result.stdout) if result.returncode == 0 else None
             state = answer.get("state") if isinstance(answer, dict) else None
@@ -2448,8 +2460,9 @@ class Host:
         file = item.get("file") or {}
         reviews = {CENTRAL_ADDRESS.fullmatch(project["address"]).group("repository").lower(): file.get("review")}
         for repository, row in file.get("repositories", {}).items():
-            taken_as = repository if row["central"] is None else CENTRAL_ADDRESS.fullmatch(row["central"]).group("repository")
-            reviews[taken_as.lower()] = row["review"]
+            reviews[taken_as(repository, row).lower()] = row["review"]
+        closed = (CENTRAL_ADDRESS.fullmatch(project["address"]).group("repository").lower()
+                  if no_task_in_own(project, file) else None)
         failed = []
         with self.forge_session(admin, "write:repository,read:organization") as (_, opener, base, token):
             root = base.removesuffix("admin/users/")
@@ -2457,6 +2470,8 @@ class Host:
                                                                              f"orgs/{name}/repos", "name")):
                 review = reviews.get(repository.lower()) or "required"
                 wanted = {**MAIN_PROTECTION, "required_approvals": 1 if review == "required" else 0}
+                if repository.lower() == closed:
+                    wanted["merge_whitelist_teams"] = []
                 route = f"repos/{name}/{repository}/branch_protections"
                 try:
                     try:

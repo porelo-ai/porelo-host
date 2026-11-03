@@ -19,6 +19,9 @@ named or a review changed after the first follow was unknown there, as the rehea
   repository alone; the others keep `central/main` by a person's pull request.
 - `diverged` and `other-changes` leave `main` where it is, and `why` says a task here reads an older file. The follow asks
   again each time.
+- A project that lists repositories has no task in its own, so that repository takes no merge on the host and `main` follows
+  central's commit (`tip`), whatever else it changes. A project that lists none, or lists its own again, keeps merges and
+  takes only the signed change (`signed`).
 - `doc/local-forge.md` promises `http://127.0.0.1:<git_port>/<project>/<name>.git` as a repository's address on the host.
 
 ## Acceptance

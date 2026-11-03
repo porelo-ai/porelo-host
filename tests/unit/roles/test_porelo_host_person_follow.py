@@ -1796,7 +1796,7 @@ class FileForge:
                 copy = None if arguments[4] == self.main else COPY
                 return subprocess.CompletedProcess(arguments, 0, json.dumps({"commit": self.main, "copy": copy}), "")
             if len(arguments) > 1 and arguments[1] == "project-advance":
-                self.advances.append(arguments[2:6])
+                self.advances.append(arguments[2:7])
                 if self.advance is None:
                     return subprocess.CompletedProcess(arguments, 69, "", "porelo-host-project: the forge said no\n")
                 return subprocess.CompletedProcess(arguments, 0, json.dumps({"state": self.advance}), "")
@@ -1883,7 +1883,9 @@ def test_each_repository_is_protected_as_the_verified_file_says(files):
     for rule in files.protection.values():
         assert rule["dismiss_stale_approvals"] is True and rule["enable_push"] is False
         assert rule["apply_to_admins"] is True
-        assert rule["merge_whitelist_teams"] == rule["approvals_whitelist_teams"] == ["Owners", "developers"]
+        assert rule["approvals_whitelist_teams"] == ["Owners", "developers"]
+    assert files.protection["code"]["merge_whitelist_teams"] == ["Owners", "developers"]
+    assert files.protection["unnamed"]["merge_whitelist_teams"] == ["Owners", "developers"]
 
 
 def test_the_file_is_read_with_the_projects_signers_from_a_copy(files):
@@ -2275,11 +2277,11 @@ def test_a_project_with_no_admin_key_reads_no_file(files):
 
 def test_a_file_porelo_accepted_reaches_the_copy_a_task_reads(files):
     """A task reads the project's file from the host's forge, so what the follow accepted must stand there."""
-    assert files.advances == [["alpha", "alpha", "1" * 40, COPY]]
+    assert files.advances == [["alpha", "alpha", "1" * 40, COPY, "signed"]]
     assert files.item()["advanced"] == "1" * 40
     files.main = "2" * 40
     files.run("b")
-    assert files.advances[-1] == ["alpha", "alpha", "2" * 40, COPY]
+    assert files.advances[-1] == ["alpha", "alpha", "2" * 40, COPY, "signed"]
     assert files.item()["advanced"] == "2" * 40
 
 
@@ -2382,3 +2384,48 @@ def test_a_move_forgejo_was_not_told_of_counts_as_moved(files, capsys):
     files.run("b")
     assert files.item()["advanced"] == "9" * 40 and "older" not in (files.item().get("why") or "")
     assert "show it late" in capsys.readouterr().err
+
+
+def test_a_project_that_lists_repositories_takes_no_merge_in_its_own(files):
+    """Its file changes only at central, signed: a merge on the host is what lets the two lines part."""
+    files.answer.update(repositories=named(code="optional"))
+    files.main = "2" * 40
+    files.repositories = ["alpha", "code"]
+    files.run("b")
+    rule = files.protection["alpha"]
+    assert rule["enable_merge_whitelist"] is True and rule["merge_whitelist_teams"] == []
+    assert rule["enable_push"] is False and rule["merge_whitelist_usernames"] == []
+    assert files.advances[-1][-1] == "tip"
+    assert files.protection["code"]["merge_whitelist_teams"] == ["Owners", "developers"]
+
+
+def test_a_project_that_lists_none_works_in_its_own(files):
+    """There the repository is the only place for work: merges stay, and no code passes the push judge."""
+    files.main = "2" * 40
+    files.run("b")
+    assert files.protection["alpha"]["merge_whitelist_teams"] == ["Owners", "developers"]
+    assert files.advances[-1][-1] == "signed"
+
+
+def test_a_project_that_stops_listing_gets_its_merges_back(files):
+    files.answer.update(repositories=named(code="optional"))
+    files.main = "2" * 40
+    files.repositories = ["alpha", "code"]
+    files.run("b")
+    assert files.protection["alpha"]["merge_whitelist_teams"] == []
+    files.answer.update(repositories={})
+    files.main = "3" * 40
+    files.run("c")
+    assert files.protection["alpha"]["merge_whitelist_teams"] == ["Owners", "developers"]
+    assert files.advances[-1][-1] == "signed"
+
+
+def test_a_row_that_is_the_project_repository_keeps_it_a_place_of_work(files):
+    """A file naming its own central address as a repository has tasks run on it: nothing there may pass the judge."""
+    rows = named(code="optional")
+    rows["code"]["central"] = "git@example.org:acme/ALPHA.git"
+    files.answer.update(repositories=rows)
+    files.main = "2" * 40
+    files.run("b")
+    assert files.advances[-1][-1] == "signed"
+    assert files.protection["alpha"]["merge_whitelist_teams"] == ["Owners", "developers"]
