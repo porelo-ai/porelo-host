@@ -1885,7 +1885,9 @@ class FileForge:
                 rows = list(self.later_rules.get(name, []))
                 if name in self.protection:
                     named_rule = self.rule_names.get(name, "main")
-                    rows.insert(0, {**self.protection[name], "rule_name": named_rule, "created_at": "2026-01-01T00:00:00Z"})
+                    rows.insert(
+                        0, {**self.protection[name], "rule_name": named_rule, "created_at": "2026-01-01T00:00:00Z"}
+                    )
                 return rows
             if name in self.refused:
                 raise state.scope["Refusal"]("Forgejo answered HTTP 500", 69)

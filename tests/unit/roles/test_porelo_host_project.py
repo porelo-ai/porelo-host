@@ -939,9 +939,7 @@ def test_down_takes_the_key_from_every_project_and_only_that_secret(memory_host,
     assert json.loads(out) == {"changed": []}
 
 
-def test_down_stopping_a_forge_that_does_not_answer_is_no_failure_and_makes_no_token(
-    memory_host, monkeypatch, capsys
-):
+def test_down_stopping_a_forge_that_does_not_answer_is_no_failure_and_makes_no_token(memory_host, monkeypatch, capsys):
     """Prevent a second down, or one after the forge stopped, failing on what is gone with the forge."""
     host = memory_host
     overrides = pool_key(host)
