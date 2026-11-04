@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Each follow names each person's projects to that person alone, in `organization/persons/<login>.json`, so their account
   can list them before a first start there. Needs a Porelo that reads it.
+- `build/move-check.sh`, the read-only check of an agent's move, and `build/room-tunnel.sh`, which lets a person's tasks on a
+  host reach the room on the development machine over one socket.
 - The follow reads each project's signed file: the host takes every repository it names under `central` with one token,
   and each repository's `main` needs a review or not as `review` says (`required` by default). Needs a Porelo with
   `project verify`.
