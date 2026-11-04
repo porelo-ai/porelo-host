@@ -1,6 +1,6 @@
 # HO123 — A Socket Forward Reaches Past The Agent Rule
 
-**Status:** Backlog.
+**Status:** Review.
 
 **What must be true.** What a person's ssh can do with their agent on a host is written down and meant. `AllowAgentForwarding no`
 does not read as more than it is.

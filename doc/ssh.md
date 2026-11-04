@@ -31,6 +31,12 @@ guarded by file and directory modes alone. In particular, the daemon directory `
 service roles set their own socket permissions. Forwarding another person's socket fails when their directory is
 private. SSH provides no extra path authorization layer.
 
+**What the agent rule stops, and what not.** `AllowAgentForwarding no` means `ssh -A` gives a session no agent. It does not keep a person's agent
+off the host if that person wants it there: a remote socket forward to their own agent's socket does the same, and a person with a
+shell could run a forwarder with no sshd rule at all. It stays, as a person's own right on their own socket: the scope protects from
+agents and outsiders. **The risk is that person's:** while such a forward stands, root on that host can have anything signed with the key,
+so on a rented machine it asks for a key that signs nothing else. Nothing of Porelo should need it.
+
 ## Organization input
 
 The verified organization reader is a separate component. The `Host` class in the installed person helper exposes these
