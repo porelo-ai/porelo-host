@@ -57,6 +57,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho117"></a>[HO117](HO117-The-Sanity-Images-Two-Pins.md) | - | - | The `pip` and `pylint` the sanity image pins, with open alerts, raised or said why they stay |
 | <a id="ho116"></a>[HO116](HO116-The-Firewall-Left-By-Down.md) | - | - | `down` leaves the firewall's file and, by reading, its unit: taken off, or said why it stays |
 | <a id="ho115"></a>[HO115](HO115-The-Pool-VM-Not-Ready-On-GitHubs-Runner.md) | - | - | The pool's VM says ready on GitHub's runner, or the reason it cannot is known; until then GitHub does not check the pool. |
 | <a id="ho114"></a>[HO114](HO114-A-Hosts-Read-Keys-Taken-Off-The-Central-Forge.md) | - | - | Taking a project off and `down` delete the host's read-only keys at the central forge, the token asked once and kept nowhere; if impossible, each is named with a link. |
