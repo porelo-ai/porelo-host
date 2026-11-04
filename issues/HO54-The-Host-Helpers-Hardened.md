@@ -10,5 +10,4 @@ planned with the findings of the operator's 6j test:
 - `porelo-host-project add` finds and removes an organization or publisher the forge made although its answer was
   lost to a timeout, so a retry is not refused for a name it took itself.
 
-Two points of that review have no subject today: `porelo-host-stop --stdin` refuses `forge-certificate`, as the forge has
-no certificate, and `porelo-host-forge-password` no longer exists, as the forge has no password.
+The forge's gate replaced the certificate and the password the review also read.
