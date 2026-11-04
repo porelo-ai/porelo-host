@@ -33,6 +33,7 @@ from contextlib import contextmanager
 ETC = "/etc/porelo-host"
 # The person helper's record of each push's verdicts, one directory per project.
 ARRIVALS = "/var/lib/porelo-host/arrivals"
+POOL_RUN_KEY = "/var/lib/porelo-host/pool/run-key"
 CONF = "/etc/porelo-host/forge.conf"
 RUN_USER = "/run/user"
 PUSH = "/usr/local/sbin/porelo-host-push"
@@ -559,6 +560,16 @@ def add(forge, project, admin, key, record, person, person_content):
         forge.request("PUT", f"/teams/{team['id']}/members/{publisher}", expected=(204,))
         secret = token(forge.account, publisher, "write:package")
         forge.request("PUT", f"/orgs/{project}/actions/secrets/PORELO_PUBLISHER_TOKEN", {"data": secret}, (201, 204))
+        # A build resolves with this one, so only the step that deploys holds the publisher's.
+        secret = token(forge.account, publisher, "read:package")
+        forge.request(
+            "PUT", f"/orgs/{project}/actions/secrets/PORELO_PACKAGES_READ_TOKEN", {"data": secret}, (201, 204)
+        )
+        if os.path.lexists(POOL_RUN_KEY):
+            trusted(POOL_RUN_KEY, private=True)
+            with open(POOL_RUN_KEY, encoding="utf-8") as stream:
+                secret = stream.read()
+            forge.request("PUT", f"/orgs/{project}/actions/secrets/PORELO_POOL_SSH", {"data": secret}, (201, 204))
         with writing(record):
             output = os.fdopen(descriptor, "w", encoding="utf-8")
             descriptor = None

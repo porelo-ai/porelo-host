@@ -49,7 +49,8 @@ on the web and Git ports, to that socket. The runner starts after this proxy and
 registration container and jobs all join `container:forgejo-runner-proxy`.
 
 Registration uses `http://127.0.0.1:<web_port>`. Jobs get a read-only `/etc/hosts` owned by root, which maps
-`<host>.localhost` to `127.0.0.1`, so checkout and the package registry use the canonical forge URL with their tokens.
+`<host>.localhost` to `127.0.0.1`, so checkout uses the canonical forge URL with its token. The package registry is on
+`localhost` in the same namespace, as Maven's default mirror blocks plain http to any other name.
 The Actions cache uses `127.0.0.1` on its existing ports, `4000` and `4001` by default, in this shared namespace.
 Neither forge nor cache ports are published on the host. Jobs receive no forge socket or forge CA trust mounts.
 
@@ -115,14 +116,15 @@ sets the local forge's values only.
 | `vars.PORELO_PUBLISH` | `false` | `true` |
 | `vars.PORELO_DEPLOY_PROFILE` | `forge-release` | `central-sonatype-release` |
 | `vars.MAVEN_SNAPSHOTS_URL` | Forge Maven URL below | [Sonatype snapshots][snapshots] |
-| `secrets.PORELO_PUBLISHER_TOKEN` | The local publisher's package token; private registry reads need authentication too | A placeholder for anonymous Sonatype snapshot reads; central deployment uses its own credentials |
+| `secrets.PORELO_PACKAGES_READ_TOKEN` | The local publisher's `read:package` token, for resolving from the private registry | A placeholder, as Sonatype's snapshots are read anonymously |
+| `secrets.PORELO_PUBLISHER_TOKEN` | The local publisher's package token, for the step that deploys | A placeholder for anonymous Sonatype snapshot reads; central deployment uses its own credentials |
 | `vars.JF_URL` | `https://jfrog.invalid`, a placeholder: the variables API takes no empty value, and no real service answers it | The Artifactory instance that `PORELO_PUBLISH` uploads go to |
 | `secrets.JF_ACCESS_TOKEN` | `porelo-host-placeholder`, created only when the secret is absent; an existing value is kept | The Artifactory access token for those uploads |
 
 [snapshots]: https://central.sonatype.com/repository/maven-snapshots/
 
 The default organization is `porelo`. The forge's browser address is `http://<host>.localhost:<web_port>/`.
-The Forge Maven URL is `http://<host>.localhost:<web_port>/api/packages/<forge_owner>/maven`.
+The Forge Maven URL is `http://localhost:<web_port>/api/packages/<project>/maven`.
 Registry clients in jobs use the shared loopback proxy with token authentication. External HTTPS uses the job image's
 own certificate authorities; no forge CA bundle or JVM trust store is injected.
 
@@ -158,7 +160,9 @@ Registration pins the supplied key unchanged in `signed_by`; it does not follow 
 The command creates the private organization named by the project, with the admin in its `Owners` team, and the
 account `porelo-publisher-<project>`. Its `publishers` team writes that organization's packages only, with no code
 access or repository creation. Its `write:package` token becomes the organization's Actions secret
-`PORELO_PUBLISHER_TOKEN`. The generated password is discarded; no credential reaches stdout or a record.
+`PORELO_PUBLISHER_TOKEN`, and a second token, `read:package` alone, becomes `PORELO_PACKAGES_READ_TOKEN`. Where the host
+has a VM pool, its run key becomes `PORELO_POOL_SSH`. A failure while setting any of them removes the organization and the
+publisher. The generated password is discarded; no credential reaches stdout or a record.
 
 `/etc/porelo-host/projects/<project>.conf`, root's with mode `0600`, holds `admin`, `signed_by` and `publisher` as
 `key=value` lines, and registration adds `member=<project> project-admin` in fixed order to

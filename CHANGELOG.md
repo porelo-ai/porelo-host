@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   can list them before a first start there. Needs a Porelo that reads it.
 - `build/move-check.sh`, the read-only check of an agent's move, and `build/room-tunnel.sh`, which lets a person's tasks on a
   host reach the room on the development machine over one socket.
+- Each project's organization on the forge holds `PORELO_PACKAGES_READ_TOKEN`, which can only read its packages, and, where
+  the host has a VM pool, `PORELO_POOL_SSH`. A project registered before keeps what it had.
 - The follow reads each project's signed file: the host takes every repository it names under `central` with one token,
   and each repository's `main` needs a review or not as `review` says (`required` by default). Needs a Porelo with
   `project verify`.
@@ -31,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `MAVEN_SNAPSHOTS_URL` names `localhost`, as Maven's default mirror refused the plain http of `<host>.localhost`.
 - What a Project Admin files at the central forge reaches a task on the host at the next follow, once Porelo accepted it.
   A task reads the project's file from the host's forge, whose copy was taken once.
 - A project that lists repositories takes no merge in its own repository on the host, whose `main` follows the central

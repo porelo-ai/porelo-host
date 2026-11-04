@@ -161,32 +161,37 @@ if FORGE.exists():
     account = "porelo-forge"
     uid = run("id", "-u", account).stdout.strip()
     socket = f"/run/user/{uid}/porelo-forge/http.sock"
-    made = run(
-        "runuser",
-        "-u",
-        account,
-        "--",
-        "env",
-        "-C",
-        "/",
-        f"XDG_RUNTIME_DIR=/run/user/{uid}",
-        "podman",
-        "exec",
-        "forgejo",
-        "forgejo",
-        "admin",
-        "user",
-        "generate-access-token",
-        "--username",
-        "porelo-admin",
-        "--token-name",
-        "follow-act",
-        "--scopes",
-        "all",
-        "--raw",
-    )
-    forge_token = made.stdout.strip()
-    check(made.returncode == 0 and forge_token, "a token for the act's forge calls", made.stderr)
+
+    def forge_token_of(username, scopes):
+        made = run(
+            "runuser",
+            "-u",
+            account,
+            "--",
+            "env",
+            "-C",
+            "/",
+            f"XDG_RUNTIME_DIR=/run/user/{uid}",
+            "podman",
+            "exec",
+            "forgejo",
+            "forgejo",
+            "admin",
+            "user",
+            "generate-access-token",
+            "--username",
+            username,
+            "--token-name",
+            f"follow-act-{scopes.replace(':', '-')}",
+            "--scopes",
+            scopes,
+            "--raw",
+        )
+        value = made.stdout.strip()
+        check(made.returncode == 0 and value, f"a {scopes} token of {username} for the act", made.stderr)
+        return value
+
+    forge_token = forge_token_of("porelo-admin", "all")
 
     def forge(method, route, body=None):
         done = run(
@@ -208,6 +213,45 @@ if FORGE.exists():
         )
         text, unused, code = done.stdout.rpartition("\n")
         return int(code or 0), json.loads(text) if text.strip().startswith(("{", "[")) else None
+
+    def package(method, secret):
+        # With the one user name the shared settings send for every organization's publisher, not the token's owner.
+        done = run(
+            "curl",
+            "-sS",
+            "-K",
+            "-",
+            "--unix-socket",
+            socket,
+            "-o",
+            "/dev/null",
+            "-X",
+            method,
+            "-w",
+            "%{http_code}",
+            # With curl's form content type the registry looks for a form's file and answers 500.
+            *(["--data-binary", "probe", "-H", "content-type: application/octet-stream"] if method == "PUT" else []),
+            f"http://localhost/api/packages/{PROJECT}/generic/follow-act/1/probe",
+            given=f'user = "porelo-publisher:{secret}"\n',
+        )
+        return done.stdout.strip()
+
+    publisher = f"porelo-publisher-{PROJECT}"
+    held = {item["name"] for item in forge("GET", f"orgs/{PROJECT}/actions/secrets")[1] or []}
+    check("PORELO_PACKAGES_READ_TOKEN" in held, "the organization to hold the read token", held)
+    check("PORELO_PUBLISHER_TOKEN" in held, "the organization to hold the publisher's token", held)
+    code, variable = forge("GET", f"orgs/{PROJECT}/actions/variables/MAVEN_SNAPSHOTS_URL")
+    check(code == 200 and f"/api/packages/{PROJECT}/maven" in str(variable), "its own snapshot URL", variable)
+    # The same scopes the helper asks for; the secrets themselves cannot be read back.
+    reader, writer = forge_token_of(publisher, "read:package"), forge_token_of(publisher, "write:package")
+    refused = package("PUT", reader)
+    check(not refused.startswith("2"), "the read token not to write a package", refused)
+    written = package("PUT", writer)
+    check(written.startswith("2"), "the publisher's token to write a package", written)
+    read = package("GET", reader)
+    check(read == "200", "the read token to read the package", read)
+    gone = package("DELETE", writer)
+    check(gone.startswith("2"), "the act's package to go", gone)
 
     def followed():
         # A repository made here has no central address, so its members' push configs say so; only that may fail.

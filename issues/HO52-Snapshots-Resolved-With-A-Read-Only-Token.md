@@ -1,13 +1,14 @@
 # HO52 — Snapshots Resolved With A Read-Only Token
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** M - one contract other repositories read (a secret's name and scope, a variable), in one helper with its
 tests and a Molecule act.
 
 **What must be true.** A build on the host's forge resolves its project's snapshots with a token that can only read
 them, so a test in an unreviewed task branch can neither overwrite a snapshot nor publish one; only the step that
 deploys on `main` holds the publisher's token. Every project organization names its own snapshot registry, so a
-build that misses it fails instead of resolving elsewhere.
+build with no address or token for it fails, as it would not see what the host built. A snapshot that registry does not
+hold is no failure: it resolves from the project's central source.
 
 ## Plan
 
@@ -44,6 +45,7 @@ build that misses it fails instead of resolving elsewhere.
 ## To be checked
 
 - Whether Forgejo checks the user name Maven sends against the token's owner; the shared settings send one name for
-  every organization's publisher.
-- Which address of the forge a runner's job reaches, for `MAVEN_SNAPSHOTS_URL`, now that the forge has its host's
-  name.
+  every organization's publisher. Molecule's act sends that one name.
+- That a job reaches `MAVEN_SNAPSHOTS_URL` on `localhost` through the runner's proxy. Maven's default mirror blocks plain
+  http to `<host>.localhost`, measured on a Forgejo in podman, and the proxy's gate sets the Host header itself; not
+  yet run through that proxy.

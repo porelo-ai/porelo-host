@@ -36,6 +36,7 @@ KEY_WIRE = b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20" + bytes(range(32))
 KEY = "ssh-ed25519 " + base64.b64encode(KEY_WIRE).decode("ascii")
 ADMIN_TOKEN = "a" * 40
 PUBLISHER_TOKEN = "b" * 40
+READ_TOKEN = "e" * 40
 
 
 class Forge:
@@ -258,6 +259,8 @@ def project_host(tmp_path, forge, push_host):
         if "generate-access-token" in arguments:
             name = arguments[arguments.index("--username") + 1]
             token = ADMIN_TOKEN if name == "porelo-admin" else PUBLISHER_TOKEN
+            if arguments[arguments.index("--scopes") + 1] == "read:package":
+                token = READ_TOKEN
             return subprocess.CompletedProcess(arguments, 0, token + "\n", "")
         raise AssertionError(arguments)
 
@@ -545,12 +548,14 @@ def test_add_creates_only_the_project_owner_and_package_publisher(api_host, monk
             can_create_org_repo=False,
         )
         assert forge.secrets[(name, "PORELO_PUBLISHER_TOKEN")] == PUBLISHER_TOKEN
+        assert forge.secrets[(name, "PORELO_PACKAGES_READ_TOKEN")] == READ_TOKEN
+        assert (name, "PORELO_POOL_SSH") not in forge.secrets
     assert set(forge.organizations) == {"alpha", "beta"}
     assert set(forge.users) == {"alice", "bob", "porelo-publisher-alpha", "porelo-publisher-beta"}
     for directory in ("projects", "people"):
         assert (project_host["etc"] / directory).stat().st_mode & 0o777 == 0o700
     scopes = [call[call.index("--scopes") + 1] for call in project_host["cli_calls"] if "--scopes" in call]
-    assert scopes.count("write:package") == 2
+    assert scopes.count("write:package") == 2 and scopes.count("read:package") == 2
 
 
 def test_unknown_removal_never_reaches_the_forge(project_host, monkeypatch, capsys):
@@ -589,7 +594,11 @@ def test_remove_refuses_unpushed_commits_then_removes_only_the_project(api_host,
     assert not (host["etc"] / "projects/alpha.conf").exists()
     assert set(forge.organizations) == {"beta"}
     assert set(forge.users) == {"alice", "bob", "porelo-publisher-beta"}
-    assert set(forge.secrets) == {("beta", "PORELO_PUBLISHER_TOKEN"), ("beta", "JF_ACCESS_TOKEN")}
+    assert set(forge.secrets) == {
+        ("beta", "PORELO_PUBLISHER_TOKEN"),
+        ("beta", "PORELO_PACKAGES_READ_TOKEN"),
+        ("beta", "JF_ACCESS_TOKEN"),
+    }
     assert not forge.packages["alpha"]
     assert forge.packages["beta"] == [{"type": "maven", "name": "org.example:other", "version": "1.0"}]
     assert list(host["push"]["temporary"].iterdir()) == []
@@ -729,7 +738,14 @@ def test_a_later_repository_page_cannot_hide_unpushed_work(memory_host, monkeypa
     assert not [call for call in forge.calls if call[0] != "GET"]
 
 
-@pytest.mark.parametrize("path", ["/orgs/alpha/teams", "/orgs/alpha/actions/secrets/PORELO_PUBLISHER_TOKEN"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/orgs/alpha/teams",
+        "/orgs/alpha/actions/secrets/PORELO_PUBLISHER_TOKEN",
+        "/orgs/alpha/actions/secrets/PORELO_PACKAGES_READ_TOKEN",
+    ],
+)
 def test_failed_registration_removes_its_own_partial_identities(memory_host, monkeypatch, capsys, path):
     """Prevent an API failure from leaving an unrecorded organization or reusable publisher behind."""
     host = memory_host
@@ -766,7 +782,7 @@ def test_a_record_created_during_registration_cannot_be_overwritten(memory_host,
     assert set(host["forge"].users) == {"alice", "bob"}
 
 
-@pytest.mark.parametrize("failure", ["uid", "admin-token", "publisher-create", "publisher-token"])
+@pytest.mark.parametrize("failure", ["uid", "admin-token", "publisher-create", "publisher-token", "read-token"])
 def test_failed_cli_commands_never_publish_a_record_or_credentials(memory_host, monkeypatch, capsys, failure):
     """Prevent a failed or malformed CLI response from exposing credentials or leaving unrecorded access."""
     host = memory_host
@@ -778,6 +794,7 @@ def test_failed_cli_commands_never_publish_a_record_or_credentials(memory_host, 
             or (failure == "publisher-create" and "create" in arguments)
             or (failure == "admin-token" and "porelo-admin" in arguments)
             or (failure == "publisher-token" and "write:package" in arguments)
+            or (failure == "read-token" and "read:package" in arguments)
         )
         if failing:
             host["cli_calls"].append(arguments)
@@ -792,6 +809,52 @@ def test_failed_cli_commands_never_publish_a_record_or_credentials(memory_host, 
         err,
     )
     assert not (host["etc"] / "projects/alpha.conf").exists()
+    assert not host["forge"].organizations
+    assert set(host["forge"].users) == {"alice", "bob"}
+
+
+def pool_key(host, mode=0o600):
+    """Lay a run key where the helper looks for it, and name that place to the helper."""
+    key = host["tmp"] / "pool" / "run-key"
+    key.parent.mkdir(mode=0o700, exist_ok=True)
+    key.write_text("private run key\n")
+    key.chmod(mode)
+    return dict(POOL_RUN_KEY=str(key))
+
+
+def test_the_pools_run_key_is_put_only_where_the_host_has_one(memory_host, monkeypatch, capsys):
+    """Prevent a build asking for a pool machine finding no key, or a key anyone could read being sent on."""
+    host = memory_host
+    overrides = pool_key(host)
+    code, out, err = project(
+        host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY, overrides=overrides
+    )
+    assert code == 0, err
+    assert host["forge"].secrets[("alpha", "PORELO_POOL_SSH")] == "private run key\n"
+    assert "private run key" not in out + err
+
+
+def test_a_run_key_others_may_read_stops_the_registration_and_undoes_it(memory_host, monkeypatch, capsys):
+    """Prevent a key already exposed on the host being spread into every job's reach."""
+    host = memory_host
+    overrides = pool_key(host, 0o644)
+    code, out, err = project(
+        host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY, overrides=overrides
+    )
+    assert code == 69 and not out, (code, out, err)
+    assert not host["forge"].organizations
+    assert set(host["forge"].users) == {"alice", "bob"}
+
+
+def test_a_failed_run_key_secret_removes_the_organization_and_the_publisher(memory_host, monkeypatch, capsys):
+    """Prevent a half-registered project keeping its tokens when the last secret cannot be set."""
+    host = memory_host
+    host["forge"].failure = ("PUT", "/api/v1/orgs/alpha/actions/secrets/PORELO_POOL_SSH")
+    overrides = pool_key(host)
+    code, out, err = project(
+        host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY, overrides=overrides
+    )
+    assert code == 69 and not out, (code, out, err)
     assert not host["forge"].organizations
     assert set(host["forge"].users) == {"alice", "bob"}
 

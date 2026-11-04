@@ -146,8 +146,9 @@ def test_jobs_share_loopback_for_checkout_registry_and_cache():
     assert "tls/" not in config["container"]["options"]
     assert config["container"]["valid_volumes"] == ["/opt/jdk", "/opt/job-hosts"]
     defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())
+    # Maven's default mirror blocks plain http to any name but localhost, and the job shares the proxy's loopback.
     assert defaults["forge_variables"]["MAVEN_SNAPSHOTS_URL"] == (
-        "http://{{ forge_name }}:{{ forge_http_port }}/api/packages/{project}/maven"
+        "http://localhost:{{ forge_http_port }}/api/packages/{project}/maven"
     )
 
 
