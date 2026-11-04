@@ -1,6 +1,6 @@
 # HO120 — A Measuring Run For Any Machine
 
-**Status:** Backlog.
+**Status:** Review.
 
 **What must be true.** One command measures a given machine and writes one result file, so a new machine class is one run and
 a number on [HO119](README.md#ho119)'s page names the machine it came from.
@@ -22,8 +22,8 @@ tarball. Results kept here under `doc/measures/`, one file per run, and the page
 | --- | --- |
 | The machine before `up` | memory, disk |
 | Idle, each of: no Forgejo and no room; the room; Forgejo; both | memory, disk, `up`'s time |
-| One task, then one agent | memory peak, disk growth, start time |
-| A Maven build in a job, at 1, 2 and 4 parallel jobs, cold and with the cache | memory peak, disk growth, time, CPU |
+| One task, then one agent | "not measured", [HO125](README.md#ho125) |
+| A Maven build in a job | "not measured", [HO125](README.md#ho125) |
 
 Memory from the cgroups, whose peak each unit and task already has, not from `free`. Each step is read three times and the file
 holds all three; a page's number says which it shows.
@@ -41,13 +41,11 @@ and the difference goes in the file. `up` and `down` are known to leave a firewa
 that is given back, and it stops where a person holds a membership or a homeserver holds a room. A run stands alone on its
 machine, as any timing measurement.
 
-## Settled for building
+## What it reads, and not yet
 
-- **The Maven project:** `porelo-buildtools` at a pinned tag, so the number can be run again; it reaches Maven Central, whose
-  speed is in the cold number.
-- **More than the half:** 4 jobs on a small machine are refused by `forge`'s capacity check, and showing what happens past it
-  is the point. A role variable the measuring playbook alone sets takes the run past the check, tested not to reach `up`.
-- **An agent:** idle and a fixed start only; real work is "not measured", as it needs a token, costs money, and a model's answer varies.
+**Idle only.** The machine before `up` and the four idle shapes, each read three times. A task, an agent's fixed start and the Maven
+jobs say "not measured" in the file, and are [HO125](README.md#ho125), with what was settled for them. **[HO119](README.md#ho119)'s page may not
+rest on them yet:** a size that has to hold work has no measured number until then.
 
 ## Hardware, in order
 
@@ -66,3 +64,20 @@ One number stands, not from this run: the interface's *Prepare the machine* took
 - The planted secret is in no result file; the difference it lists names what `down` left.
 - A refused machine, one with a person or a room, stops before anything changes.
 - The page's table is made from the files, and a changed file fails the unit test until it is made again.
+
+## Result
+
+**Idle, on local VMs at 4, 8 and 16 GiB, on a snapshot collection.** All three files stand under `doc/measures/`, and the page's tables come from them. All 36
+`up` reached, none refused. In use, summed over the slices, is the same at each size within the readings: about 225 MiB before `up`, 230 for `none`, 290 for
+`room`, 380 for `forge` and 440 for `both`. Disk at `/` goes from 2.7 to 4.5 GiB.
+
+**A second run at 4 GiB, on the commit before the reading's fixes, has the same facts:** in use within about 15 MiB in every reading; `up`'s time moves more, past two
+times in one reading, so these say nothing of a host's time. It is not kept in `doc/measures/`.
+
+**A proof run at 4 GiB, on the commit before this text, has the same 438 facts and all `up` reached.** One reading of `both` did not settle within its 24 seconds, and the file says so
+with a null; none of the kept files has one. So a null can happen on a small VM, and the settling is what it should be. That file was not kept, and its other figures were not compared.
+
+- **Measured:** memory and disk at idle, what the run left, and `up`'s time, which says little on a VM. A planted secret stays out of the file by unit test.
+- **Not shown:** a real host's time, the `cx33`-like and Elastic Metal rows, each on the operator's word and not done. What `up` takes while it runs.
+- **What the difference names `down` left:** the packages, the unit files of those packages and of the firewall, the task sweep and the homeserver, `dnsmasq`'s account, and
+  on the 8 GiB run `/var/lib/fwupd`. It lists no directory in `/etc` or `/opt`, and the file's own list is the whole of it.

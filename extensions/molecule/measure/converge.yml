@@ -1,0 +1,65 @@
+---
+- name: Measure this VM from its tarball
+  hosts: all
+  gather_facts: false
+  become: true
+  vars:
+    converge_tarball: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_TARBALL') }}"
+    converge_offer: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MEASURE_OFFER', default='local-vm') }}"
+    converge_result: /root/measure.json
+  tasks:
+    - name: Install Ubuntu's own ansible-core
+      ansible.builtin.apt:
+        name: ansible-core
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Copy the collection's tarball onto the VM
+      ansible.builtin.copy:
+        src: "{{ converge_tarball }}"
+        dest: /root/porelo-host.tar.gz
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Install the collection from that tarball
+      ansible.builtin.command:
+        cmd: ansible-galaxy collection install --force /root/porelo-host.tar.gz
+      changed_when: true
+
+    # Stands in for the host admin, as on a real host root's own key is: up closes root to it, and keeps the VM's login.
+    - name: Pin the VM's login key as the host admin's, and keep it for that login
+      ansible.builtin.shell:
+        cmd: |
+          set -eu
+          key=$(awk '$1 == "ssh-ed25519" { print $1 " " $2; exit }' ~{{ ansible_user }}/.ssh/authorized_keys)
+          [ -n "$key" ]
+          mkdir -p /root/.ssh /etc/ssh/authorized_keys
+          chmod 0700 /root/.ssh
+          for target in /root/.ssh/authorized_keys /etc/ssh/authorized_keys/{{ ansible_user }}; do
+              printf '%s\n' "$key" > "$target.new" && chmod 0644 "$target.new" && mv -f "$target.new" "$target"
+          done
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Run the measuring playbook on the VM
+      ansible.builtin.command:
+        argv:
+          - ansible-playbook
+          - -c
+          - local
+          - -i
+          - localhost,
+          - porelo.host.measure
+          - -e
+          - >-
+            {{ {'measure_out': converge_result, 'measure_fresh': true, 'measure_distribution': 'snapshots',
+                'measure_given': {'provider': 'local', 'offer': converge_offer}} | to_json }}
+      changed_when: true
+
+    - name: Fetch the result
+      ansible.builtin.fetch:
+        src: "{{ converge_result }}"
+        dest: "{{ playbook_dir }}/../../../target/measures/{{ converge_offer }}.json"
+        flat: true

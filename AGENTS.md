@@ -497,6 +497,9 @@ and the UTC time that text last changed; change it in the channel first, never i
   Forgejo's container, where there is no Java; `roles/forge/files/porelo-host-forge-password` and `roles/forge/files/porelo-host-project`,
   Python like the collection's plugins, since they run as root on the host, where there is no Java, and hold
   passwords and forge credentials in one process;
+  `roles/check/files/porelo-host-check`, Python's standard library, since it runs on a machine before anything is installed;
+  `roles/measure/files/porelo-host-measure`, Python's standard library, since it measures a host without Java;
+  `build/measure-tables.py`, Python, since it reads the result files without running the measured machine;
   `doc/images/local-forge-svg.py`, Python like the collection's plugins, since it draws the document's picture; and the
   collection itself is YAML.
 

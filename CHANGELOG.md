@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A measuring playbook for disposable machines, with private JSON results and a machine page built from result files.
+
 - **Role `check`, one read-only look at a machine before anything is installed,** naming every lack at once with what it found, what
   was asked and what to do, as JSON for the interface; `up`'s first task runs the same code. `forge`'s job budget is its formula now.
 

@@ -24,7 +24,9 @@ say() { printf '%s\n' "$*" >&2; }
 fail() { say "FAILED: $*"; exit 1; }
 
 # --- the acceptance tooling, handed over from a checked build -------------------------------------------------------
-pool_check=${PORELO_HOST_MOLECULE_POOL:-on}
+# The measuring scenario makes no pool, so it needs none handed over.
+if [ "$scenario" = measure ]; then pool_default=off; else pool_default=on; fi
+pool_check=${PORELO_HOST_MOLECULE_POOL:-$pool_default}
 case "$pool_check" in on|off) ;; *) fail 'PORELO_HOST_MOLECULE_POOL must be on or off' ;; esac
 kvm_check=${PORELO_HOST_MOLECULE_KVM:-on}
 case "$kvm_check" in on|off) ;; *) fail 'PORELO_HOST_MOLECULE_KVM must be on or off' ;; esac
@@ -127,7 +129,7 @@ ssh-keygen -q -t ed25519 -N '' -C "$name" -f "$dir/host_ed25519"
 made=yes
 # ubuntu25.10: osinfo-db as Ubuntu 26.04 ships it (0.20250606) knows no ubuntu26.04 yet.
 # 6 GiB: the host's own services, and the VM pool's one VM nested inside it.
-"$vm" make "$name" "$base" "$dir" 6144 4 ubuntu25.10
+"$vm" make "$name" "$base" "$dir" "${PORELO_HOST_MOLECULE_MEMORY:-6144}" 4 ubuntu25.10
 started=$(date +%s)
 address=$("$vm" address "$name" "$limit")
 printf '%s %s\n' "$address" "$(cut -d' ' -f1,2 "$dir/host_ed25519.pub")" > "$dir/known_hosts"
@@ -180,4 +182,5 @@ PORELO_HOST_MACHINES=$machines \
 PORELO_HOST_MOLECULE_POOL=$pool_check \
 PORELO_HOST_MOLECULE_FORGE=$forge_check \
 PORELO_HOST_MOLECULE_KVM=$kvm_check \
+PORELO_HOST_MEASURE_OFFER=${PORELO_HOST_MEASURE_OFFER:-local-vm} \
     "$root/build/tools.sh" molecule test -s "$scenario"

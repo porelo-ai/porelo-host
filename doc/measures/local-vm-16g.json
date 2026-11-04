@@ -1,0 +1,3541 @@
+{
+  "v": 1,
+  "facts": [
+    {
+      "field": "cpu.model",
+      "value": "AMD Ryzen AI 7 PRO 350 w/ Radeon 860M",
+      "unit": "text",
+      "step": "machine"
+    },
+    {
+      "field": "cpu.count",
+      "value": 4,
+      "unit": "count",
+      "step": "machine"
+    },
+    {
+      "field": "cpu.virtualization",
+      "value": "svm",
+      "unit": "text",
+      "step": "machine"
+    },
+    {
+      "field": "memory.total",
+      "value": 16764674048,
+      "unit": "bytes",
+      "step": "machine"
+    },
+    {
+      "field": "kernel",
+      "value": "7.0.0-34-generic",
+      "unit": "text",
+      "step": "machine"
+    },
+    {
+      "field": "system",
+      "value": "ubuntu 26.04",
+      "unit": "text",
+      "step": "machine"
+    },
+    {
+      "field": "kvm",
+      "value": true,
+      "unit": "boolean",
+      "step": "machine"
+    },
+    {
+      "field": "provider",
+      "value": "local",
+      "unit": "text",
+      "step": "machine"
+    },
+    {
+      "field": "offer",
+      "value": "local-vm-16g",
+      "unit": "text",
+      "step": "machine"
+    },
+    {
+      "field": "collection.version",
+      "value": "0.5.11-snapshot",
+      "unit": "text",
+      "step": "machine"
+    },
+    {
+      "field": "disk.size",
+      "value": 378880,
+      "unit": "bytes",
+      "step": "machine",
+      "subject": "sr0"
+    },
+    {
+      "field": "disk.rotational",
+      "value": true,
+      "unit": "boolean",
+      "step": "machine",
+      "subject": "sr0"
+    },
+    {
+      "field": "disk.size",
+      "value": 21474836480,
+      "unit": "bytes",
+      "step": "machine",
+      "subject": "vda"
+    },
+    {
+      "field": "disk.rotational",
+      "value": true,
+      "unit": "boolean",
+      "step": "machine",
+      "subject": "vda"
+    },
+    {
+      "field": "distribution",
+      "value": "snapshots",
+      "unit": "text",
+      "step": "machine"
+    },
+    {
+      "field": "package.version",
+      "value": null,
+      "unit": "text",
+      "step": "before",
+      "subject": "podman",
+      "why": "not installed"
+    },
+    {
+      "field": "package.version",
+      "value": null,
+      "unit": "text",
+      "step": "before",
+      "subject": "porelo",
+      "why": "not installed"
+    },
+    {
+      "field": "memory.current",
+      "value": 59924480,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "first",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.peak",
+      "value": 79036416,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "first",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.anon",
+      "value": 4882432,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "first",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.current",
+      "value": 428625920,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "first",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 499097600,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "first",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 65753088,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "first",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 1207668736,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "first",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 1227780096,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "first",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 163876864,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "first",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "first",
+      "subject": "host",
+      "why": "cgroup file is unavailable"
+    },
+    {
+      "field": "memory.current",
+      "value": 1696219136,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "first",
+      "subject": "host"
+    },
+    {
+      "field": "memory.anon",
+      "value": 234512384,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "first",
+      "subject": "host"
+    },
+    {
+      "field": "disk.used",
+      "value": 2855718912,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "first",
+      "subject": "/"
+    },
+    {
+      "field": "disk.used",
+      "value": 2855718912,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "first",
+      "subject": "/var/lib"
+    },
+    {
+      "field": "disk.used",
+      "value": 2855718912,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "first",
+      "subject": "/var/cache"
+    },
+    {
+      "field": "disk.used",
+      "value": 2855718912,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "first",
+      "subject": "/home"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "first",
+      "subject": "/var/lib/containers",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "first",
+      "subject": "/var/lib/porelo-host",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "memory.current",
+      "value": 59924480,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "second",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.peak",
+      "value": 79036416,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "second",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.anon",
+      "value": 4882432,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "second",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.current",
+      "value": 428625920,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "second",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 499097600,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "second",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 65753088,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "second",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 1210630144,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "second",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 1229000704,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "second",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 167030784,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "second",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "second",
+      "subject": "host",
+      "why": "cgroup file is unavailable"
+    },
+    {
+      "field": "memory.current",
+      "value": 1699180544,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "second",
+      "subject": "host"
+    },
+    {
+      "field": "memory.anon",
+      "value": 237666304,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "second",
+      "subject": "host"
+    },
+    {
+      "field": "disk.used",
+      "value": 2856042496,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "second",
+      "subject": "/"
+    },
+    {
+      "field": "disk.used",
+      "value": 2856042496,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "second",
+      "subject": "/var/lib"
+    },
+    {
+      "field": "disk.used",
+      "value": 2856042496,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "second",
+      "subject": "/var/cache"
+    },
+    {
+      "field": "disk.used",
+      "value": 2856042496,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "second",
+      "subject": "/home"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "second",
+      "subject": "/var/lib/containers",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "second",
+      "subject": "/var/lib/porelo-host",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "memory.current",
+      "value": 60186624,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "third",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.peak",
+      "value": 79036416,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "third",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.anon",
+      "value": 4882432,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "third",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.current",
+      "value": 428818432,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "third",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 499097600,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "third",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 65757184,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "third",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 1210630144,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "third",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 1229000704,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "third",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 167034880,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "third",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "third",
+      "subject": "host",
+      "why": "cgroup file is unavailable"
+    },
+    {
+      "field": "memory.current",
+      "value": 1699635200,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "third",
+      "subject": "host"
+    },
+    {
+      "field": "memory.anon",
+      "value": 237674496,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "third",
+      "subject": "host"
+    },
+    {
+      "field": "disk.used",
+      "value": 2856042496,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "third",
+      "subject": "/"
+    },
+    {
+      "field": "disk.used",
+      "value": 2856042496,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "third",
+      "subject": "/var/lib"
+    },
+    {
+      "field": "disk.used",
+      "value": 2856042496,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "third",
+      "subject": "/var/cache"
+    },
+    {
+      "field": "disk.used",
+      "value": 2856042496,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "third",
+      "subject": "/home"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "third",
+      "subject": "/var/lib/containers",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "before",
+      "sample": "third",
+      "subject": "/var/lib/porelo-host",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "up.state",
+      "value": "reached",
+      "unit": "text",
+      "step": "idle.none",
+      "sample": "first"
+    },
+    {
+      "field": "up.time",
+      "value": 110.74623819499999,
+      "unit": "seconds",
+      "step": "idle.none",
+      "sample": "first"
+    },
+    {
+      "field": "memory.current",
+      "value": 60796928,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "first",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.peak",
+      "value": 79036416,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "first",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.anon",
+      "value": 5365760,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "first",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.current",
+      "value": 431038464,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "first",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 499097600,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "first",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 67112960,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "first",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 2118639616,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "first",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 2385948672,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "first",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 167284736,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "first",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "first",
+      "subject": "host",
+      "why": "cgroup file is unavailable"
+    },
+    {
+      "field": "memory.current",
+      "value": 2610475008,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "first",
+      "subject": "host"
+    },
+    {
+      "field": "memory.anon",
+      "value": 239763456,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "first",
+      "subject": "host"
+    },
+    {
+      "field": "disk.used",
+      "value": 3704496128,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "first",
+      "subject": "/"
+    },
+    {
+      "field": "disk.used",
+      "value": 3704496128,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "first",
+      "subject": "/var/lib"
+    },
+    {
+      "field": "disk.used",
+      "value": 3704496128,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "first",
+      "subject": "/var/cache"
+    },
+    {
+      "field": "disk.used",
+      "value": 3704496128,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "first",
+      "subject": "/home"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "first",
+      "subject": "/var/lib/containers",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "first",
+      "subject": "/var/lib/porelo-host",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "up.state",
+      "value": "reached",
+      "unit": "text",
+      "step": "idle.none",
+      "sample": "second"
+    },
+    {
+      "field": "up.time",
+      "value": 23.13165323999999,
+      "unit": "seconds",
+      "step": "idle.none",
+      "sample": "second"
+    },
+    {
+      "field": "memory.current",
+      "value": 60612608,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "second",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.peak",
+      "value": 79036416,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "second",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.anon",
+      "value": 5410816,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "second",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.current",
+      "value": 430604288,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "second",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 499097600,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "second",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 67198976,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "second",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 2119340032,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "second",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 2385948672,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "second",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 167469056,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "second",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "second",
+      "subject": "host",
+      "why": "cgroup file is unavailable"
+    },
+    {
+      "field": "memory.current",
+      "value": 2610556928,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "second",
+      "subject": "host"
+    },
+    {
+      "field": "memory.anon",
+      "value": 240078848,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "second",
+      "subject": "host"
+    },
+    {
+      "field": "disk.used",
+      "value": 3704569856,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "second",
+      "subject": "/"
+    },
+    {
+      "field": "disk.used",
+      "value": 3704569856,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "second",
+      "subject": "/var/lib"
+    },
+    {
+      "field": "disk.used",
+      "value": 3704569856,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "second",
+      "subject": "/var/cache"
+    },
+    {
+      "field": "disk.used",
+      "value": 3704569856,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "second",
+      "subject": "/home"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "second",
+      "subject": "/var/lib/containers",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "second",
+      "subject": "/var/lib/porelo-host",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "up.state",
+      "value": "reached",
+      "unit": "text",
+      "step": "idle.none",
+      "sample": "third"
+    },
+    {
+      "field": "up.time",
+      "value": 29.152372780000007,
+      "unit": "seconds",
+      "step": "idle.none",
+      "sample": "third"
+    },
+    {
+      "field": "memory.current",
+      "value": 60301312,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "third",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.peak",
+      "value": 80232448,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "third",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.anon",
+      "value": 5427200,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "third",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.current",
+      "value": 430456832,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "third",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 499097600,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "third",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 67223552,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "third",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 2119213056,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "third",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 2385948672,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "third",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 167546880,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "third",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "third",
+      "subject": "host",
+      "why": "cgroup file is unavailable"
+    },
+    {
+      "field": "memory.current",
+      "value": 2609971200,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "third",
+      "subject": "host"
+    },
+    {
+      "field": "memory.anon",
+      "value": 240197632,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "third",
+      "subject": "host"
+    },
+    {
+      "field": "disk.used",
+      "value": 3704643584,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "third",
+      "subject": "/"
+    },
+    {
+      "field": "disk.used",
+      "value": 3704643584,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "third",
+      "subject": "/var/lib"
+    },
+    {
+      "field": "disk.used",
+      "value": 3704643584,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "third",
+      "subject": "/var/cache"
+    },
+    {
+      "field": "disk.used",
+      "value": 3704643584,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "third",
+      "subject": "/home"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "third",
+      "subject": "/var/lib/containers",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.none",
+      "sample": "third",
+      "subject": "/var/lib/porelo-host",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "up.state",
+      "value": "reached",
+      "unit": "text",
+      "step": "idle.room",
+      "sample": "first"
+    },
+    {
+      "field": "up.time",
+      "value": 69.32471156100002,
+      "unit": "seconds",
+      "step": "idle.room",
+      "sample": "first"
+    },
+    {
+      "field": "memory.current",
+      "value": 60493824,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.peak",
+      "value": 80232448,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.anon",
+      "value": 5447680,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.current",
+      "value": 438493184,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 499097600,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 67317760,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 2357522432,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 2475036672,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 230617088,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 188936192,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "porelo-matrix"
+    },
+    {
+      "field": "memory.peak",
+      "value": 209428480,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "porelo-matrix"
+    },
+    {
+      "field": "memory.anon",
+      "value": 62922752,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "porelo-matrix"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "host",
+      "why": "cgroup file is unavailable"
+    },
+    {
+      "field": "memory.current",
+      "value": 2856509440,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "host"
+    },
+    {
+      "field": "memory.anon",
+      "value": 303382528,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "host"
+    },
+    {
+      "field": "disk.used",
+      "value": 3913203712,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "/"
+    },
+    {
+      "field": "disk.used",
+      "value": 3913203712,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "/var/lib"
+    },
+    {
+      "field": "disk.used",
+      "value": 3913203712,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "/var/cache"
+    },
+    {
+      "field": "disk.used",
+      "value": 3913203712,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "/home"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "/var/lib/containers",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "first",
+      "subject": "/var/lib/porelo-host",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "up.state",
+      "value": "reached",
+      "unit": "text",
+      "step": "idle.room",
+      "sample": "second"
+    },
+    {
+      "field": "up.time",
+      "value": 80.71086827400006,
+      "unit": "seconds",
+      "step": "idle.room",
+      "sample": "second"
+    },
+    {
+      "field": "memory.current",
+      "value": 60923904,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.peak",
+      "value": 80232448,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.anon",
+      "value": 5476352,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.current",
+      "value": 439795712,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 499097600,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 67375104,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 2359615488,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 2480852992,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 231284736,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 188456960,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "porelo-matrix"
+    },
+    {
+      "field": "memory.peak",
+      "value": 207716352,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "porelo-matrix"
+    },
+    {
+      "field": "memory.anon",
+      "value": 63496192,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "porelo-matrix"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "host",
+      "why": "cgroup file is unavailable"
+    },
+    {
+      "field": "memory.current",
+      "value": 2860335104,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "host"
+    },
+    {
+      "field": "memory.anon",
+      "value": 304136192,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "host"
+    },
+    {
+      "field": "disk.used",
+      "value": 3913363456,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "/"
+    },
+    {
+      "field": "disk.used",
+      "value": 3913363456,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "/var/lib"
+    },
+    {
+      "field": "disk.used",
+      "value": 3913363456,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "/var/cache"
+    },
+    {
+      "field": "disk.used",
+      "value": 3913363456,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "/home"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "/var/lib/containers",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "second",
+      "subject": "/var/lib/porelo-host",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "up.state",
+      "value": "reached",
+      "unit": "text",
+      "step": "idle.room",
+      "sample": "third"
+    },
+    {
+      "field": "up.time",
+      "value": 64.68053597799997,
+      "unit": "seconds",
+      "step": "idle.room",
+      "sample": "third"
+    },
+    {
+      "field": "memory.current",
+      "value": 60829696,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.peak",
+      "value": 80232448,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.anon",
+      "value": 5480448,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.current",
+      "value": 439562240,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 499097600,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 67428352,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 2359836672,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 2480852992,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 231022592,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 188104704,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "porelo-matrix"
+    },
+    {
+      "field": "memory.peak",
+      "value": 208191488,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "porelo-matrix"
+    },
+    {
+      "field": "memory.anon",
+      "value": 63123456,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "porelo-matrix"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "host",
+      "why": "cgroup file is unavailable"
+    },
+    {
+      "field": "memory.current",
+      "value": 2860228608,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "host"
+    },
+    {
+      "field": "memory.anon",
+      "value": 303931392,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "host"
+    },
+    {
+      "field": "disk.used",
+      "value": 3913523200,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "/"
+    },
+    {
+      "field": "disk.used",
+      "value": 3913523200,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "/var/lib"
+    },
+    {
+      "field": "disk.used",
+      "value": 3913523200,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "/var/cache"
+    },
+    {
+      "field": "disk.used",
+      "value": 3913523200,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "/home"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "/var/lib/containers",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.room",
+      "sample": "third",
+      "subject": "/var/lib/porelo-host",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "up.state",
+      "value": "reached",
+      "unit": "text",
+      "step": "idle.forge",
+      "sample": "first"
+    },
+    {
+      "field": "up.time",
+      "value": 103.04145893299994,
+      "unit": "seconds",
+      "step": "idle.forge",
+      "sample": "first"
+    },
+    {
+      "field": "memory.current",
+      "value": 61489152,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.peak",
+      "value": 80232448,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.anon",
+      "value": 5521408,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.current",
+      "value": 447246336,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 499097600,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 67575808,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 3242340352,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 3401175040,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 323244032,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 555466752,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "porelo-forge"
+    },
+    {
+      "field": "memory.peak",
+      "value": 600047616,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "porelo-forge"
+    },
+    {
+      "field": "memory.anon",
+      "value": 124440576,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "porelo-forge"
+    },
+    {
+      "field": "memory.current",
+      "value": 148537344,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "porelo-runner"
+    },
+    {
+      "field": "memory.peak",
+      "value": 172097536,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "porelo-runner"
+    },
+    {
+      "field": "memory.anon",
+      "value": 30646272,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "porelo-runner"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "host",
+      "why": "cgroup file is unavailable"
+    },
+    {
+      "field": "memory.current",
+      "value": 3751075840,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "host"
+    },
+    {
+      "field": "memory.anon",
+      "value": 396341248,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "host"
+    },
+    {
+      "field": "disk.used",
+      "value": 4638384128,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "/"
+    },
+    {
+      "field": "disk.used",
+      "value": 4638384128,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "/var/lib"
+    },
+    {
+      "field": "disk.used",
+      "value": 4638384128,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "/var/cache"
+    },
+    {
+      "field": "disk.used",
+      "value": 4638384128,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "/home"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "/var/lib/containers",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "first",
+      "subject": "/var/lib/porelo-host",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "up.state",
+      "value": "reached",
+      "unit": "text",
+      "step": "idle.forge",
+      "sample": "second"
+    },
+    {
+      "field": "up.time",
+      "value": 76.49722496899994,
+      "unit": "seconds",
+      "step": "idle.forge",
+      "sample": "second"
+    },
+    {
+      "field": "memory.current",
+      "value": 61374464,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.peak",
+      "value": 80232448,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.anon",
+      "value": 5562368,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.current",
+      "value": 447950848,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 499097600,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 67629056,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 3244056576,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 3402412032,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 324288512,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 553435136,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "porelo-forge"
+    },
+    {
+      "field": "memory.peak",
+      "value": 597733376,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "porelo-forge"
+    },
+    {
+      "field": "memory.anon",
+      "value": 125665280,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "porelo-forge"
+    },
+    {
+      "field": "memory.current",
+      "value": 146010112,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "porelo-runner"
+    },
+    {
+      "field": "memory.peak",
+      "value": 169426944,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "porelo-runner"
+    },
+    {
+      "field": "memory.anon",
+      "value": 30334976,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "porelo-runner"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "host",
+      "why": "cgroup file is unavailable"
+    },
+    {
+      "field": "memory.current",
+      "value": 3753381888,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "host"
+    },
+    {
+      "field": "memory.anon",
+      "value": 397479936,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "host"
+    },
+    {
+      "field": "disk.used",
+      "value": 4638711808,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "/"
+    },
+    {
+      "field": "disk.used",
+      "value": 4638711808,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "/var/lib"
+    },
+    {
+      "field": "disk.used",
+      "value": 4638711808,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "/var/cache"
+    },
+    {
+      "field": "disk.used",
+      "value": 4638711808,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "/home"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "/var/lib/containers",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "second",
+      "subject": "/var/lib/porelo-host",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "up.state",
+      "value": "reached",
+      "unit": "text",
+      "step": "idle.forge",
+      "sample": "third"
+    },
+    {
+      "field": "up.time",
+      "value": 88.37078481499998,
+      "unit": "seconds",
+      "step": "idle.forge",
+      "sample": "third"
+    },
+    {
+      "field": "memory.current",
+      "value": 61538304,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.peak",
+      "value": 80359424,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.anon",
+      "value": 5632000,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.current",
+      "value": 448638976,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 499097600,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 67653632,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 3244990464,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 3403337728,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 323366912,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 553234432,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "porelo-forge"
+    },
+    {
+      "field": "memory.peak",
+      "value": 596164608,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "porelo-forge"
+    },
+    {
+      "field": "memory.anon",
+      "value": 124248064,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "porelo-forge"
+    },
+    {
+      "field": "memory.current",
+      "value": 145842176,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "porelo-runner"
+    },
+    {
+      "field": "memory.peak",
+      "value": 168714240,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "porelo-runner"
+    },
+    {
+      "field": "memory.anon",
+      "value": 30691328,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "porelo-runner"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "host",
+      "why": "cgroup file is unavailable"
+    },
+    {
+      "field": "memory.current",
+      "value": 3755167744,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "host"
+    },
+    {
+      "field": "memory.anon",
+      "value": 396652544,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "host"
+    },
+    {
+      "field": "disk.used",
+      "value": 4639027200,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "/"
+    },
+    {
+      "field": "disk.used",
+      "value": 4639027200,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "/var/lib"
+    },
+    {
+      "field": "disk.used",
+      "value": 4639027200,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "/var/cache"
+    },
+    {
+      "field": "disk.used",
+      "value": 4639027200,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "/home"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "/var/lib/containers",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.forge",
+      "sample": "third",
+      "subject": "/var/lib/porelo-host",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "up.state",
+      "value": "reached",
+      "unit": "text",
+      "step": "idle.both",
+      "sample": "first"
+    },
+    {
+      "field": "up.time",
+      "value": 141.51848695500007,
+      "unit": "seconds",
+      "step": "idle.both",
+      "sample": "first"
+    },
+    {
+      "field": "memory.current",
+      "value": 61399040,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.peak",
+      "value": 81559552,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.anon",
+      "value": 5718016,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.current",
+      "value": 457732096,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 499097600,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 67690496,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 3429904384,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 3548299264,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 383074304,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 549871616,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "porelo-forge"
+    },
+    {
+      "field": "memory.peak",
+      "value": 592683008,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "porelo-forge"
+    },
+    {
+      "field": "memory.anon",
+      "value": 121077760,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "porelo-forge"
+    },
+    {
+      "field": "memory.current",
+      "value": 145924096,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "porelo-runner"
+    },
+    {
+      "field": "memory.peak",
+      "value": 169402368,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "porelo-runner"
+    },
+    {
+      "field": "memory.anon",
+      "value": 30502912,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "porelo-runner"
+    },
+    {
+      "field": "memory.current",
+      "value": 187412480,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "porelo-matrix"
+    },
+    {
+      "field": "memory.peak",
+      "value": 207351808,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "porelo-matrix"
+    },
+    {
+      "field": "memory.anon",
+      "value": 62857216,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "porelo-matrix"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "host",
+      "why": "cgroup file is unavailable"
+    },
+    {
+      "field": "memory.current",
+      "value": 3949035520,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "host"
+    },
+    {
+      "field": "memory.anon",
+      "value": 456482816,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "host"
+    },
+    {
+      "field": "disk.used",
+      "value": 4801675264,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "/"
+    },
+    {
+      "field": "disk.used",
+      "value": 4801675264,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "/var/lib"
+    },
+    {
+      "field": "disk.used",
+      "value": 4801675264,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "/var/cache"
+    },
+    {
+      "field": "disk.used",
+      "value": 4801675264,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "/home"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "/var/lib/containers",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "first",
+      "subject": "/var/lib/porelo-host",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "up.state",
+      "value": "reached",
+      "unit": "text",
+      "step": "idle.both",
+      "sample": "second"
+    },
+    {
+      "field": "up.time",
+      "value": 164.05401834999998,
+      "unit": "seconds",
+      "step": "idle.both",
+      "sample": "second"
+    },
+    {
+      "field": "memory.current",
+      "value": 62132224,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.peak",
+      "value": 81559552,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.anon",
+      "value": 5742592,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.current",
+      "value": 457965568,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 499097600,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 67801088,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 3436552192,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 3555110912,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 388050944,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 555216896,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "porelo-forge"
+    },
+    {
+      "field": "memory.peak",
+      "value": 597876736,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "porelo-forge"
+    },
+    {
+      "field": "memory.anon",
+      "value": 126115840,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "porelo-forge"
+    },
+    {
+      "field": "memory.current",
+      "value": 146644992,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "porelo-runner"
+    },
+    {
+      "field": "memory.peak",
+      "value": 170442752,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "porelo-runner"
+    },
+    {
+      "field": "memory.anon",
+      "value": 30441472,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "porelo-runner"
+    },
+    {
+      "field": "memory.current",
+      "value": 187351040,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "porelo-matrix"
+    },
+    {
+      "field": "memory.peak",
+      "value": 206262272,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "porelo-matrix"
+    },
+    {
+      "field": "memory.anon",
+      "value": 62779392,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "porelo-matrix"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "host",
+      "why": "cgroup file is unavailable"
+    },
+    {
+      "field": "memory.current",
+      "value": 3956649984,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "host"
+    },
+    {
+      "field": "memory.anon",
+      "value": 461594624,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "host"
+    },
+    {
+      "field": "disk.used",
+      "value": 4802097152,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "/"
+    },
+    {
+      "field": "disk.used",
+      "value": 4802097152,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "/var/lib"
+    },
+    {
+      "field": "disk.used",
+      "value": 4802097152,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "/var/cache"
+    },
+    {
+      "field": "disk.used",
+      "value": 4802097152,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "/home"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "/var/lib/containers",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "second",
+      "subject": "/var/lib/porelo-host",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "up.state",
+      "value": "reached",
+      "unit": "text",
+      "step": "idle.both",
+      "sample": "third"
+    },
+    {
+      "field": "up.time",
+      "value": 122.98594398900013,
+      "unit": "seconds",
+      "step": "idle.both",
+      "sample": "third"
+    },
+    {
+      "field": "memory.current",
+      "value": 61939712,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.peak",
+      "value": 81559552,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.anon",
+      "value": 5775360,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "init.scope"
+    },
+    {
+      "field": "memory.current",
+      "value": 459816960,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 499097600,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 68911104,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "system.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 3441229824,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.peak",
+      "value": 3562004480,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.anon",
+      "value": 393490432,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "user.slice"
+    },
+    {
+      "field": "memory.current",
+      "value": 556605440,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "porelo-forge"
+    },
+    {
+      "field": "memory.peak",
+      "value": 600039424,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "porelo-forge"
+    },
+    {
+      "field": "memory.anon",
+      "value": 128950272,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "porelo-forge"
+    },
+    {
+      "field": "memory.current",
+      "value": 145813504,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "porelo-runner"
+    },
+    {
+      "field": "memory.peak",
+      "value": 168886272,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "porelo-runner"
+    },
+    {
+      "field": "memory.anon",
+      "value": 30482432,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "porelo-runner"
+    },
+    {
+      "field": "memory.current",
+      "value": 189861888,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "porelo-matrix"
+    },
+    {
+      "field": "memory.peak",
+      "value": 210665472,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "porelo-matrix"
+    },
+    {
+      "field": "memory.anon",
+      "value": 65257472,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "porelo-matrix"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "host",
+      "why": "cgroup file is unavailable"
+    },
+    {
+      "field": "memory.current",
+      "value": 3962986496,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "host"
+    },
+    {
+      "field": "memory.anon",
+      "value": 468176896,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "host"
+    },
+    {
+      "field": "disk.used",
+      "value": 4801392640,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "/"
+    },
+    {
+      "field": "disk.used",
+      "value": 4801392640,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "/var/lib"
+    },
+    {
+      "field": "disk.used",
+      "value": 4801392640,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "/var/cache"
+    },
+    {
+      "field": "disk.used",
+      "value": 4801392640,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "/home"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "/var/lib/containers",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "disk.used",
+      "value": null,
+      "unit": "bytes",
+      "step": "idle.both",
+      "sample": "third",
+      "subject": "/var/lib/porelo-host",
+      "why": "path is unavailable"
+    },
+    {
+      "field": "work",
+      "value": null,
+      "unit": "text",
+      "step": "task",
+      "sample": "first",
+      "why": "not measured"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "task",
+      "sample": "first",
+      "why": "not measured"
+    },
+    {
+      "field": "disk.growth",
+      "value": null,
+      "unit": "bytes",
+      "step": "task",
+      "sample": "first",
+      "why": "not measured"
+    },
+    {
+      "field": "start.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "task",
+      "sample": "first",
+      "why": "not measured"
+    },
+    {
+      "field": "work.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "task",
+      "sample": "first",
+      "why": "not measured"
+    },
+    {
+      "field": "cpu.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "task",
+      "sample": "first",
+      "why": "not measured"
+    },
+    {
+      "field": "work",
+      "value": null,
+      "unit": "text",
+      "step": "task",
+      "sample": "second",
+      "why": "not measured"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "task",
+      "sample": "second",
+      "why": "not measured"
+    },
+    {
+      "field": "disk.growth",
+      "value": null,
+      "unit": "bytes",
+      "step": "task",
+      "sample": "second",
+      "why": "not measured"
+    },
+    {
+      "field": "start.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "task",
+      "sample": "second",
+      "why": "not measured"
+    },
+    {
+      "field": "work.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "task",
+      "sample": "second",
+      "why": "not measured"
+    },
+    {
+      "field": "cpu.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "task",
+      "sample": "second",
+      "why": "not measured"
+    },
+    {
+      "field": "work",
+      "value": null,
+      "unit": "text",
+      "step": "task",
+      "sample": "third",
+      "why": "not measured"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "task",
+      "sample": "third",
+      "why": "not measured"
+    },
+    {
+      "field": "disk.growth",
+      "value": null,
+      "unit": "bytes",
+      "step": "task",
+      "sample": "third",
+      "why": "not measured"
+    },
+    {
+      "field": "start.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "task",
+      "sample": "third",
+      "why": "not measured"
+    },
+    {
+      "field": "work.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "task",
+      "sample": "third",
+      "why": "not measured"
+    },
+    {
+      "field": "cpu.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "task",
+      "sample": "third",
+      "why": "not measured"
+    },
+    {
+      "field": "work",
+      "value": null,
+      "unit": "text",
+      "step": "agent",
+      "sample": "first",
+      "why": "not measured: real work needs a token and a model's answer varies"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "agent",
+      "sample": "first",
+      "why": "not measured: real work needs a token and a model's answer varies"
+    },
+    {
+      "field": "disk.growth",
+      "value": null,
+      "unit": "bytes",
+      "step": "agent",
+      "sample": "first",
+      "why": "not measured: real work needs a token and a model's answer varies"
+    },
+    {
+      "field": "start.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "agent",
+      "sample": "first",
+      "why": "not measured: real work needs a token and a model's answer varies"
+    },
+    {
+      "field": "work.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "agent",
+      "sample": "first",
+      "why": "not measured: real work needs a token and a model's answer varies"
+    },
+    {
+      "field": "cpu.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "agent",
+      "sample": "first",
+      "why": "not measured: real work needs a token and a model's answer varies"
+    },
+    {
+      "field": "work",
+      "value": null,
+      "unit": "text",
+      "step": "agent",
+      "sample": "second",
+      "why": "not measured: real work needs a token and a model's answer varies"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "agent",
+      "sample": "second",
+      "why": "not measured: real work needs a token and a model's answer varies"
+    },
+    {
+      "field": "disk.growth",
+      "value": null,
+      "unit": "bytes",
+      "step": "agent",
+      "sample": "second",
+      "why": "not measured: real work needs a token and a model's answer varies"
+    },
+    {
+      "field": "start.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "agent",
+      "sample": "second",
+      "why": "not measured: real work needs a token and a model's answer varies"
+    },
+    {
+      "field": "work.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "agent",
+      "sample": "second",
+      "why": "not measured: real work needs a token and a model's answer varies"
+    },
+    {
+      "field": "cpu.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "agent",
+      "sample": "second",
+      "why": "not measured: real work needs a token and a model's answer varies"
+    },
+    {
+      "field": "work",
+      "value": null,
+      "unit": "text",
+      "step": "agent",
+      "sample": "third",
+      "why": "not measured: real work needs a token and a model's answer varies"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "agent",
+      "sample": "third",
+      "why": "not measured: real work needs a token and a model's answer varies"
+    },
+    {
+      "field": "disk.growth",
+      "value": null,
+      "unit": "bytes",
+      "step": "agent",
+      "sample": "third",
+      "why": "not measured: real work needs a token and a model's answer varies"
+    },
+    {
+      "field": "start.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "agent",
+      "sample": "third",
+      "why": "not measured: real work needs a token and a model's answer varies"
+    },
+    {
+      "field": "work.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "agent",
+      "sample": "third",
+      "why": "not measured: real work needs a token and a model's answer varies"
+    },
+    {
+      "field": "cpu.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "agent",
+      "sample": "third",
+      "why": "not measured: real work needs a token and a model's answer varies"
+    },
+    {
+      "field": "work",
+      "value": null,
+      "unit": "text",
+      "step": "job",
+      "sample": "first",
+      "why": "not measured"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "job",
+      "sample": "first",
+      "why": "not measured"
+    },
+    {
+      "field": "disk.growth",
+      "value": null,
+      "unit": "bytes",
+      "step": "job",
+      "sample": "first",
+      "why": "not measured"
+    },
+    {
+      "field": "start.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "job",
+      "sample": "first",
+      "why": "not measured"
+    },
+    {
+      "field": "work.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "job",
+      "sample": "first",
+      "why": "not measured"
+    },
+    {
+      "field": "cpu.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "job",
+      "sample": "first",
+      "why": "not measured"
+    },
+    {
+      "field": "work",
+      "value": null,
+      "unit": "text",
+      "step": "job",
+      "sample": "second",
+      "why": "not measured"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "job",
+      "sample": "second",
+      "why": "not measured"
+    },
+    {
+      "field": "disk.growth",
+      "value": null,
+      "unit": "bytes",
+      "step": "job",
+      "sample": "second",
+      "why": "not measured"
+    },
+    {
+      "field": "start.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "job",
+      "sample": "second",
+      "why": "not measured"
+    },
+    {
+      "field": "work.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "job",
+      "sample": "second",
+      "why": "not measured"
+    },
+    {
+      "field": "cpu.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "job",
+      "sample": "second",
+      "why": "not measured"
+    },
+    {
+      "field": "work",
+      "value": null,
+      "unit": "text",
+      "step": "job",
+      "sample": "third",
+      "why": "not measured"
+    },
+    {
+      "field": "memory.peak",
+      "value": null,
+      "unit": "bytes",
+      "step": "job",
+      "sample": "third",
+      "why": "not measured"
+    },
+    {
+      "field": "disk.growth",
+      "value": null,
+      "unit": "bytes",
+      "step": "job",
+      "sample": "third",
+      "why": "not measured"
+    },
+    {
+      "field": "start.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "job",
+      "sample": "third",
+      "why": "not measured"
+    },
+    {
+      "field": "work.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "job",
+      "sample": "third",
+      "why": "not measured"
+    },
+    {
+      "field": "cpu.time",
+      "value": null,
+      "unit": "seconds",
+      "step": "job",
+      "sample": "third",
+      "why": "not measured"
+    },
+    {
+      "field": "package.version",
+      "value": "5.7.0+ds2-3build1",
+      "unit": "text",
+      "step": "after",
+      "subject": "podman"
+    },
+    {
+      "field": "package.version",
+      "value": "0.5.1~snapshot.398",
+      "unit": "text",
+      "step": "after",
+      "subject": "porelo"
+    },
+    {
+      "field": "package.version",
+      "value": "0.5.1~snapshot.24",
+      "unit": "text",
+      "step": "after",
+      "subject": "porelo-adapter-forgejo"
+    },
+    {
+      "field": "package.version",
+      "value": "0.1.0~snapshot.7",
+      "unit": "text",
+      "step": "after",
+      "subject": "porelo-agent-agy"
+    },
+    {
+      "field": "package.version",
+      "value": "0.5.4~snapshot.165",
+      "unit": "text",
+      "step": "after",
+      "subject": "porelo-agent-claude"
+    },
+    {
+      "field": "package.version",
+      "value": "0.1.0~snapshot.10",
+      "unit": "text",
+      "step": "after",
+      "subject": "porelo-agent-codex"
+    },
+    {
+      "field": "package.version",
+      "value": "0.5.4~snapshot.131",
+      "unit": "text",
+      "step": "after",
+      "subject": "porelo-agent-omp"
+    },
+    {
+      "field": "package.version",
+      "value": "0.5.5~snapshot.148",
+      "unit": "text",
+      "step": "after",
+      "subject": "porelo-agent-pi"
+    },
+    {
+      "field": "package.version",
+      "value": "0.5.1~snapshot.92",
+      "unit": "text",
+      "step": "after",
+      "subject": "porelo-matrix-homeserver"
+    },
+    {
+      "field": "package.version",
+      "value": "0.5.1~snapshot.67",
+      "unit": "text",
+      "step": "after",
+      "subject": "porelo-message-sluice-filter"
+    },
+    {
+      "field": "package.version",
+      "value": "0.5.1~snapshot.92",
+      "unit": "text",
+      "step": "after",
+      "subject": "porelo-message-transport-matrix"
+    },
+    {
+      "field": "changes.packages.added",
+      "value": [
+        "aardvark-dns",
+        "acl",
+        "buildah",
+        "catatonit",
+        "conmon",
+        "containers-storage",
+        "cpp",
+        "cpp-15",
+        "cpp-15-x86-64-linux-gnu",
+        "cpp-x86-64-linux-gnu",
+        "criu",
+        "crun",
+        "dns-root-data",
+        "dnsmasq-base",
+        "fuse-overlayfs",
+        "gcc-15-base",
+        "golang-github-containers-common",
+        "golang-github-containers-image",
+        "libcompel1",
+        "libcriu2",
+        "libisl23",
+        "libmpc3",
+        "libnet9",
+        "libprotobuf-c1",
+        "libslirp0",
+        "libsubid5",
+        "libyajl2",
+        "netavark",
+        "passt",
+        "podman",
+        "porelo",
+        "porelo-adapter-forgejo",
+        "porelo-agent-agy",
+        "porelo-agent-claude",
+        "porelo-agent-codex",
+        "porelo-agent-omp",
+        "porelo-agent-pi",
+        "porelo-matrix-homeserver",
+        "porelo-message-sluice-filter",
+        "porelo-message-transport-matrix",
+        "python3-protobuf",
+        "python3-pycriu",
+        "slirp4netns",
+        "uidmap"
+      ],
+      "unit": "names",
+      "step": "after"
+    },
+    {
+      "field": "changes.packages.removed",
+      "value": [],
+      "unit": "names",
+      "step": "after"
+    },
+    {
+      "field": "changes.units.added",
+      "value": [
+        "netavark-dhcp-proxy.service",
+        "netavark-dhcp-proxy.socket",
+        "netavark-firewalld-reload.service",
+        "podman-auto-update.service",
+        "podman-auto-update.timer",
+        "podman-clean-transient.service",
+        "podman-kube@.service",
+        "podman-restart.service",
+        "podman-user-wait-network-online.service",
+        "podman.service",
+        "podman.socket",
+        "porelo-host-firewall.service",
+        "porelo-host-task-sweep.service",
+        "porelo-host-task-sweep.timer",
+        "porelo-matrix-homeserver.service",
+        "porelod.service"
+      ],
+      "unit": "names",
+      "step": "after"
+    },
+    {
+      "field": "changes.units.removed",
+      "value": [],
+      "unit": "names",
+      "step": "after"
+    },
+    {
+      "field": "changes.accounts.added",
+      "value": [
+        "dnsmasq"
+      ],
+      "unit": "names",
+      "step": "after"
+    },
+    {
+      "field": "changes.accounts.removed",
+      "value": [],
+      "unit": "names",
+      "step": "after"
+    },
+    {
+      "field": "changes.directories.added",
+      "value": [],
+      "unit": "names",
+      "step": "after"
+    },
+    {
+      "field": "changes.directories.removed",
+      "value": [],
+      "unit": "names",
+      "step": "after"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+---
+- name: Stop on a measuring run outside its local playbook or without a new absolute result path
+  ansible.builtin.assert:
+    that:
+      - ansible_connection | default('local') == 'local'
+      - measure_out is string
+      - measure_out is match('^/')
+    fail_msg: Measurement runs locally and needs an absolute measure_out path
+    quiet: true
+
+# The script action has no async support. This local play runs the installed collection's file directly,
+# keeping galaxy.yml or MANIFEST.json beside the script and allowing a bounded, polled run.
+- name: Measure the machine, waiting for the private result file
+  ansible.builtin.command:
+    argv: >-
+      {{ ['python3', role_path ~ '/files/porelo-host-measure', '--out', measure_out,
+          '--given', measure_given | to_json, '--distribution', measure_distribution | default('releases'),
+          '--steps'] + (measure_steps | default(['idle']))
+         + (['--fresh'] if measure_fresh | default(false) | bool else []) }}
+  async: 14400
+  poll: 15
+  register: __measure_run
+  changed_when: __measure_run.rc == 0
+  check_mode: false
+  when: not ansible_check_mode

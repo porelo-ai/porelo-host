@@ -99,6 +99,7 @@
         porelo_host_step:
           text: Starting the Matrix homeserver
           seconds: 20
+      when: porelo_host_room | default(true) | bool
 
     - name: Install the helper by which the host admin admits, locks and purges people
       ansible.builtin.include_role:

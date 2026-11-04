@@ -1,0 +1,15 @@
+---
+# A measuring run on a VM made by build/molecule.sh measure, each of its sizes one run: it is no test of the collection
+# and is not in the Build, as it takes hours. The result comes back under target/measures.
+ansible:
+  executor:
+    args:
+      ansible_playbook:
+        - --inventory=${PORELO_HOST_INVENTORY}
+  env:
+    ANSIBLE_FORCE_COLOR: "false"
+
+scenario:
+  test_sequence:
+    - syntax
+    - converge

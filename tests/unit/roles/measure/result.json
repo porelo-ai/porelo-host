@@ -1,0 +1,7 @@
+{
+  "v": 1,
+  "facts": [
+    {"field": "memory.current", "value": 4096, "unit": "bytes", "step": "before", "sample": "first", "subject": "system.slice"},
+    {"field": "work", "value": null, "unit": "text", "step": "agent", "why": "not measured: needs a token"}
+  ]
+}

@@ -1,0 +1,9 @@
+---
+- name: Measure a disposable fresh machine
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Measure the host and write one private result file
+      ansible.builtin.include_role:
+        name: porelo.host.measure

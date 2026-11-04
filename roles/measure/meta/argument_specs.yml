@@ -1,0 +1,37 @@
+---
+argument_specs:
+  main:
+    short_description: Measure a disposable local host, refusing people and existing homeserver data.
+    options:
+      measure_out:
+        type: path
+        required: true
+        description: Absolute path of a new result file on the measured machine.
+      measure_given:
+        type: dict
+        required: true
+        description: Provider and offer labels given by the person, never credentials or a host name.
+        options:
+          provider:
+            type: str
+            required: true
+            description: Provider label, or local for local hardware.
+          offer:
+            type: str
+            required: true
+            description: Offer or machine class label, without an account or host identity.
+      measure_distribution:
+        type: str
+        choices: [releases, snapshots]
+        default: releases
+        description: Which of Porelo's published distributions the run installs from; it stands in the result.
+      measure_fresh:
+        type: bool
+        default: false
+        description: The person's word that the machine is fresh and disposable; required to change it.
+      measure_steps:
+        type: list
+        elements: str
+        default: [idle]
+        choices: [idle, task, agent, job]
+        description: Idle measures four shapes; task, agent and job are recorded as not measured.
