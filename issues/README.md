@@ -20,7 +20,6 @@ it is left out.
 | <a id="ho81"></a>[HO81](HO81-The-Gates-Route-Match-Holds-For-Every-Decoded-Byte.md) | XS | - | No decoded byte takes a refused route past the forge gate's match, and `web.sock` challenges a client that waits for one. |
 | <a id="ho83"></a>[HO83](HO83-The-Persons-Token-Kept-Where-Each-Tool-Reads-It.md) | S | - | The vault's person token stays the one in force after every remake; each task-start and token-handling check is tested by its absence. |
 | <a id="ho85"></a>[HO85](HO85-The-Push-Judge-Armed-Only-Where-It-Holds.md) | S | - | A repository is armed only where the judge's hook holds, a removal takes the arrivals along, and each verdict is recorded only whole. |
-| <a id="ho87"></a>[HO87](HO87-The-Hosts-Registry-State-Answered.md) | S | - | The interface reads, as root over SSH, which registry the host applied and each person's standing on it. |
 | <a id="ho103"></a>[HO103](HO103-A-Project-Put-On-Again-After-Off.md) | M | - | A project put on a host, taken off and put on again is taken, and no deploy key of the host's stays behind unsaid. |
 | <a id="ho100"></a>[HO100](HO100-A-Project-Helpers-Own-Words-In-Status.md) | S | - | A project helper's refusal reaches `org status`'s `why` in its own words. |
 | <a id="ho104"></a>[HO104](HO104-A-Refusals-Why-Lasts.md) | S | - | A refused migration's `why` in `org status` stands until a later try ends otherwise |
@@ -41,7 +40,6 @@ it is left out.
 | <a id="ho113"></a>[HO113](HO113-A-Renamed-Branch-Rule-The-Follow-Does-Not-See.md) | S | - | The follow holds a branch rule to the signed values whatever the rule on `main` is called |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | [HO37](#ho37) | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho61"></a>[HO61](HO61-A-Purged-Persons-Matrix-Account-Taken-Off.md) | S | - | A purged person's account on the host's own Matrix homeserver is taken off or named, not left without a word when the transport refused to clear it. |
-| <a id="ho82"></a>[HO82](HO82-A-Bring-With-No-Token-File.md) | - | - | bring and join reach the host's forge with the person's token read from the vault per call, never from a file. |
 
 ## Analyzed
 
@@ -68,14 +66,11 @@ it is left out.
 | <a id="ho107"></a>[HO107](HO107-A-Project-That-No-Token-Can-Cure.md) | - | - | A project with no usable central address has a state of its own, `waiting-for-address`, as no token can cure it |
 | <a id="ho106"></a>[HO106](HO106-A-Refused-Root-Key-File-Says-Why.md) | - | - | `up` refusing root's key file says how many keys it found and what to do, not only `non-zero return code` |
 | <a id="ho86"></a>[HO86](HO86-The-Push-Judges-Smaller-Edges.md) | - | [HO85](#ho85) | The push judge's smaller edges from its reading, gathered: links in the arming, the removal's checks, a first-push race, the null object, the answer's field and record checks pinned by tests. |
-| <a id="ho88"></a>[HO88](HO88-A-Project-Registered-From-The-Admins-Own-Account.md) | - | - | A project admin registers their project from their own account, its forge organization and teams made with it. |
 | <a id="ho78"></a>[HO78](HO78-Only-The-Gates-Sockets-Forwarded.md) | - | - | A person's SSH connection forwards only to the gates' sockets and their own return socket, and to no TCP address. |
 | <a id="ho79"></a>[HO79](HO79-A-Persons-SSH-Login-Confirmed-By-A-Second-Factor.md) | - | - | A person's SSH login needs a second factor beside their key: FIDO2 touch, or TOTP through PAM. |
 | <a id="ho77"></a>[HO77](HO77-Each-Job-In-A-Network-Of-Its-Own.md) | - | - | Concurrent jobs on a host cannot reach one another's network, and no host login reaches Forgejo over TCP. |
-| <a id="ho64"></a>[HO64](HO64-The-Collection-Tested-Where-Up-Puts-It.md) | - | - | Once the interface installs the collection for every account, Molecule installs the collection as `up` does and shows a person's account finds it there; the README names the place. |
 | <a id="ho58"></a>[HO58](HO58-The-Services-Podman-Kept-Small.md) | - | - | Once a day, and after a missed day, each service account's Podman loses the images and volumes no container used for a set time. |
 | <a id="ho54"></a>[HO54](HO54-The-Host-Helpers-Hardened.md) | - | - | The people's SSH drop-in read first and a project registration retried after a forge timeouts. |
-| <a id="ho51"></a>[HO51](HO51-Down-Names-What-A-Transport-Left.md) | - | - | Where `down` cleared the vault past a transport, its protocol names that transport and project in Porelo's words. |
 | <a id="ho40"></a>[HO40](HO40-The-Build-Runs-On-The-Hosts-Forge-As-On-GitHub.md) | - | - | The move's builds on the host's forge: `build.yml` green on the host's Forgejo and on GitHub unchanged, with task branches built, the tools without `podman run`, snapshots by variable and Molecule on a machine with KVM. |
 | <a id="ho39"></a>[HO39](HO39-The-Hosts-Agent-Works-In-A-Porelo-Task.md) | - | [HO40](#ho40) | porelo-host's agent, `Agent Host`, in a Porelo task on the move's host, with a way back: the image from `porelo.yml`. |
 | <a id="ho30"></a>[HO30](HO30-The-Forges-Trust-And-Job-Bounds-Measured.md) | - | - | A running job's container measured to carry its bounds, and when Porelo reads the forge's CA, beyond what Molecule reads from the files the roles write. |
@@ -168,4 +163,9 @@ it is left out.
 | <a id="ho56"></a>HO56 | Remove Takes The Person's Push And Sync Away | The follow replaced it: it takes a project's push config out of each person's account itself, and no sync timer exists any more. |
 | <a id="ho57"></a>HO57 | The Bring Checks With The Keys In Force After A Handover | The follow replaced it: no second bring exists, and the follow verifies with `--since` from the commit it last took. |
 | <a id="ho59"></a>HO59 | An Interrupted Bring Replaced Safely | The follow replaced the bring, so no bring is left to be interrupted. |
+| <a id="ho51"></a>HO51 | Down Names What A Transport Left | `down` clears no vault and refuses while a membership stands; what a transport keeps at purge is [HO61](#ho61). |
+| <a id="ho64"></a>HO64 | The Collection Tested Where Up Puts It | Only root runs the collection now: `up` and `down` are its playbooks, and no person's account resolves it. |
+| <a id="ho82"></a>HO82 | A Bring With No Token File | Bring and join are gone: the person's token comes from `forge-token` on standard output at each run, and a central token on standard input. |
+| <a id="ho87"></a>HO87 | The Host's Registry State Answered | `org status` replaced `registry status` and answers the host, the applied commit, the pin and each person's state. |
+| <a id="ho88"></a>HO88 | A Project Registered From The Admin's Own Account | The follow makes a project's organization and teams itself, with no person's act and no registry. |
 
