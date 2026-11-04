@@ -125,6 +125,20 @@ def test_the_tunnel_binds_one_socket_of_the_persons_own_to_the_homeservers_port(
 @pytest.mark.parametrize(
     "arguments",
     [
+        ("alice\nbad x", "room.example", "8448"),
+        ("alice", "room.example\nbad x", "8448"),
+        ("alice", "room.example", "8448\nx"),
+    ],
+)
+def test_the_tunnel_refuses_a_value_with_a_second_line(tmp_path, arguments):
+    """Prevent grep passing a value because one of its lines fits, the rest reaching ssh."""
+    done, calls = run_tunnel(tmp_path, *arguments)
+    assert done.returncode == 64 and not calls
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
         ("alice", "host.example"),
         ("Al/ice", "host.example", "8448"),
         ("alice", "-oProxyCommand=x", "8448"),

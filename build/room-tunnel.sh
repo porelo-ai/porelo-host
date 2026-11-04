@@ -13,9 +13,15 @@ usage() {
 login=$1
 host=$2
 port=$3
-printf '%s\n' "$login" | grep -Eqx '[a-z][a-z0-9-]{0,31}' || usage "no login: $login"
-printf '%s\n' "$host" | grep -Eqx '[A-Za-z0-9][A-Za-z0-9.:-]*' || usage "no host: $host"
-printf '%s\n' "$port" | grep -Eqx '[0-9]{1,5}' && [ "$port" -ge 1 ] && [ "$port" -le 65535 ] || usage "no port: $port"
+# grep answers for each line, so a value with a second line would pass on its first.
+fits() {
+    case $2 in *'
+'*) return 1 ;; esac
+    printf '%s\n' "$2" | grep -Eqx "$1"
+}
+fits '[a-z][a-z0-9-]{0,31}' "$login" || usage "no login: $login"
+fits '[A-Za-z0-9][A-Za-z0-9.:-]*' "$host" || usage "no host: $host"
+fits '[0-9]{1,5}' "$port" && [ "$port" -ge 1 ] && [ "$port" -le 65535 ] || usage "no port: $port"
 socket=/run/porelo-host/people/$login/room.sock
 echo "unix:$socket"
 while :; do
