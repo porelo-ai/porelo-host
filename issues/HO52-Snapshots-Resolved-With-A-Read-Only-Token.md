@@ -1,6 +1,6 @@
 # HO52 — Snapshots Resolved With A Read-Only Token
 
-**Status:** Analyzed.
+**Status:** Implementing.
 **Size:** M - one contract other repositories read (a secret's name and scope, a variable), in one helper with its
 tests and a Molecule act.
 
