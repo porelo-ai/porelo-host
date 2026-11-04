@@ -38,7 +38,7 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho113"></a>[HO113](HO113-A-Renamed-Branch-Rule-The-Follow-Does-Not-See.md) | S | - | The follow holds a branch rule to the signed values whatever the rule on `main` is called |
-| <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | [HO37](#ho37) | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
+| <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho61"></a>[HO61](HO61-A-Purged-Persons-Matrix-Account-Taken-Off.md) | S | - | A purged person's account on the host's own Matrix homeserver is taken off or named, not left without a word when the transport refused to clear it. |
 
 ## Analyzed
@@ -57,6 +57,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho114"></a>[HO114](HO114-A-Hosts-Read-Keys-Taken-Off-The-Central-Forge.md) | - | - | Taking a project off and `down` delete the host's read-only keys at the central forge, the token asked once and kept nowhere; if impossible, each is named with a link. |
 | <a id="ho91"></a>[HO91](HO91-SSHs-Edges-Left-From-Its-Readings.md) | - | - | The KRL validated before sshd reads it, a root key with an options prefix refused, and a lock ordered against a concurrent follow. |
 | <a id="ho92"></a>[HO92](HO92-The-Forges-Loopback-Port-Narrowed-To-Persons.md) | - | - | Only the persons and the forge account reach the forge on `127.0.0.1:<git_port>`, by an nftables rule on their uids. |
 | <a id="ho97"></a>[HO97](HO97-A-Host-Reached-By-IPv6-Alone.md) | - | - | A server reached by IPv6 alone is prepared: its public interface told by the IPv6 default route, the firewall and the forge holding for it. |

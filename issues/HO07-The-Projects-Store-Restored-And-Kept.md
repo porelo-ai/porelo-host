@@ -1,6 +1,6 @@
 # HO07 — The Project's Store Restored And Kept
 
-**Status:** Backlog; blocked by [HO37](README.md#ho37). It waits for the room's `backup <dir>` and `restore <dir>`,
+**Status:** Backlog. It waits for the room's `backup <dir>` and `restore <dir>`,
 for a backup that holds only its own copy and never empties a directory another one filled (a late completion or a
 second backup into the same directory loses messages), and for `porelo keep [--restore] <dir>`.
 **Size:** L - one role, a script and a timer here, but every entry's copy and restore is another repository's command,
@@ -8,8 +8,8 @@ and the round trip is measured on a rented host.
 
 **What must be true.** At `up`, the data the project keeps comes back from its store before anything that reads it
 starts; while the host runs, a timer copies it every hour; at `down`, a last copy is made before anything stops. Each
-entry is copied and restored by the command its owner gives, and the store's keys reach restic from the person's
-secrets file on the stop's standard input, never through Ansible.
+entry is copied and restored by the command its owner gives, and the store's keys reach the host once, by a command a
+host admin runs as root over SSH with their card, on its standard input, never through Ansible.
 
 ## Plan
 
@@ -24,8 +24,12 @@ secrets file on the stop's standard input, never through Ansible.
   keeps: the room (porelo-message-matrix's `backup|restore <dir>`, 48), the usage records (`porelo keep [--restore]
   <dir>`, 48; 0 done, 70 failed, and `--restore` alone 69 while a task runs), the Maven cache (copied as it stands at
   `down`, 1). The vault is never an entry.
+- **Each entry's account:** the room's is `porelo-matrix`; the usage records and the Maven cache are each person's own
+  account, as every person runs their own Porelo, so those entries run once per person on the host. The cache is the project's shared
+  dependency cache Porelo plans, in the data folder of the account that runs the task; until that is built there is no
+  cache to copy, and a task's own Maven folder is no entry.
 - **One script, `porelo-host-keep`**, run as root, since only root reads the store's keys: for each entry due, its
-  command, run as the account with `runuser`, into a fresh directory, `restic backup --tag <entry>` of it, `restic
+  command, run with `runuser` as the entry's account, into a fresh directory, `restic backup --tag <entry>` of it, `restic
   forget --tag <entry> --keep-last <n>`; it stops at the first entry that fails and exits non-zero naming it, so a half
   copy is never thinned against.
 - **A systemd timer of root's**, hourly while the host runs; `down` runs the script once with `--all` before
@@ -38,21 +42,18 @@ secrets file on the stop's standard input, never through Ansible.
   appeared within 60 s, which fails that run, 78 when the unit is not installed; `restore <dir>` before the
   homeserver's `setup`, 0 with `{"restore": <id>}`, or with `{"restore": "present"}` on a second `up` where the
   database already is, which counts as unchanged; 78 for anything really wrong.
-- **The store's address and keys** (decided: `--stdin` lines of the person's stop, from the person's password database, since the
-  host has no drive and the vault hands no value out) are written by `porelo-host-stop --stdin` root-only into
-  `/etc/porelo-host/store/` for the host's life, since the hourly copy and the last copy at `down` need them
-  unattended, and `down` removes them. The need is `store`, its lines in [HO37](README.md#ho37)'s form `store <name>
+- **The store's address and keys** come from the person's password database by a new one-time command, which a host
+  admin runs as root over SSH with their card, since the stop takes no secret as root any more and the vault hands no
+  value out. It writes them root-only into `/etc/porelo-host/store/` for the host's life, since the hourly copy and the
+  last copy at `down` need them unattended, and `down` removes them. Its lines on standard input are `store <name>
   <value in base64>`, one each for `repository`, `password` and `s3-credentials`, each written to
   `/etc/porelo-host/store/<name>`, root's with mode `0600`, and refused where a name is not one of the three. They
   reach restic through its environment as `RESTIC_REPOSITORY_FILE`, `RESTIC_PASSWORD_FILE` and the S3 credentials
-  file; the role checks they are there, never reads them. porelo-frontend's pipeline sends them once this is built.
-  **An accepted risk**, written into `doc/decisions.md` with the change: the keys lie in the clear on the host's disk,
-  as the VPN's key does, readable by its root and the provider's disk images; it stays because the hourly copy and the
-  last copy at `down` run with nobody there, and it would change if restic could take its keys from a sealed store or
-  the vault on a pipe at each run.
-- **Touches, beyond the role:** `playbooks/up.yml` (its `needs` in the first play), `playbooks/down.yml`,
-  `roles/porelo/files/porelo-host-stop` (the need `store`), `doc/lines.md`, `doc/decisions.md`, `doc/index.md`, and
-  `AGENTS.md`'s list of files that cannot be Java (`porelo-host-keep`).
+  file; the role checks they are there, never reads them. **A deliberate exception**, in
+  [`doc/decisions.md`](../doc/decisions.md#the-stores-keys-on-the-host): the keys lie in the clear on the host's disk,
+  readable by its root and the provider's disk images; the key is limited to its bucket.
+- **Touches, beyond the role:** `playbooks/up.yml` (its `needs` in the first play), `playbooks/down.yml`, the new
+  command, `doc/lines.md`, `doc/index.md`, and `AGENTS.md`'s list of files that cannot be Java (`porelo-host-keep`).
 - **Red first**: a room with a message, the store copied, a fresh VM brought up from it, and the message read; the
   same without `restore.yml` finds the room empty.
 

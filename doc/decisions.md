@@ -26,6 +26,7 @@ says why.
 | The same workflows on both forges | GitHub's workflows run unchanged on the forge; only variables and secrets differ. | [Why](#the-same-workflows-on-both-forges) |
 | The forge's tokens | The forge's routes that turn a token into another, `/v2/token` and Conan's `authenticate`, are refused on every socket; every forge credential is made and revocable by the host. | [Why](#the-forges-tokens) |
 | Git and the API on the host's loopback | An accepted risk: every process on the host reaches the forge's gate on `127.0.0.1:<git_port>`; a token is the bound. | [Why](#git-and-the-api-on-the-hosts-loopback) |
+| The store's keys on the host | A deliberate exception to no token on a server, once the store is built: a key limited to its bucket, on the host's disk until `down`. | [Why](#the-stores-keys-on-the-host) |
 | A person's SSH forwarding | An accepted risk: `porelo-people` may forward TCP locally beside its sockets, never listen remotely. | [Why](#a-persons-ssh-forwarding) |
 
 ## The Ansible tools
@@ -228,3 +229,12 @@ So `porelo-people` gets `AllowTcpForwarding yes` and `PermitListen none` beside 
 person's local TCP forward reaches every address the host reaches, such as the homeserver's empty loopback port, other
 hosts on its networks and the internet. It stays because that is what their login shell reaches already, and remote
 listeners stay refused. Forwards limited to the gates' sockets would change the answer.
+
+## The store's keys on the host
+
+A server holds no lasting token, as a rule. The project's store, not built yet, is the exception: the hourly copy and the
+last copy at `down` run with nobody there, so restic's address, password and S3 key lie in the clear in
+`/etc/porelo-host/store/`, root's with mode `0600`, until `down` removes them, readable by the host's root and the
+provider's disk images. They come once, by a command a host admin runs as root over SSH with their card. The S3 key may
+write and delete in the project's bucket only, so it reaches nothing else. It would change if restic could take its keys
+from a sealed store or the vault on a pipe at each run.
