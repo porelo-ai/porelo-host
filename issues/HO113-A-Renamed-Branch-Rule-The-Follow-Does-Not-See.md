@@ -1,6 +1,6 @@
 # HO113 — A Renamed Branch Rule The Follow Does Not See
 
-**Status:** Backlog.
+**Status:** Review.
 **Size:** S - the follow's lookup of a repository's branch rule.
 
 **What must be true.** A repository on the host's forge holds to the signed review and merge values, whatever a rule on
