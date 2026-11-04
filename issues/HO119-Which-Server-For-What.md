@@ -17,16 +17,11 @@ They say nothing of what a host needs, and no page recommends one. The `vmx` and
 - **KVM** comes from [HO118](README.md#ho118)'s setting: a VM pool or a job that makes a VM.
 - **It replaces** that line of the first-run howto.
 
-## What has to be measured
+## Where the numbers come from
 
-| Measure | On |
-| --- | --- |
-| An idle host with and without Forgejo and the room: memory, disk | a fresh VM, `up` with each choice |
-| One typical task, one agent: memory, disk | that host |
-| A Maven build in a job: memory, CPU, disk, time | the forge's runner, with its cache |
-
-None of this is measured yet. Local VMs give memory and disk, after the foo test; time wants a real host, which a rental needs
-the operator's word for, and a time not measured there is marked so.
+From [HO120](README.md#ho120)'s measuring run, one result file per machine, and the page says which machine each number came
+from. A new machine class is one more run. What no run has shown is marked "not measured". Local VMs first, after the foo test;
+no rental without the operator's word.
 
 ## The rule for parallel jobs
 
@@ -47,7 +42,7 @@ and naming both sides; the same for memory below what the host's choices need. T
 ## Acceptance
 
 - The page in `doc/`, in `mkdocs.yml`'s nav, each number measured with how, or marked "not measured".
-- The measures' runs named in this issue, with the run's versions.
+- Its tables made from [HO120](README.md#ho120)'s result files, at least two machines' worth.
 - Too small a disk stops `up` before installing, in a unit test with the real `ansible-playbook` and in Molecule's run, or this
   issue says from the measures why no number holds.
 - The interface's field for concurrent jobs and its words can take their numbers from the page.

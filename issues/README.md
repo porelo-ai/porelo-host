@@ -53,7 +53,8 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho118"></a>[HO118](HO118-KVM-Only-On-A-Host-That-Asks.md) | - | - | KVM and libvirt only on a host whose `porelo_host_kvm` says yes, off by default, and the CPU checked only there. |
-| <a id="ho119"></a>[HO119](HO119-Which-Server-For-What.md) | - | [HO118](#ho118) | One page: which server for what, with and without Forgejo, each number measured or marked not, the rule for parallel jobs, and disk refused early at `up`. |
+| <a id="ho119"></a>[HO119](HO119-Which-Server-For-What.md) | - | [HO118](#ho118), [HO120](#ho120) | One page: which server for what, with and without Forgejo, each number measured or marked not, the rule for parallel jobs, and disk refused early at `up`. |
+| <a id="ho120"></a>[HO120](HO120-A-Measuring-Run-For-Any-Machine.md) | - | - | One command that measures a given machine, again on any hardware, and writes one result file without secrets for the page's tables. |
 
 ## Idea
 
