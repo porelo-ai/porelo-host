@@ -40,6 +40,7 @@ it is left out.
 | <a id="ho113"></a>[HO113](HO113-A-Renamed-Branch-Rule-The-Follow-Does-Not-See.md) | S | - | The follow holds a branch rule to the signed values whatever the rule on `main` is called |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho61"></a>[HO61](HO61-A-Purged-Persons-Matrix-Account-Taken-Off.md) | S | - | A purged person's account on the host's own Matrix homeserver is taken off or named, not left without a word when the transport refused to clear it. |
+| <a id="ho102"></a>[HO102](HO102-A-Persons-Projects-Named-On-The-Host.md) | S | - | A person's host account names their projects before their first start there. |
 
 ## Analyzed
 
@@ -51,7 +52,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho102"></a>[HO102](HO102-A-Persons-Projects-Named-On-The-Host.md) | - | - | A person's host account names their projects before their first start there. |
 
 ## Idea
 
