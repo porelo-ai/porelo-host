@@ -24,15 +24,14 @@ host admin's key for `up`, and service accounts are not in `porelo-people` and s
   to that terminal (and as a QR code), and keeps it only after a correct first code. Renewal is the same call, which
   needs the current code.
 - Root can read every seed. The host admin is root, so "no admin sees the seed" holds only for the process (no seed in
-  a log, a post or the registry), never against root itself.
+  a log, a post or the organization's state), never against root itself.
 - Recovery without an admin handling the seed: the host admin puts a signed `totp=reset` for the person in the
-  registry. The next login of that person is key-only once and leads straight to enrolment. A lost key and code
+  organization's state, which Porelo keeps. The next login of that person is key-only once and leads straight to enrolment. A lost key and code
   together are a new admission, as today.
 
 **What breaks.** Every SSH connection of a person asks for a code:
 
 - the interface's calls;
-- `porelo.host.bring`/`join` and `porelo-host up` run as the person;
 - the Element and Porelo socket forwards;
 - the sudo helpers called over SSH;
 - tasks a person starts on the host over SSH.
@@ -59,7 +58,7 @@ dies, the next call asks again, so the interface needs a code prompt and must ro
 - FIDO2 as the second factor where a person has a hardware key: the host only requires `touch-required` for keys of
   `sk-` type, no seed exists anywhere, and the card already carries the key.
 - TOTP as described, for persons without one, with ControlMaster in the interface.
-- Size M for TOTP: sshd and PAM settings, enrol/renew/reset in the person helper, the registry's reset flag, tests,
+- Size M for TOTP: sshd and PAM settings, enrol/renew/reset in the person helper, the organization's reset flag, tests,
   the guide. FIDO2 alone is S on the host and needs the card and interface side.
 
 ## Open questions

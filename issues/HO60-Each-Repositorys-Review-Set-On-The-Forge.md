@@ -44,6 +44,14 @@ Each follow compares every repository's rule with the value in force and sets it
 hand comes back, and names each change on standard error, which reaches the journal. A protection that cannot be set fails
 the follow naming the repository; the other repositories are still set, and the old rule stays.
 
+## What the code does not keep today
+
+**"Never the teams of agents or gates" holds for the teams' names alone.** Read, not run: the follow puts a person's gate
+login `porelo-<login>` into `developers` in every project of that person, and nobody into `gates`, so that login is on the
+approval and merge lists. A task's token belongs to that login with `write:repository`, so the token can approve and
+merge. What keeps a task from doing so is only that the box never holds the token and the gate offers no route to the
+forge's API, not the forge's own rule this issue promises.
+
 ## Acceptance
 
 - The unit tests of the above, seen failing without the change.

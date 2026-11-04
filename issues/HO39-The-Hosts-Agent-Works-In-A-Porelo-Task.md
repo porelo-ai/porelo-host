@@ -10,7 +10,7 @@ move's host as the project's procedure for an agent's move lays out, with a way 
 - The task follows `porelo-host` through the gate, its pushes reach the host's Forgejo, and the build there is green
   and read through the `forgejo` reader.
 - This issue is taken from start to Review inside the task, and the agent is reached in the room as `Agent Host`,
-  from the nickname `Host` in porelo-project's `project.yml`.
+  from a nickname `Host` on the repository `host` in porelo-project's `project.yml`, which names none yet.
 - The way back is shown once: the task's open work fetched from the host's forge into this machine's checkout, the
   upstream switched back, the local session resumed, as that procedure's way back says.
 

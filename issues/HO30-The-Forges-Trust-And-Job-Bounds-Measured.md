@@ -10,4 +10,5 @@ in the running system: a job's container carries its bounds, and Porelo picks up
 - That a job container the runner starts takes `--cpus`, `--memory` and `--pids-limit` from `container.options` under
   rootless podman, read with `podman inspect` of a running job; Molecule reads them from the runner's configuration.
 - Whether Porelo reads `porelo/ca-certificates.pem` in the config folder at each task start or once per `vault serve` (a running
-  vault after `up`).
+  vault after `up`). The forge has no CA of its own today: it stands behind its gate without TLS, and the role removes
+  the old one, so this point has nothing to read while that holds.

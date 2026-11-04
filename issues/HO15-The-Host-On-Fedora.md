@@ -8,11 +8,10 @@ Ubuntu 26.04 only.
 
 ## What differs and must be measured, nothing decided
 
-- **SELinux in place of AppArmor**: whether `wg` may read the host's key in `/etc/wireguard` as it does on Ubuntu,
-  and whether anything else of the roles needs a file context or a policy module.
+- **SELinux in place of AppArmor**: whether anything of the roles needs a file context or a policy module.
 - **firewalld, active by default**, beside the collection's own nftables table `inet porelo_host`: whether both hold
   together, or one must give way.
-- **`dnf` and Fedora's own `ansible-core`**: the packages' names (`wireguard-tools`, KVM's, podman's), and the
+- **`dnf` and Fedora's own `ansible-core`**: the packages' names (KVM's, podman's), and the
   collection installed and run by Fedora's `ansible-core` from its tarball, as Ubuntu's is today.
 - **A Molecule scenario on Fedora**, made by `build/molecule.sh` from a Fedora cloud image pinned by digest as
   `build/test-image` pins Ubuntu's.
@@ -21,4 +20,4 @@ Ubuntu 26.04 only.
 
 ## What stays as it is
 
-The systemd units (the firewall's, the VPN's, the forge's), and the stop's lines on standard input.
+The systemd units (the firewall's, the forge's), and the stop's lines on standard input.

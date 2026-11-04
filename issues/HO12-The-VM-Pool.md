@@ -90,6 +90,19 @@ deletes them with nothing left.
   the normal return stayed clean and the rental after the SIGKILL found both files, failing the check; the break was in
   a copy of the source only.
 
+## What no longer holds
+
+Read in today's code, not run; what stands under *Built* was measured before the forge moved behind its gate.
+
+- **The run key's secret no longer reaches the forge.** `roles/vm_pool/vars/main.yml` still asks
+  `https://<forge_address>:<port>`, whose default is the old VPN address, with `/etc/porelo-host/forge/ca.pem`, for
+  sending it and for deleting it at `down`. The forge now stands behind its gate without TLS, and
+  `roles/forge/tasks/legacy.yml` removes that CA. So `curl` fails, and `up` with a pool should stop at *Send the run key
+  into the forge organization's Actions secret*.
+- **It names one organization**, `forge_owner` or else `porelo`, which no follow makes: every project has an organization
+  of its own, and none of them is given `PORELO_POOL_SSH`.
+- The Build leaves the pool out of Molecule, so nothing there shows this.
+
 ## Acceptance
 
 - On the test VM `build/molecule.sh` makes, with nested KVM: `porelo-machines` rents and returns a pool account, and

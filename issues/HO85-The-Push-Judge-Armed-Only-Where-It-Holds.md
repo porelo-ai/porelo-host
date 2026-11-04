@@ -14,7 +14,7 @@ account's and the mount as the directory's.
 
 ## Acceptance
 
-- [ ] a repository whose hook link names anything but the mounted hook stops the sync's arming, recording nothing;
+- [ ] a repository whose hook link names anything but the mounted hook stops the follow's arming, recording nothing;
 - [ ] removing a project leaves no `arrivals/<project>` behind;
 - [ ] a push of a deletion and an unsigned update is refused.
 
@@ -30,5 +30,5 @@ account's and the mount as the directory's.
 - A verdict needs a `checked_at` time, a string commit and a signer fingerprint; the KRL's descriptor is checked
   root's plain file.
 - The push judge's socket handler runs before Forgejo's; `/usr/local/libexec` is made by one task.
-- Tests: each arming refusal by a real `sh` run, a mixed push, sync calling the arming, the removal, the lock, the
+- Tests: each arming refusal by a real `sh` run, a mixed push, the follow calling the arming, the removal, the lock, the
   verdict fields. Checks a reading found unpinned are gathered in [HO86](README.md#ho86).

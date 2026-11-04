@@ -16,22 +16,21 @@ build that misses it fails instead of resolving elsewhere.
     scope `read:package`, of that organization's publisher account. It reads the organization's packages and nothing
     else.
   - Actions secret `PORELO_PUBLISHER_TOKEN` as today, `write:package`, for the deploying step alone.
-  - Actions variable **`MAVEN_SNAPSHOTS_URL`** of each project's organization, `https://<forge>/api/packages/<project>/maven`
-    at the address a job reaches, with the other variables a build reads on this forge (`PORELO_PUBLISH`,
-    `PORELO_DEPLOY_PROFILE`, `JF_URL`) and the placeholder secret `JF_ACCESS_TOKEN`, as the role once set them for one owner.
+  - Actions variable **`MAVEN_SNAPSHOTS_URL`** of each project's organization, with the other variables a build reads on
+    this forge (`PORELO_PUBLISH`, `PORELO_DEPLOY_PROFILE`, `JF_URL`) and the placeholder secret `JF_ACCESS_TOKEN`: `add`
+    already sets them from `forge_variables` and `forge_placeholder_secrets`, and they stay as they are.
   - Actions secret **`PORELO_POOL_SSH`** of each project's organization where the host has a VM pool: the pool's run
-    key `/var/lib/porelo-host/pool/run-key`, as `vm_pool` once sent it to the one organization. Today
-    `up` makes no organization, so no organization has it; `porelo-host-project` runs as root and can read the key,
-    the project admin's bring cannot.
+    key `/var/lib/porelo-host/pool/run-key`. Today `vm_pool` still names one organization no follow makes, so no
+    project's organization has it; `porelo-host-project` runs as root and can read the key.
 - **`roles/forge/files/porelo-host-project`, `add`:** after the publisher's token, a second `token(…, publisher,
-  "read:package")` put as `PORELO_PACKAGES_READ_TOKEN`, then the variables, the placeholder secret and, where the run key exists,
-  `PORELO_POOL_SSH`, all inside the existing rollback, so a refused `add` leaves none of them. The answer on stdout stays as the contract says; no
+  "read:package")` put as `PORELO_PACKAGES_READ_TOKEN` and, where the run key exists, `PORELO_POOL_SSH`, inside the
+  existing rollback, so a refused `add` leaves none of them. The answer on stdout stays as the contract says; no
   token is printed.
 - **Tests first** in `tests/unit/roles/test_porelo_host_project*.py`: the read token is asked with exactly
-  `read:package` and put under its name; each variable is set for the project's organization; the run key is put as
+  `read:package` and put under its name; the run key is put as
   `PORELO_POOL_SSH` only where it exists; a failure while setting
   them removes the organization and the publisher. Red before the change.
-- **Molecule**, the projects act: with `PORELO_PACKAGES_READ_TOKEN` a generic package of the organization is read
+- **Molecule**, among the follow's steps: with `PORELO_PACKAGES_READ_TOKEN` a generic package of the organization is read
   (200) and a `PUT` into it is refused (not 2xx); with `PORELO_PUBLISHER_TOKEN` the `PUT` succeeds; the organization's
   variables hold `MAVEN_SNAPSHOTS_URL` with its own name.
 - `roles/forge/README.md` names both secrets and the variables; `CHANGELOG.md`.
