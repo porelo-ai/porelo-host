@@ -27,6 +27,7 @@ it is left out.
 | <a id="ho110"></a>[HO110](HO110-A-Server-Follows-The-Organization-Admins-Keys.md) | S | - | A server's pin holds the Organization Admins' keys beside its Machine Admins, so a Machine Admin they replace takes effect at the next follow |
 | <a id="ho60"></a>[HO60](HO60-Each-Repositorys-Review-Set-On-The-Forge.md) | L | - | The host takes every repository the signed project file names, and protects each one's `main` as that file says |
 | <a id="ho112"></a>[HO112](HO112-The-Project-File-Reaches-A-Task-On-The-Host.md) | M | - | What a Project Admin files at the central forge reaches a task on the host at the next follow. |
+| <a id="ho102"></a>[HO102](HO102-A-Persons-Projects-Named-On-The-Host.md) | S | - | A person's host account names their projects before their first start there. |
 
 ## Implementing
 
@@ -40,7 +41,6 @@ it is left out.
 | <a id="ho113"></a>[HO113](HO113-A-Renamed-Branch-Rule-The-Follow-Does-Not-See.md) | S | - | The follow holds a branch rule to the signed values whatever the rule on `main` is called |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho61"></a>[HO61](HO61-A-Purged-Persons-Matrix-Account-Taken-Off.md) | S | - | A purged person's account on the host's own Matrix homeserver is taken off or named, not left without a word when the transport refused to clear it. |
-| <a id="ho102"></a>[HO102](HO102-A-Persons-Projects-Named-On-The-Host.md) | S | - | A person's host account names their projects before their first start there. |
 
 ## Analyzed
 

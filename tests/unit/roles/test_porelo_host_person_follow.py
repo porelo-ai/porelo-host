@@ -346,6 +346,62 @@ def test_project_file_acl_tracks_only_unlocked_members(following):
     assert readers(state, path) == {1001, 1002}
 
 
+def person_file(state, login):
+    """Name where a person's list of projects stands, published or not."""
+    return state.host.path(f"/etc/porelo-host/organization/persons/{login}.json")
+
+
+def test_each_person_reads_their_own_projects_named_and_nobody_elses(following):
+    """Prevent one person learning the names of another's projects, or a list surviving the membership it names."""
+    state = following
+    follow(state)
+    bob, charlie = person_file(state, "bob"), person_file(state, "charlie")
+    assert json.loads(bob.read_text()) == {"projects": ["alpha"]}
+    assert readers(state, bob) == {1001} and readers(state, charlie) == {1002}
+    assert bob.stat().st_mode & 0o077 == 0 and charlie.stat().st_mode & 0o077 == 0
+    directory = bob.parent
+    assert directory.stat().st_mode & 0o777 == 0o711
+    state.reply["projects"][0]["members"][0]["locked"] = True
+    follow(state, "b")
+    assert not bob.exists()
+    assert readers(state, charlie) == {1002}
+    state.reply["projects"][0]["members"][0]["locked"] = False
+    follow(state, "c")
+    assert readers(state, bob) == {1001}
+
+
+def test_a_persons_list_is_replaced_whole_and_goes_with_their_last_membership(following):
+    """Prevent a person's list naming a project taken off, or an interrupted follow's leftovers standing."""
+    state = following
+    follow(state)
+    charlie = person_file(state, "charlie")
+    left = charlie.parent / ".porelo-host-person.left"
+    left.write_text("{}")
+    second = copy.deepcopy(state.reply["projects"][0])
+    second["project"] = "beta"
+    second["members"] = [member for member in second["members"] if member["login"] == "charlie"]
+    state.signers["beta"] = state.signers["alpha"]
+    state.reply["projects"].append(second)
+    follow(state, "b")
+    assert json.loads(charlie.read_text()) == {"projects": ["alpha", "beta"]}
+    assert not left.exists()
+    assert json.loads(person_file(state, "bob").read_text()) == {"projects": ["alpha"]}
+    state.reply["projects"].pop()
+    follow(state, "c")
+    assert json.loads(charlie.read_text()) == {"projects": ["alpha"]}
+
+
+def test_a_stranger_in_the_persons_directory_stops_the_publication(following):
+    """Prevent the follow deleting or trusting a file it did not write among the persons' lists."""
+    state = following
+    follow(state)
+    stranger = person_file(state, "bob").parent / "notes.txt"
+    stranger.write_text("kept")
+    with pytest.raises(state.scope["Refusal"], match="persons directory"):
+        follow(state, "b")
+    assert stranger.read_text() == "kept"
+
+
 def test_follow_admits_new_accounts_and_publishes_porelos_signers(following):
     """Prevent missing accounts or obsolete signer publications from blocking a newly carried project."""
     state = following

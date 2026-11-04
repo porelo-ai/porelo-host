@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Each follow names each person's projects to that person alone, in `organization/persons/<login>.json`, so their account
+  can list them before a first start there. Needs a Porelo that reads it.
 - The follow reads each project's signed file: the host takes every repository it names under `central` with one token,
   and each repository's `main` needs a review or not as `review` says (`required` by default). Needs a Porelo with
   `project verify`.

@@ -381,6 +381,12 @@ said = run("ssh-keygen", "-Qf", "/etc/ssh/porelo-revoked.krl", str(KEYS / "fb.pu
 check("REVOKED" in said, "fb's key to be on the KRL", said)
 check(not reaches("fb") and reaches("fa"), "fb stopped at SSH and fa not")
 check(not can_read("fb", ACCESS), "fb not to read the project's file")
+PERSONS = ORG / "persons"
+check(can_read("fa", PERSONS / "fa.json") and can_read("fc", PERSONS / "fc.json"), "each to read their own list")
+check(not can_read("fa", PERSONS / "fc.json"), "fa not to read fc's list")
+check(not can_read("fc", PERSONS / "fa.json"), "fc not to read fa's list")
+check(run("runuser", "-u", "fa", "--", "ls", "--", str(PERSONS)).returncode != 0, "fa not to list who has a list")
+check(not (PERSONS / "fb.json").exists(), "revoked fb to have no list")
 check(public("fb") not in ALLOWED.read_text(encoding="utf-8"), "fb's key out of the allowed signers")
 
 # A membership lost: locked with a day to go, and back when the state says so.
@@ -388,6 +394,7 @@ answer("d", admins=["hostadmin"], persons=EVERYONE, revoked=["fb"], projects={})
 helper("org", "follow")
 check(not RECORD.exists(), "the project taken off the host's forge", project_state())
 check(not ACCESS.exists() and not ALLOWED.exists() and not CERTIFIERS.exists(), "nothing of the project to stay")
+check(not (PERSONS / "fa.json").exists(), "fa's list gone with the last membership")
 check(project_state() is None, "org status not to name the project", project_state())
 seen = person("fa")
 day = (datetime.date.today() + datetime.timedelta(days=7)).isoformat()

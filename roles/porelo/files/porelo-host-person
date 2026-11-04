@@ -2576,12 +2576,41 @@ class Host:
             # Only the push judge reads the allowed signers, and a host with no forge has none; the gate reads the rest.
             for suffix, field in [("certifiers", "certifiers")] + ([("allowed", "signers")] if has_forge else []):
                 self.write_signers(name, suffix, signers[name][field])
+        self.follow_publish_persons(applied, records, accounts)
+
+    def follow_publish_persons(self, applied, records, accounts):
+        """Name each person's projects to that person alone, after the files they open, as the directories list nothing."""
+        directory = self.path("/etc/porelo-host/organization/persons")
+        self.check(directory, directory=True)
+        self.directories(directory)
+        directory.chmod(0o711)
+        named = {}
+        for project in applied["projects"]:
+            for login in self.project_readers(project, records, accounts):
+                named.setdefault(login, []).append(project["project"])
+        for path in directory.iterdir():
+            self.check(path)
+            if path.name.startswith(".porelo-host-person.") or path.name.endswith(".json.new"):
+                path.unlink()
+            elif path.suffix != ".json" or not re.fullmatch(USER, path.stem):
+                refuse("the organization persons directory holds an unknown file", 65)
+            elif path.stem not in named:
+                path.unlink()
+        for login, projects in named.items():
+            staged = directory / (login + ".json.new")
+            self.write(staged, json.dumps({"projects": sorted(projects)}) + "\n", 0o600)
+            self.command(["setfacl", "--modify", f"user:{accounts[login]}:r--", str(staged)])
+            os.replace(staged, directory / (login + ".json"))
+
+    def project_readers(self, project, records, accounts):
+        """Name the project's unlocked members who have an account here."""
+        return [member["login"] for member in project["members"]
+                if not member["locked"] and member["login"] in accounts and member["login"] in records
+                and not records[member["login"]]["locked"] and records[member["login"]].get("lock") != "pending"]
 
     def publish_to_members(self, staged, path, project, records, accounts):
         """Give a staged file its readers, the project's unlocked members, before anyone can see it in place."""
-        entries = [f"user:{accounts[member['login']]}:r--" for member in project["members"]
-                   if not member["locked"] and member["login"] in accounts and member["login"] in records
-                   and not records[member["login"]]["locked"] and records[member["login"]].get("lock") != "pending"]
+        entries = [f"user:{accounts[login]}:r--" for login in self.project_readers(project, records, accounts)]
         if entries:
             self.command(["setfacl", "--modify", ",".join(entries), str(staged)])
         os.replace(staged, path)

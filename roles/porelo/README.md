@@ -17,7 +17,9 @@ memberships with `"Take the project off"` and `"Purge"`.
 
 Root's persistent `porelo-host-follow.timer` runs `org follow` every five minutes. It fetches the organization using
 the host's deploy key in an isolated unit with network access, reconciles cards and project memberships, and publishes
-`organization/projects/<project>.json`, naming the host, with a read ACL for each unlocked member. Accounts with no
+`organization/projects/<project>.json`, naming the host, with a read ACL for each unlocked member, and `organization/persons/<login>.json`, holding that person's projects as
+`{"projects": [...]}`, with a read ACL for that person alone, gone with their last membership, so `porelo project list`
+names their projects before a first start there. Accounts with no
 membership or host admin role are locked when the host takes the change, within five minutes or at once on `org refresh`, and purged on
 the first follow seven days after the recorded lock day; readmission
 before then restores the existing account, completing subordinate IDs and linger after an interrupted admission.
@@ -46,8 +48,8 @@ At `up`, the root-owned `0600` machine file's `organization` mapping supplies `s
 `organization.yml`), `known_hosts` (the central forge's SSH host key lines) and `pin` (one `login key` line per admin
 key, including backups). They become root-only files under `/etc/porelo-host/organization/`; repeated setup preserves
 the pin advanced by a successful follow. Setup generates `read/organization` once as an Ed25519 key and returns its
-public half as `organization_read_key` in `host.json`. `org pin` is unavailable. The directory and its `projects`
-subdirectory permit traversal so member ACLs work; credentials and applied state remain root-only.
+public half as `organization_read_key` in `host.json`. `org pin` is unavailable. The directory and its `projects` and `persons`
+subdirectories permit traversal so member ACLs work; credentials and applied state remain root-only.
 
 Where the host has its Matrix gate installed, follow runs `keep-room --project <project> --persons <logins>` as
 `porelo-matrix`, with only unlocked members, on every follow, and names who left the room in its journal. The project
