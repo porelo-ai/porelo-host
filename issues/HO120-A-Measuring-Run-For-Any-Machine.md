@@ -1,6 +1,6 @@
 # HO120 — A Measuring Run For Any Machine
 
-**Status:** Accepted; after the foo test.
+**Status:** Idea.
 
 **What must be true.** One command measures a given machine and writes one result file, so a new machine class is one run and
 a number on [HO119](README.md#ho119)'s page names the machine it came from.
@@ -55,9 +55,10 @@ machine, as any timing measurement.
 | Machine | KVM | Needs |
 | --- | --- | --- |
 | Local VMs at 4, 8 and 16 GB | yes, or off with [HO118](README.md#ho118) | nothing; shows memory and disk, not a real host's time |
-| The foo test's host | as rented | the operator's agreement, after the test, before it is given back |
 | A `cx33`-like cloud server | no | [HO118](README.md#ho118), the operator's word |
 | Scaleway Elastic Metal, `EM-I220E-NVME` | yes | the operator's word, its price read and posted first |
+
+One number stands, not from this run: the interface's *Prepare the machine* took about 5 minutes on Elastic Metal with `v0.5.10`.
 
 ## Acceptance
 

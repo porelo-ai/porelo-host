@@ -1,6 +1,6 @@
 # HO121 — One Check Before Any Installation
 
-**Status:** Accepted; after the foo test.
+**Status:** Idea.
 
 **What must be true.** Before anything changes on a machine, one read-only check answers whether it can do what this person
 wants, and names **every** finding at once: what was found, what was asked, what to do. `up` installs nothing unless it passes,

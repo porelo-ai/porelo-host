@@ -1,6 +1,6 @@
 # HO119 — Which Server For What
 
-**Status:** Accepted; after the foo test.
+**Status:** Idea.
 
 **What must be true.** A person reads one page and knows which server to take for what they will run: system, CPUs, memory,
 disk, KVM yes or no. Each number on it is measured, or marked "not measured". What `up` can tell early it refuses early.
