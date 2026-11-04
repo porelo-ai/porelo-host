@@ -17,9 +17,6 @@ it is left out.
 |---|---|---|---|
 | <a id="ho14"></a>[HO14](HO14-The-Collections-Python-Under-Ansible-Test-Sanity.md) | S | - | `ansible-test sanity` on the whole collection in the Build, offline, its requirements taken by hash. |
 | <a id="ho12"></a>[HO12](HO12-The-VM-Pool.md) | L | - | Role `vm_pool`: VMs with run accounts `porelo-machines` rents from, made by the same code as the test VM, deleted by name at `down`. |
-| <a id="ho45"></a>[HO45](HO45-The-Project-Brought-And-Joined-In-The-Persons-Own-Account.md) | L | - | `bring.yml` and `join.yml` in the person's own account, with the stop's own-account mode and two bundles. |
-| <a id="ho46"></a>[HO46](HO46-The-Developers-Kept-In-Step-With-The-Signed-Access-File.md) | L | [HO45](#ho45) | `sync`: the developers on the host kept to the signed `access.yml`, verified by Porelo's own check as a throwaway user, added or locked. |
-| <a id="ho48"></a>[HO48](HO48-Every-Role-Tested-On-One-Host.md) | L | [HO46](#ho46) | The Molecule scenario with a host admin, two project admins and a developer with two laptops, every act and refusal. |
 | <a id="ho81"></a>[HO81](HO81-The-Gates-Route-Match-Holds-For-Every-Decoded-Byte.md) | XS | - | No decoded byte takes a refused route past the forge gate's match, and `web.sock` challenges a client that waits for one. |
 | <a id="ho83"></a>[HO83](HO83-The-Persons-Token-Kept-Where-Each-Tool-Reads-It.md) | S | - | The vault's person token stays the one in force after every remake; each task-start and token-handling check is tested by its absence. |
 | <a id="ho85"></a>[HO85](HO85-The-Push-Judge-Armed-Only-Where-It-Holds.md) | S | - | A repository is armed only where the judge's hook holds, a removal takes the arrivals along, and each verdict is recorded only whole. |
@@ -56,9 +53,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho59"></a>[HO59](HO59-An-Interrupted-Bring-Replaced-Safely.md) | M | - | A bring leaves `bring.state` in its setup directory, so an interrupted one is recognized and replaced by a new upload instead of refused. |
-| <a id="ho56"></a>[HO56](HO56-Remove-Takes-The-Persons-Push-And-Sync-Away.md) | M | [HO46](#ho46) | Removing a project takes the push config and the sync timer out of each person's own account. |
-| <a id="ho57"></a>[HO57](HO57-The-Bring-Checks-With-The-Keys-In-Force-After-A-Handover.md) | S | - | A second bring verifies only what is new since the followed commit, with `following --json`'s `signed_by_keys`. |
 | <a id="ho102"></a>[HO102](HO102-A-Persons-Projects-Named-On-The-Host.md) | - | - | A person's host account names their projects before their first start there. |
 
 ## Idea
@@ -168,4 +162,10 @@ it is left out.
 | <a id="ho67"></a>HO67 | The Walk's Host Checks Hold On A Rented Host | replaced by the one-key design; the forge's session bus was built apart, and the rented-host run and the check of the helpers' version went with the work testing every role without the VPN. |
 | <a id="ho16"></a>HO16 | The Person's Drive On OneDrive | The host has no drive any more; OneDrive as a user's own drive may come later as a new idea beside the interface's. |
 | <a id="ho105"></a>HO105 | A Host's Name On The LAN | The host opens no port for it: a `.local` name does not answer after `up`, and a DNS name or a name entry of one's own takes its place. |
+| <a id="ho45"></a>HO45 | The Project Brought And Joined In The Person's Own Account | The host's follow of its organization replaced it: a person connects once per host and finds every project ready, with no bring or join. |
+| <a id="ho46"></a>HO46 | The Developers Kept In Step With The Signed Access File | The host's follow of its organization replaced it: members come from the organization's signed state, with no access file or sync. |
+| <a id="ho48"></a>HO48 | Every Role Tested On One Host | The follow's Molecule steps and [HO74](#ho74) replaced it; the scenario's bring, people and project steps are gone. |
+| <a id="ho56"></a>HO56 | Remove Takes The Person's Push And Sync Away | The follow replaced it: it takes a project's push config out of each person's account itself, and no sync timer exists any more. |
+| <a id="ho57"></a>HO57 | The Bring Checks With The Keys In Force After A Handover | The follow replaced it: no second bring exists, and the follow verifies with `--since` from the commit it last took. |
+| <a id="ho59"></a>HO59 | An Interrupted Bring Replaced Safely | The follow replaced the bring, so no bring is left to be interrupted. |
 
