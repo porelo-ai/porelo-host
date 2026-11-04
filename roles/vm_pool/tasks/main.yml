@@ -143,53 +143,17 @@
   no_log: true
 
 # Without a key, so getent keeps porelo_account in getent_passwd for the porelo role's step after this role.
-- name: Read the host's accounts, for the forge account's home
+- name: Read the host's accounts, for the step after this role
   ansible.builtin.getent:
     database: passwd
 
-# Sent only when the organization or the key is new, so a second up leaves the secret and reports no change; the key
-# goes from its file through jq on a pipe, and the token in a process substitution's header, neither in an argument or
-# a variable.
-- name: Send the run key into the forge organization's Actions secret
-  ansible.builtin.shell:
-    cmd: |
-      set -euo pipefail
-      key={{ __vm_pool_dir }}/run-key
-      sent={{ __vm_pool_dir }}/run-key.sent
-      token={{ __vm_pool_forge_token | quote }}
-      org={{ __vm_pool_forge_org | quote }}
-      [ -r "$token" ] || { echo "no forge API token at $token" >&2; exit 1; }
-      digest=$(sha256sum "$key" | cut -d' ' -f1)
-      if [ -f "$sent" ] && [ "$(cat "$sent")" = "$org $digest" ]; then echo unchanged; exit 0; fi
-      api() { curl -sS --cacert {{ __vm_pool_forge_ca }} -H @<(printf 'Authorization: token %s\n' \
-          "$(cat "$token")") -H 'Content-Type: application/json' "$@"; }
-      # The forge makes its organization with its first repository; without either, no job could take the key yet,
-      # and nothing is marked sent, so the up after the forge made it sends the key.
-      code=$(api -o /dev/null -w '%{http_code}' "{{ __vm_pool_forge_url }}/orgs/$org")
-      if [ "$code" = 404 ] && [ {{ porelo_host_forge_repositories | default([]) | length }} -eq 0 ]; then
-          echo no-organization; exit 0
-      fi
-      [ "$code" = 200 ] || { echo "Forgejo answered $code for the organization $org" >&2; exit 1; }
-      code=$(jq -Rs '{data: .}' < "$key" \
-          | api -o /dev/null -w '%{http_code}' \
-              -X PUT "{{ __vm_pool_forge_url }}/orgs/$org/actions/secrets/{{ __vm_pool_secret }}" --data @-)
-      [ "$code" = 201 ] || [ "$code" = 204 ] \
-          || { echo "Forgejo answered $code setting the secret {{ __vm_pool_secret }}" >&2; exit 1; }
-      umask 077
-      printf '%s %s\n' "$org" "$digest" > "$sent"
-      echo sent
-    executable: /bin/bash
+# The helper reads the key from its file and answers only names, so nothing needs hiding here, and a refusal says why.
+# A project added later gets the key from its own add.
+- name: Send the run key to every project's organization on the forge
+  ansible.builtin.command:
+    argv: ["{{ __vm_pool_project_helper }}", pool-key, send]
   register: __vm_pool_secret_sent
-  changed_when: __vm_pool_secret_sent.stdout == 'sent'
-  failed_when: false
-  no_log: true
-
-# The task above hides its output, the key having passed through it; what it said on a refusal holds none of it.
-- name: Stop when the forge would not take the run key's secret, with its answer
-  ansible.builtin.assert:
-    that: __vm_pool_secret_sent.rc | default(0) == 0
-    fail_msg: "{{ __vm_pool_secret_sent.stderr | default('') }}"
-    quiet: true
+  changed_when: (__vm_pool_secret_sent.stdout | from_json).changed | length > 0
 
 - name: Write what each pool VM adds to its seed
   ansible.builtin.template:

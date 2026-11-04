@@ -79,6 +79,8 @@ class Forge:
             return 503, {"message": ADMIN_TOKEN + PUBLISHER_TOKEN}
         parts = path.removeprefix("/api/v1/").split("/")
         if method == "GET":
+            if parts[0] == "version":
+                return 200, {"version": "test"}
             if parts[0] == "packages":
                 return 200, self.packages.get(parts[1], [])
             if parts[0] == "users":
@@ -93,6 +95,8 @@ class Forge:
                     return 200, [dict(id=key, **team) for key, team in self.teams.items() if team["org"] == org]
                 if parts[2] == "repos":
                     return 200, self.repositories.get(org, [])
+                if parts[2:4] == ["actions", "secrets"]:
+                    return 200, [{"name": name} for owner, name in self.secrets if owner == org]
         if method == "POST" and parts[:2] == ["admin", "users"]:
             if len(parts) == 4 and parts[3] == "orgs":
                 org = body["username"]
@@ -122,6 +126,9 @@ class Forge:
         if method == "PUT" and parts[0] == "orgs" and parts[2:4] == ["actions", "secrets"]:
             self.secrets[(parts[1], parts[4])] = body["data"]
             return 201, None
+        if method == "DELETE" and parts[0] == "orgs" and parts[2:4] == ["actions", "secrets"]:
+            del self.secrets[(parts[1], parts[4])]
+            return 204, None
         if method == "DELETE" and parts[0] == "orgs":
             org = parts[1]
             if self.repositories.get(org) or self.packages.get(org):
@@ -287,7 +294,8 @@ class MemoryOpener:
         self.forge = forge
 
     def open(self, request, **_kwargs):
-        assert request.headers["Authorization"] == "token " + ADMIN_TOKEN
+        if not request.full_url.endswith("/version"):
+            assert request.headers["Authorization"] == "token " + ADMIN_TOKEN
         if getattr(self.forge, "unavailable", False):
             raise urllib.error.URLError("fixture socket unavailable")
         if self.forge.redirect:
@@ -832,6 +840,144 @@ def test_the_pools_run_key_is_put_only_where_the_host_has_one(memory_host, monke
     assert code == 0, err
     assert host["forge"].secrets[("alpha", "PORELO_POOL_SSH")] == "private run key\n"
     assert "private run key" not in out + err
+
+
+def registered(host, monkeypatch, capsys, *names, overrides=None):
+    """Add projects the way the host does, each with its own organization."""
+    admins = {"alpha": "alice", "beta": "bob"}
+    for name in names:
+        code, _, err = project(
+            host, monkeypatch, capsys, "add", name, admins[name], "--signed-by", KEY, overrides=overrides
+        )
+        assert code == 0, err
+
+
+def test_a_pool_that_comes_later_gives_its_key_to_every_project_there(memory_host, monkeypatch, capsys):
+    """Prevent a build of a project older than the pool finding no key."""
+    host = memory_host
+    registered(host, monkeypatch, capsys, "alpha", "beta")
+    code, out, err = project(host, monkeypatch, capsys, "pool-key", "send", overrides=pool_key(host))
+    assert code == 0, err
+    assert json.loads(out) == {"changed": ["alpha", "beta"]}
+    assert host["forge"].secrets[("alpha", "PORELO_POOL_SSH")] == "private run key\n"
+    assert host["forge"].secrets[("beta", "PORELO_POOL_SSH")] == "private run key\n"
+    assert "private run key" not in out + err
+
+
+def test_a_second_up_sends_no_key_and_reports_no_change(memory_host, monkeypatch, capsys):
+    """Prevent up reporting a change each time, and a key going out again without need."""
+    host = memory_host
+    overrides = pool_key(host)
+    registered(host, monkeypatch, capsys, "alpha")
+    assert project(host, monkeypatch, capsys, "pool-key", "send", overrides=overrides)[0] == 0
+    host["forge"].calls.clear()
+    code, out, err = project(host, monkeypatch, capsys, "pool-key", "send", overrides=overrides)
+    assert code == 0, err
+    assert json.loads(out) == {"changed": []}
+    assert not [call for call in host["forge"].calls if call[0] == "PUT"]
+
+
+def test_a_project_added_with_the_key_is_not_sent_it_again(memory_host, monkeypatch, capsys):
+    """Prevent the add's own key counting as missing at the next up."""
+    host = memory_host
+    overrides = pool_key(host)
+    registered(host, monkeypatch, capsys, "alpha", overrides=overrides)
+    assert project(host, monkeypatch, capsys, "pool-key", "send", overrides=overrides)[0] == 0
+    registered(host, monkeypatch, capsys, "beta", overrides=overrides)
+    code, out, err = project(host, monkeypatch, capsys, "pool-key", "send", overrides=overrides)
+    assert code == 0, err
+    assert json.loads(out) == {"changed": []}
+
+
+def test_a_new_run_key_goes_to_every_project_again(memory_host, monkeypatch, capsys):
+    """Prevent jobs holding a key the pool's VMs no longer take."""
+    host = memory_host
+    overrides = pool_key(host)
+    registered(host, monkeypatch, capsys, "alpha", overrides=overrides)
+    assert project(host, monkeypatch, capsys, "pool-key", "send", overrides=overrides)[0] == 0
+    (host["tmp"] / "pool" / "run-key").write_text("another run key\n")
+    code, out, err = project(host, monkeypatch, capsys, "pool-key", "send", overrides=overrides)
+    assert code == 0, err
+    assert json.loads(out) == {"changed": ["alpha"]}
+    assert host["forge"].secrets[("alpha", "PORELO_POOL_SSH")] == "another run key\n"
+
+
+def test_a_key_others_may_read_is_not_sent_to_any_project(memory_host, monkeypatch, capsys):
+    """Prevent a key already exposed on the host being spread into every job's reach."""
+    host = memory_host
+    registered(host, monkeypatch, capsys, "alpha")
+    code, out, _ = project(host, monkeypatch, capsys, "pool-key", "send", overrides=pool_key(host, 0o644))
+    assert code == 69 and not out
+    assert ("alpha", "PORELO_POOL_SSH") not in host["forge"].secrets
+
+
+def test_a_refused_key_stops_with_nothing_marked_sent(memory_host, monkeypatch, capsys):
+    """Prevent a project missing its key until the key next changes."""
+    host = memory_host
+    overrides = pool_key(host)
+    registered(host, monkeypatch, capsys, "alpha")
+    host["forge"].failure = ("PUT", "/api/v1/orgs/alpha/actions/secrets/PORELO_POOL_SSH")
+    assert project(host, monkeypatch, capsys, "pool-key", "send", overrides=overrides)[0] == 69
+    host["forge"].failure = None
+    code, out, err = project(host, monkeypatch, capsys, "pool-key", "send", overrides=overrides)
+    assert code == 0, err
+    assert json.loads(out) == {"changed": ["alpha"]}
+
+
+def test_down_takes_the_key_from_every_project_and_only_that_secret(memory_host, monkeypatch, capsys):
+    """Prevent a key the host no longer has staying in reach of jobs, or down taking another secret."""
+    host = memory_host
+    overrides = pool_key(host)
+    registered(host, monkeypatch, capsys, "alpha", "beta", overrides=overrides)
+    code, out, err = project(host, monkeypatch, capsys, "pool-key", "withdraw", overrides=overrides)
+    assert code == 0, err
+    assert json.loads(out) == {"changed": ["alpha", "beta"]}
+    assert not [key for key in host["forge"].secrets if key[1] == "PORELO_POOL_SSH"]
+    assert ("alpha", "PORELO_PUBLISHER_TOKEN") in host["forge"].secrets
+    code, out, err = project(host, monkeypatch, capsys, "pool-key", "withdraw", overrides=overrides)
+    assert code == 0, err
+    assert json.loads(out) == {"changed": []}
+
+
+def test_down_stopping_a_forge_that_does_not_answer_is_no_failure_and_makes_no_token(
+    memory_host, monkeypatch, capsys
+):
+    """Prevent a second down, or one after the forge stopped, failing on what is gone with the forge."""
+    host = memory_host
+    overrides = pool_key(host)
+    registered(host, monkeypatch, capsys, "alpha", overrides=overrides)
+    host["forge"].unavailable = True
+    host["cli_calls"].clear()
+    code, out, err = project(host, monkeypatch, capsys, "pool-key", "withdraw", overrides=overrides)
+    assert code == 0, err
+    assert json.loads(out) == {"changed": []}
+    assert not [call for call in host["cli_calls"] if "generate-access-token" in call]
+
+
+def test_down_after_the_forge_settings_went_is_no_failure(memory_host, monkeypatch, capsys):
+    """Prevent a down repeated after a partial one failing on the settings the first removed."""
+    host = memory_host
+    (host["etc"] / "forge.conf").unlink()
+    code, out, err = project(host, monkeypatch, capsys, "pool-key", "withdraw")
+    assert code == 0, err
+    assert json.loads(out) == {"changed": []}
+
+
+def test_a_forge_that_refuses_the_delete_stops_down(memory_host, monkeypatch, capsys):
+    """Prevent down reporting success while a job can still read a key."""
+    host = memory_host
+    overrides = pool_key(host)
+    registered(host, monkeypatch, capsys, "alpha", overrides=overrides)
+    host["forge"].failure = ("DELETE", "/api/v1/orgs/alpha/actions/secrets/PORELO_POOL_SSH")
+    code, out, _ = project(host, monkeypatch, capsys, "pool-key", "withdraw", overrides=overrides)
+    assert code == 69 and not out
+    assert ("alpha", "PORELO_POOL_SSH") in host["forge"].secrets
+
+
+def test_the_key_command_takes_only_its_two_directions(memory_host, monkeypatch, capsys):
+    """Prevent a slip in the role's call doing the other direction or nothing with no word."""
+    code, out, _ = project(memory_host, monkeypatch, capsys, "pool-key", "show")
+    assert code == 64 and not out
 
 
 def test_a_run_key_others_may_read_stops_the_registration_and_undoes_it(memory_host, monkeypatch, capsys):

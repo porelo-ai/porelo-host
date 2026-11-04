@@ -240,6 +240,26 @@ if FORGE.exists():
     held = {item["name"] for item in forge("GET", f"orgs/{PROJECT}/actions/secrets")[1] or []}
     check("PORELO_PACKAGES_READ_TOKEN" in held, "the organization to hold the read token", held)
     check("PORELO_PUBLISHER_TOKEN" in held, "the organization to hold the publisher's token", held)
+    if os.path.exists("/var/lib/porelo-host/pool/run-key"):
+        # The real forge behind its gate: the project got the key from its add, and it can be taken and given again.
+        def secrets():
+            return {item["name"] for item in forge("GET", f"orgs/{PROJECT}/actions/secrets")[1] or []}
+
+        def pool_key(direction):
+            done = run("/usr/local/sbin/porelo-host-project", "pool-key", direction)
+            check(done.returncode == 0, f"pool-key {direction} to answer 0", done.stdout + done.stderr)
+            return json.loads(done.stdout or '{"changed":[]}')["changed"]
+
+        check("PORELO_POOL_SSH" in held, "the organization to hold the pool's run key", held)
+        answered = pool_key("send")
+        check(PROJECT not in answered, "a key it holds not sent again", answered)
+        answered = pool_key("withdraw")
+        check(PROJECT in answered, "the key taken from the project", answered)
+        check("PORELO_POOL_SSH" not in secrets(), "the key gone from the organization", secrets())
+        check("PORELO_PACKAGES_READ_TOKEN" in secrets(), "only that secret taken", secrets())
+        answered = pool_key("send")
+        check(PROJECT in answered, "the key given to a project lacking it", answered)
+        check("PORELO_POOL_SSH" in secrets(), "the key back in the organization", secrets())
     code, variable = forge("GET", f"orgs/{PROJECT}/actions/variables/MAVEN_SNAPSHOTS_URL")
     check(code == 200 and f"/api/packages/{PROJECT}/maven" in str(variable), "its own snapshot URL", variable)
     # The same scopes the helper asks for; the secrets themselves cannot be read back.

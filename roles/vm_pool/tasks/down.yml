@@ -36,44 +36,13 @@
     file_type: directory
   register: __vm_pool_dirs
 
-- name: down | Read the forge's account, if up made it
-  ansible.builtin.getent:
-    database: passwd
-    key: "{{ __vm_pool_forge_account }}"
-    fail_key: false
-
-# Shell, so the forge's API token goes to curl in a process substitution's header, never in an argument or a variable.
-- name: down | Delete the run key's Actions secret from the forge, while the forge answers
-  ansible.builtin.shell:
-    cmd: |
-      set -euo pipefail
-      token={{ __vm_pool_forge_token | quote }}
-      ca={{ __vm_pool_forge_ca }}
-      if [ ! -r "$token" ] || [ ! -r "$ca" ] \
-          || ! curl -fsS --cacert "$ca" "{{ __vm_pool_forge_url }}/version" >/dev/null 2>&1; then
-          echo unchanged; exit 0
-      fi
-      code=$(curl -sS -o /dev/null -w '%{http_code}' --cacert "$ca" \
-          -H @<(printf 'Authorization: token %s\n' "$(cat "$token")") \
-          -X DELETE "{{ __vm_pool_forge_url }}/orgs/{{ __vm_pool_forge_org }}/actions/secrets/{{ __vm_pool_secret }}")
-      if [ "$code" = 204 ]; then
-          echo deleted
-      elif [ "$code" = 404 ]; then
-          echo unchanged
-      else
-          echo "Forgejo answered $code deleting the secret {{ __vm_pool_secret }}" >&2; exit 1
-      fi
-    executable: /bin/bash
+# Before the forge's own down, while it answers; a forge already gone took the secrets with it.
+- name: down | Take the run key from every project's organization on the forge
+  ansible.builtin.command:
+    argv: ["{{ __vm_pool_project_helper }}", pool-key, withdraw]
+    removes: "{{ __vm_pool_project_helper }}"
   register: __vm_pool_secret_deleted
-  changed_when: __vm_pool_secret_deleted.stdout == 'deleted'
-  failed_when: false
-  no_log: true
-
-- name: down | Stop when the forge would not delete the run key's secret, with its answer
-  ansible.builtin.assert:
-    that: __vm_pool_secret_deleted.rc | default(0) == 0
-    fail_msg: "{{ __vm_pool_secret_deleted.stderr | default('') }}"
-    quiet: true
+  changed_when: __vm_pool_secret_deleted.stdout is match('\\{"changed":\\["')
 
 - name: down | Remove the pool's keys and file
   ansible.builtin.file:

@@ -12,6 +12,7 @@ import base64
 import binascii
 import fcntl
 import getpass
+import hashlib
 import http.client
 import pwd
 import json
@@ -34,6 +35,7 @@ ETC = "/etc/porelo-host"
 # The person helper's record of each push's verdicts, one directory per project.
 ARRIVALS = "/var/lib/porelo-host/arrivals"
 POOL_RUN_KEY = "/var/lib/porelo-host/pool/run-key"
+POOL_SECRET = "PORELO_POOL_SSH"
 CONF = "/etc/porelo-host/forge.conf"
 RUN_USER = "/run/user"
 PUSH = "/usr/local/sbin/porelo-host-push"
@@ -397,7 +399,7 @@ class UnixHandler(urllib.request.HTTPHandler):
 class Forge:
     """The host forge's API, reached only on the account's private socket."""
 
-    def __init__(self, values):
+    def __init__(self, values, authenticate=True):
         self.account = setting(values, "account", r"[a-z_][a-z0-9_-]{0,31}")
         try:
             uid = pwd.getpwnam(self.account).pw_uid
@@ -409,11 +411,23 @@ class Forge:
             NoRedirect(),
         )
         self.base = "http://localhost/api/v1"
-        self.token = token(
-            self.account,
-            ADMIN,
-            "write:admin,write:organization,read:user,write:repository,write:package",
-        )
+        if authenticate:
+            self.token = token(
+                self.account,
+                ADMIN,
+                "write:admin,write:organization,read:user,write:repository,write:package",
+            )
+
+    def answers(self):
+        """Say whether anything answers on the socket, asking without the token a stopped forge cannot make."""
+        try:
+            with self.opener.open(urllib.request.Request(self.base + "/version", method="GET"), timeout=30):
+                return True
+        except urllib.error.HTTPError as error:
+            error.close()
+            return True
+        except (urllib.error.URLError, OSError, http.client.HTTPException):
+            return False
 
     def request(self, method, path, body=None, expected=(200,)):
         """Return validated JSON, or only the HTTP code in an error; never repeat a remote body."""
@@ -569,7 +583,7 @@ def add(forge, project, admin, key, record, person, person_content):
             trusted(POOL_RUN_KEY, private=True)
             with open(POOL_RUN_KEY, encoding="utf-8") as stream:
                 secret = stream.read()
-            forge.request("PUT", f"/orgs/{project}/actions/secrets/PORELO_POOL_SSH", {"data": secret}, (201, 204))
+            forge.request("PUT", f"/orgs/{project}/actions/secrets/{POOL_SECRET}", {"data": secret}, (201, 204))
         with writing(record):
             output = os.fdopen(descriptor, "w", encoding="utf-8")
             descriptor = None
@@ -1396,6 +1410,90 @@ def inherited_lock(descriptor):
         refuse("the inherited project lock is unavailable", 69)
 
 
+def pool_projects():
+    """Name every project of the host from its records, which every organization here has."""
+    directory = os.path.join(ETC, "projects")
+    trusted_directory(directory, private=True, missing=True)
+    if not os.path.lexists(directory):
+        return []
+    names = sorted(name.removesuffix(".conf") for name in os.listdir(directory) if name.endswith(".conf"))
+    for name in names:
+        if not re.fullmatch(PROJECT_PATTERN, name):
+            refuse("the project records hold an invalid name", 65)
+    return names
+
+
+def pool_key_held(forge, project):
+    """Say whether an organization holds the run key; Forgejo names a secret and never gives it back."""
+    return any(item.get("name") == POOL_SECRET for item in forge.listing(f"/orgs/{project}/actions/secrets"))
+
+
+def pool_key_send(forge):
+    """Give the key to each organization lacking it, and to all when it changed, marking that only at the end."""
+    trusted(POOL_RUN_KEY, private=True)
+    with open(POOL_RUN_KEY, encoding="utf-8") as stream:
+        secret = stream.read()
+    digest = hashlib.sha256(secret.encode()).hexdigest()
+    sent = POOL_RUN_KEY + ".sent"
+    known = None
+    if os.path.lexists(sent):
+        trusted(sent, private=True)
+        with open(sent, encoding="utf-8") as stream:
+            known = stream.read().strip()
+    changed = []
+    for project in pool_projects():
+        if digest != known or not pool_key_held(forge, project):
+            forge.request("PUT", f"/orgs/{project}/actions/secrets/{POOL_SECRET}", {"data": secret}, (201, 204))
+            changed.append(project)
+    if digest != known:
+        descriptor, staged = tempfile.mkstemp(dir=os.path.dirname(sent), prefix=".run-key.sent.")
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            os.fchmod(output.fileno(), 0o600)
+            output.write(digest + "\n")
+        os.replace(staged, sent)
+    return changed
+
+
+def pool_key_withdraw(forge):
+    """Take the run key from every organization holding it, and nothing else."""
+    changed = []
+    for project in pool_projects():
+        if pool_key_held(forge, project):
+            forge.request("DELETE", f"/orgs/{project}/actions/secrets/{POOL_SECRET}", expected=(204,))
+            changed.append(project)
+    return changed
+
+
+def pool_key_gone(values):
+    """Say whether down has no forge left to ask: the jobs a key could reach went with it."""
+    try:
+        pwd.getpwnam(setting(values, "account", r"[a-z_][a-z0-9_-]{0,31}"))
+    except KeyError:
+        return True
+    return not Forge(values, authenticate=False).answers()
+
+
+def run_pool_key(direction, lock_fd):
+    """Send or withdraw the run key under the one lock, answering which projects changed."""
+    if direction not in ("send", "withdraw"):
+        refuse("usage: pool-key send | pool-key withdraw", 64)
+    changed = []
+    if direction == "send" or os.path.lexists(CONF):
+        trusted(CONF)
+        with open(CONF, encoding="utf-8") as lock:
+            if lock_fd is None:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+            else:
+                inherited_lock(lock_fd)
+            values = read_values(CONF)
+            if direction == "send":
+                changed = pool_key_send(Forge(values))
+            elif not pool_key_gone(values):
+                changed = pool_key_withdraw(Forge(values))
+    with writing("standard output"):
+        print(json.dumps({"changed": changed}, separators=(",", ":")), flush=True)
+
+
 def run():
     """Check root before the call or filesystem, then hold one lock through all preflight and mutation."""
     if os.geteuid() != 0:
@@ -1410,6 +1508,9 @@ def run():
             refuse("the inherited lock descriptor is invalid", 64)
         lock_fd = int(arguments[-1])
         arguments = arguments[:-2]
+    if arguments[:1] == ["pool-key"]:
+        run_pool_key(arguments[1] if len(arguments) == 2 else "", lock_fd)
+        return
     if len(arguments) == 5 and arguments[0] == "add" and arguments[3] == "--signed-by":
         action, project, admin, _, key = arguments
     elif len(arguments) == 2 and arguments[0] in ("remove", "migrate", "central-state"):
