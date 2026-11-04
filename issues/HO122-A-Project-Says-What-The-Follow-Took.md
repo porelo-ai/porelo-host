@@ -1,6 +1,6 @@
 # HO122 — A Project Says What The Follow Took
 
-**Status:** Idea.
+**Status:** Backlog.
 
 **What must be true.** `org status` says which of a project's repositories the host took and why any was not. A row the host can
 give no task is named there, not found at the task's refusal.

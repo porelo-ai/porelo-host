@@ -1,6 +1,6 @@
 # HO120 — A Measuring Run For Any Machine
 
-**Status:** Idea.
+**Status:** Backlog.
 
 **What must be true.** One command measures a given machine and writes one result file, so a new machine class is one run and
 a number on [HO119](README.md#ho119)'s page names the machine it came from.
@@ -41,14 +41,13 @@ and the difference goes in the file. `up` and `down` are known to leave a firewa
 that is given back, and it stops where a person holds a membership or a homeserver holds a room. A run stands alone on its
 machine, as any timing measurement.
 
-## Three things to settle in building
+## Settled for building
 
-- **The Maven project:** one public repository at a pinned commit, so the number can be run again; reaches Maven Central, whose
+- **The Maven project:** `porelo-buildtools` at a pinned tag, so the number can be run again; it reaches Maven Central, whose
   speed is in the cold number.
 - **More than the half:** 4 jobs on a small machine are refused by `forge`'s capacity check, and showing what happens past it
-  is the point. It takes a measurement-only way past the check, which must not reach `up`.
-- **An agent:** idle needs no model; real work needs an account's token and costs money, and a model's answer varies. Proposed:
-  idle and a fixed start only, real work "not measured" until the operator says otherwise.
+  is the point. A role variable the measuring playbook alone sets takes the run past the check, tested not to reach `up`.
+- **An agent:** idle and a fixed start only; real work is "not measured", as it needs a token, costs money, and a model's answer varies.
 
 ## Hardware, in order
 

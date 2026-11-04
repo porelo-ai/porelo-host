@@ -1,6 +1,6 @@
 # HO121 — One Check Before Any Installation
 
-**Status:** Idea.
+**Status:** Backlog.
 
 **What must be true.** Before anything changes on a machine, one read-only check answers whether it can do what this person
 wants, and names **every** finding at once: what was found, what was asked, what to do. `up` installs nothing unless it passes,
@@ -54,7 +54,7 @@ step of building.
 **One source for the budget.** `forge`'s `capacity` chooses the jobs and refuses them, in Jinja, and the check must give the same
 answer. So the script holds the formula and `capacity` calls it; its unit tests go on holding the same numbers.
 
-**Limits** stand in one file, read by the script. Until [HO119](README.md#ho119) has numbers they are today's; the disk has none
+**Limits** stand in one file in the tarball, read by the script, and by the interface, which compares a rented offer with them before renting, for what the offer publishes. Until [HO119](README.md#ho119) has numbers they are today's; the disk has none
 yet, so it is reported, with its measured value, and refuses nothing.
 
 ## The answer

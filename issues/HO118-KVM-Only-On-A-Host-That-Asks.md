@@ -1,6 +1,6 @@
 # HO118 — KVM Only On A Host That Asks
 
-**Status:** Idea.
+**Status:** Backlog.
 
 **What must be true.** A host's installation asks for KVM by one setting, off by default. Only a host that says yes has its
 CPU checked for `vmx` or `svm` and gets KVM and libvirt; any other host comes up on a CPU without them.

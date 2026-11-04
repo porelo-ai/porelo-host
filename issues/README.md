@@ -41,6 +41,13 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho120"></a>[HO120](HO120-A-Measuring-Run-For-Any-Machine.md) | - | - | One command that measures a given machine, again on any hardware, and writes one result file without secrets for the page's tables. |
+| <a id="ho121"></a>[HO121](HO121-One-Check-Before-Any-Installation.md) | - | [HO118](#ho118) | One read-only check before any installation, the same code `up` runs first, every finding at once with its value, what was asked and what to do. |
+| <a id="ho123"></a>[HO123](HO123-A-Socket-Forward-Reaches-Past-The-Agent-Rule.md) | - | - | Say what `AllowAgentForwarding no` stops, as a person's socket forward reaches past it. |
+| <a id="ho118"></a>[HO118](HO118-KVM-Only-On-A-Host-That-Asks.md) | - | - | KVM and libvirt only on a host whose `porelo_host_kvm` says yes, off by default, and the CPU checked only there. |
+| <a id="ho119"></a>[HO119](HO119-Which-Server-For-What.md) | - | [HO118](#ho118), [HO120](#ho120) | One page: which server for what, with and without Forgejo, each number measured or marked not, and the rule for parallel jobs. |
+| <a id="ho122"></a>[HO122](HO122-A-Project-Says-What-The-Follow-Took.md) | - | - | `org status` names what the follow took of a project and why not, a row with no `central` included. |
+| <a id="ho124"></a>[HO124](HO124-A-Login-Closed-At-Once-On-A-Host.md) | - | - | A login closed at once on a host, by reading sshd's own per-source penalty: reproduce it on the test VM, and say so. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 
 ## Analyzed
@@ -57,12 +64,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho118"></a>[HO118](HO118-KVM-Only-On-A-Host-That-Asks.md) | - | - | KVM and libvirt only on a host whose `porelo_host_kvm` says yes, off by default, and the CPU checked only there. |
-| <a id="ho119"></a>[HO119](HO119-Which-Server-For-What.md) | - | [HO118](#ho118), [HO120](#ho120) | One page: which server for what, with and without Forgejo, each number measured or marked not, and the rule for parallel jobs. |
-| <a id="ho120"></a>[HO120](HO120-A-Measuring-Run-For-Any-Machine.md) | - | - | One command that measures a given machine, again on any hardware, and writes one result file without secrets for the page's tables. |
-| <a id="ho121"></a>[HO121](HO121-One-Check-Before-Any-Installation.md) | - | [HO118](#ho118) | One read-only check before any installation, the same code `up` runs first, every finding at once with its value, what was asked and what to do. |
-| <a id="ho122"></a>[HO122](HO122-A-Project-Says-What-The-Follow-Took.md) | - | - | `org status` names what the follow took of a project and why not, a row with no `central` included. |
-| <a id="ho123"></a>[HO123](HO123-A-Socket-Forward-Reaches-Past-The-Agent-Rule.md) | - | - | Say what `AllowAgentForwarding no` stops, as a person's socket forward reaches past it. |
 | <a id="ho117"></a>[HO117](HO117-The-Sanity-Images-Two-Pins.md) | - | - | The `pip` and `pylint` the sanity image pins, with open alerts, raised or said why they stay |
 | <a id="ho116"></a>[HO116](HO116-The-Firewall-Left-By-Down.md) | - | - | `down` leaves the firewall's file and, by reading, its unit: taken off, or said why it stays |
 | <a id="ho115"></a>[HO115](HO115-The-Pool-VM-Not-Ready-On-GitHubs-Runner.md) | - | - | The pool's VM says ready on GitHub's runner, or the reason it cannot is known; until then GitHub does not check the pool. |
