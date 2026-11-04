@@ -33,16 +33,14 @@ The measures answer, and the page says: how many jobs make sense at which memory
 right share; what a person sets to go beyond, and what happens to the tasks then. A changed rule is a change to `forge`'s
 capacity and its unit tests, here.
 
-## What `up` checks
+## What is checked at `up`
 
-Read today: the CPU; a job budget and a pool within half the host. **No role checks disk:** a full disk shows late, as whatever
-then fails. To add, with a number from the measures: free disk under the paths that grow, refused before anything is installed
-and naming both sides; the same for memory below what the host's choices need. The page lists every check and its words.
+[HO121](README.md#ho121) holds the one check before any installation, disk too. This page lists its findings in the person's words,
+and its measured numbers go in that check's limits.
 
 ## Acceptance
 
 - The page in `doc/`, in `mkdocs.yml`'s nav, each number measured with how, or marked "not measured".
 - Its tables made from [HO120](README.md#ho120)'s result files, at least two machines' worth.
-- Too small a disk stops `up` before installing, in a unit test with the real `ansible-playbook` and in Molecule's run, or this
-  issue says from the measures why no number holds.
+- [HO121](README.md#ho121)'s limit for free disk set from the measures, or this issue says why no number holds.
 - The interface's field for concurrent jobs and its words can take their numbers from the page.
