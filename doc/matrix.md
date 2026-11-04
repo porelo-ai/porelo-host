@@ -29,7 +29,6 @@ lock. Expel takes the homeserver administrator's token on its stdin alone, as
 `gate/admin-token` and refuses a missing, empty or multi-word token before expel starts. A transport failure stops removal without repeating captured output. The transport owns deactivation of the
 person's `@<login>` and task `@*.<login>` accounts.
 
-The socket unit, preparation ordering and authorization publication have unit checks. Live validation requires the
-transport package providing `gate`, `gate --prepare` and login-based `expel`, and a homeserver package consuming the
-Unix socket settings. The VM checks must establish that a nonmember gets `EACCES`, the homeserver has no TCP
-listener, and purge deactivates the person's and tasks' accounts.
+The socket unit, preparation ordering and authorization publication have unit checks. On the test VM, with the
+published transport and homeserver, a nonmember gets `EACCES`, the homeserver has no TCP listener, and purge deactivates
+the person's and a task's account: each token that acted before the purge is refused after it.

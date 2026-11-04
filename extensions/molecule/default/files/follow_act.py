@@ -53,6 +53,33 @@ def answer(revision, **wanted):
     check(done.returncode == 0, f"the stand-in's answer {revision}", done.stderr)
 
 
+def matrix_account(login, username):
+    """Register an account through the gate as the login, the way a person's client does, and answer its token."""
+    body = {"username": username, "password": os.urandom(16).hex(), "auth": {"type": "m.login.dummy"}}
+    done = run(
+        "runuser", "-u", login, "--", "curl", "-sS", "--unix-socket", "/run/porelo-matrix/client.sock",
+        "-X", "POST", "-H", "Content-Type: application/json", "-d", "@-",
+        "http://localhost/_matrix/client/v3/register", given=json.dumps(body),
+    )  # fmt: skip
+    try:
+        return json.loads(done.stdout)["access_token"]
+    except (ValueError, KeyError):
+        check(False, f"{login} to register {username} through the gate", done.stdout + done.stderr)
+        return ""
+
+
+def matrix_answers(access):
+    """Ask the homeserver itself, as a purged person has no gate left, whether a token still acts: its HTTP code."""
+    uid = run("id", "-u", "porelo-matrix").stdout.strip()
+    done = run(
+        "runuser", "-u", "porelo-matrix", "--", "curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}", "-K", "-",
+        "--unix-socket", f"/run/user/{uid}/porelo-matrix-gate/homeserver.sock",
+        "http://localhost/_matrix/client/v3/account/whoami",
+        given=f'header = "Authorization: Bearer {access}"\n',
+    )  # fmt: skip
+    return done.stdout.strip()
+
+
 def can_read(login, path):
     return run("runuser", "-u", login, "--", "cat", "--", str(path)).returncode == 0
 
@@ -469,12 +496,23 @@ helper("org", "follow")
 seen = person("fa")
 check(seen["state"] == "active" and "purge_on" not in seen and reaches("fa"), "fa back with its membership", seen)
 
+# A purged person's accounts on the host's homeserver go with them, the person's and a task's; the 200 shows the question
+# can tell. Only while the person is a member does the gate let them make one.
+ACCOUNTS = [matrix_account("fa", "fa"), matrix_account("fa", "task.fa")]
+check([matrix_answers(access) for access in ACCOUNTS] == ["200", "200"], "fa's accounts to act before the purge")
+
 # What the act leaves is nothing of its persons, for the next one.
 answer("f", admins=["hostadmin"], persons=["hostadmin"], projects={})
 helper("org", "follow")
 for login in ("fa", "fb", "fc"):
     helper("purge", login)
     check(person(login)["state"] == "purged", f"{login} to be purged", person(login))
+seen = [matrix_answers(access) for access in ACCOUNTS]
+check(seen == ["401", "401"], "a purged person's accounts on the homeserver to act no more", seen)
+check(
+    Path("/home/porelo-matrix/.config/porelo/matrix/expelled-logins/fa").exists(),
+    "the purged login to stay taken on the homeserver",
+)
 
 journal = run("journalctl", "-b", "--no-pager").stdout
 check(TOKEN not in journal, "the token to stay out of the journal")

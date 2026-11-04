@@ -10,14 +10,18 @@ homeserver goes too, or the purge names it as left. Today it may stay without a 
 
 ## Why
 
-purge clears the person's vault with `--force`. Where the Matrix transport refuses to clear the account it keeps for
-a project, Porelo lists that account as not removed and still clears the vault, and purge accepts it as only a
-transport's account kept elsewhere. On a host the transport's server is often the host's own homeserver. `userdel
---remove` takes the person's home but not that account, and only `down` takes it along, with the disk. Until then a
-removed person keeps an account on the homeserver that nobody can use and nobody is told about.
+This was filed when purge only cleared the person's vault and accepted an account the transport kept, so a removed person
+kept an account on the homeserver that nobody was told about. Purge has since come to run the transport's `expel` before
+anything else is removed, and a refusal stops the purge. Only unit tests and a run without such an account said so.
 
-## To be checked
+## What is shown
 
-- Whether root may deactivate an account on the host's homeserver through its admin interface, and by which name a
-  purged person's account is found.
-- Whether purge then deactivates it, or only names it in its answer for the host admin.
+The purge needed no change. On the test VM a person made their own account and a task's through the gate, as a client
+does; both tokens acted (`200`, which shows the question can tell), and after `porelo-host-person purge` the homeserver
+refused both (`401`), with the login kept taken. Both accounts belong to one purged person of the follow's act.
+
+## Answered
+
+- **Root may deactivate them,** through the transport's `expel` run as the homeserver's account with the gate's
+  administrator token, finding them by login: the person's own and every `*.<login>`.
+- **Purge deactivates them,** and names nothing left.
