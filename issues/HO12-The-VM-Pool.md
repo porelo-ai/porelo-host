@@ -90,18 +90,22 @@ deletes them with nothing left.
   the normal return stayed clean and the rental after the SIGKILL found both files, failing the check; the break was in
   a copy of the source only.
 
-## What no longer holds
+## Repaired after the forge moved behind its gate
 
-Read in today's code, not run; what stands under *Built* was measured before the forge moved behind its gate.
+The forge had moved behind its gate without TLS, so the role's address and `ca.pem` no longer reached it, and it named
+one organization, which no follow makes, where every project has its own.
 
-- **The run key's secret no longer reaches the forge.** `roles/vm_pool/vars/main.yml` still asks
-  `https://<forge_address>:<port>`, whose default is the old VPN address, with `/etc/porelo-host/forge/ca.pem`, for
-  sending it and for deleting it at `down`. The forge now stands behind its gate without TLS, and
-  `roles/forge/tasks/legacy.yml` removes that CA. So `curl` fails, and `up` with a pool should stop at *Send the run key
-  into the forge organization's Actions secret*.
-- **It names one organization**, `forge_owner` or else `porelo`, which no follow makes: every project has an organization
-  of its own, and none of them is given `PORELO_POOL_SSH`.
-- The Build leaves the pool out of Molecule, so nothing there shows this.
+- **`porelo-host-project pool-key send`** at `up` gives `PORELO_POOL_SSH` on the account's socket to each project's
+  organization lacking it, and to all when the key changed. **`pool-key withdraw`** at `down` takes that secret from
+  every project and no other, and says nothing is left to do where the forge has already gone. A project added later
+  gets the key from its own `add`.
+- **Shown** on the test VM `build/molecule.sh` makes, with nested KVM and the pool on: `porelo-machines` rented and
+  returned a pool account, after a normal return and a killed renter nothing stayed, and an acceptance leg ran in it. On
+  the real forge a project held the key from its `add`, lost that secret alone, and got it back. After `down`, Molecule's
+  check of `virsh list --all` and of the storage pool found no pool VM and no volume. Seen to fail first: the unit tests
+  of the command, red before it existed; and a check that assumed a project still stands at `down`, when the follow's
+  act has taken it off again, so the check moved to where a project stands.
+- **GitHub does not check the pool:** its Build leaves it out, for [HO115](README.md#ho115). Only a local run shows this.
 
 ## Acceptance
 
@@ -109,8 +113,3 @@ Read in today's code, not run; what stands under *Built* was measured before the
   an acceptance leg runs in it.
 - After `down`, `virsh list --all` and the storage pool show nothing of the run.
 
-## To be checked
-
-- On GitHub's runner (AMD, nested KVM present) the pool VM gets its address but does not say ready within 15 minutes
-  (porelo-host Builds 16 and 17); the Build leaves the pool out (`PORELO_HOST_MOLECULE_POOL=off`) until that
-  is found; local Molecule runs it.

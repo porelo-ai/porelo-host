@@ -87,7 +87,7 @@ A VM pool is optional. Defining `porelo_host_vm_pool` turns it on, with `systems
 setting, no pool is made; a runner job does not need a VM unless its workflow asks for one.
 
 Where the pool exists, jobs receive its description read-only at `/etc/porelo-host/pool/pool.json` and its run key as
-the Actions secret `PORELO_POOL_SSH`. The pool supports `porelo-machines acceptance --pool`. Giving a VM back powers it
+the Actions secret `PORELO_POOL_SSH` of their project's organization, every project's, whenever it was added. The pool supports `porelo-machines acceptance --pool`. Giving a VM back powers it
 off; the host reverts its base snapshot so a run's changes do not reach the next run. See the [pool
 role](https://github.com/porelo-ai/porelo-host/blob/main/roles/vm_pool/README.md) for its contract.
 

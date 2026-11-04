@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The VM pool's run key reaches the forge behind its gate again, on its socket, without the old address or `ca.pem`, for sending and for deleting at `down`, and every project's organization holds it, not one no follow makes.
 - `MAVEN_SNAPSHOTS_URL` names `localhost`, as Maven's default mirror refused the plain http of `<host>.localhost`.
 - What a Project Admin files at the central forge reaches a task on the host at the next follow, once Porelo accepted it.
   A task reads the project's file from the host's forge, whose copy was taken once.
