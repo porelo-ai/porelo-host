@@ -17,6 +17,9 @@ the build's cache folder in the developer's home, and its base volume `porelo-ho
 
 `PORELO_HOST_MOLECULE_KEEP=on` keeps the VM and its files when the run fails, so the failing scenario can be run again
 on it; a later run refuses until that VM is deleted.
+`PORELO_HOST_MOLECULE_KVM=off` runs the scenario as a host that asks for no KVM, on a VM whose CPU has `vmx` and `svm` disabled, and
+needs `PORELO_HOST_MOLECULE_POOL=off`.
+
 `PORELO_HOST_MOLECULE_TRANSPORT` names a transport executable inside the checkout, as the run sees it, to install in
 place of the published one.
 

@@ -9,6 +9,10 @@ argument_specs:
         type: str
         default: porelo-forge
         description: The account Forgejo runs as, never Porelo's.
+      forge_runner_kvm:
+        type: bool
+        default: false
+        description: Whether the runner's account joins kvm; the inventory's porelo_host_kvm.
       forge_runner_account:
         type: str
         default: porelo-runner

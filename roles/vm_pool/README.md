@@ -3,7 +3,7 @@
 The host's VM pool: one small VM per run account, made from each system's cloud image by its pinned digest, that
 `porelo-machines acceptance --pool` rents from through the pool file `/etc/porelo-host/pool/pool.json`
 (porelo-buildtools' `porelo-machines-pool/1`), readable by any job user and holding nothing secret. It runs where the
-host setting `porelo_host_vm_pool` asks for it, after the forge; the run key stays on the host (`root:root`, `0600`)
+host setting `porelo_host_vm_pool` asks for it, on a host with `porelo_host_kvm` true, after the forge; the run key stays on the host (`root:root`, `0600`)
 and reaches jobs only as the Actions secret `PORELO_POOL_SSH` of each project's organization, sent by
 `porelo-host-project pool-key send` on the forge account's socket; a project added later gets it from its own `add`. At
 `down`, `pool-key withdraw` takes that secret from every project, and the VMs with their snapshots and keys are deleted.

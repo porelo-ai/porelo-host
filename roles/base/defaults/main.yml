@@ -1,8 +1,11 @@
 ---
-# The person's public ssh key for tasks_from: account or down; empty by default. A public key is no secret.
+# Whether this host gets KVM and libvirt, for a VM pool or a job that makes a VM; only then is its CPU asked for them.
+base_kvm: "{{ porelo_host_kvm | default(false) }}"
+
+# The person's public ssh key for tasks_from: down; empty by default. A public key is no secret.
 base_authorized_key: ""
 
-# Packages every host gets beside KVM and podman.
+# Packages every host gets, beside podman and any KVM.
 base_packages:
   - acl
   - ca-certificates

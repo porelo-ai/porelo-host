@@ -1,12 +1,13 @@
 ---
 # Forgejo's runner as a quadlet unit of its own account, its jobs in containers of that account's podman, which alone
-# may open KVM; registered once, its token piped from Forgejo's command line straight into the runner's registration,
+# may open KVM on a host that asked for it; registered once, its token piped from Forgejo's command line straight into the runner's registration,
 # never an argument, a variable or an output.
 - name: runner | Let the runner's account open KVM, and no other account of the forge
   ansible.builtin.user:
     name: "{{ forge_runner_account }}"
     groups: [kvm]
     append: true
+  when: forge_runner_kvm | bool
 
 - name: runner | Keep the runner account's id and home
   ansible.builtin.set_fact:

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **KVM and libvirt only where `porelo_host_kvm` says yes, off by default,** and the CPU asked for `vmx` or `svm` only there, so a
+  server without virtualization can be a host. A VM pool without it stops before anything is installed. A host running jobs that
+  make a VM must now say yes. The runner joins `kvm` only there.
+
+### Removed
+
+- `base`'s `tasks_from: account`, which nothing called.
+
 ## [0.5.10] - 2026-11-04
 
 ### Added

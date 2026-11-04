@@ -4,3 +4,4 @@
     name: "{{ __base_libvirt_service }}"
     state: started
     enabled: true
+  when: base_kvm | bool

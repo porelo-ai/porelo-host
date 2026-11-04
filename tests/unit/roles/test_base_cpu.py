@@ -7,8 +7,8 @@ from pathlib import Path
 HERE = Path(__file__).parent
 
 
-def check(cpuinfo):
-    """Runs the check on a cpuinfo file and returns its exit code and output."""
+def check(cpuinfo, kvm=True):
+    """Runs the check on a cpuinfo file and returns its exit code and output; a host asks for KVM unless told not to."""
     done = subprocess.run(
         [
             "ansible-playbook",
@@ -17,6 +17,7 @@ def check(cpuinfo):
             str(HERE / "plays" / "cpu.yml"),
             "-e",
             f"__base_cpuinfo={HERE / 'cpuinfo' / cpuinfo}",
+            *(["-e", '{"porelo_host_kvm": true}'] if kvm else []),
         ],
         env=dict(os.environ, ANSIBLE_NOCOLOR="1"),
         capture_output=True,
@@ -40,3 +41,8 @@ def test_an_intel_cpu_with_its_vmx_flags_line_passes():
 def test_a_cpu_with_only_a_flag_that_contains_svm_is_refused():
     code, output = check("none-but-svm-lock.txt")
     assert code != 0 and "offers no virtualization" in output, output
+
+
+def test_a_cpu_without_virtualization_passes_on_a_host_that_did_not_ask_for_kvm():
+    code, output = check("none-but-svm-lock.txt", kvm=False)
+    assert code == 0, output

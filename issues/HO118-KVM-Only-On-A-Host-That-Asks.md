@@ -1,6 +1,6 @@
 # HO118 — KVM Only On A Host That Asks
 
-**Status:** Backlog.
+**Status:** Review.
 
 **What must be true.** A host's installation asks for KVM by one setting, off by default. Only a host that says yes has its
 CPU checked for `vmx` or `svm` and gets KVM and libvirt; any other host comes up on a CPU without them.
@@ -46,6 +46,12 @@ forge's build is such a job, and a host that runs it says yes. A job in a contai
   A second CI leg, about as long as the first.
 - Molecule, the run with the pool stays as it is with the setting on: KVM answers through `/dev/kvm`.
 - A pool asked for with no setting stops before an `apt` task, in a unit test.
+
+## What a run showed
+
+`build/molecule.sh` with `PORELO_HOST_MOLECULE_KVM=off`, forge on, on a VM with `vmx` and `svm` disabled by `PORELO_VM_CPU`: `/dev/kvm` absent, the
+flags empty, all stages green, none of KVM's packages, `porelo-runner` not in `kvm`, a person admitted and purged. The test found one fault:
+the setting's own stop failed on an undefined value. A person admitted and `down` run with no `virsh`.
 
 ## Not covered
 

@@ -8,6 +8,7 @@
     verify_version: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_VERSION') }}"
     verify_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
     verify_forge: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_FORGE', default='on') }}"
+    verify_kvm_asked: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_KVM', default='on') }}"
     verify_container_bounds:
       - {account: porelo-forge, container: forgejo, pids: 1024, memory: 2G, bytes: 2147483648, cpus: 2}
       - {account: porelo-runner, container: forgejo-runner, pids: 256, memory: 512M, bytes: 536870912, cpus: 1}
@@ -216,12 +217,50 @@
       register: verify_kvm
       changed_when: false
       failed_when: false
+      when: verify_kvm_asked == 'on'
 
     - name: Assert KVM answers, as on a rented host
       ansible.builtin.assert:
         that: verify_kvm.rc == 0 and verify_kvm.stdout == '12'
         fail_msg: >-
           asked KVM_GET_API_VERSION for 12, got rc {{ verify_kvm.rc }}: {{ verify_kvm.stdout }} {{ verify_kvm.stderr }}
+      when: verify_kvm_asked == 'on'
+
+    - name: Read this CPU's flags, KVM's packages and the runner's groups, on a host that did not ask for KVM
+      ansible.builtin.shell:
+        cmd: |
+          # A probe that fails stops this, as grep -c over nothing would read as absence.
+          set -uo pipefail
+          flags=$(grep -m1 '^flags' /proc/cpuinfo) || exit 3
+          packages=$(dpkg-query -W -f '${db:Status-Abbrev}${Package}\n') || exit 4
+          libvirtd=$(systemctl show -p UnitFileState --value libvirtd.service) || exit 5
+          groups=
+          getent passwd porelo-runner >/dev/null
+          case $? in
+              0) groups=$(id -nG porelo-runner) || exit 6 ;;
+              2) ;;
+              *) exit 6 ;;
+          esac
+          printf '%s\n' "$flags" | tr ' ' '\n' | grep -cxE 'vmx|svm'
+          printf '%s\n' "$packages" | grep -cE '^ii *(qemu-system-x86|libvirt-daemon-system|libvirt-clients)(:[a-z0-9]+)?$'
+          printf '%s\n' "$libvirtd" | grep -cx enabled
+          printf '%s\n' "$groups" | tr ' ' '\n' | grep -cx kvm
+          exit 0
+        executable: /bin/bash
+      register: verify_no_kvm
+      changed_when: false
+      failed_when: false
+      when: verify_kvm_asked == 'off'
+
+    - name: Assert a CPU without virtualization came up with no KVM of ours
+      ansible.builtin.assert:
+        that:
+          - verify_no_kvm.rc == 0
+          - verify_no_kvm.stdout_lines == ['0', '0', '0', '0']
+        fail_msg: >-
+          asked for no vmx or svm, none of KVM's packages, no libvirtd enabled, the runner not in kvm;
+          got rc {{ verify_no_kvm.rc }}, {{ verify_no_kvm.stdout_lines }} {{ verify_no_kvm.stderr }}
+      when: verify_kvm_asked == 'off'
 
     # Nothing of Tresorit or a drive is on a host.
     - name: Read whether anything of Tresorit or a drive is on the host

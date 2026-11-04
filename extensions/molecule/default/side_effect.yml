@@ -283,8 +283,12 @@
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
-          domains=$(virsh -c qemu:///system list --all --name)
-          volumes=$(virsh -c qemu:///system vol-list images | awk 'NR > 2 {print $1}')
+          # A host that asked for no KVM has no virsh, so nothing of a pool can stand.
+          domains= volumes=
+          if command -v virsh >/dev/null; then
+              domains=$(virsh -c qemu:///system list --all --name)
+              volumes=$(virsh -c qemu:///system vol-list images | awk 'NR > 2 {print $1}')
+          fi
           printf '%s\n' "$domains" | grep '^porelo-pool-' || true
           printf '%s\n' "$volumes" | grep -E '^porelo-pool-(ubuntu|fedora)-' || true
           find /var/lib/porelo-host/pool -maxdepth 1 \

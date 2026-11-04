@@ -3,6 +3,8 @@
 # what holds the forge's admin, and a job's code must reach neither.
 forge_account: porelo-forge
 forge_runner_account: porelo-runner
+# A job may drive a VM only on a host that asked for KVM.
+forge_runner_kvm: "{{ porelo_host_kvm | default(false) }}"
 
 # The runner's cache address; Forgejo itself has no TCP listener.
 forge_address: "{{ (vpn_address | default('10.73.' ~ (porelo_host_network | string) ~ '.1/24')).split('/') | first }}"

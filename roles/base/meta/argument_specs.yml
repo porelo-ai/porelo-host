@@ -1,32 +1,23 @@
 ---
 argument_specs:
   main:
-    short_description: The host's packages, KVM and podman, machine-wide.
+    short_description: The host's packages and podman, and KVM where asked for, machine-wide.
     description:
-      - Stops before it installs anything on a CPU without virtualization.
+      - With KVM asked for, stops before it installs anything on a CPU without virtualization.
     options:
+      base_kvm:
+        type: bool
+        default: false
+        description: Whether this host gets KVM and libvirt; the inventory's porelo_host_kvm.
       base_packages:
         type: list
         elements: str
-        description: Packages every host gets beside KVM's and podman's.
+        description: Packages every host gets beside podman's and any KVM's.
         default: [acl, ca-certificates, curl, git, nftables, openssh-server]
       base_host_admin_key_file:
         type: path
         default: /root/.ssh/authorized_keys
         description: The root-owned pinned host admin key file seeded before SSH reloads.
-  account:
-    short_description: Porelo's account in KVM's and libvirt's groups.
-    description:
-      - Run after Porelo's setup script made the account; checks its linger, subordinate ids and delegated controllers.
-    options:
-      base_account:
-        type: str
-        required: true
-        description: The account Porelo's tasks run as.
-      base_authorized_key:
-        type: str
-        default: ""
-        description: The person's public ssh key, let in as the account.
   controllers:
     short_description: Refuse an account without the delegated controllers its container bounds need.
     options:

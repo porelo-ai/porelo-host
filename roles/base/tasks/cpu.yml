@@ -1,18 +1,21 @@
 ---
 # The flags line is read whole and split into its words: a match inside a word, such as AMD's svm_lock beside svm,
 # is no flag of its own.
-- name: cpu | Read the CPU's flags
-  ansible.builtin.command:
-    cmd: grep -m1 '^flags' {{ __base_cpuinfo }}
-  register: __base_cpu_flags
-  changed_when: false
-  failed_when: false
-  check_mode: false
+- name: cpu | Ask for virtualization only of a host that wants KVM
+  when: base_kvm | bool
+  block:
+    - name: cpu | Read the CPU's flags
+      ansible.builtin.command:
+        cmd: grep -m1 '^flags' {{ __base_cpuinfo }}
+      register: __base_cpu_flags
+      changed_when: false
+      failed_when: false
+      check_mode: false
 
-- name: cpu | Stop on a CPU without virtualization
-  ansible.builtin.assert:
-    that: __base_cpu_flags.stdout.split(':', 1) | last | split | intersect(['vmx', 'svm']) | length > 0
-    fail_msg: >-
-      this host's CPU offers no virtualization (neither vmx nor svm among the flags in {{ __base_cpuinfo }}), so KVM
-      cannot run here; nothing was installed
-    quiet: true
+    - name: cpu | Stop on a CPU without virtualization
+      ansible.builtin.assert:
+        that: __base_cpu_flags.stdout.split(':', 1) | last | split | intersect(['vmx', 'svm']) | length > 0
+        fail_msg: >-
+          this host's CPU offers no virtualization (neither vmx nor svm among the flags in {{ __base_cpuinfo }}), so KVM
+          cannot run here; nothing was installed
+        quiet: true

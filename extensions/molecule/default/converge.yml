@@ -10,6 +10,7 @@
     converge_packages: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_PACKAGES') }}"
     converge_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
     converge_forge: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_FORGE', default='on') }}"
+    converge_kvm_asked: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_KVM', default='on') }}"
   tasks:
     # Whether nested virtualization reaches the Molecule VM itself, so a slow pool VM in CI can be told apart.
     - name: Read whether /dev/kvm exists on the Molecule VM
@@ -73,6 +74,7 @@
               porelo_host_network: 7
               porelo_host_distribution: snapshots
               porelo_host_forge: {{ (converge_forge == 'on') | lower }}
+              porelo_host_kvm: {{ (converge_kvm_asked == 'on') | lower }}
           {% if converge_forge == 'on' %}
               # Lets Forgejo migrate from the stand-in central organization on the host's own forge.
               forge_migrations_allow_local: true

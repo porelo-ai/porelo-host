@@ -83,7 +83,8 @@ Forgejo Actions is enabled by the role. The forge and runner use separate system
 from Porelo's account. Their resource bounds are in the [host lifecycle](index.md).
 
 A VM pool is optional. Defining `porelo_host_vm_pool` turns it on, with `systems` chosen from `ubuntu` and `fedora`, and
-`accounts` from 1 to 8 for each system. It requires the forge and gives each run account a VM of its own. Without that
+`accounts` from 1 to 8 for each system. It requires the forge and `porelo_host_kvm: true`, and gives each run account a VM of
+its own: `up` stops before it installs anything on a pool without that setting. Without that
 setting, no pool is made; a runner job does not need a VM unless its workflow asks for one.
 
 Where the pool exists, jobs receive its description read-only at `/etc/porelo-host/pool/pool.json` and its run key as

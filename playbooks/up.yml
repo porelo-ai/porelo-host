@@ -41,7 +41,20 @@
           got {{ porelo_host_network | to_json if porelo_host_network is defined else 'undefined' }}
         quiet: true
 
-    - name: Install the host's packages, KVM and podman
+    - name: Stop on a KVM setting that is no yes or no
+      ansible.builtin.assert:
+        that: porelo_host_kvm | default(false) is boolean
+        fail_msg: "porelo_host_kvm must be true or false; got {{ porelo_host_kvm | default(false) | to_json }}"
+        quiet: true
+
+    - name: Stop on a VM pool on a host that did not ask for KVM
+      ansible.builtin.assert:
+        that: porelo_host_vm_pool is not defined or porelo_host_kvm | default(false)
+        fail_msg: >-
+          porelo_host_vm_pool makes VMs, so it needs porelo_host_kvm true; nothing was installed
+        quiet: true
+
+    - name: Install the host's packages and podman, and KVM where asked for
       ansible.builtin.include_role:
         name: porelo.host.base
       vars:

@@ -12,6 +12,7 @@ says why.
 | The order of `up` and `down` | Every need of the stop is known in the first play, before the VPN, around one stop for the person; the store's last copy is to come before `vault clear`. | [Why](#the-order-of-up-and-down) |
 | How the stop's secrets reach the host | On the stop's standard input, from the person's secrets file on the desktop, each passed straight to its user; the drive holds none. | [Why](#how-the-stops-secrets-reach-the-host) |
 | The forge's CA on the desktop | One lasting CA of the person's, name-constrained to `porelo.internal` and the VPN's network, signs every host's forge; its key never reaches a host. | [Why](#the-forges-ca-on-the-desktop) |
+| Whether a host has KVM | Only where its `porelo_host_kvm` says yes, off by default; only then is its CPU asked. | [Why](#whether-a-host-has-kvm) |
 | Where the VM test runs | On a libvirt VM per run everywhere: here, in the GitHub Build and in the Forgejo build. | [Why](#where-the-vm-test-runs) |
 | `ansible-test sanity` | Run in the Build on the whole collection, offline, its requirements taken by hash; shellcheck is left out. | [Why](#ansible-test-sanity) |
 | Ubuntu's `ansible-core` and CVE-2026-89091 | An accepted risk: the one tarball the host installs is the collection's own. | [Why](#ubuntus-ansible-core-and-cve-2026-89091) |
@@ -147,7 +148,15 @@ package for the account and the extra packages, rather than fetching an unpinned
 
 A task's container must not share a user namespace with what holds the forge's admin and the person's central token,
 and a job's code must reach neither. So Forgejo runs as `porelo-forge` and its runner as `porelo-runner`, each with
-linger and subordinate ids of its own; only `porelo-runner` is in `kvm`, since a job may drive a VM.
+linger and subordinate ids of its own; only `porelo-runner` is in `kvm`, on a host that asked for KVM, since a job may drive a
+VM there.
+
+## Whether a host has KVM
+
+Tasks are rootless containers, and a task, the gate, the forge's server and the homeserver use no KVM. It serves a VM pool and a job that
+makes a VM, so a stop on every host's CPU kept every ordinary cloud server out for this collection's own development. The operator
+decided: a host says so, by `porelo_host_kvm`, default `false`, and a pool without it stops before anything is installed. No later
+`up` removes KVM from a host that has it.
 
 ## Whether the forge runs
 

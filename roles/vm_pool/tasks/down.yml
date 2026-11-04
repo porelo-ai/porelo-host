@@ -9,10 +9,13 @@
     enabled: false
   failed_when: false
 
-# An up that stopped before base installed libvirt leaves no virsh: command fails with ENOENT (rc 2) before it runs.
+# No VM can exist without the daemon, whatever else of libvirt a host has; with it, a list that fails stops down, so no
+# VM is left behind unseen. An up that stopped before base installed libvirt leaves no virsh: command fails with ENOENT
+# (rc 2) before it runs.
 - name: down | Read which pool VMs up made
   ansible.builtin.command:
     argv: [virsh, -c, "qemu:///system", list, --all, --name]
+    removes: /usr/sbin/libvirtd
   register: __vm_pool_listed
   changed_when: false
   failed_when: >-

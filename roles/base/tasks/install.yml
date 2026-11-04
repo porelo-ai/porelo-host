@@ -1,7 +1,7 @@
 ---
-- name: install | Install the packages, KVM's and podman's
+- name: install | Install the packages, podman's, and KVM's where asked for
   ansible.builtin.apt:
-    name: "{{ base_packages + __base_kvm_packages + __base_podman_packages }}"
+    name: "{{ base_packages + __base_podman_packages + (__base_kvm_packages if base_kvm | bool else []) }}"
     state: present
     update_cache: true
     cache_valid_time: 3600

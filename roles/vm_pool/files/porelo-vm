@@ -10,6 +10,7 @@
 #                                                            a VM on a copy-on-write disk over the base volume, its
 #                                                            seed made from <seed-dir>/user-data and meta-data
 #        porelo-vm address <name> <seconds>                  waits for the VM's address on libvirt's network
+#                                                            PORELO_VM_CPU replaces its --cpu, for a test without KVM
 #        porelo-vm delete <name>                             the VM, its disk and its seed, believed only as seen
 set -eu
 export LIBVIRT_DEFAULT_URI="${LIBVIRT_DEFAULT_URI:-qemu:///system}"
@@ -74,7 +75,7 @@ make() {
             --backing-vol-format qcow2 >/dev/null \
         && virsh vol-create-as "$pool" "$name-seed.iso" "$(stat -c %s "$seed/seed.iso")" --format raw >/dev/null \
         && virsh vol-upload "$name-seed.iso" "$seed/seed.iso" --pool "$pool" \
-        && virt-install --name "$name" --memory "$memory" --vcpus "$vcpus" --cpu host-passthrough --import \
+        && virt-install --name "$name" --memory "$memory" --vcpus "$vcpus" --cpu "${PORELO_VM_CPU:-host-passthrough}" --import \
             --disk "vol=$pool/$name.qcow2,bus=virtio" --disk "vol=$pool/$name-seed.iso,device=cdrom" \
             --network network=default --osinfo "$osinfo" --graphics none --noautoconsole >/dev/null
     }; then

@@ -26,6 +26,12 @@ fail() { say "FAILED: $*"; exit 1; }
 # --- the acceptance tooling, handed over from a checked build -------------------------------------------------------
 pool_check=${PORELO_HOST_MOLECULE_POOL:-on}
 case "$pool_check" in on|off) ;; *) fail 'PORELO_HOST_MOLECULE_POOL must be on or off' ;; esac
+kvm_check=${PORELO_HOST_MOLECULE_KVM:-on}
+case "$kvm_check" in on|off) ;; *) fail 'PORELO_HOST_MOLECULE_KVM must be on or off' ;; esac
+[ "$kvm_check" = on ] || [ "$pool_check" = off ] \
+    || fail 'PORELO_HOST_MOLECULE_KVM=off requires PORELO_HOST_MOLECULE_POOL=off: a pool needs KVM'
+# The VM as a cloud server without virtualization is, so base's check is the real one's other side.
+[ "$kvm_check" = on ] || export PORELO_VM_CPU=host-passthrough,disable=vmx,disable=svm
 forge_check=${PORELO_HOST_MOLECULE_FORGE:-on}
 case "$forge_check" in on|off) ;; *) fail 'PORELO_HOST_MOLECULE_FORGE must be on or off' ;; esac
 [ "$forge_check" = on ] || [ "$pool_check" = off ] \
@@ -173,4 +179,5 @@ PORELO_HOST_PACKAGES=$packages \
 PORELO_HOST_MACHINES=$machines \
 PORELO_HOST_MOLECULE_POOL=$pool_check \
 PORELO_HOST_MOLECULE_FORGE=$forge_check \
+PORELO_HOST_MOLECULE_KVM=$kvm_check \
     "$root/build/tools.sh" molecule test -s "$scenario"
