@@ -70,3 +70,24 @@ Unit fixtures cover key expiry validation, atomic KRL replacement, runtime direc
 session termination. Molecule includes a real SSH Unix socket forward through an isolated account and a TCP listener
 check. These require the installed host environment; a sandbox that cannot bind sockets cannot run the tunnel check.
 The complete multi-service tunnel acceptance runs after the service roles and organization reader are integrated.
+
+## A login closed at once
+
+sshd keeps a score for each source address, by OpenSSH's default, which the collection leaves as it is: on Ubuntu 26.04's
+OpenSSH 10.2, `authfail:5 noauth:1 min:15 max:600`. A connection that ends after failed logins adds 5 seconds, and one that never tried
+to log in adds 1, and the score runs down as time passes. Once it is above 15, every **new** connection from that address is refused
+before any login, a right key too, until it has run down. A session already open is not touched, so keep one if you have it.
+
+A person meets this as one of these, in no time at all and with no reason given:
+
+    Connection closed by 203.0.113.5 port 22
+    kex_exchange_identification: read: Connection reset by peer
+    Connection reset by 203.0.113.5 port 22
+
+With the client's `LogLevel ERROR` the middle line stands alone, or there is nothing. On a test machine, four failed logins or thirty runs
+of `ssh-keyscan` were enough, and it lasted about 20 seconds; it can grow to the 10 minutes `max:600` says. **Wait, then try again** with the key
+that belongs; trying again at once does not help. A host admin in a session already open, or at the provider's console, can read `journalctl -u ssh`,
+which names the address and the reason after "penalty" at sshd's default log level, though not for each refusal. The same words can have other causes,
+a machine restarting for one, so they do not prove this one.
+
+Lowering it is not offered: a person's address is not known to the host, and the default protects a public port.

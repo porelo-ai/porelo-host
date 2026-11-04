@@ -1,6 +1,6 @@
 # HO124 — A Login Closed At Once On A Host
 
-**Status:** Backlog.
+**Status:** Review.
 
 **What must be true.** A host's own ssh does not shut out a person's interface for what the interface itself did, or if it does, the
 person can read why and what to do.
@@ -30,3 +30,22 @@ or the operator's deletion having begun.
 
 - The reproduction's result here, with OpenSSH's version: the cause shown, or this one ruled out.
 - `doc/ssh.md` names what a person meets and what to do.
+
+## What a run showed
+
+On the test VM, Ubuntu 26.04's `openssh-server` `1:10.2p1-2ubuntu3.6`, with one throwaway sshd of an agent's own account and the default
+`authfail:5 noauth:1 min:15 max:600`:
+
+- Four failed logins passed with "Permission denied"; from the fifth on, every connection was dropped, the right key too, for 21 s.
+- Two failed logins did nothing; the right key still came in.
+- 30 `ssh-keyscan` runs had the same effect, for 20 s. sshd's log says `drop connection ... penalty: connections without attempting
+  authentication` and `activating ipv4 penalty of 16 seconds`.
+- **The line itself, over a network:** of 20 dropped tries, 6 said exactly `Connection closed by <address> port <port>` and 14 said
+  `kex_exchange_identification: read: Connection reset by peer` then `Connection reset by <address> port <port>`. With `LogLevel ERROR`, 7 of 8 said the
+  middle one and 1 said nothing.
+
+So the rented host's line is what this penalty gives, in 0 s. **That it was the cause there is not shown**: that server is gone, and no
+journal of it was kept. The other causes stay possible; only a rented machine could tell, by that journal at the moment it happens.
+
+Left to the interface: tell these words from others and wait, and ask less often with bare connections, as each counts.
+

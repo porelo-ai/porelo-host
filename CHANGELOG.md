@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`doc/ssh.md` says what a login closed at once is,** sshd's own penalty by its default, and what to do: wait.
+
 - **KVM and libvirt only where `porelo_host_kvm` says yes, off by default,** and the CPU asked for `vmx` or `svm` only there, so a
   server without virtualization can be a host. A VM pool without it stops before anything is installed. A host running jobs that
   make a VM must now say yes. The runner joins `kvm` only there.
