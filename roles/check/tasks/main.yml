@@ -1,0 +1,43 @@
+---
+# The one check, the same the interface sends before it installs anything: every finding at once, so a person who has
+# to change the machine does it once. See roles/check/README.md for what it cannot know.
+- name: Ask the machine
+  ansible.builtin.script:
+    cmd: >-
+      {{ (role_path ~ '/files/porelo-host-check') | quote }}
+      --limits {{ lookup('ansible.builtin.file', role_path ~ '/files/limits.json') | from_json | to_json | quote }}
+      --choices {{ __check_choices | to_json | quote }}
+    executable: python3
+  vars:
+    __check_choices:
+      kvm: "{{ porelo_host_kvm | default(false) }}"
+      forge: "{{ porelo_host_forge | default(false) }}"
+      jobs: "{{ forge_runner_capacity | int if forge_runner_capacity is defined else none }}"
+      job_cpus: "{{ forge_job_cpus | int if forge_job_cpus is defined else none }}"
+      job_memory: "{{ forge_job_memory | string if forge_job_memory is defined else none }}"
+      # Read as the forge's capacity and the pool's role read them, so all three budget the same pool.
+      pool: >-
+        {{ {'systems': vm_pool_systems | default(porelo_host_vm_pool.systems | default([])),
+            'accounts': vm_pool_accounts | default(porelo_host_vm_pool.accounts | default(0)) | int,
+            'memory': vm_pool_memory | default(1536) | int}
+           if porelo_host_vm_pool is defined else none }}
+      # Only what binds on the host; the forge's others live in its containers' own networks.
+      ports: "{{ [forge_git_port | default(3001) | int] if porelo_host_forge | default(false) else [] }}"
+  register: __check_answer
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Stop on everything this machine lacks, before anything is installed
+  ansible.builtin.assert:
+    that: __check_answer.rc == 0
+    fail_msg: >-
+      {{ __check_failed | map('to_json') | join('; ') if __check_answer.rc == 1 else
+         'the check could not run: ' ~ __check_answer.stdout ~ ' ' ~ __check_answer.stderr }}; nothing was installed
+    quiet: true
+  vars:
+    # What stopped it: what failed, and where the check did not reach its end, what it could not know too.
+    __check_failed: >-
+      {{ (__check_answer.stdout | from_json).findings
+         | selectattr('state', 'in', ['fail'] if (__check_answer.stdout | from_json).complete else ['fail', 'unknown'])
+         | list if __check_answer.rc == 1 else [] }}

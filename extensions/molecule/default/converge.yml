@@ -161,6 +161,71 @@
         path: /root/porelo-host-first-up.lines
       register: converge_first_seen
 
+    # Before the first up: a machine lacking several things hears them together, and nothing on it changes.
+    - name: Run an up that asks more than this machine has, with a port taken
+      ansible.builtin.shell:
+        cmd: |
+          set -uo pipefail
+          python3 -c 'import socket, time
+          s = socket.socket(); s.bind(("127.0.0.1", 3001)); s.listen(); time.sleep(1800)' &
+          holder=$!
+          trap 'kill "$holder"' EXIT
+          for _ in {1..50}; do
+              (exec 3<>/dev/tcp/127.0.0.1/3001) 2>/dev/null && break
+              sleep 0.1
+          done
+          (exec 3<>/dev/tcp/127.0.0.1/3001) || { echo "rc=no listener"; exit 0; }
+          # A file's size, time, mode, owner and link as well as its name, so a rewrite shows too.
+          look() {
+              dpkg -l
+              find /etc /var/lib -xdev \( -path /var/lib/systemd -o -path /var/lib/apt/lists -o -path /var/lib/cloud \
+                  -o -path /var/lib/private -o -path /var/lib/snapd \
+                  -o -path /var/lib/ubuntu-release-upgrader \) -prune \
+                  -o -type d -printf '%p %m %u %g\n' -o -printf '%p %s %T@ %m %u %g %l\n' | sort
+          }
+          look > /root/converge-before-refusal
+          ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.up \
+              -e '{"porelo_host_kvm": true, "forge_runner_capacity": 64}' > /root/converge-refused.lines
+          echo "rc=$?"
+          look | diff /root/converge-before-refusal - && echo unchanged
+        executable: /bin/bash
+      environment:
+        ANSIBLE_STDOUT_CALLBACK: porelo.host.lines
+        LC_ALL: C.UTF-8
+      register: converge_refused
+      changed_when: false
+      failed_when: false
+      when:
+        - converge_forge == 'on'
+        - not converge_first_seen.stat.exists
+
+    - name: Read the refused up's lines
+      ansible.builtin.slurp:
+        src: /root/converge-refused.lines
+      register: converge_refused_lines
+      when: converge_refused is not skipped
+
+    - name: Assert the refusal named every lack at once and changed nothing
+      ansible.builtin.assert:
+        that:
+          - converge_refused.stdout_lines[0] == 'rc=2'
+          - "'unchanged' in converge_refused.stdout_lines"
+          - converge_refused_failed | length == 1
+          - converge_refused_failed[0].task is search('Stop on everything this machine lacks')
+          - "'\"id\": \"jobs\"' in converge_refused_failed[0].msg"
+          - "'\"id\": \"ports\"' in converge_refused_failed[0].msg"
+          - >-
+            (converge_kvm_asked == 'on') or '"id": "virtualization"' in converge_refused_failed[0].msg
+        fail_msg: >-
+          asked for one refusal of jobs and ports and nothing changed;
+          got {{ converge_refused.stdout }} {{ converge_refused_failed }}
+        quiet: true
+      vars:
+        converge_refused_failed: >-
+          {{ (converge_refused_lines.content | b64decode).splitlines() | select | map('from_json')
+             | selectattr('state', 'equalto', 'failed') | list }}
+      when: converge_refused is not skipped
+
     - name: Run the first up
       # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.
       ansible.builtin.shell:

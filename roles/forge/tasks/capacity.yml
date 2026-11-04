@@ -16,55 +16,58 @@
     __forge_host_kib: >-
       {{ (__forge_capacity_host.results[1].content | b64decode | regex_findall('(?m)^MemTotal:\s+([0-9]+) kB$')
           + ['0']) | first }}
-    __forge_job_size: >-
-      {{ forge_job_memory | default('768m') | string | lower | regex_findall('^([0-9]+)([kmg]?)$')
-         | first | default(['0', '']) }}
-    # Podman's size notation: bytes without a unit, else k, m or g.
-    __forge_job_kib: >-
-      {{ {'': (__forge_job_size[0] | int) // 1024, 'k': __forge_job_size[0] | int,
-          'm': (__forge_job_size[0] | int) * 1024, 'g': (__forge_job_size[0] | int) * 1048576}[__forge_job_size[1]] }}
+    __forge_job_kib: "{{ (__forge_fit.stdout | from_json).job_kib if __forge_fit is defined else 0 }}"
     __forge_pool_kib: >-
       {{ (vm_pool_systems | default((porelo_host_vm_pool | default({})).systems | default([])) | length)
          * (vm_pool_accounts | default((porelo_host_vm_pool | default({})).accounts | default(0)) | int)
          * (vm_pool_memory | default(1536) | int) * 1024 }}
-    __forge_budget_kib: "{{ (__forge_host_kib | int) // 2 - (__forge_pool_kib | int) }}"
   block:
     - name: capacity | Remember whether any job bound was explicit
       ansible.builtin.set_fact:
         __forge_capacity_explicit: >-
           {{ forge_runner_capacity is defined or forge_job_cpus is defined or forge_job_memory is defined }}
 
-    - name: capacity | Choose two jobs only when their minimum bounds fit
+    # The one formula, the check's own, so what the check promised is what is written here.
+    - name: capacity | Ask what this host carries
+      ansible.builtin.script:
+        cmd: >-
+          {{ (role_path ~ '/../check/files/porelo-host-check') | quote }}
+          --limits {{ __forge_fit_limits | from_json | to_json | quote }}
+          --fit {{ __forge_fit_request | to_json | quote }}
+        executable: python3
+      vars:
+        __forge_fit_limits: "{{ lookup('ansible.builtin.file', role_path ~ '/../check/files/limits.json') }}"
+        __forge_fit_request:
+          host_cpus: "{{ __forge_host_cpus | int }}"
+          host_kib: "{{ __forge_host_kib | int }}"
+          pool_kib: "{{ __forge_pool_kib | int }}"
+          capacity: "{{ forge_runner_capacity | int if forge_runner_capacity is defined else none }}"
+          job_cpus: "{{ forge_job_cpus | int if forge_job_cpus is defined else none }}"
+          job_memory: "{{ forge_job_memory | string if forge_job_memory is defined else none }}"
+      register: __forge_fit
+      changed_when: false
+      failed_when: __forge_fit.rc not in [0, 1]
+      check_mode: false
+
+    # Each by itself, so a bound that was asked for never becomes a fact, which would outrank a later play's.
+    - name: capacity | Take the number of jobs from the answer, unless asked for
       ansible.builtin.set_fact:
-        forge_runner_capacity: >-
-          {{ 2 if (__forge_host_cpus | int) // 2 >= 2 * (forge_job_cpus | default(1) | int)
-             and (__forge_budget_kib | int) >= 2 * (__forge_job_kib | int) else 1 }}
+        forge_runner_capacity: "{{ (__forge_fit.stdout | from_json).capacity }}"
       when: forge_runner_capacity is not defined
 
-    - name: capacity | Fit each job's unset CPU quota
+    - name: capacity | Take each job's processors from the answer, unless asked for
       ansible.builtin.set_fact:
-        forge_job_cpus: >-
-          {{ [1, [4, (__forge_host_cpus | int) // 2 // ([1, forge_runner_capacity | int] | max)] | min] | max }}
+        forge_job_cpus: "{{ (__forge_fit.stdout | from_json).job_cpus }}"
       when: forge_job_cpus is not defined
 
-    - name: capacity | Fit each job's unset memory limit in whole MiB
+    - name: capacity | Take each job's memory from the answer, unless asked for
       ansible.builtin.set_fact:
-        forge_job_memory: >-
-          {{ [768, [8192, (__forge_budget_kib | int) // ([1, forge_runner_capacity | int] | max) // 1024] | min]
-             | max }}m
+        forge_job_memory: "{{ (__forge_fit.stdout | from_json).job_memory }}"
       when: forge_job_memory is not defined
 
     - name: capacity | Stop when the runner's jobs and the VM pool would take more than half the host
       ansible.builtin.assert:
-        that:
-          - forge_runner_capacity | int >= 1
-          - forge_job_cpus | int >= 1
-          - __forge_job_kib | int > 0
-          - __forge_pool_kib | int >= 0
-          - __forge_host_cpus | int > 0 and __forge_host_kib | int > 0
-          - (forge_runner_capacity | int) * (forge_job_cpus | int) <= (__forge_host_cpus | int) // 2
-          - (forge_runner_capacity | int) * (__forge_job_kib | int) + (__forge_pool_kib | int)
-            <= (__forge_host_kib | int) // 2
+        that: (__forge_fit.stdout | from_json).ok
         fail_msg: >-
           {% if not (__forge_capacity_explicit | bool) %}
           this machine cannot carry one job of 1 CPU and 768m beside the VM pool of {{ __forge_pool_kib }} KiB:

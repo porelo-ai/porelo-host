@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Role `check`, one read-only look at a machine before anything is installed,** naming every lack at once with what it found, what
+  was asked and what to do, as JSON for the interface; `up`'s first task runs the same code. `forge`'s job budget is its formula now.
+
 ### Changed
 
 - **`doc/ssh.md` says what a login closed at once is,** sshd's own penalty by its default, and what to do: wait.

@@ -1,6 +1,6 @@
 # HO121 — One Check Before Any Installation
 
-**Status:** Backlog.
+**Status:** Review.
 
 **What must be true.** Before anything changes on a machine, one read-only check answers whether it can do what this person
 wants, and names **every** finding at once: what was found, what was asked, what to do. `up` installs nothing unless it passes,
@@ -48,8 +48,25 @@ in as JSON: KVM, Forgejo, its jobs, the pool, the store.
 | The inventory's values: name, network, pool's shape, job bounds | valid | `up`, `vm_pool`, `forge` |
 
 Each finding moves here from its role, and the late stop stays only where a state can change between the check and the task,
-or where the check cannot see it. A table of all 18 files, stop by stop, moved or kept and why, goes in this issue as the first
-step of building.
+or where the check cannot see it. Every stop in the roles and in `up`:
+
+| Stop | Now | Why |
+| --- | --- | --- |
+| `base` `cpu`: `vmx` or `svm` | asked too, stop kept | `base_kvm` is the role's own setting, and the role runs alone |
+| `up`: a KVM setting no yes or no; a pool without KVM | **moved** | choices, read before anything |
+| `forge` `capacity`: the budget | **formula moved**, stop kept | it also writes the bounds it chose, and asks the script |
+| `vm_pool` `main`: the pool's shape; `memory`: half the host | asked too, stop kept | the role runs alone in `down`'s and the tests' plays, so the inventory stays checked where it is used |
+| `up`: inventory version, name, network | kept | the check is sent before an inventory exists; the interface writes these |
+| `up`: what only the person can give | kept | a waiting state, not a lack of the machine |
+| `base` `controllers` | asked too, stop kept | the real account exists only then |
+| `base` `firewall`, `host`: default route, its address, host key | asked too, stop kept | a network or key can change until then |
+| `base` `ssh`: the admin's key file | kept | a file `up` was handed, not the machine |
+| `forge` `accounts`, `matrix` `main`: subordinate ids | kept | the accounts are made just before |
+| `forge` `push`, `runner` | kept | settings and a JDK read while they are used |
+| `porelo` `install`: key, published agents | kept | what the repository answers at that moment |
+| `porelo` `needs`, `organization`, `people` | kept | the person's step, after the installation |
+| `vm_pool` `main`: image pin; `vm`: the seed | kept | a setting and a making of the role's own |
+| `down`'s stops | kept | no installation |
 
 **One source for the budget.** `forge`'s `capacity` chooses the jobs and refuses them, in Jinja, and the check must give the same
 answer. So the script holds the formula and `capacity` calls it; its unit tests go on holding the same numbers.
@@ -89,3 +106,12 @@ interface.
 - Molecule, a machine that passes: the check writes nothing, and `up` goes on as today.
 - A unit test holds the script's budget against `capacity`'s known numbers.
 - The table of stops is in this issue, and each stop moved is gone from its role.
+
+## What was built
+
+`base` now asks KVM after installing, which it did not before. Only the port that binds on the host itself is asked: the forge's others
+live in its containers' own networks. A later `up` asks it too, but for the port this host's own forge holds.
+
+The closed root, login and `sudo -n` are the interface's to tell, as said above. Molecule's refused machine holds the port and asks
+for more jobs than fit, with KVM asked on a CPU with no flags in the run without KVM; with KVM on, the CPU passes, which is right. The
+limit on the disk stays open until [HO120](README.md#ho120) measures one.

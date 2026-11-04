@@ -34,6 +34,7 @@ it is left out.
 | <a id="ho112"></a>[HO112](HO112-The-Project-File-Reaches-A-Task-On-The-Host.md) | M | - | What a Project Admin files at the central forge reaches a task on the host at the next follow. |
 | <a id="ho102"></a>[HO102](HO102-A-Persons-Projects-Named-On-The-Host.md) | S | - | A person's host account names their projects before their first start there. |
 | <a id="ho124"></a>[HO124](HO124-A-Login-Closed-At-Once-On-A-Host.md) | - | - | A login closed at once on a host, by reading sshd's own per-source penalty: reproduce it on the test VM, and say so. |
+| <a id="ho121"></a>[HO121](HO121-One-Check-Before-Any-Installation.md) | - | [HO118](#ho118) | One read-only check before any installation, the same code `up` runs first, every finding at once with its value, what was asked and what to do. |
 
 ## Implementing
 
@@ -45,7 +46,6 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho120"></a>[HO120](HO120-A-Measuring-Run-For-Any-Machine.md) | - | - | One command that measures a given machine, again on any hardware, and writes one result file without secrets for the page's tables. |
-| <a id="ho121"></a>[HO121](HO121-One-Check-Before-Any-Installation.md) | - | [HO118](#ho118) | One read-only check before any installation, the same code `up` runs first, every finding at once with its value, what was asked and what to do. |
 | <a id="ho123"></a>[HO123](HO123-A-Socket-Forward-Reaches-Past-The-Agent-Rule.md) | - | - | Say what `AllowAgentForwarding no` stops, as a person's socket forward reaches past it. |
 | <a id="ho118"></a>[HO118](HO118-KVM-Only-On-A-Host-That-Asks.md) | - | - | KVM and libvirt only on a host whose `porelo_host_kvm` says yes, off by default, and the CPU checked only there. |
 | <a id="ho119"></a>[HO119](HO119-Which-Server-For-What.md) | - | [HO118](#ho118), [HO120](#ho120) | One page: which server for what, with and without Forgejo, each number measured or marked not, and the rule for parallel jobs. |

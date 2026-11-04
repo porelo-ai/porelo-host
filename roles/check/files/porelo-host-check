@@ -1,0 +1,525 @@
+#!/usr/bin/python3
+"""Whether this machine can do what this person wants: read only, every finding at once.
+
+Sent by ssh on standard input before anything is installed, and run again as `up`'s first task from the tarball, so
+the two cannot differ. Python's standard library alone, as Ansible is not there yet.
+
+    python3 - --limits JSON --choices JSON      < porelo-host-check
+    porelo-host-check [--limits-file FILE] --choices JSON
+    porelo-host-check --fit JSON                the jobs a host of these sizes carries, as forge's capacity takes them
+
+Answers one JSON object: exit 0 when nothing fails, 1 when something does, 2 when the check itself could not run.
+"""
+
+import argparse
+import fcntl
+import glob
+import json
+import os
+import re
+import socket
+import struct
+import subprocess
+import sys
+import threading
+import time
+
+VERSION = 1
+REACH_SECONDS = 10
+PROBLEMS = (OSError, ValueError, KeyError, TypeError, AttributeError, ArithmeticError, subprocess.SubprocessError)
+SIZE = re.compile(r"^([0-9]+)([kmg]?)$")
+
+
+def job_kib(size):
+    """Podman's size notation in KiB: bytes without a unit, else k, m or g; 0 for what does not read."""
+    match = SIZE.match(str(size).lower())
+    if not match:
+        return 0
+    return int(match[1]) * {"": 1, "k": 1024, "m": 1024**2, "g": 1024**3}[match[2]] // 1024
+
+
+def fit(request, limits):
+    """The jobs a host carries beside its pool within its share: forge's capacity takes these, and refuses on not ok."""
+    share, job = limits["host_share_divisor"], limits["job"]
+    cpus, kib, pool = request["host_cpus"], request["host_kib"], request.get("pool_kib", 0)
+    budget = kib // share - pool
+    wanted_cpus = request.get("job_cpus")
+    wanted_memory = request.get("job_memory")
+    smallest = job_kib(job["least_memory_mib"] * 1024**2 if wanted_memory is None else wanted_memory)
+    capacity = request.get("capacity")
+    if capacity is None:
+        fits = cpus // share >= job["automatic_jobs"] * (wanted_cpus or job["least_cpus"])
+        capacity = job["automatic_jobs"] if fits and budget >= job["automatic_jobs"] * smallest else 1
+    if wanted_cpus is None:
+        wanted_cpus = max(job["least_cpus"], min(job["most_cpus"], cpus // share // max(1, capacity)))
+    if wanted_memory is None:
+        mib = budget // max(1, capacity) // 1024
+        wanted_memory = f"{max(job['least_memory_mib'], min(job['most_memory_mib'], mib))}m"
+    each = job_kib(wanted_memory)
+    return {
+        "capacity": capacity,
+        "job_cpus": wanted_cpus,
+        "job_memory": wanted_memory,
+        "job_kib": each,
+        "pool_kib": pool,
+        "share_cpus": cpus // share,
+        "share_kib": kib // share,
+        "ok": (
+            capacity >= 1
+            and wanted_cpus >= 1
+            and each > 0
+            and pool >= 0
+            and cpus > 0
+            and kib > 0
+            and capacity * wanted_cpus <= cpus // share
+            and capacity * each + pool <= kib // share
+        ),
+    }
+
+
+class Machine:
+    """What is read of the machine, below a directory of fixtures in the tests."""
+
+    def __init__(self, root, network):
+        self.root = root
+        self.network = network
+
+    def path(self, name):
+        """The file a test stands in for the machine's."""
+        return self.root + name
+
+    def read(self, name):
+        """A file's text, or None where it is not there."""
+        try:
+            with open(self.path(name), encoding="utf-8", errors="replace") as stream:
+                return stream.read()
+        except OSError:
+            return None
+
+    def euid(self):
+        """Who runs this; a test says so in a file."""
+        return int(self.read("/euid")) if self.root else os.geteuid()
+
+    def delegated(self):
+        """What systemd delegates to a person's manager: read of a user's unit, as the account is not made yet."""
+        if self.root:
+            return self.read("/delegated")
+        try:
+            done = subprocess.run(
+                ["systemctl", "show", "user@0.service", "-p", "DelegateControllers", "--value"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return done.stdout if done.returncode == 0 else None
+
+    def listening(self):
+        """The TCP ports something listens on, from the kernel's own tables."""
+        ports = set()
+        for name in ("/proc/net/tcp", "/proc/net/tcp6"):
+            for line in (self.read(name) or "").splitlines()[1:]:
+                fields = line.split()
+                if len(fields) > 3 and fields[3] == "0A":
+                    ports.add(int(fields[1].rsplit(":", 1)[1], 16))
+        return ports
+
+    def route_address(self, interface):
+        """This interface's IPv4 address, asked of the kernel by SIOCGIFADDR; None where it has none."""
+        if self.root:
+            return self.read("/route_address")
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            try:
+                asked = struct.pack("256s", interface.encode()[:15])
+                return socket.inet_ntoa(fcntl.ioctl(probe.fileno(), 0x8915, asked)[20:24])
+            except OSError:
+                return None
+
+    def reaches(self, target):
+        """Whether this host:port answers at TCP; nothing is sent over it."""
+        host, port = target.rsplit(":", 1)
+        with socket.create_connection((host.strip("[]"), int(port)), timeout=5):
+            return True
+
+    def free_gib(self, name):
+        """The free space of the file system holding this path, for root."""
+        path = self.path(name)
+        while not os.path.exists(path):
+            path = os.path.dirname(path)
+        stat = os.statvfs(path)
+        return round(stat.f_bavail * stat.f_frsize / 1024**3, 1)
+
+    def package_lock_held(self):
+        """Whether a package run holds dpkg's lock, asked of the kernel with no lock taken; None where it cannot say."""
+        try:
+            descriptor = os.open(self.path("/var/lib/dpkg/lock-frontend"), os.O_RDWR)
+        except OSError:
+            return None
+        try:
+            answer = fcntl.fcntl(descriptor, fcntl.F_GETLK, struct.pack("hhqqi", fcntl.F_WRLCK, 0, 0, 0, 0))
+            return struct.unpack("hhqqi", answer)[0] != fcntl.F_UNLCK
+        finally:
+            os.close(descriptor)
+
+
+class Findings:
+    """Every finding in the order asked, none stopping the next."""
+
+    def __init__(self):
+        self.rows = []
+
+    def add(self, name, state, found=None, unit=None, asked=None, todo=""):
+        """One finding: its stable id, pass, fail, warn or unknown, what was found and asked, and what to do."""
+        self.rows.append({"id": name, "state": state, "found": found, "unit": unit, "asked": asked, "do": todo})
+
+    def check(self, name, holds, found, asked, todo, unit=None):
+        """A finding that passes or fails."""
+        self.add(name, "pass" if holds else "fail", found, unit, asked, "" if holds else todo)
+
+
+def check_who(machine, findings):
+    """Root is asked of the process, as much below needs it."""
+    who = machine.euid()
+    findings.check("root", who == 0, who, 0, "Run it as root, or through sudo with no password.")
+
+
+def check_system(machine, findings, limits):
+    """The one system the collection has variables for."""
+    values = dict(re.findall(r'^([A-Z_]+)="?([^"\n]*)"?$', machine.read("/etc/os-release") or "", re.M))
+    wanted = limits["system"]
+    found = f"{values.get('ID')} {values.get('VERSION_ID')}"
+    asked = f"{wanted['id']} {wanted['version']}"
+    findings.check("system", found == asked, found, asked, f"Install {asked} on this machine.")
+
+
+def check_finished(machine, findings):
+    """A system still installing changes its packages, and on some providers its ssh key, under what follows."""
+    if os.path.isdir(machine.path("/var/lib/cloud")):
+        finished = os.path.exists(machine.path("/var/lib/cloud/instance/boot-finished"))
+        findings.check(
+            "cloud_init",
+            finished,
+            "finished" if finished else "running",
+            "finished",
+            "The provider's image is still setting itself up: wait, then check again.",
+        )
+    held = machine.package_lock_held()
+    if held is None:
+        findings.add("packages_free", "unknown", todo="Could not ask dpkg's lock.")
+    else:
+        findings.check(
+            "packages_free",
+            not held,
+            "held" if held else "free",
+            "free",
+            "A package run is under way: wait, then check again.",
+        )
+
+
+def sizes(machine, findings):
+    """The host's processors and memory, each a finding, for the budgets below."""
+    cpus = len(re.findall(r"(?m)^processor\s*:", machine.read("/proc/cpuinfo") or ""))
+    findings.check("cpus", cpus > 0, cpus, "at least 1", "This machine's /proc/cpuinfo names no processor.")
+    memory = re.findall(r"(?m)^MemTotal:\s+([0-9]+) kB$", machine.read("/proc/meminfo") or "")
+    kib = int(memory[0]) if len(memory) == 1 else 0
+    findings.check("memory", kib > 0, kib, "more than 0", "This machine's /proc/meminfo names no MemTotal.", "KiB")
+    return cpus, kib
+
+
+def check_virtualization(machine, findings, choices):
+    """Only a host that asked for KVM needs a CPU that offers it; that it then works shows only after installing."""
+    if not choices.get("kvm"):
+        return
+    line = next((row for row in (machine.read("/proc/cpuinfo") or "").splitlines() if row.startswith("flags")), "")
+    flags = set(line.split(":", 1)[-1].split())
+    found = sorted(flags & {"vmx", "svm"})
+    findings.check(
+        "virtualization",
+        bool(found),
+        found,
+        "vmx or svm",
+        "This CPU offers no virtualization: take a machine that does, or say this host needs no KVM.",
+    )
+
+
+def check_cgroups(machine, findings, limits):
+    """Container bounds need these delegated to the account, which does not exist yet: systemd's default is read."""
+    wanted = limits["controllers"]
+    text = machine.read("/sys/fs/cgroup/cgroup.controllers")
+    found = (text or "").split()
+    findings.check(
+        "cgroup",
+        text is not None and set(wanted) <= set(found),
+        found,
+        wanted,
+        "Boot this machine with cgroup v2 and these controllers.",
+    )
+    delegated = machine.delegated()
+    if delegated is None:
+        findings.add(
+            "delegated", "unknown", asked=wanted, todo="systemd could not say; the account's own is read later."
+        )
+    else:
+        names = delegated.split()
+        findings.check(
+            "delegated",
+            set(wanted) <= set(names),
+            names,
+            wanted,
+            "Let systemd delegate these to a person's manager.",
+        )
+
+
+def uris(machine):
+    """Each host:port the machine's package sources in use name, in either form, https on its own port."""
+    root = machine.path("")
+    text = ""
+    for path in glob.glob(machine.path("/etc/apt/sources.list.d/*.sources")):
+        for stanza in re.split(r"\n\s*\n", machine.read(path[len(root) :]) or ""):
+            if not re.search(r"(?mi)^Enabled:\s*no\s*$", stanza):
+                text += " ".join(re.findall(r"(?mi)^URIs:(.*)$", stanza)) + " "
+    for path in [machine.path("/etc/apt/sources.list"), *glob.glob(machine.path("/etc/apt/sources.list.d/*.list"))]:
+        text += (
+            " ".join(re.findall(r"(?m)^deb(?:-src)?\s+(?:\[[^]]*\]\s+)?(\S+)", machine.read(path[len(root) :]) or ""))
+            + " "
+        )
+    found = set()
+    for scheme, host in re.findall(r"(https?)://([^/\s]+)", text):
+        found.add(host if ":" in host.rsplit("]", 1)[-1] else f"{host}:{443 if scheme == 'https' else 80}")
+    return sorted(found)
+
+
+def targets(machine, limits, choices):
+    """What the run fetches from: each answers, or the run ends there after changing the machine."""
+    reach = limits["reach"]
+    wanted = list(reach["always"]) + uris(machine)
+    if choices.get("forge"):
+        wanted += reach["forge"]
+    for system in (choices.get("pool") or {}).get("systems", []):
+        wanted += reach.get(system, [])
+    return sorted(set(wanted))
+
+
+def check_reach(machine, findings, limits, choices):
+    """All at once and against one clock, as a resolver that stalls takes no timeout of the socket's."""
+    wanted = targets(machine, limits, choices)
+    if not machine.network:
+        for target in wanted:
+            findings.add("reach_" + target.rsplit(":", 1)[0], "unknown", asked=target, todo="Not asked here.")
+        return
+    answers = {}
+
+    def ask(target):
+        try:
+            machine.reaches(target)
+            answers[target] = None
+        except PROBLEMS as error:
+            answers[target] = type(error).__name__
+
+    asking = [threading.Thread(target=ask, args=(target,), daemon=True) for target in wanted]
+    for thread in asking:
+        thread.start()
+    end = time.monotonic() + REACH_SECONDS
+    for thread in asking:
+        thread.join(max(0, end - time.monotonic()))
+    for target in wanted:
+        why = answers.get(target, f"no answer in {REACH_SECONDS} s")
+        findings.check(
+            "reach_" + target.rsplit(":", 1)[0],
+            why is None,
+            why or target,
+            target,
+            "The machine cannot reach this: look at its network and its provider's firewall.",
+        )
+
+
+def check_network(machine, findings):
+    """An IPv4 default route, the address it sends from, and the host key."""
+    routes = [
+        fields
+        for fields in (line.split() for line in (machine.read("/proc/net/route") or "").splitlines()[1:])
+        if len(fields) > 7 and fields[1] == "00000000" and fields[7] == "00000000"
+    ]
+    findings.check(
+        "route",
+        bool(routes),
+        routes[0][0] if routes else None,
+        "an IPv4 default route",
+        "Give this machine an IPv4 address with a default route.",
+    )
+    if routes:
+        address = machine.route_address(routes[0][0])
+        findings.check(
+            "address",
+            bool(address),
+            address,
+            "an IPv4 address on the default route",
+            "Give the default route's interface an IPv4 address.",
+        )
+    key = (machine.read("/etc/ssh/ssh_host_ed25519_key.pub") or "").split()
+    findings.check(
+        "host_key",
+        len(key) >= 2 and key[0] == "ssh-ed25519",
+        key[0] if key else None,
+        "ssh-ed25519",
+        "Have sshd make an ed25519 host key.",
+    )
+
+
+def check_disk(machine, findings, limits):
+    """Reported always; refused only against a measured limit, and until one is measured there is none."""
+    free = min(machine.free_gib("/var/lib"), machine.free_gib("/home"))
+    wanted = limits["disk_free_gib"]
+    if wanted is None:
+        findings.add("disk", "pass", free, "GiB", "no limit measured yet")
+    else:
+        findings.check("disk", free >= wanted, free, wanted, "Take a larger disk, or free this one.", "GiB")
+
+
+def check_budgets(findings, limits, choices, cpus, kib):
+    """The forge's jobs and the pool, within the host's share; the same answer forge's capacity takes."""
+    pool = choices.get("pool")
+    pool_kib = 0
+    if pool:
+        systems, accounts, memory = pool.get("systems", []), pool.get("accounts", 0), pool.get("memory", 1536)
+        shape = bool(systems) and set(systems) <= {"ubuntu", "fedora"} and len(set(systems)) == len(systems)
+        shape = shape and isinstance(accounts, int) and 1 <= accounts <= 8 and bool(choices.get("forge"))
+        shape = shape and isinstance(memory, int) and memory > 0
+        findings.check(
+            "pool_shape",
+            shape,
+            pool,
+            "ubuntu and fedora at most once each, 1 to 8 accounts, memory above 0, and the forge",
+            "Change the pool's choices.",
+        )
+        findings.check(
+            "pool_kvm",
+            bool(choices.get("kvm")),
+            bool(choices.get("kvm")),
+            True,
+            "A VM pool makes VMs: say this host needs KVM, or ask for no pool.",
+        )
+        pool_kib = len(systems) * accounts * memory * 1024 if shape else 0
+        share = kib // limits["host_share_divisor"]
+        findings.check(
+            "pool_memory",
+            pool_kib <= share,
+            pool_kib,
+            f"at most {share}",
+            "Ask for fewer pool VMs, or take more memory.",
+            "KiB",
+        )
+    if not choices.get("forge") or not cpus or not kib:
+        return
+    answer = fit(
+        {
+            "host_cpus": cpus,
+            "host_kib": kib,
+            "pool_kib": pool_kib,
+            "capacity": choices.get("jobs"),
+            "job_cpus": choices.get("job_cpus"),
+            "job_memory": choices.get("job_memory"),
+        },
+        limits,
+    )
+    findings.check(
+        "jobs",
+        answer["ok"],
+        f"{answer['capacity']} jobs of {answer['job_cpus']} CPUs and {answer['job_memory']}",
+        f"within {answer['share_cpus']} CPUs and {answer['share_kib'] - answer['pool_kib']} KiB",
+        "Ask for fewer or smaller jobs, or take a larger machine.",
+    )
+
+
+def check_ports(machine, findings, choices):
+    """What must bind on this host and is free, but for the port this host's own forge already holds."""
+    ports = {int(port) for port in choices.get("ports") or []}
+    if not ports:
+        return
+    own = re.findall(r"(?m)^git_port=([0-9]+)$", machine.read("/etc/porelo-host/forge.conf") or "")
+    taken = sorted((machine.listening() & ports) - {int(port) for port in own})
+    findings.check(
+        "ports", not taken, taken, f"{sorted(ports)} free", "Stop what listens there, or choose another port."
+    )
+
+
+def check_settings(findings, choices):
+    """What was chosen, where it reached the check."""
+    if "kvm" in choices:
+        kvm = choices["kvm"]
+        findings.check("kvm_setting", isinstance(kvm, bool), kvm, "true or false", "Say yes or no.")
+
+
+def run(machine, limits, choices):
+    """Every check; one that breaks is a finding of its own, so the rest still answer."""
+    findings = Findings()
+    cpus, kib = sizes(machine, findings)
+    steps = (
+        lambda: check_settings(findings, choices),
+        lambda: check_who(machine, findings),
+        lambda: check_system(machine, findings, limits),
+        lambda: check_finished(machine, findings),
+        lambda: check_virtualization(machine, findings, choices),
+        lambda: check_cgroups(machine, findings, limits),
+        lambda: check_network(machine, findings),
+        lambda: check_reach(machine, findings, limits, choices),
+        lambda: check_disk(machine, findings, limits),
+        lambda: check_budgets(findings, limits, choices, cpus, kib),
+        lambda: check_ports(machine, findings, choices),
+    )
+    complete = True
+    for step in steps:
+        try:
+            step()
+        except PROBLEMS as error:
+            complete = False
+            findings.add("check", "unknown", type(error).__name__, todo="A part of the check could not run.")
+    ok = complete and not any(row["state"] == "fail" for row in findings.rows)
+    return {"v": VERSION, "ok": ok, "complete": complete, "findings": findings.rows}
+
+
+class Parser(argparse.ArgumentParser):
+    """A usage fault answers as every other fault does."""
+
+    def error(self, message):
+        raise ValueError(message)
+
+
+def answer_from_arguments():
+    """The answer and its exit code."""
+    parser = Parser(add_help=False)
+    parser.add_argument("--limits")
+    parser.add_argument("--limits-file")
+    parser.add_argument("--choices", default="{}")
+    parser.add_argument("--fit")
+    parser.add_argument("--root", default="")
+    parser.add_argument("--no-network", action="store_true")
+    arguments = parser.parse_args()
+    if arguments.limits:
+        limits = json.loads(arguments.limits)
+    else:
+        beside = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "limits.json")
+        with open(arguments.limits_file or beside, encoding="utf-8") as stream:
+            limits = json.load(stream)
+    if arguments.fit:
+        answer = fit(json.loads(arguments.fit), limits)
+    else:
+        answer = run(Machine(arguments.root, not arguments.no_network), limits, json.loads(arguments.choices))
+    return answer, 0 if answer["ok"] else 1
+
+
+def main():
+    """Answers one JSON object on standard output, whatever happens."""
+    try:
+        answer, code = answer_from_arguments()
+    except PROBLEMS as error:
+        answer = {"v": VERSION, "ok": False, "complete": False, "findings": [], "why": type(error).__name__}
+        code = 2
+    print(json.dumps(answer))
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

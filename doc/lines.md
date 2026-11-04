@@ -108,3 +108,17 @@ used; 65 when the vault refuses a value (`vault-new`, `vault`, a key), naming it
 
 **The version.** `v` is the contract's version. An added field or state keeps it; a field that changes or goes away
 raises it. A reader skips a `state` it does not know, as it skips a field.
+
+## The check before an installation
+
+`roles/check/files/porelo-host-check` answers one JSON object on standard output, with no lines:
+
+    {"v": 1, "ok": <bool>, "complete": <bool>, "findings": [
+        {"id": "<stable>", "state": "pass|fail|warn|unknown", "found": <value>, "unit": "<unit or null>",
+         "asked": <value>, "do": "<words, empty on a pass>"}]}
+
+`complete` says whether the check ran to its end. **`unknown` is what could not be known here, and no one reads it as passed.** Exit 0
+when nothing fails and it ran to its end, 1 otherwise; 2 when it could not run at all, with `findings` empty. `up`'s first task runs
+the same code and stops with every `fail`, in one line of the usual kind. A login that cannot run it, or a root still closed by an
+image's `command=` line, is the interface's own to tell from the login's exit and output.
+

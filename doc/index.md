@@ -3,7 +3,7 @@
 Brings a Porelo project up on a server and takes it down again, owned or rented by the hour: the Ansible collection
 `porelo.host`, run on the host itself with `-c local` and the [JSON line callback](lines.md) `porelo.host.lines`.
 
-**`porelo.host.up`, in two plays around the person's step.** The first play runs `base` (packages, KVM with libvirt only where `porelo_host_kvm` asks for it,
+**`porelo.host.up`, in two plays around the person's step.** The first play asks `check`, one read-only look at the machine reporting everything it lacks at once, then runs `base` (packages, KVM with libvirt only where `porelo_host_kvm` asks for it,
 podman, the SSH policy and a firewall allowing only port 22 on public interfaces), `porelo`'s install and setup script (which makes Porelo's account with linger and subordinate ids), `porelo setup`
 with `porelo vault status`, and, where the host runs a forge,
 `forge`'s request part (whether a certificate signed by the person's CA holds for it). Each role that needs the person's

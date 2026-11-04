@@ -6,6 +6,7 @@ extensions/molecule/default/files/org-answer.py shebang # Molecule's own script,
 extensions/molecule/default/files/porelo-org-standin.py shebang # Molecule's own script, run on the VM
 extensions/molecule/default/files/verify-ssh.py pylint:disallowed-name # _ names a thrown-away value
 roles/base/templates/firewall.nft.j2 shebang # nft's own script, loaded by nft -f
+roles/check/files/porelo-host-check shebang # run by python3 by name, or on standard input; never from its own path
 roles/forge/files/porelo-forge-gate shebang # installed on the host as a program of its own, with its interpreter
 roles/forge/files/porelo-host-project shebang # installed as root's program; -I keeps the caller's environment out
 roles/forge/files/porelo-host-push shebang # the person's program; env -i keeps the caller's environment out
@@ -15,6 +16,7 @@ tests/unit/plugins/callback/test_lines.py pylint:disallowed-name # _ names a thr
 tests/unit/roles/test_down_people.py pylint:disallowed-name # _ names a thrown-away value
 tests/unit/roles/test_forge_gate.py pylint:disallowed-name # _ names a thrown-away value
 tests/unit/roles/test_forge_push_judge.py pylint:disallowed-name # _ names a thrown-away value
+tests/unit/roles/test_porelo_host_check.py pylint:disallowed-name # _ names a thrown-away value
 tests/unit/roles/test_porelo_host_person.py pylint:disallowed-name # _ names a thrown-away value
 tests/unit/roles/test_porelo_host_person_cards.py pylint:disallowed-name # _ names a thrown-away value
 tests/unit/roles/test_porelo_host_person_pending.py pylint:disallowed-name # _ names a thrown-away value

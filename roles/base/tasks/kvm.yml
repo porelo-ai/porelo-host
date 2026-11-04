@@ -5,3 +5,23 @@
     state: started
     enabled: true
   when: base_kvm | bool
+
+# A CPU's flag says it offers virtualization; firmware may have it off, which shows only now, and on some kernels only
+# when a VM is made: KVM_CREATE_VM makes one with no memory or processor, which goes with this process.
+- name: kvm | Ask KVM to make an empty VM
+  ansible.builtin.command:
+    argv: [python3, -c, "import fcntl, os; fcntl.ioctl(os.open('/dev/kvm', os.O_RDWR), 0xAE01, 0); print('made')"]
+  register: __base_kvm_api
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: base_kvm | bool
+
+- name: kvm | Stop when KVM does not answer, though the CPU offers it
+  ansible.builtin.assert:
+    that: __base_kvm_api.rc == 0 and __base_kvm_api.stdout == 'made'
+    fail_msg: >-
+      asked /dev/kvm to make an empty VM, got rc {{ __base_kvm_api.rc }}: {{ __base_kvm_api.stdout }}
+      {{ __base_kvm_api.stderr }}; the firmware may have virtualization off: turn it on, or say this host needs no KVM
+    quiet: true
+  when: base_kvm | bool
