@@ -557,7 +557,7 @@ def test_org_status_answers_the_applied_org_and_where_each_person_stands(org_hos
         "commit": "a" * 40,
         "pinned": fingerprint(SIGNER_ONE),
         "projects": [
-            {"project": name, "state": "waiting-for-token", "why": None, "since": "2026-10-30"}
+            {"project": name, "state": "waiting-for-token", "why": None, "since": "2026-10-30", "repositories": []}
             for name in ("alpha", "beta")
         ],
         "persons": [

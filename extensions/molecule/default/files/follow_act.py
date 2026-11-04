@@ -430,6 +430,20 @@ if FORGE.exists():
     check(len(on_main) == 1, "no second rule on main", rules)
     check(on_main and on_main[0]["required_approvals"] == 1, "a rule renamed in case to be set back", on_main)
     check(400 <= merged_alone("renamed") < 500, "the author not to merge alone under a renamed rule")
+    # What org status says of each row: taken, waiting for the token this follow has not, and with no central.
+    done_row = f"git@example.org:{PROJECT}/done.git"
+    entries = json.loads(PROGRESS.read_text(encoding="utf-8"))
+    entries[PROJECT]["taken"] = [done_row]
+    entries[PROJECT]["file"]["repositories"] = {
+        "done": {"review": "required", "upstream": None, "central": done_row},
+        "later": {"review": "required", "upstream": None, "central": f"git@example.org:{PROJECT}/later.git"},
+        "local": {"review": "optional", "upstream": None, "central": None},
+    }
+    PROGRESS.write_text(json.dumps(entries), encoding="utf-8")
+    followed()
+    said = {row["repository"]: row["state"] for row in project_state()["repositories"]}
+    check(said == {"done": "taken", "later": "waiting", "local": "no-central"}, "each row named", project_state())
+    check("local: " in str(project_state()["why"]), "a row with no central in the project's why", project_state())
     checkout.cleanup()
     check(forge("DELETE", repository)[0] == 204, "the act's repository removed")
     forge("DELETE", "users/porelo-admin/tokens/follow-act")

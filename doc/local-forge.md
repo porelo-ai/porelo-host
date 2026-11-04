@@ -435,6 +435,10 @@ one taken out of the file stays with its work. The forge names each after its ce
 approval by another person after which a push dismisses it, unless `repositories.<name>.review` or `project.review` is
 `optional`, when the author may merge their own. Either way nobody pushes straight to `main`, and only owners and
 developers merge. A rule changed by hand is set back at the next follow; a file that cannot be read keeps the last values.
+`org status` names, under each project's `repositories`, every row of the signed file last read, with `repository`, `state` and `why`:
+`taken`; `waiting`, with what stands in its way; or `no-central`, a row this host can give no copy and no task until the file names an
+address, which stands in the project's `why` too. The list is empty until a file was read. A line `main's review is ...` reaches
+the output of the run that changed the rule, the journal for a timer's follow, and no other run.
 Removing a project deletes its local
 private read keys; the recorded address retains an explicit SSH port for the removal comparison. The repository name
 `repositories.json` is reserved for the read-key manifest. Public deploy-key registrations on the central forge require separate removal with central

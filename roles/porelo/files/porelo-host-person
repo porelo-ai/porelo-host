@@ -131,6 +131,9 @@ CENTRAL_STATES = "/etc/porelo-host/organization/central"
 CENTRAL_ASK_SECONDS = 120
 PROJECT_FILE_SECONDS = 60
 PROJECT_COPIES = "/run/porelo-host-project-copy/"
+# Why a row of the signed file gets no copy and no task on this host, as org status says it.
+NO_CENTRAL = "no central address, so this host cannot take it; name one in the project file for a task here"
+
 # What the host's forge holds a repository's main to; only the approvals follow the signed project file.
 MAIN_PROTECTION = {
     "enable_push": False,
@@ -1946,8 +1949,26 @@ class Host:
             entries.setdefault(name, {"state": "carried", "why": project.get("why"), "since": project.get("since")})
         for name, why in {} if applied is None else applied.get("project_refusals", {}).items():
             entries[name] = {**entries.get(name, {}), "state": "refused", "why": why}
-        return [{"project": name, "state": item["state"], "why": item.get("why"), "since": item.get("since")}
+        return [{"project": name, "state": item["state"], "why": item.get("why"), "since": item.get("since"),
+                 "repositories": self.repositories_said(item, name)}
                 for name, item in sorted(entries.items())]
+
+    def repositories_said(self, item, name):
+        """Each repository of the signed file last read: taken, waiting and why, or with no central address."""
+        said = []
+        waiting = item.get("repositories_why") or {}
+        file = item.get("file") or {}
+        for repository, row in sorted((file.get("repositories") or {}).items()):
+            central = row["central"]
+            if central is None:
+                said.append({"repository": repository, "state": "no-central", "why": NO_CENTRAL})
+            elif repository not in waiting and (central in item.get("taken", []) or (
+                    item.get("migrated") and central == file.get("address"))):
+                said.append({"repository": repository, "state": "taken", "why": None})
+            else:
+                said.append({"repository": repository, "state": "waiting",
+                             "why": waiting.get(repository) or f"waits for {name} to be on this host's forge"})
+        return said
 
     def follow_uses_gate(self, project):
         """Only an installed local gate may own a project room on this host."""
@@ -2446,7 +2467,10 @@ class Host:
         waiting = {}
         for repository, row in (item.get("file") or {}).get("repositories", {}).items():
             central = row["central"]
-            if central is None or central == project["address"] or central in taken:
+            if central is None:
+                waiting[repository] = NO_CENTRAL
+                continue
+            if central == project["address"] or central in taken:
                 continue
             if token is None:
                 waiting[repository] = "waits for a central token"

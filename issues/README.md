@@ -35,6 +35,7 @@ it is left out.
 | <a id="ho102"></a>[HO102](HO102-A-Persons-Projects-Named-On-The-Host.md) | S | - | A person's host account names their projects before their first start there. |
 | <a id="ho124"></a>[HO124](HO124-A-Login-Closed-At-Once-On-A-Host.md) | - | - | A login closed at once on a host, by reading sshd's own per-source penalty: reproduce it on the test VM, and say so. |
 | <a id="ho121"></a>[HO121](HO121-One-Check-Before-Any-Installation.md) | - | [HO118](#ho118) | One read-only check before any installation, the same code `up` runs first, every finding at once with its value, what was asked and what to do. |
+| <a id="ho122"></a>[HO122](HO122-A-Project-Says-What-The-Follow-Took.md) | - | - | `org status` names what the follow took of a project and why not, a row with no `central` included. |
 
 ## Implementing
 
@@ -50,6 +51,7 @@ it is left out.
 | <a id="ho118"></a>[HO118](HO118-KVM-Only-On-A-Host-That-Asks.md) | - | - | KVM and libvirt only on a host whose `porelo_host_kvm` says yes, off by default, and the CPU checked only there. |
 | <a id="ho119"></a>[HO119](HO119-Which-Server-For-What.md) | - | [HO118](#ho118), [HO120](#ho120) | One page: which server for what, with and without Forgejo, each number measured or marked not, and the rule for parallel jobs. |
 | <a id="ho122"></a>[HO122](HO122-A-Project-Says-What-The-Follow-Took.md) | - | - | `org status` names what the follow took of a project and why not, a row with no `central` included. |
+| <a id="ho124"></a>[HO124](HO124-A-Login-Closed-At-Once-On-A-Host.md) | - | - | A login closed at once on a host, by reading sshd's own per-source penalty: reproduce it on the test VM, and say so. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 
 ## Analyzed

@@ -335,7 +335,9 @@ def test_project_file_acl_tracks_only_unlocked_members(following):
     assert json.loads(path.read_text()) == expected
     assert readers(state, path) == {1001, 1002}
     assert path.stat().st_mode & 0o077 == 0
-    assert answer["projects"] == [{"project": "alpha", "state": "carried", "why": None, "since": "2026-10-30"}]
+    assert answer["projects"] == [
+        {"repositories": [], "project": "alpha", "state": "carried", "why": None, "since": "2026-10-30"}
+    ]
     state.reply["projects"][0]["members"][0]["locked"] = True
     follow(state, "b")
     assert readers(state, path) == {1002}
@@ -2140,6 +2142,87 @@ def test_a_repository_with_no_central_is_not_taken_and_a_name_gone_from_the_file
     files.run("c", token=True)
     assert files.protection["local"]["required_approvals"] == 1
     assert not [arguments for arguments, supplied in files.actions if arguments[0] == "remove"]
+
+
+def repositories_said(files):
+    """What org status says of alpha's repositories, by name."""
+    alpha = next(item for item in files.host.org_status("host")["projects"] if item["project"] == "alpha")
+    return alpha, {row["repository"]: row for row in alpha["repositories"]}
+
+
+def test_org_status_names_each_repository_taken_waiting_or_with_no_central(files, monkeypatch):
+    """Prevent a project reading carried with nothing said of a row the host could give no task."""
+    files.answer["repositories"] = {
+        **named(good="required", bad="required"),
+        "local": {"review": "optional", "upstream": None, "central": None},
+    }
+    files.main = "2" * 40
+    files.run("b")
+    said = repositories_said(files)[1]
+    assert said["good"]["state"] == "waiting" and said["good"]["why"] == "waits for a central token"
+    helper = files.host.follow_project_command
+
+    def refusing(arguments, supplied=None):
+        if arguments[0] == "migrate" and "bad" in supplied["address"]:
+            raise files.state.scope["Refusal"]("migration's central forge differs", 65)
+        return helper(arguments, supplied)
+
+    monkeypatch.setattr(files.host, "follow_project_command", refusing)
+    files.run("c", token=True)
+    alpha, said = repositories_said(files)
+    assert said["good"] == {"repository": "good", "state": "taken", "why": None}
+    assert said["bad"]["state"] == "waiting" and "differs" in said["bad"]["why"]
+    assert said["local"]["state"] == "no-central" and "no central" in said["local"]["why"]
+    assert "local: " in alpha["why"], "a row the host can give no task stands in the project's why too"
+
+
+def test_org_status_says_the_projects_own_repository_is_taken(files):
+    """Prevent a row naming the project's own repository reading as waiting for ever, with no reason."""
+    files.answer["repositories"] = {
+        "own": {"review": "required", "upstream": None, "central": "git@example.org:acme/alpha.git"}
+    }
+    files.main = "2" * 40
+    files.run("b")
+    assert repositories_said(files)[1]["own"] == {"repository": "own", "state": "taken", "why": None}
+
+
+def test_org_status_gives_a_reason_for_rows_kept_from_before_a_project_was_put_on_again(files):
+    """Prevent a row from a remembered file standing with no reason while the project itself waits for its migration."""
+    files.answer["repositories"] = {
+        **named(later="required"),
+        "local": {"review": "optional", "upstream": None, "central": None},
+    }
+    files.main = "2" * 40
+    files.run("b")
+    entries = files.host.host_projects()
+    entries["alpha"].update(migrated=False, taken=[], repositories_why={})
+    files.host.write_host_projects(entries)
+    said = repositories_said(files)[1]
+    assert said["later"]["state"] == "waiting" and said["later"]["why"]
+    assert said["local"]["state"] == "no-central" and "no central" in said["local"]["why"]
+
+
+def test_org_status_names_no_repository_before_a_file_was_read(files):
+    """Prevent a project whose file was never read reading as one with no repositories to wait for."""
+    files.answer["repositories"] = {}
+    files.main = "2" * 40
+    files.run("b")
+    assert repositories_said(files)[1] == {}
+
+
+def test_an_optional_row_after_its_migration_changes_the_rule_and_says_so_once(files, capsys):
+    """Prevent an optional repository silently keeping the one approval the migration gave its main."""
+    files.answer["repositories"] = named(code="optional")
+    files.main = "2" * 40
+    files.repositories = ["alpha", "code"]
+    files.protection["code"] = {**files.protection["alpha"], "required_approvals": 1}
+    files.rule_names["code"] = "main"
+    capsys.readouterr()
+    files.run("b", token=True)
+    assert files.protection["code"]["required_approvals"] == 0
+    assert "alpha/code: main's review is optional" in capsys.readouterr().err
+    files.run("c", token=True)
+    assert "main's review" not in capsys.readouterr().err
 
 
 def test_review_goes_by_the_name_the_forge_gave_the_central_repository(files):
