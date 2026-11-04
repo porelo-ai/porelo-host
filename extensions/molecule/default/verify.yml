@@ -242,7 +242,8 @@
               *) exit 6 ;;
           esac
           printf '%s\n' "$flags" | tr ' ' '\n' | grep -cxE 'vmx|svm'
-          printf '%s\n' "$packages" | grep -cE '^ii *(qemu-system-x86|libvirt-daemon-system|libvirt-clients)(:[a-z0-9]+)?$'
+          printf '%s\n' "$packages" \
+              | grep -cE '^ii *(qemu-system-x86|libvirt-daemon-system|libvirt-clients)(:[a-z0-9]+)?$'
           printf '%s\n' "$libvirtd" | grep -cx enabled
           printf '%s\n' "$groups" | tr ' ' '\n' | grep -cx kvm
           exit 0
