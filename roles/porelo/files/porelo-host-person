@@ -2481,17 +2481,24 @@ class Host:
                     wanted["merge_whitelist_teams"] = []
                 route = f"repos/{name}/{repository}/branch_protections"
                 try:
-                    try:
-                        found = self.forge_api(opener, root, token, "GET", route + "/main", 200, not_found="absent")
-                    except Refusal as error:
-                        if error.code != 65:
-                            raise
-                        found = None
-                    if found is None:
+                    # Forgejo matches a plain name without regard to case and prefers the older rule: that one is in force
+                    # whatever it is called, and it is set before another goes, so main is never left open between them.
+                    rules = self.forge_api(opener, root, token, "GET", route, 200)
+                    if not isinstance(rules, list) or not all(isinstance(rule, dict) for rule in rules):
+                        refuse("Forgejo answered no valid list", 69)
+                    on_main = [rule for rule in rules if str(rule.get("rule_name")).lower() == "main"]
+                    on_main.sort(key=lambda rule: str(rule.get("created_at")))
+                    changed = False
+                    if not on_main:
                         self.forge_api(opener, root, token, "POST", route, 201, {"rule_name": "main", **wanted})
-                    elif any(not same_rule(found.get(key), value) for key, value in wanted.items()):
-                        self.forge_api(opener, root, token, "PATCH", route + "/main", 200, wanted)
-                    else:
+                        changed = True
+                    elif any(not same_rule(on_main[0].get(key), value) for key, value in wanted.items()):
+                        self.forge_api(opener, root, token, "PATCH", f"{route}/{on_main[0]['rule_name']}", 200, wanted)
+                        changed = True
+                    for rule in on_main[1:]:
+                        self.forge_api(opener, root, token, "DELETE", f"{route}/{rule['rule_name']}", 204)
+                        changed = True
+                    if not changed:
                         continue
                     print(f"porelo-host-person: {name}/{repository}: main's review is {review}", file=sys.stderr)
                 except Refusal as error:

@@ -420,6 +420,16 @@ if FORGE.exists():
         "a rule changed by hand to be set back",
         rule,
     )
+    # As a Project Admin's rename leaves it: only the case differs, and Forgejo holds the older rule in force.
+    forge("DELETE", f"{repository}/branch_protections/main")
+    code, rule = forge("POST", f"{repository}/branch_protections", {"rule_name": "MAIN", "required_approvals": 0})
+    check(code == 201, "a rule named MAIN to be made", [code, rule])
+    followed()
+    code, rules = forge("GET", f"{repository}/branch_protections")
+    on_main = [item for item in rules or [] if item["rule_name"].lower() == "main"]
+    check(len(on_main) == 1, "no second rule on main", rules)
+    check(on_main and on_main[0]["required_approvals"] == 1, "a rule renamed in case to be set back", on_main)
+    check(400 <= merged_alone("renamed") < 500, "the author not to merge alone under a renamed rule")
     checkout.cleanup()
     check(forge("DELETE", repository)[0] == 204, "the act's repository removed")
     forge("DELETE", "users/porelo-admin/tokens/follow-act")

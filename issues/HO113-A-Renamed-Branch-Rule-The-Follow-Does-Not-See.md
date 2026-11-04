@@ -11,3 +11,9 @@ new rule that has no effect.
 ## Acceptance
 
 - A rule named `MAIN` with other values is brought to the signed values, and no second rule remains.
+
+## What is built
+
+The follow reads a repository's rules and holds whichever rule on `main` is in force, the oldest of those differing only
+in case, under its own name. It sets that one first, then deletes the others, so `main` stands protected throughout. Only
+differences of case count: a pattern such as `ma*` is not looked at here.

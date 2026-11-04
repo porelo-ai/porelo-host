@@ -1834,6 +1834,8 @@ class FileForge:
         self.copies, self.verified, self.refused, self.users, self.signers = [], [], [], [], []
         self.repositories = ["alpha"]
         self.protection = {}
+        self.rule_names = {}
+        self.later_rules = {}
         self.written = []
         self.advances = []
         self.advance = "moved"
@@ -1877,15 +1879,22 @@ class FileForge:
             yield "porelo-forge", None, "http://forge/admin/users/", "token"
 
         def api(opener, base, token, method, route, expected, body=None, not_found=None):
-            name = route.split("/")[2]
+            parts = route.split("/")
+            name, rule = parts[2], parts[4] if len(parts) > 4 else None
             if method == "GET":
-                if name not in self.protection:
-                    refuse = state.scope["Refusal"]
-                    raise refuse(not_found, 65)
-                return self.protection[name]
+                rows = list(self.later_rules.get(name, []))
+                if name in self.protection:
+                    named_rule = self.rule_names.get(name, "main")
+                    rows.insert(0, {**self.protection[name], "rule_name": named_rule, "created_at": "2026-01-01T00:00:00Z"})
+                return rows
             if name in self.refused:
                 raise state.scope["Refusal"]("Forgejo answered HTTP 500", 69)
-            self.written.append((method, name, body))
+            self.written.append((method, name, rule if method == "DELETE" else body))
+            if method == "DELETE":
+                self.later_rules[name] = [row for row in self.later_rules[name] if row["rule_name"] != rule]
+                return None
+            if method == "PATCH":
+                assert rule == self.rule_names.get(name, "main")
             self.protection[name] = {**self.protection.get(name, {}), **body}
             return body
 
@@ -1971,6 +1980,37 @@ def test_a_rule_changed_by_hand_on_the_forge_is_set_back(files):
     files.protection["alpha"]["dismiss_stale_approvals"] = False
     files.run("c")
     assert files.protection["alpha"]["dismiss_stale_approvals"] is True
+
+
+def test_a_rule_renamed_in_case_is_held_to_the_signed_values_and_no_second_is_made(files):
+    """Prevent a Project Admin's MAIN keeping its values in force beside a new rule that has no effect."""
+    files.run("b")
+    files.rule_names["alpha"] = "MAIN"
+    files.protection["alpha"].update(required_approvals=0, enable_push=True)
+    files.run("c")
+    assert files.protection["alpha"]["required_approvals"] == 1 and files.protection["alpha"]["enable_push"] is False
+    assert [call[0] for call in files.written] == ["PATCH"]
+
+
+def test_a_rule_in_force_is_set_before_the_one_a_follow_added_beside_it_goes(files):
+    """Prevent the rule an earlier follow added staying without effect, or main being open between the two calls."""
+    files.run("b")
+    files.rule_names["alpha"] = "MAIN"
+    files.protection["alpha"].update(required_approvals=0)
+    later = {**files.protection["alpha"], "required_approvals": 1, "created_at": "2026-02-01T00:00:00Z"}
+    files.later_rules["alpha"] = [{**later, "rule_name": "main"}]
+    files.run("c")
+    assert files.protection["alpha"]["required_approvals"] == 1
+    assert [(call[0], call[1]) for call in files.written] == [("PATCH", "alpha"), ("DELETE", "alpha")]
+    assert files.written[1][2] == "main" and files.later_rules["alpha"] == []
+
+
+def test_a_rule_of_another_name_stays(files):
+    """Prevent the follow deleting a rule on a branch that is not main."""
+    files.run("b")
+    files.later_rules["alpha"] = [{"rule_name": "release", "created_at": "2026-02-01T00:00:00Z"}]
+    files.run("c")
+    assert not files.written and files.later_rules["alpha"][0]["rule_name"] == "release"
 
 
 def test_the_same_commit_and_signers_are_not_verified_again_but_new_signers_are(files):
