@@ -6,8 +6,8 @@
 image:
     # One reference, pinned by digest, longer than a line.
     # yamllint disable-line rule:line-length
-    base_image: ghcr.io/ansible/community-ansible-dev-tools:v26.10.1@sha256:196eb96767b8912ad6f0bbcb352312d3dfe7db8cf14bfc62e24e89c886daffd2
-    snippet: |
+    from: ghcr.io/ansible/community-ansible-dev-tools:v26.10.1@sha256:196eb96767b8912ad6f0bbcb352312d3dfe7db8cf14bfc62e24e89c886daffd2
+    run: |
         # The GraalVM the Build's pinned-jdk step takes, by its digest: porelo-buildtools' pin in hetzner/pom.xml.
         RUN set -eu \
             && release=https://github.com/graalvm/graalvm-ce-builds/releases/download/graal-25.4.4.1.1 \
