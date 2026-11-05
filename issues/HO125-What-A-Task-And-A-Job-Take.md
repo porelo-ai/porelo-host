@@ -1,6 +1,6 @@
 # HO125 — What A Task And A Job Take
 
-**Status:** Idea.
+**Status:** Backlog, by the operator's word. Nobody starts it yet: it needs a rented run, which needs their word.
 
 **What must be true.** `porelo.host.measure` also reads a task, an agent's fixed start, and a Maven build in a job at 1, 2 and 4
 parallel jobs, cold and with the cache, so a size can rest on what work takes and not on an idle host.
