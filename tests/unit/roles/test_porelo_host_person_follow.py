@@ -2641,3 +2641,22 @@ def test_a_row_at_a_host_address_of_its_own_leaves_the_project_repository_closed
     files.repositories = ["alpha", "code"]
     files.run("b")
     assert files.advances[-1][-1] == "tip"
+
+
+def test_the_room_reads_every_login_the_follow_admits():
+    """Prevent a login of the longest length being admitted and then skipped where its room's token is removed."""
+    import re
+
+    import yaml
+
+    root = Path(__file__).resolve().parents[3]
+    tasks = yaml.safe_load((root / "roles/matrix/tasks/main.yml").read_text())
+    conditions = [
+        condition
+        for task in tasks
+        if task.get("name") == "Remove each recorded person's old registration token as that person"
+        for condition in task["when"]
+    ]
+    pattern = next(re.search(r"match\('(.*)'\)", c)[1] for c in conditions if "match(" in c)
+    assert re.search(pattern, "a" * 32), "the follow admits 32 characters"
+    assert not re.search(pattern, "a" * 33), "the follow does not admit 33"

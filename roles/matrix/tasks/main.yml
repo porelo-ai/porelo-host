@@ -124,7 +124,7 @@
   loop_control:
     label: "{{ __matrix_person }}"
   when:
-    - __matrix_person is match('^[a-z][a-z0-9-]{0,30}$')
+    - __matrix_person is match('^[a-z][a-z0-9-]{0,31}$')
     - __matrix_person != 'root'
     - __matrix_person in ansible_facts['getent_passwd']
     - ansible_facts['getent_passwd'][__matrix_person][1] | int >= 1000
