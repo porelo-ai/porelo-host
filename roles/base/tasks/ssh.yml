@@ -1,12 +1,4 @@
 ---
-- name: ssh | Create the root-owned SSH key directory
-  ansible.builtin.file:
-    path: /etc/ssh/authorized_keys
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
 - name: ssh | Read the pinned host admin key file's metadata
   ansible.builtin.stat:
     path: "{{ base_host_admin_key_file }}"
@@ -23,19 +15,16 @@
     fail_msg: The pinned host admin key file must be a nonempty plain root-owned file.
     quiet: true
 
-- name: ssh | Validate the pinned public key without reading it into Ansible
-  ansible.builtin.shell:
-    # No pipe runs here, but the awk pattern holds a bar; pipefail keeps the shell's answer honest either way.
-    cmd: >-
-      set -o pipefail &&
-      awk 'NF && $1 !~ /^#/ {
-        if ($0 !~ /(^|[[:space:]])ssh-ed25519 [A-Za-z0-9+\/=]+([[:space:]]|$)/) exit 1;
-        keys++
-      } END { if (keys != 1) exit 1 }' {{ base_host_admin_key_file | quote }}
-      && ssh-keygen -l -f {{ base_host_admin_key_file | quote }} > /dev/null
-    executable: /bin/bash
-  changed_when: false
-  check_mode: false
+- name: ssh | Check the pinned host admin key file holds one ed25519 key
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/ssh_key.yml"
+
+- name: ssh | Create the root-owned SSH key directory
+  ansible.builtin.file:
+    path: /etc/ssh/authorized_keys
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
 
 # The seed joins root's keys and pushes none out, so a key that made the server keeps its way in; once a follow has
 # taken a state, root's keys are that state's, so a host admin it replaced does not come back with the seed.
@@ -45,7 +34,7 @@
       set -eu
       keys=/etc/ssh/authorized_keys/root
       if [ -e /etc/porelo-host/organization/applied.json ] && [ -e "$keys" ]; then exit 0; fi
-      seed=$(awk 'NF && $1 !~ /^#/ { print $1 " " $2; exit }' {{ base_host_admin_key_file | quote }})
+      seed=$(awk '{ sub(/\r$/, "") } NF && $1 !~ /^#/ { print $1 " " $2; exit }' {{ base_host_admin_key_file | quote }})
       if [ -e "$keys" ] && awk -v seed="$seed" '$1 " " $2 == seed { found = 1 } END { exit !found }' "$keys"; then
           exit 0
       fi

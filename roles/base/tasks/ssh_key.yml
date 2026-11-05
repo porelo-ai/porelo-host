@@ -1,0 +1,43 @@
+---
+# Counted without reading a key into Ansible, so the refusal can say what the file holds and print none of it.
+# A line must start with the key: ssh.yml seeds a line's first two words, so options before it would lock root out.
+- name: ssh_key | Count the keys in the pinned host admin key file
+  ansible.builtin.shell:
+    # No pipe runs here, but the awk pattern holds a bar; pipefail keeps the shell's answer honest either way.
+    cmd: |
+      set -eo pipefail
+      awk '{ sub(/\r$/, "") } NF && $1 !~ /^#/ {
+        if ($1 == "ssh-ed25519" && $2 ~ /^[A-Za-z0-9+\/=]+$/) ed25519++; else others++
+      } END { print ed25519 + 0, others + 0 }' {{ base_host_admin_key_file | quote }}
+      if ssh-keygen -l -f {{ base_host_admin_key_file | quote }} > /dev/null 2>&1; then
+        echo readable
+      else
+        echo unreadable
+      fi
+    executable: /bin/bash
+  register: __base_admin_key_count
+  changed_when: false
+  check_mode: false
+
+- name: ssh_key | Refuse a host admin key file without exactly one ed25519 key
+  ansible.builtin.assert:
+    that:
+      - __base_admin_key_ed25519 | int == 1
+      - __base_admin_key_others | int == 0
+    fail_msg: >-
+      {{ base_host_admin_key_file }} holds {{ __base_admin_key_ed25519 }} ssh-ed25519 keys and
+      {{ __base_admin_key_others }} others. Leave exactly one ssh-ed25519 key there, the host admin's,
+      with no options before it, and run up again.
+    quiet: true
+  vars:
+    __base_admin_key_ed25519: "{{ __base_admin_key_count.stdout_lines[0].split()[0] }}"
+    __base_admin_key_others: "{{ __base_admin_key_count.stdout_lines[0].split()[1] }}"
+
+- name: ssh_key | Refuse a host admin key that does not read as a key
+  ansible.builtin.assert:
+    that:
+      - __base_admin_key_count.stdout_lines[1] == 'readable'
+    fail_msg: >-
+      {{ base_host_admin_key_file }} does not read as a key to ssh-keygen.
+      Put the host admin's whole ssh-ed25519 public key there, and run up again.
+    quiet: true

@@ -15,6 +15,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho106"></a>[HO106](HO106-A-Refused-Root-Key-File-Says-Why.md) | - | - | `up` refusing root's key file says how many keys it found and what to do, not only `non-zero return code` |
 | <a id="ho119"></a>[HO119](HO119-Which-Server-For-What.md) | - | [HO120](#ho120) | One page: which server for what, with and without Forgejo, each number measured or marked not, and the rule for parallel jobs. |
 | <a id="ho120"></a>[HO120](HO120-A-Measuring-Run-For-Any-Machine.md) | - | - | One command that measures a given machine, again on any hardware, and writes one result file without secrets for the page's tables. |
 | <a id="ho118"></a>[HO118](HO118-KVM-Only-On-A-Host-That-Asks.md) | - | - | KVM and libvirt only on a host whose `porelo_host_kvm` says yes, off by default, and the CPU checked only there. |
@@ -76,7 +77,6 @@ it is left out.
 | <a id="ho99"></a>[HO99](HO99-A-Central-Forge-On-A-Private-Authority.md) | - | - | A central forge on a private authority is reached by the fetch, the read key, the migration and the push, from one setting. |
 | <a id="ho101"></a>[HO101](HO101-One-Forge-Over-SSH-And-HTTPS-On-A-Port.md) | - | - | One forge's ssh address and its https address on a port count as one forge. |
 | <a id="ho107"></a>[HO107](HO107-A-Project-That-No-Token-Can-Cure.md) | - | - | A project with no usable central address has a state of its own, `waiting-for-address`, as no token can cure it |
-| <a id="ho106"></a>[HO106](HO106-A-Refused-Root-Key-File-Says-Why.md) | - | - | `up` refusing root's key file says how many keys it found and what to do, not only `non-zero return code` |
 | <a id="ho86"></a>[HO86](HO86-The-Push-Judges-Smaller-Edges.md) | - | [HO85](#ho85) | The push judge's smaller edges from its reading, gathered: links in the arming, the removal's checks, a first-push race, the null object, the answer's field and record checks pinned by tests. |
 | <a id="ho78"></a>[HO78](HO78-Only-The-Gates-Sockets-Forwarded.md) | - | - | A person's SSH connection forwards only to the gates' sockets and their own return socket, and to no TCP address. |
 | <a id="ho79"></a>[HO79](HO79-A-Persons-SSH-Login-Confirmed-By-A-Second-Factor.md) | - | - | A person's SSH login needs a second factor beside their key: FIDO2 touch, or TOTP through PAM. |

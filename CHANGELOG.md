@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `base`'s `tasks_from: account`, which nothing called.
 
+### Fixed
+
+- **`up` refusing root's key file says why:** which file, how many keys of which kind it holds, and what to do, printing no key.
+
 ## [0.5.10] - 2026-11-04
 
 ### Added

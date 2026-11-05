@@ -1,0 +1,10 @@
+---
+- name: Check a host admin key file
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Run the role's real check of the key file
+        ansible.builtin.include_role:
+            name: porelo.host.base
+            tasks_from: ssh_key
