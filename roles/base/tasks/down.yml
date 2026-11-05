@@ -23,3 +23,12 @@
   ansible.builtin.file:
     path: /etc/porelo-host/host.json
     state: absent
+
+- name: down | Read whether the firewall is here
+  ansible.builtin.stat:
+    path: /etc/systemd/system/porelo-host-firewall.service
+  register: __base_firewall_unit
+
+- name: down | Say what becomes of the firewall
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/down_firewall.yml"
+  when: __base_firewall_unit.stat.exists

@@ -360,3 +360,12 @@ def test_the_hosts_summary_is_its_own_line_and_no_other_message_becomes_one():
             "host": {"address": "192.0.2.10", "endpoint": "192.0.2.10:51820", "network": "10.73.7.0/24"},
         }
     ], output
+
+
+def test_a_note_is_its_own_line_and_no_other_message_becomes_one():
+    """Prevent what a person must be told after a success being lost in the task's own line."""
+    code, lines, output = run("note.yml")
+    assert code == 0, output
+    assert [line for line in lines if line["state"] == "note"] == [
+        {"v": 1, "state": "note", "msg": "The firewall stays on."}
+    ], output

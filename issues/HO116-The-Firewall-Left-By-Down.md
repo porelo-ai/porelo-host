@@ -1,6 +1,6 @@
 # HO116 — The Firewall Left By Down
 
-**Status:** Idea.
+**Status:** Review.
 
 **What must be true.** After `down` a host holds no firewall of the collection's, or a host admin can read why it stays.
 
@@ -19,3 +19,13 @@ about and one kept does.
 
 - Which of the two is wanted is decided and written down.
 - A run of `down` in Molecule shows that decision: the file, the unit and the loaded rules gone, or standing as written.
+
+## Decided
+
+**`down` leaves the firewall on, and says so, with the command that takes it off.** A machine kept after `down` should not become open by a step whose name promises a clean-up: the next service
+anyone starts would be exposed unasked, and a person who wanted it open can do that in one line. The other recommendation, taking it off, goes to the operator beside this one in the morning.
+
+## Result
+
+The rules name no service, only ssh and the public interfaces, so a reload holds with the services gone. `down` ends with a `note` line of the callback, which a reader not knowing it skips. Molecule's
+`down` asserts the unit, the loaded rules, the file and the note, and then runs the note's command and sees the rules gone.

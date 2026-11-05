@@ -1,0 +1,10 @@
+---
+- name: Say what becomes of the firewall
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Run the role's real tasks
+        ansible.builtin.include_role:
+            name: porelo.host.base
+            tasks_from: down_firewall

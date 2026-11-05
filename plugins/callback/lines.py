@@ -20,6 +20,7 @@ description:
   - A reader skips a C(state) it does not know, as it skips a field. Added states and fields keep version 1.
   - A failed task tagged C(porelo_host_waiting) gives C(waiting) with the C(needs) its message names, the stop where
     the person's step comes.
+  - A task tagged C(porelo_host_note) adds a C(note) line with its message, for a person to read though nothing failed.
   - A failed line's C(msg) includes command stderr, else stdout, with failed loop items labeled and output bounded.
   - A task with C(no_log) never has its message written.
 requirements:
@@ -36,6 +37,8 @@ from ansible.template import Templar
 
 VERSION = 1
 WAITING_TAG = "porelo_host_waiting"
+# The task whose message a person must read though nothing failed.
+NOTE_TAG = "porelo_host_note"
 # The task whose message is the host's values for its card, which the interface reads from its own line.
 HOST_TAG = "porelo_host_summary"
 HIDDEN = "hidden, the task has no_log"
@@ -189,6 +192,8 @@ class CallbackModule(CallbackBase):
         self._step(result, "changed" if result._result.get("changed") else "ok")
         if HOST_TAG in result._task.tags and isinstance(result._result.get("msg"), dict):
             self._line(state="host", host=result._result["msg"])
+        if NOTE_TAG in result._task.tags and isinstance(result._result.get("msg"), str):
+            self._line(state="note", msg=result._result["msg"])
 
     def v2_runner_on_skipped(self, result):
         self._step(result, "skipped")

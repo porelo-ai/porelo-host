@@ -1,0 +1,29 @@
+---
+# Asked of systemctl and never failing: a note must not stop down, and an up cut short can leave the unit written,
+# and neither started nor enabled, or a unit systemd cannot load.
+- name: down_firewall | Read whether the firewall is active # noqa: command-instead-of-module
+  ansible.builtin.command:
+    cmd: systemctl is-active porelo-host-firewall.service
+  register: __base_firewall_active
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: down_firewall | Read whether the firewall is enabled # noqa: command-instead-of-module
+  ansible.builtin.command:
+    cmd: systemctl is-enabled porelo-host-firewall.service
+  register: __base_firewall_enabled
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# Closed is the safer way to be wrong: the next service started on a machine kept after down is not exposed unasked.
+- name: down_firewall | Say the firewall stays, in what state, and how to take it off
+  ansible.builtin.debug:
+    msg: >-
+      The firewall stays on this machine: it is {{ (__base_firewall_active.stdout | default('') | trim) or 'unknown' }}
+      and {{ (__base_firewall_enabled.stdout | default('') | trim) or 'unknown' }}. While active it accepts only ssh on
+      the public addresses, and while enabled it comes back after a reboot. To take it off:
+      systemctl disable --now porelo-host-firewall.service &&
+      rm /etc/systemd/system/porelo-host-firewall.service /etc/porelo-host/firewall.nft
+  tags: [porelo_host_note]

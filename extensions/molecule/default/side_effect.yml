@@ -308,3 +308,50 @@
           asked for no pool VM, volume, key, /etc/porelo-host/pool or porelo-pool-revert.service after down;
           left {{ side_effect_pool_left.stdout_lines }}
       when: side_effect_vm_pool == 'on'
+
+    - name: Read the firewall after down, as its unit, its rules and what a reboot would load
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          systemctl is-enabled porelo-host-firewall.service
+          systemctl is-active porelo-host-firewall.service
+          nft list table inet porelo_host | grep -c 'tcp dport 22 accept'
+          test -f /etc/porelo-host/firewall.nft
+          nft --check --file /etc/porelo-host/firewall.nft
+        executable: /bin/bash
+      register: side_effect_firewall
+      changed_when: false
+      failed_when: false
+
+    - name: Assert down left the firewall on and said so, with the command
+      ansible.builtin.assert:
+        that:
+          - side_effect_firewall.rc == 0
+          - side_effect_firewall.stdout_lines[:3] == ['enabled', 'active', '1']
+          - >-
+            side_effect_down.stdout is search('"state": "note"')
+          - side_effect_down.stdout is search('systemctl disable --now porelo-host-firewall.service')
+          - side_effect_down.stdout is search('it is active and enabled')
+        fail_msg: >-
+          asked for the firewall on, and a note saying so, after down; rc {{ side_effect_firewall.rc }},
+          {{ side_effect_firewall.stdout_lines }} {{ side_effect_firewall.stderr }}
+
+    - name: Run the command the note gives # noqa: command-instead-of-module
+      ansible.builtin.shell:
+        cmd: >-
+          systemctl disable --now porelo-host-firewall.service &&
+          rm /etc/systemd/system/porelo-host-firewall.service /etc/porelo-host/firewall.nft
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Read that the firewall is off
+      ansible.builtin.command:
+        cmd: nft list table inet porelo_host
+      register: side_effect_firewall_off
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the command took the rules off
+      ansible.builtin.assert:
+        that: side_effect_firewall_off.rc != 0
+        fail_msg: the note's command left the table inet porelo_host loaded

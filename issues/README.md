@@ -15,6 +15,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho116"></a>[HO116](HO116-The-Firewall-Left-By-Down.md) | - | - | `down` leaves the firewall's file and, by reading, its unit: taken off, or said why it stays |
 | <a id="ho106"></a>[HO106](HO106-A-Refused-Root-Key-File-Says-Why.md) | - | - | `up` refusing root's key file says how many keys it found and what to do, not only `non-zero return code` |
 | <a id="ho119"></a>[HO119](HO119-Which-Server-For-What.md) | - | [HO120](#ho120) | One page: which server for what, with and without Forgejo, each number measured or marked not, and the rule for parallel jobs. |
 | <a id="ho120"></a>[HO120](HO120-A-Measuring-Run-For-Any-Machine.md) | - | - | One command that measures a given machine, again on any hardware, and writes one result file without secrets for the page's tables. |
@@ -67,7 +68,6 @@ it is left out.
 |---|---|---|---|
 | <a id="ho125"></a>[HO125](HO125-What-A-Task-And-A-Job-Take.md) | - | [HO120](#ho120) | The measuring run also reads a task, an agent's fixed start and Maven jobs, so a size can rest on what work takes. |
 | <a id="ho117"></a>[HO117](HO117-The-Sanity-Images-Two-Pins.md) | - | - | The `pip` and `pylint` the sanity image pins, with open alerts, raised or said why they stay |
-| <a id="ho116"></a>[HO116](HO116-The-Firewall-Left-By-Down.md) | - | - | `down` leaves the firewall's file and, by reading, its unit: taken off, or said why it stays |
 | <a id="ho115"></a>[HO115](HO115-The-Pool-VM-Not-Ready-On-GitHubs-Runner.md) | - | - | The pool's VM says ready on GitHub's runner, or the reason it cannot is known; until then GitHub does not check the pool. |
 | <a id="ho114"></a>[HO114](HO114-A-Hosts-Read-Keys-Taken-Off-The-Central-Forge.md) | - | - | Taking a project off and `down` delete the host's read-only keys at the central forge, the token asked once and kept nowhere; if impossible, each is named with a link. |
 | <a id="ho91"></a>[HO91](HO91-SSHs-Edges-Left-From-Its-Readings.md) | - | - | The KRL validated before sshd reads it, a root key with an options prefix refused, and a lock ordered against a concurrent follow. |

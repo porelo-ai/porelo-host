@@ -1,0 +1,14 @@
+---
+- name: Tell the person something
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Say what stays
+        ansible.builtin.debug:
+            msg: The firewall stays on.
+        tags: [porelo_host_note]
+
+      - name: Say something no person needs
+        ansible.builtin.debug:
+            msg: Nothing to see.
