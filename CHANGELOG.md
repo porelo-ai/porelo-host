@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A login of 32 characters is taken everywhere it is read,** by `porelo-host-person` and the `matrix` role, which
   stopped at 31.
 
+- **`up` waits up to 5 minutes for a package run to end,** at its check and at each `apt`, rather than stopping at
+  Ubuntu's own daily one.
+
 - **`down` says the firewall stays on,** with the command that takes it off, in a new `note` line of the callback.
 
 - **`up` refusing root's key file says why:** which file, how many keys of which kind it holds, and what to do, printing no key.

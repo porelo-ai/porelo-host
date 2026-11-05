@@ -18,7 +18,7 @@ offer before renting too. The form of the answer is in [What a program reads](..
 | `kvm_setting` | a yes or no |
 | `root` | root; a login that is not is the interface's to tell, as is a closed root |
 | `system` | Ubuntu 26.04 |
-| `cloud_init`, `packages_free` | the image has finished; no package run is under way |
+| `cloud_init`, `packages_free` | the image has finished; no package run is under way; `up` waits up to 5 minutes for one to end, as Ubuntu starts its own daily, and the interface's one look does not |
 | `cpus`, `memory` | the machine says |
 | `virtualization` | `vmx` or `svm`, only with `kvm` |
 | `cgroup`, `delegated` | cgroup v2's `cpu`, `memory`, `pids`, delegated to a user by systemd's default |

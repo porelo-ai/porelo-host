@@ -7,6 +7,7 @@
       {{ (role_path ~ '/files/porelo-host-check') | quote }}
       --limits {{ lookup('ansible.builtin.file', role_path ~ '/files/limits.json') | from_json | to_json | quote }}
       --choices {{ __check_choices | to_json | quote }}
+      --wait-packages 300
     executable: python3
   vars:
     __check_choices:

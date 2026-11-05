@@ -6,6 +6,10 @@
   hosts: localhost
   connection: local
   gather_facts: false
+  # Ubuntu's daily package run starts at an hour nobody chooses, also after the check: as long as the check waits.
+  module_defaults:
+    ansible.builtin.apt:
+      lock_timeout: 300
   tasks:
     - name: Stop on an inventory of a version this playbook does not know
       ansible.builtin.assert:
@@ -67,6 +71,10 @@
   hosts: localhost
   connection: local
   gather_facts: false
+  # Ubuntu's daily package run starts at an hour nobody chooses, also after the check: as long as the check waits.
+  module_defaults:
+    ansible.builtin.apt:
+      lock_timeout: 300
   tasks:
     - name: Stop for what only the person can give
       ansible.builtin.fail:

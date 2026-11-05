@@ -295,3 +295,115 @@ def test_what_goes_wrong_before_the_check_still_answers_one_object(arguments):
     done = subprocess.run(["python3", str(SCRIPT), *arguments], capture_output=True, text=True, check=False)
     assert done.returncode == 2, done.stderr
     assert json.loads(done.stdout)["complete"] is False
+
+
+def hold_package_lock(root, seconds):
+    """A package run as dpkg's lock shows it: another process holding the lock on the file."""
+    lock = root / "var/lib/dpkg/lock-frontend"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.touch()
+    holder = subprocess.Popen(
+        [
+            "python3",
+            "-c",
+            "import fcntl, sys, time\n"
+            "f = open(sys.argv[1], 'r+')\n"
+            "fcntl.lockf(f, fcntl.LOCK_EX)\n"
+            "print('held', flush=True)\n"
+            "time.sleep(float(sys.argv[2]))\n",
+            str(lock),
+            str(seconds),
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    assert holder.stdout.readline().strip() == "held"
+    return holder
+
+
+def ask_waiting(root, wait):
+    """The check as up asks it, over a machine whose other findings do not matter here."""
+    done = subprocess.run(
+        ["python3", str(SCRIPT), "--root", str(root), "--no-network", "--wait-packages", str(wait)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return next(row for row in json.loads(done.stdout)["findings"] if row["id"] == "packages_free")
+
+
+def test_up_waits_out_a_package_run_that_ends(tmp_path):
+    """Prevent up stopping at Ubuntu's daily package run, which nobody asked for and which ends by itself."""
+    root = machine(tmp_path)
+    holder = hold_package_lock(root, 3)
+    try:
+        start = time.monotonic()
+        row = ask_waiting(root, 30)
+    finally:
+        holder.kill()
+        holder.wait()
+    assert row["state"] == "pass" and row["found"] == "free"
+    assert 1 < time.monotonic() - start < 25
+
+
+def test_up_stops_after_its_wait_on_a_package_run_that_does_not_end(tmp_path):
+    root = machine(tmp_path)
+    holder = hold_package_lock(root, 60)
+    try:
+        start = time.monotonic()
+        row = ask_waiting(root, 1)
+    finally:
+        holder.kill()
+        holder.wait()
+    assert row["state"] == "fail" and row["found"] == "held" and row["do"]
+    assert time.monotonic() - start < 5, "the wait is no longer than it says"
+
+
+def test_the_interfaces_one_look_does_not_wait(tmp_path):
+    root = machine(tmp_path)
+    holder = hold_package_lock(root, 60)
+    try:
+        start = time.monotonic()
+        row = ask_waiting(root, 0)
+    finally:
+        holder.kill()
+        holder.wait()
+    assert row["state"] == "fail" and row["found"] == "held"
+    assert time.monotonic() - start < 5
+
+
+def test_up_asks_the_check_to_wait():
+    tasks = (Path(__file__).parents[3] / "roles/check/tasks/main.yml").read_text()
+    assert "--wait-packages 300" in tasks
+
+
+def test_a_run_starting_just_after_the_lock_was_free_does_not_say_held_without_a_wait(tmp_path, monkeypatch):
+    """Prevent a second question to the kernel answering differently from the one the wait went by."""
+    module = load()
+    answers = iter([False, True])
+    monkeypatch.setattr(module.Machine, "package_lock_held", lambda _self: next(answers))
+    answer = module.run(module.Machine(str(machine(tmp_path)), False), LIMITS, {"forge": False}, wait_packages=300)
+    row = next(row for row in answer["findings"] if row["id"] == "packages_free")
+    assert row["found"] == "free"
+
+
+def test_a_lock_that_cannot_be_asked_stays_one_finding_among_all_the_others(tmp_path, monkeypatch):
+    """Prevent the wait taking every other finding from the interface, whose one look does not ask for a wait."""
+    module = load()
+
+    def broken(_self):
+        raise OSError("no locks")
+
+    monkeypatch.setattr(module.Machine, "package_lock_held", broken)
+    monkeypatch.setattr(module.sys, "argv", [str(SCRIPT), "--root", str(machine(tmp_path)), "--no-network"])
+    answer, code = module.answer_from_arguments()
+    assert code == 1 and answer["complete"] is False
+    assert {"cpus", "memory", "system"} <= {row["id"] for row in answer["findings"]}
+
+
+def test_every_apt_of_up_waits_for_a_package_run_as_long_as_the_check():
+    """Prevent a daily run starting after the check stopping up at apt's own 60 seconds."""
+    import yaml
+
+    plays = yaml.safe_load((Path(__file__).parents[3] / "playbooks/up.yml").read_text())
+    assert all(play["module_defaults"]["ansible.builtin.apt"]["lock_timeout"] == 300 for play in plays)

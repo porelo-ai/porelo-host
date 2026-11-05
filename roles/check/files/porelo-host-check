@@ -26,6 +26,7 @@ import time
 
 VERSION = 1
 REACH_SECONDS = 10
+PACKAGE_POLL_SECONDS = 2
 PROBLEMS = (OSError, ValueError, KeyError, TypeError, AttributeError, ArithmeticError, subprocess.SubprocessError)
 SIZE = re.compile(r"^([0-9]+)([kmg]?)$")
 
@@ -194,7 +195,17 @@ def check_system(machine, findings, limits):
     findings.check("system", found == asked, found, asked, f"Install {asked} on this machine.")
 
 
-def check_finished(machine, findings):
+def package_lock_after(machine, seconds):
+    """Up's own wait: a package run such as Ubuntu's daily one ends by itself; the last answer is the finding."""
+    end = time.monotonic() + seconds
+    held = machine.package_lock_held()
+    while held and time.monotonic() < end:
+        time.sleep(min(PACKAGE_POLL_SECONDS, max(0, end - time.monotonic())))
+        held = machine.package_lock_held()
+    return held
+
+
+def check_finished(machine, findings, wait_packages=0):
     """A system still installing changes its packages, and on some providers its ssh key, under what follows."""
     if os.path.isdir(machine.path("/var/lib/cloud")):
         finished = os.path.exists(machine.path("/var/lib/cloud/instance/boot-finished"))
@@ -205,7 +216,7 @@ def check_finished(machine, findings):
             "finished",
             "The provider's image is still setting itself up: wait, then check again.",
         )
-    held = machine.package_lock_held()
+    held = package_lock_after(machine, wait_packages)
     if held is None:
         findings.add("packages_free", "unknown", todo="Could not ask dpkg's lock.")
     else:
@@ -452,7 +463,7 @@ def check_settings(findings, choices):
         findings.check("kvm_setting", isinstance(kvm, bool), kvm, "true or false", "Say yes or no.")
 
 
-def run(machine, limits, choices):
+def run(machine, limits, choices, wait_packages=0):
     """Every check; one that breaks is a finding of its own, so the rest still answer."""
     findings = Findings()
     cpus, kib = sizes(machine, findings)
@@ -460,7 +471,7 @@ def run(machine, limits, choices):
         lambda: check_settings(findings, choices),
         lambda: check_who(machine, findings),
         lambda: check_system(machine, findings, limits),
-        lambda: check_finished(machine, findings),
+        lambda: check_finished(machine, findings, wait_packages),
         lambda: check_virtualization(machine, findings, choices),
         lambda: check_cgroups(machine, findings, limits),
         lambda: check_network(machine, findings),
@@ -496,6 +507,7 @@ def answer_from_arguments():
     parser.add_argument("--fit")
     parser.add_argument("--root", default="")
     parser.add_argument("--no-network", action="store_true")
+    parser.add_argument("--wait-packages", type=int, default=0)
     arguments = parser.parse_args()
     if arguments.limits:
         limits = json.loads(arguments.limits)
@@ -506,7 +518,8 @@ def answer_from_arguments():
     if arguments.fit:
         answer = fit(json.loads(arguments.fit), limits)
     else:
-        answer = run(Machine(arguments.root, not arguments.no_network), limits, json.loads(arguments.choices))
+        machine = Machine(arguments.root, not arguments.no_network)
+        answer = run(machine, limits, json.loads(arguments.choices), arguments.wait_packages)
     return answer, 0 if answer["ok"] else 1
 
 
