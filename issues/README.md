@@ -51,8 +51,9 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
-| <a id="ho125"></a>[HO125](HO125-What-A-Task-And-A-Job-Take.md) | - | - | The measuring run also reads a task, an agent's fixed start and Maven jobs, so a size can rest on what work takes. |
+| <a id="ho125"></a>[HO125](HO125-What-A-Task-And-A-Job-Take.md) | - | [HO127](#ho127) | The measuring run also reads a task, an agent's fixed start and Maven jobs, so a size can rest on what work takes: how many developers fit on 64 GB and 128 GB. |
 | <a id="ho126"></a>[HO126](HO126-A-Reverted-Pool-VM-Keeps-The-Snapshots-Clock.md) | - | - | A pool VM reverted to its live snapshot keeps that clock, and `apt` refuses what was published since; the host's time is set by the guest agent. |
+| <a id="ho127"></a>[HO127](HO127-The-Half-For-Jobs-Is-A-Setting.md) | S | - | The share of the host for jobs and the VM pool becomes a setting, today's half its default, `up`'s refusal naming it. |
 
 ## Analyzed
 
