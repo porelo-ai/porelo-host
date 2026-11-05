@@ -84,11 +84,26 @@
   when: __vm_pool_snapshot.rc != 0
   changed_when: true
 
-- name: vm | Revert a stopped pool VM to its base snapshot before reading its address
+# Written before the snapshot once the agent has set the clock; virt-install adds the channel to any VM, so only this
+# says the snapshot's memory holds an agent. Without one the first run to give the VM back would lose it.
+- name: vm | Ask whether an existing VM's snapshot holds a guest agent
+  ansible.builtin.stat:
+    path: "{{ __vm_pool_here }}/guest-agent"
+  register: __vm_pool_has_agent
+
+- name: vm | Refuse a VM made before its guest agent was added
+  ansible.builtin.assert:
+    that: __vm_pool_has_agent.stat.exists
+    fail_msg: "{{ __vm_pool_name }} was made before its guest agent was added, so its clock cannot be set: down and up"
+    quiet: true
+  when: __vm_pool_snapshot.rc == 0
+
+- name: vm | Revert a stopped pool VM to its base snapshot and set its clock before reading its address
   ansible.builtin.command:
-    argv: [virsh, -c, "qemu:///system", snapshot-revert, "{{ __vm_pool_name }}", base, --running]
-  when: __vm_pool_snapshot.rc == 0 and __vm_pool_there.stdout | trim == 'shut off'
-  changed_when: true
+    argv: ["{{ __vm_pool_tools }}/porelo-pool-revert", --one, "{{ __vm_pool_name }}"]
+  when: __vm_pool_snapshot.rc == 0
+  register: __vm_pool_settled
+  changed_when: __vm_pool_settled.stdout is search('reverted')
 
 - name: vm | Wait for the VM's address
   ansible.builtin.command:
@@ -158,6 +173,27 @@
     state: absent
   loop: [seed.iso, user-data]
   no_log: true
+
+# In the snapshot's memory, so that every revert can have its clock set: asked now, a guest that cannot is a loud up,
+# not a VM that is never handed out.
+- name: vm | Set the clock through the guest agent, as every revert will
+  ansible.builtin.command:
+    argv: [timeout, "10", virsh, -c, "qemu:///system", domtime, "{{ __vm_pool_name }}", --now]
+  when: __vm_pool_snapshot.rc != 0
+  register: __vm_pool_agent
+  until: __vm_pool_agent.rc == 0
+  retries: 40
+  delay: 3
+  changed_when: false
+
+- name: vm | Say that the snapshot about to be taken holds a guest agent
+  ansible.builtin.copy:
+    content: "set the clock before its base snapshot\n"
+    dest: "{{ __vm_pool_here }}/guest-agent"
+    owner: root
+    group: root
+    mode: "0644"
+  when: __vm_pool_snapshot.rc != 0
 
 - name: vm | Take the base snapshot, live, with the account ready
   ansible.builtin.command:

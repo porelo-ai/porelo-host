@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A pool VM's clock is set from the host's after each revert,** by a guest agent each VM now has, as a revert brings
+  back the snapshot's clock and `apt` then refuses what was published since. The VM's link stays down until it is set.
+  A VM whose clock cannot be set stays off and says so; `up` refuses a pool made before this, naming `down` and `up`.
+
 ## [0.5.11] - 2026-11-05
 
 ### Added

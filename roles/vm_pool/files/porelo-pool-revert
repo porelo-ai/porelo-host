@@ -2,36 +2,157 @@
 # Reverts each pool VM that stopped to its base snapshot and starts it again: what a run's give-back asks for by
 # powering its VM off. Runs as root on the host, outside every job, for as long as the pool is up. Reads the pool's
 # VMs from the file the role writes, so it touches no other domain. Shell, since it drives virsh.
-# usage: porelo-pool-revert <file with one VM name per line>
+# usage: porelo-pool-revert <file with one VM name per line>      the service: every VM that stops, while it runs
+#        porelo-pool-revert --one <name>                          up: this one VM, its failure the exit status
 set -eu
 export LIBVIRT_DEFAULT_URI=qemu:///system
 # virsh's words are read below, so they must not be translated.
 export LC_ALL=C
+# <name>.off: this VM stays off for a clock that could not be set, until this service starts again, as its stop is
+# watched below. <name>.midway: a revert of this VM has begun, and what it leaves is no one else's. Kept over a restart
+# of this service, which the second must outlive; gone with a reboot, as is what they speak of.
+left_off=${RUNTIME_DIRECTORY:-/run/porelo-pool-revert}
+
+# A revert is no boot, and brings back the clock in the snapshot's memory, which anything published since then lies
+# ahead of. --now passes the host's time; --sync would take the guest's own hardware clock. libvirt waits for an agent
+# for ever, and one silent VM must not hold up the others.
+set_clock() {
+    tries=0
+    while [ "$tries" -lt 20 ]; do
+        timeout 10 virsh domtime "$1" --now >/dev/null 2>&1 && return 0
+        tries=$((tries + 1))
+        sleep 3
+    done
+    return 1
+}
+
+nic() {
+    virsh domiflist "$1" | awk '$5 ~ /:/ {print $5; exit}'
+}
+
+# The snapshot's memory says 'ready', and porelo-machines hands out what says so: nothing reaches the VM until its
+# clock is set. The agent's channel needs no network, and porelo-machines waits through an unreachable VM.
+revert() {
+    name=$1
+    if ! touch "$left_off/$name.midway"; then
+        echo "could not note the revert of $name; it stays as it is" >&2
+        return 1
+    fi
+    # The note stays: a client that failed says nothing of what libvirt did, and the next look reads the state.
+    if ! virsh snapshot-revert "$name" base --paused >/dev/null; then
+        echo "could not revert $name; it stays off and is not handed out" >&2
+        return 1
+    fi
+    # The old failure's mark goes before the link comes up: once a renter can have the VM, nothing may stop its return.
+    if mac=$(nic "$name") && [ -n "$mac" ] && virsh domif-setlink "$name" "$mac" down >/dev/null \
+        && virsh resume "$name" >/dev/null && set_clock "$name" && rm -f "$left_off/$name.off" \
+        && virsh domif-setlink "$name" "$mac" up >/dev/null; then
+        rm -f "$left_off/$name.midway"
+        echo "reverted $name to its base snapshot"
+        return 0
+    fi
+    touch "$left_off/$name.off" || echo "could not note that $name stays off" >&2
+    if virsh destroy "$name" >/dev/null 2>&1; then
+        rm -f "$left_off/$name.midway"
+        echo "could not set the clock of $name after its revert; it stays off and is not handed out," \
+            "until this service restarts; a pool VM made before its guest agent was added needs down and up" >&2
+    else
+        echo "could not set the clock of $name after its revert, and could not stop $name;" \
+            "its link stays down, so it is not handed out" >&2
+    fi
+    return 1
+}
+
+# A VM paused or with its link down is only a revert's to undo when a revert began it: libvirt pauses a rented VM on
+# a disk error, and its renter's work is not this service's to throw away. 2: that could not be read.
+midway() {
+    [ -e "$left_off/$1.midway" ] || return 1
+    state=$(virsh domstate "$1" 2>/dev/null) || return 2
+    case "$state" in
+        paused) return 0 ;;
+        running) ;;
+        *) return 1 ;;
+    esac
+    mac=$(nic "$1") && [ -n "$mac" ] || return 2
+    link=$(virsh domif-getlink "$1" "$mac" 2>/dev/null) || return 2
+    case "$link" in
+        *down*) return 0 ;;
+    esac
+    return 1
+}
+
+# <force> is up's own try, which a VM left off for its clock gets too.
+settle() {
+    name=$1
+    left=0
+    midway "$name" || left=$?
+    if [ "$left" -eq 2 ]; then
+        echo "could not read how $name stands, which a revert left midway; asked again at the next look" >&2
+        return 1
+    fi
+    if [ "$left" -eq 0 ] && ! virsh destroy "$name" >/dev/null 2>&1; then
+        echo "could not stop $name, which a revert left midway; it is not handed out" >&2
+        return 1
+    fi
+    if ! state=$(virsh domstate "$name" 2>/dev/null); then
+        echo "could not read the state of $name" >&2
+        return 1
+    fi
+    rm -f "$left_off/$name.midway"
+    [ "$state" = "shut off" ] || return 0
+    [ "${2:-}" = force ] || [ ! -e "$left_off/$name.off" ] || return 0
+    revert "$name"
+}
+
+# One revert at a time, up's and this service's: one raising a link the other has just taken down would hand out the
+# old clock. On the directory, as the role's replacing this script would give its path another lock; bounded, as a
+# revert is, so that one that hangs is said.
+settle_alone() {
+    (
+        if ! flock -w 300 9; then
+            echo "another revert has held the pool for 5 minutes; $1 waits" >&2
+            exit 1
+        fi
+        settle "$@"
+    ) 9<"$(dirname "$0")"
+}
+
+if [ "${1:-}" = --one ]; then
+    [ $# -eq 2 ] || { echo "usage: porelo-pool-revert --one <name>" >&2; exit 2; }
+    mkdir -p "$left_off"
+    settle_alone "$2" force
+    exit 0
+fi
+
 [ $# -eq 1 ] || { echo "usage: porelo-pool-revert <file with one VM name per line>" >&2; exit 2; }
 list=$1
 [ -r "$list" ] || { echo "no list of pool VMs at $list" >&2; exit 1; }
 
-revert() {
-    name=$1
-    grep -Fxq -- "$name" "$list" || return 0
-    [ "$(virsh domstate "$name" 2>/dev/null)" = "shut off" ] || return 0
-    if virsh snapshot-revert "$name" base --running >/dev/null; then
-        echo "reverted $name to its base snapshot"
-    else
-        echo "could not revert $name; it stays off and is not handed out" >&2
-    fi
+look() {
+    grep -Fxq -- "$1" "$list" || return 0
+    settle_alone "$1"
 }
 
-# Whatever stopped while this was not running, first.
-while read -r name; do revert "$name"; done < "$list"
-# Then every VM as it stops: virsh prints one line per lifecycle event and keeps the connection open.
-virsh event --loop --event lifecycle | while read -r line; do
-    case "$line" in
-        *"for domain '"*"': Stopped"*)
-            name=${line#*for domain \'}
-            revert "${name%%\'*}"
-            ;;
-    esac
+# A new start of this service tries again what it left off.
+rm -f "$left_off"/*.off
+# virsh prints one line per lifecycle event and keeps the connection open, and a stop before it has connected is told
+# to nobody: so each round looks at every VM first, and ends after a while for the next. It says when it timed out; any
+# other end is a watch that failed.
+while :; do
+    virsh event --loop --timeout 30 --event lifecycle 2>&1 | {
+        while read -r name; do look "$name" || :; done < "$list"
+        timed_out=no
+        while read -r line; do
+            case "$line" in
+                "event loop timed out") timed_out=yes ;;
+                *"for domain '"*"': Stopped"*)
+                    name=${line#*for domain \'}
+                    look "${name%%\'*}" || :
+                    ;;
+            esac
+        done
+        [ "$timed_out" = yes ]
+    } || break
 done
-echo "virsh event --loop ended" >&2
+echo "virsh event ended" >&2
 exit 1

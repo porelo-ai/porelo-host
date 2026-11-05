@@ -122,6 +122,30 @@ public final class PoolAcceptance {
         command(
                 lease,
                 "test \"$(id -un)\" = run && test \"$(cat /var/lib/porelo-pool/run)\" = ready");
+        clock(lease);
+    }
+
+    /**
+     * A revert brings back the snapshot's clock: a repository published now, as after the snapshot, must not lie ahead of
+     * this rental's, which apt refuses as not valid yet, and its clock must be the host's.
+     */
+    private static void clock(Lease lease) throws IOException {
+        final var guest = lease.ssh().run("date -u +%s");
+        final var host = java.time.Instant.now().getEpochSecond();
+        System.out.println("clock: host " + host + ", VM " + guest.all().trim());
+        final var script =
+                "repo=$(mktemp -d); chmod 755 \"$repo\"; : > \"$repo/Packages\"; "
+                        + "{ printf \"Origin: t\\nLabel: t\\nSuite: t\\nCodename: t\\nArchitectures: all\\n\"; "
+                        + "date -u -d @"
+                        + host
+                        + " \"+Date: %a, %d %b %Y %H:%M:%S UTC\"; } > \"$repo/Release\"; "
+                        + "echo \"deb [trusted=yes] file:$repo ./\" > \"$repo/list\"; "
+                        + "apt-get update -qq -o Dir::Etc::sourcelist=\"$repo/list\" -o Dir::Etc::sourceparts=- "
+                        + "-o APT::Get::List-Cleanup=0; rm -rf \"$repo\"";
+        command(lease, "sudo -n sh -euc '" + script + "'");
+        require(
+                Math.abs(host - Long.parseLong(guest.all().trim())) < 10,
+                "the VM's clock is not the host's: " + host + " and " + guest.all());
     }
 
     private static void leaveMarkers(Lease lease) throws IOException {

@@ -6,6 +6,8 @@ Requires=libvirtd.service
 
 [Service]
 ExecStart={{ __vm_pool_tools }}/porelo-pool-revert {{ __vm_pool_etc }}/vms
+RuntimeDirectory=porelo-pool-revert
+RuntimeDirectoryPreserve=yes
 Restart=always
 RestartSec=5
 

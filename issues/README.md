@@ -15,6 +15,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho126"></a>[HO126](HO126-A-Reverted-Pool-VM-Keeps-The-Snapshots-Clock.md) | - | - | A pool VM reverted to its live snapshot keeps that clock, and `apt` refuses what was published since; the host's time is set by the guest agent. |
 | <a id="ho116"></a>[HO116](HO116-The-Firewall-Left-By-Down.md) | - | - | `down` leaves the firewall's file and, by reading, its unit: taken off, or said why it stays |
 | <a id="ho106"></a>[HO106](HO106-A-Refused-Root-Key-File-Says-Why.md) | - | - | `up` refusing root's key file says how many keys it found and what to do, not only `non-zero return code` |
 | <a id="ho119"></a>[HO119](HO119-Which-Server-For-What.md) | - | [HO120](#ho120) | One page: which server for what, with and without Forgejo, each number measured or marked not, and the rule for parallel jobs. |
@@ -52,7 +53,6 @@ it is left out.
 |---|---|---|---|
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho125"></a>[HO125](HO125-What-A-Task-And-A-Job-Take.md) | - | [HO127](#ho127) | The measuring run also reads a task, an agent's fixed start and Maven jobs, so a size can rest on what work takes: the tool for one measuring issue in Porelo. |
-| <a id="ho126"></a>[HO126](HO126-A-Reverted-Pool-VM-Keeps-The-Snapshots-Clock.md) | - | - | A pool VM reverted to its live snapshot keeps that clock, and `apt` refuses what was published since; the host's time is set by the guest agent. |
 | <a id="ho127"></a>[HO127](HO127-The-Half-For-Jobs-Is-A-Setting.md) | S | - | The share of the host for jobs and the VM pool becomes a setting, today's half its default, `up`'s refusal naming it. |
 
 ## Analyzed

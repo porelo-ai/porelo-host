@@ -618,12 +618,45 @@
         fail_msg: "porelo-pool-revert.service was started again {{ verify_pool_restarts.status.NRestarts }} times"
       when: verify_vm_pool == 'on'
 
+    # A VM made before its guest agent was added has no file saying its snapshot holds one.
+    - name: Run up over a pool VM as one made before its guest agent, and put its file back
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          said=/var/lib/porelo-host/pool/porelo-pool-ubuntu-1/guest-agent
+          mv "$said" "$said.kept"
+          rc=0
+          ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.up \
+              > /root/pool-old-up.out 2>&1 || rc=$?
+          mv "$said.kept" "$said"
+          echo "up rc=$rc"
+          grep -a -m1 'was made before its guest agent' /root/pool-old-up.out || true
+        executable: /bin/bash
+      environment:
+        LC_ALL: C.UTF-8
+      register: verify_pool_old
+      changed_when: false
+      when: verify_vm_pool == 'on'
+
+    - name: Assert up refused that VM, naming down and up
+      ansible.builtin.assert:
+        that:
+          - verify_pool_old.stdout is not search('up rc=0')
+          - verify_pool_old.stdout is search('made before its guest agent was added.*down and up')
+        fail_msg: "asked for a refused up naming down and up, got {{ verify_pool_old.stdout }}"
+      when: verify_vm_pool == 'on'
+
     - name: Read the revert's journal, to say why the VM did not come back
       ansible.builtin.command:
         cmd: journalctl --no-pager -n 20 -u porelo-pool-revert.service
       register: verify_pool_revert_log
       changed_when: false
       when: verify_vm_pool == 'on' and verify_pool_given_back.rc != 0
+
+    - name: Say the pool VM's clock at each rental, beside the host's
+      ansible.builtin.debug:
+        msg: "{{ verify_pool_given_back.stdout_lines | default([]) | select('match', '^clock: ') | list }}"
+      when: verify_vm_pool == 'on'
 
     - name: Assert normal and killed renters leave nothing, and the real acceptance leg passes and is removed
       ansible.builtin.assert:

@@ -77,7 +77,8 @@ make() {
         && virsh vol-upload "$name-seed.iso" "$seed/seed.iso" --pool "$pool" \
         && virt-install --name "$name" --memory "$memory" --vcpus "$vcpus" --cpu "${PORELO_VM_CPU:-host-passthrough}" --import \
             --disk "vol=$pool/$name.qcow2,bus=virtio" --disk "vol=$pool/$name-seed.iso,device=cdrom" \
-            --network network=default --osinfo "$osinfo" --graphics none --noautoconsole >/dev/null
+            --network network=default --osinfo "$osinfo" --graphics none --noautoconsole \
+            --channel unix,target.type=virtio,target.name=org.qemu.guest_agent.0 >/dev/null
     }; then
         rm -f "$seed/seed.iso"
         delete "$name"
