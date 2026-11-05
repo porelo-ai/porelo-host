@@ -1,6 +1,66 @@
-# Measured machines
+# Which server for what
 
-A result file describes one disposable machine, and each table below is made from one. **Nothing here is a recommendation yet.**
+**This page says what is measured so far, and that is an idle host.** It is not yet a size for a host that has work to do: what a task, an agent and a build
+take is "not measured", so nothing below recommends a machine for them.
+
+## What to take
+
+| You will run | System | CPUs | Memory | Disk | KVM |
+| --- | --- | --- | --- | --- | --- |
+| Tasks only, with a central forge and no Forgejo | Ubuntu 26.04 | not measured | not measured | not measured | no |
+| Forgejo and parallel builds | Ubuntu 26.04 | not measured | not measured | not measured | no |
+| Forgejo with a VM pool, or a job that makes a VM | Ubuntu 26.04 | not measured | not measured | not measured | yes, `porelo_host_kvm: true` |
+
+What a person gives up below a size is "not measured" too, as no size holds yet.
+
+**The one thing measured: an idle host.** By default `up` brings the room, so tasks only reads as `room`, and Forgejo as `both`; `none` and `forge` have the room turned off, which only the
+measuring run does. Each has tasks' software, no person, no project and no task. **These figures are no lower bound:** what `up` takes while it runs is not read, and no KVM or VM pool was on.
+All came up on a VM given 4 GiB, which shows 3910 MiB, with 4 CPUs. No run tried less. All three files are local VMs on one machine, differing only in memory.
+
+<!-- sizes:start -->
+
+| Machine | Its memory | Shape | In use, idle | Disk used at `/`, idle |
+| --- | --- | --- | --- | --- |
+| local-vm-16g | 15988 MiB | `none` | 228 to 229 MiB | 3.5 GiB |
+| local-vm-16g | 15988 MiB | `room` | 289 to 290 MiB | 3.6 GiB |
+| local-vm-16g | 15988 MiB | `forge` | 377 to 379 MiB | 4.3 GiB |
+| local-vm-16g | 15988 MiB | `both` | 435 to 446 MiB | 4.5 GiB |
+| local-vm-4g | 3910 MiB | `none` | 230 MiB | 3.4 to 3.5 GiB |
+| local-vm-4g | 3910 MiB | `room` | 291 MiB | 3.6 GiB |
+| local-vm-4g | 3910 MiB | `forge` | 378 to 379 MiB | 4.3 GiB |
+| local-vm-4g | 3910 MiB | `both` | 439 to 442 MiB | 4.5 GiB |
+| local-vm-8g | 7936 MiB | `none` | 228 MiB | 3.5 GiB |
+| local-vm-8g | 7936 MiB | `room` | 289 to 290 MiB | 3.6 GiB |
+| local-vm-8g | 7936 MiB | `forge` | 377 to 378 MiB | 4.3 GiB |
+| local-vm-8g | 7936 MiB | `both` | 439 to 448 MiB | 4.5 GiB |
+
+<!-- sizes:end -->
+
+## Parallel builds
+
+**The rule today, not yet measured:** unset, 2 jobs when two of the smallest, 1 CPU and 768 MiB each, fit within half the host beside the VM pool, otherwise 1, each up to 4 CPUs and 8 GiB.
+When not even one fits, `up` refuses. So the job count stops at 2. `forge_runner_capacity`, `forge_job_cpus` and `forge_job_memory` set it otherwise, within the same half, and the half itself can't be set. Whether 2 and a
+half are right, and what happens to tasks past them, is "not measured".
+
+## What `up` tells you early
+
+`up` checks the machine before it installs anything, Ansible itself being the one change before that. In a person's words, it refuses:
+
+- a system other than Ubuntu 26.04, or a run that is not root;
+- an image still finishing its first start, or a package run under way;
+- a machine without cgroup v2's controllers delegated by systemd, an IPv4 default route with its address, or an ed25519 host key;
+- no `vmx` or `svm`, where you asked for KVM;
+- a host it cannot reach what it fetches from, or a port it needs taken by anything but this host's own forge;
+- a VM pool and jobs asking together more than the host's share, a pool without Forgejo or KVM, or a pool's shape it does not know.
+
+Some things only show later, and `up` stops there: that KVM really works, an account's own controllers, root's key.
+
+**It reports free disk and refuses nothing for it:** no measured number holds yet, as idle says nothing of what work fills. The [check's README](https://github.com/porelo-ai/porelo-host/tree/main/roles/check) has
+each finding by name.
+
+## Measured machines
+
+Each table below is made from one file.
 
 The measuring run is the playbook `porelo.host.measure`, run on a fresh machine that is given back; the
 [role's README](https://github.com/porelo-ai/porelo-host/tree/main/roles/measure) says its options and what it changes. Check a result for private
@@ -15,7 +75,7 @@ their images, so every reading of `forge` and `both` fetches them again.
 cgroups hold besides, which the kernel gives back when asked, so it says little of what a machine needs. In use includes the measuring run itself and
 the login it was started from, and an account's own memory is part of it, so the columns do not add up. A dash: the shape has no such account. Disk used is the whole file system's.
 
-**What these do not say.** They are idle numbers on local VMs, with 4 CPUs and a 20 GiB virtual disk: they show memory and disk, not a real host's time. They do not
+**What these do not say.** They are idle numbers on local VMs, with the CPUs each table names and a 20 GiB virtual disk: they show memory and disk, not a real host's time. They do not
 read what an `up` itself takes while it runs, and a job or a task needs more on top: tasks, agents and jobs are "not measured", as each table says, so a size
 that has to hold work does not rest on them.
 
@@ -23,7 +83,7 @@ that has to hold work does not rest on them.
 
 ### local-vm-16g
 
-local local-vm-16g: 4 CPUs of AMD Ryzen AI 7 PRO 350 w/ Radeon 860M, 15988 MiB, ubuntu 26.04, KVM True; collection 0.5.11-snapshot, from snapshots.
+local local-vm-16g: 4 CPUs of AMD Ryzen AI 7 PRO 350 w/ Radeon 860M, 15988 MiB, ubuntu 26.04, `/dev/kvm` answers: True; collection 0.5.11-snapshot, from snapshots.
 
 | Shape | Reading | `up` took | In use | With page cache | Forge's account | Runner's account | Homeserver's account | Disk used at `/` |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -49,7 +109,7 @@ Not measured: agent, job, task.
 
 ### local-vm-4g
 
-local local-vm-4g: 4 CPUs of AMD Ryzen AI 7 PRO 350 w/ Radeon 860M, 3910 MiB, ubuntu 26.04, KVM True; collection 0.5.11-snapshot, from snapshots.
+local local-vm-4g: 4 CPUs of AMD Ryzen AI 7 PRO 350 w/ Radeon 860M, 3910 MiB, ubuntu 26.04, `/dev/kvm` answers: True; collection 0.5.11-snapshot, from snapshots.
 
 | Shape | Reading | `up` took | In use | With page cache | Forge's account | Runner's account | Homeserver's account | Disk used at `/` |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -75,7 +135,7 @@ Not measured: agent, job, task.
 
 ### local-vm-8g
 
-local local-vm-8g: 4 CPUs of AMD Ryzen AI 7 PRO 350 w/ Radeon 860M, 7936 MiB, ubuntu 26.04, KVM True; collection 0.5.11-snapshot, from snapshots.
+local local-vm-8g: 4 CPUs of AMD Ryzen AI 7 PRO 350 w/ Radeon 860M, 7936 MiB, ubuntu 26.04, `/dev/kvm` answers: True; collection 0.5.11-snapshot, from snapshots.
 
 | Shape | Reading | `up` took | In use | With page cache | Forge's account | Runner's account | Homeserver's account | Disk used at `/` |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

@@ -7,7 +7,7 @@ nav:
     - SSH access: ssh.md
     - Matrix access: matrix.md
     - What a program reads: lines.md
-    - Measured machines: machines.md
+    - Which server for what: machines.md
     - Task certificates: task-certificates.md
     - Testing: testing.md
     - Decisions: decisions.md

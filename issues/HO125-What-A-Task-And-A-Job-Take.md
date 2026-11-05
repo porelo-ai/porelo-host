@@ -20,3 +20,9 @@ idle run makes. **Until this is done, a size that has to hold work does not rest
   point. It takes a variable the measuring run alone sets, and it has to reach `up` there. The first one set a variable in a play
   that starts `up` as a separate process, so it never arrived, and it was taken out unused. Pass it on the run's own command line,
   tested not to reach any other `up`.
+
+## What it opens
+
+- **[HO119](README.md#ho119)'s sizes:** each "not measured" there, the rule for parallel jobs, and what a person gives up below a size.
+- **`disk_free_gib`** in the check's limits, unset until work's disk is read.
+

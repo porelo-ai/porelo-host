@@ -1,6 +1,6 @@
 # HO119 — Which Server For What
 
-**Status:** Backlog.
+**Status:** Review.
 
 **What must be true.** A person reads one page and knows which server to take for what they will run: system, CPUs, memory,
 disk, KVM yes or no. Each number on it is measured, or marked "not measured". What `up` can tell early it refuses early.
@@ -44,3 +44,16 @@ and its measured numbers go in that check's limits.
 - Its tables made from [HO120](README.md#ho120)'s result files, at least two machines' worth.
 - [HO121](README.md#ho121)'s limit for free disk set from the measures, or this issue says why no number holds.
 - The interface's field for concurrent jobs and its words can take their numbers from the page.
+
+## Result
+
+The page stands in `doc/machines.md`, its summary made from [HO120](README.md#ho120)'s three files. **It recommends no size,** as the page may not rest on what
+is not measured, and says so at its head: each size is "not measured", with the idle figures beside it.
+
+- **Its tables:** the summary and the machines' come from the files; "What to take" is written by hand, as every size in it is "not measured". The files are three local VMs on one
+  machine, differing only in memory: at least two machines' worth in number, not in kind.
+- **So what must be true is not yet true:** a person cannot yet read which server to take. [HO125](README.md#ho125) opens that, and the rented rows wait on the operator's word.
+- **Free disk:** `disk_free_gib` stays unset, as idle numbers say nothing of what work fills. It waits for [HO125](README.md#ho125).
+- **Parallel jobs:** the rule is stated and not judged. How many jobs make sense, and whether 2 and half are right, need [HO125](README.md#ho125).
+- **The interface's field for concurrent jobs** has no measured number to take yet; it can take the rule's words and its bounds, 1 CPU and 768 MiB to 4 CPUs and 8 GiB.
+- **The first-run howto's line** lives in `porelo/doc`, and is not changed from here.

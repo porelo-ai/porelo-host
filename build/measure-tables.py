@@ -11,6 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 START = "<!-- measures:start -->"
 END = "<!-- measures:end -->"
+SIZES_START = "<!-- sizes:start -->"
+SIZES_END = "<!-- sizes:end -->"
 
 
 SERVICES = ("porelo-forge", "porelo-runner", "porelo-matrix")
@@ -80,7 +82,7 @@ def machine_table(path):
         f"### {path.stem}",
         "",
         f"{named('provider')} {named('offer')}: {named('cpu.count')} CPUs of {named('cpu.model')}, "
-        f"{shown(memory, 'MiB')}, {named('system')}, KVM {named('kvm')}; "
+        f"{shown(memory, 'MiB')}, {named('system')}, `/dev/kvm` answers: {named('kvm')}; "
         f"collection {named('collection.version')}, from {named('distribution')}.",
         "",
         "| Shape | Reading | `up` took | In use | With page cache | Forge's account | Runner's account "
@@ -123,6 +125,63 @@ def tables(directory):
     return "\n".join(machine_table(path) for path in files)
 
 
+def ranged(held, rows, form):
+    """What the readings hold, smallest to largest, how many of three if not all; with none, why."""
+    if not held:
+        return shown(rows[0]) if rows else "not measured"
+    values = [form(row["value"]) for row in held]
+    unit = "MiB" if isinstance(values[0], int) else "GiB"
+
+    def text(value):
+        return str(value) if unit == "MiB" else f"{value:.1f}"
+
+    told = (
+        text(min(values)) if text(min(values)) == text(max(values)) else f"{text(min(values))} to {text(max(values))}"
+    )
+    return f"{told} {unit}" + (f", {len(held)} of 3 readings" if len(held) < 3 else "")
+
+
+def summary(directory):
+    """Each machine's in-use range by shape, saying how many readings hold it; what no reading holds says so."""
+    files = sorted(directory.glob("*.json"))
+    if not files:
+        return "Nothing is measured until a result file exists under `doc/measures/`.\n"
+    lines = [
+        "| Machine | Its memory | Shape | In use, idle | Disk used at `/`, idle |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for path in files:
+        facts = read(path)
+        total = next((r for r in facts if r["field"] == "memory.total" and r["step"] == "machine"), None)
+        for shape in ("none", "room", "forge", "both"):
+
+            def told(field, subject, form):
+                rows = [
+                    row
+                    for row in facts
+                    if row["step"] == f"idle.{shape}" and row["field"] == field and row.get("subject") == subject
+                ]
+                return ranged([row for row in rows if row["value"] is not None], rows, form)
+
+            columns = [
+                path.stem,
+                shown(total, "MiB"),
+                f"`{shape}`",
+                told("memory.anon", "host", lambda v: v // 1024**2),
+                told("disk.used", "/", lambda v: v / 1024**3),
+            ]
+            lines.append("| " + " | ".join(cell(column) for column in columns) + " |")
+    return "\n".join(lines) + "\n"
+
+
+def block(text, start, end, content):
+    """Replace one marked block, refusing a page without its one ordered pair."""
+    if text.count(start) != 1 or text.count(end) != 1 or text.index(end) < text.index(start):
+        raise ValueError("the machine page needs one ordered pair of measure markers")
+    before, rest = text.split(start)
+    return before + start + "\n\n" + content + "\n" + end + rest.split(end)[1]
+
+
 def main(arguments=None, directory=None, page=None):
     """Replace only the marked block, or compare without writing."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -131,11 +190,9 @@ def main(arguments=None, directory=None, page=None):
     directory = directory if directory is not None else ROOT / "doc/measures"
     page = page if page is not None else ROOT / "doc/machines.md"
     original = page.read_text(encoding="utf-8")
-    if original.count(START) != 1 or original.count(END) != 1 or original.index(END) < original.index(START):
-        raise ValueError("the machine page needs one ordered pair of measure markers")
-    before, rest = original.split(START)
-    after = rest.split(END)[1]
-    wanted = before + START + "\n\n" + tables(directory) + "\n" + END + after
+    wanted = block(original, START, END, tables(directory))
+    if SIZES_START in original:
+        wanted = block(wanted, SIZES_START, SIZES_END, summary(directory))
     if options.check:
         if original != wanted:
             print("machine tables differ from result files; run python3 build/measure-tables.py", file=sys.stderr)

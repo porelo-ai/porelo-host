@@ -3,7 +3,7 @@
 Brings a Porelo project up on a server and takes it down again, owned or rented by the hour: the Ansible collection
 `porelo.host`, run on the host itself with `-c local` and the [JSON line callback](lines.md) `porelo.host.lines`.
 
-[Measured machines](machines.md) records disposable measuring runs and keeps missing readings explicit.
+[Which server for what](machines.md) records disposable measuring runs and keeps missing readings explicit.
 
 **`porelo.host.up`, in two plays around the person's step.** The first play asks `check`, one read-only look at the machine reporting everything it lacks at once, then runs `base` (packages, KVM with libvirt only where `porelo_host_kvm` asks for it,
 podman, the SSH policy and a firewall allowing only port 22 on public interfaces), `porelo`'s install and setup script (which makes Porelo's account with linger and subordinate ids), `porelo setup`

@@ -621,3 +621,49 @@ def test_an_unusable_output_directory_leaves_no_lock_made(tmp_path, monkeypatch)
     arguments = ["--fresh", "--out", str(tmp_path / "missing/result.json"), "--given", "{}"]
     assert module.main(arguments, machine) == 2
     assert not any("porelo-host-measure.lock" in str(path) for path in opened)
+
+
+def test_the_summary_says_each_machines_range_by_shape_and_no_figure_a_reading_lacks(tmp_path):
+    """Prevent the sizing table giving a number no reading holds, or hiding that a reading was not settled."""
+    module = load(TABLES)
+    mib = 1024**2
+
+    def fact(field, value, step, sample=None, subject=None, why=None):
+        row = {"field": field, "value": value, "unit": "bytes", "step": step}
+        row.update({key: item for key, item in (("sample", sample), ("subject", subject), ("why", why)) if item})
+        return row
+
+    facts = [
+        fact("memory.total", 4096 * mib, "machine"),
+        fact("memory.anon", 300 * mib, "idle.room", "first", "host"),
+        fact("memory.anon", 310 * mib, "idle.room", "second", "host"),
+        fact("memory.anon", None, "idle.room", "third", "host", "memory did not settle"),
+        fact("disk.used", 4 * 1024 * mib, "idle.room", "first", "/"),
+        fact("disk.used", 4 * 1024 * mib, "idle.room", "second", "/"),
+        fact("memory.anon", 500 * mib, "idle.forge", "first", "host"),
+        fact("memory.anon", None, "idle.forge", "second", "host", "a stop"),
+        fact("memory.anon", None, "idle.forge", "third", "host", "a stop"),
+        fact("memory.anon", None, "idle.none", "first", "host", "the check refused"),
+        fact("disk.used", None, "idle.none", "first", "/", "the check refused"),
+    ]
+    (tmp_path / "small.json").write_text(json.dumps({"v": 1, "facts": facts}))
+    summary = module.summary(tmp_path)
+    assert "| small | 4096 MiB | `room` | 300 to 310 MiB, 2 of 3 readings | 4.0 GiB, 2 of 3 readings |" in summary
+    assert "| `forge` | 500 MiB, 1 of 3 readings |" in summary
+    assert "| `none` | not measured: the check refused | not measured: the check refused |" in summary
+    assert "| small | 4096 MiB | `both` | not measured | not measured |" in summary
+
+
+def test_the_page_keeps_the_summary_built_and_refuses_it_stale(tmp_path):
+    """Prevent the sizing table drifting from the files beside the full ones."""
+    module = load(TABLES)
+    assert module.SIZES_START in (ROOT / "doc/machines.md").read_text()
+    measures = tmp_path / "measures"
+    measures.mkdir()
+    fixture = Path(__file__).parent / "measure/result.json"
+    (measures / "fixture.json").write_text(fixture.read_text())
+    page = tmp_path / "machines.md"
+    page.write_text(f"{module.SIZES_START}\n{module.SIZES_END}\n<!-- measures:start -->\n<!-- measures:end -->\n")
+    assert module.main([], measures, page) == 0
+    assert "fixture" in page.read_text().split(module.SIZES_END)[0]
+    assert module.main(["--check"], measures, page) == 0
