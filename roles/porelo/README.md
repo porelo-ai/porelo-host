@@ -87,7 +87,6 @@ Ubuntu 26.04, run as root on the host itself (`-c local`).
 | `porelo_key_fingerprint` | in `defaults/main.yml` | The fingerprint the package key must have. |
 | `porelo_repository_url` | in `defaults/main.yml` | Porelo's apt repository. |
 | `porelo_account` | required (account entry points only) | The account Porelo's tasks run as when an account entry point is called directly. |
-| `porelo_setup_script` | `/usr/share/porelo/setup/porelo-setup.sh` | Porelo's setup script, as the package `porelo` ships it. |
 | `porelo_machine_file` | `/etc/porelo-host/setup/machine.yml` | The machine file read by `project` and `down` when called directly. |
 
 ## Example

@@ -1,5 +1,5 @@
 ---
-- name: down | Read the account, if up got as far as Porelo's setup script
+- name: down | Read the account, if up got as far as making it
   ansible.builtin.getent:
     database: passwd
     key: "{{ base_account }}"

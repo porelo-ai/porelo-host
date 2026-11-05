@@ -19,7 +19,7 @@ says why.
 | The release's publish job unpacks the build's artifact | An accepted risk: `unzip` parses an archive the build job made, beside the token that writes the release. | [Why](#the-releases-publish-job-unpacks-the-builds-artifact) |
 | The changelog | `CHANGELOG.md`, Keep a Changelog, as in every Porelo repository; no `antsibull-changelog`. | [Why](#the-changelog) |
 | An agent is installed from Porelo's catalogue as it is | Every package named as kind `agent` is installed; the catalogue reads every apt source on the host. | [Why](#an-agent-is-installed-from-porelos-catalogue-as-it-is) |
-| Porelo's setup script | It comes in the `porelo` package from Porelo's apt repository, which the role adds by its pinned fingerprint. | [Why](#porelos-setup-script) |
+| Porelo's setup script | It is not run: the role installs what it would, from Porelo's apt repository, which it adds by its pinned fingerprint. | [Why](#porelos-setup-script) |
 | The forge's accounts | Forgejo and its runner run as `porelo-forge` and `porelo-runner`, never as Porelo's account. | [Why](#the-forges-accounts) |
 | Whether the forge runs | A host setting, `porelo_host_forge`, written by the interface beside the account; Porelo changes nothing for it. | [Why](#whether-the-forge-runs) |
 | How a job publishes to the registry | With the account `porelo-publisher`'s package token, an organization Actions secret, on every branch. | [Why](#how-a-job-publishes-to-the-registry) |
@@ -141,8 +141,9 @@ needs no change.
 ## Porelo's setup script
 
 The role adds Porelo's apt repository only once the downloaded signing key has the fingerprint Porelo's
-`getting-started.md` pins, installs `porelo` from it, and runs `/usr/share/porelo/setup/porelo-setup.sh` from that
-package for the account and the extra packages, rather than fetching an unpinned script or keeping a copy here.
+`getting-started.md` pins, and installs what `/usr/share/porelo/setup/porelo-setup.sh` would, Porelo's from there and the rest from Ubuntu's archive,
+rather than fetching an unpinned script or running it: `porelo-host-person` makes each person's account, with a subordinate ID range of its own, which the
+script would give them alike.
 
 ## The forge's accounts
 

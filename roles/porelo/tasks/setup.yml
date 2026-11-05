@@ -1,5 +1,5 @@
 ---
-- name: setup | Read the account Porelo's setup script made
+- name: setup | Read Porelo's account
   ansible.builtin.getent:
     database: passwd
     key: "{{ porelo_account }}"
