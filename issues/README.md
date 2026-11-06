@@ -54,6 +54,8 @@ it is left out.
 
 | # | Size | Blocked by | Open questions | What it covers |
 |---|---|---|---|---|
+| <a id="ho40"></a>[HO40](HO40-The-Build-Runs-On-The-Hosts-Forge-As-On-GitHub.md) | M | - | 1 | The move's builds on the host's forge: `build.yml` green on the host's Forgejo and on GitHub unchanged, with task branches built, the tools without `podman run`, snapshots by variable and Molecule on a machine with KVM. |
+| <a id="ho39"></a>[HO39](HO39-The-Hosts-Agent-Works-In-A-Porelo-Task.md) | S | [HO40](#ho40) | 1 | porelo-host's agent, `Agent Host`, in a Porelo task on the move's host, with a way back: the image from `porelo.yml`. |
 
 ## Accepted
 
@@ -82,8 +84,6 @@ it is left out.
 | <a id="ho77"></a>[HO77](HO77-Each-Job-In-A-Network-Of-Its-Own.md) | - | - | Concurrent jobs on a host cannot reach one another's network, and no host login reaches Forgejo over TCP. |
 | <a id="ho58"></a>[HO58](HO58-The-Services-Podman-Kept-Small.md) | - | - | Once a day, and after a missed day, each service account's Podman loses the images and volumes no container used for a set time. |
 | <a id="ho54"></a>[HO54](HO54-The-Host-Helpers-Hardened.md) | - | - | The people's SSH drop-in read first and a project registration retried after a forge timeout. |
-| <a id="ho40"></a>[HO40](HO40-The-Build-Runs-On-The-Hosts-Forge-As-On-GitHub.md) | - | - | The move's builds on the host's forge: `build.yml` green on the host's Forgejo and on GitHub unchanged, with task branches built, the tools without `podman run`, snapshots by variable and Molecule on a machine with KVM. |
-| <a id="ho39"></a>[HO39](HO39-The-Hosts-Agent-Works-In-A-Porelo-Task.md) | - | [HO40](#ho40) | porelo-host's agent, `Agent Host`, in a Porelo task on the move's host, with a way back: the image from `porelo.yml`. |
 | <a id="ho30"></a>[HO30](HO30-The-Forges-Job-Bounds-Measured.md) | - | - | A running job's container measured to carry its bounds, beyond what Molecule reads from the files the roles write. |
 | <a id="ho28"></a>[HO28](HO28-The-Forges-Events-Routed-To-Each-Accounts-Porelo.md) | - | - | Optional speed-up: the forge's webhooks, reviews included, reported to one router on the host, which checks the signature and hands only a wake-up hint to the daemon of the account whose task it concerns, known from the pusher's forge account or the pull request's branch. |
 | <a id="ho27"></a>[HO27](HO27-The-Forges-Jobs-Told-Where-The-Pool-Is.md) | - | - | The forge's runner tells every job where the VM pool is, so one workflow takes a pool account on the forge and rents a server on GitHub. |
