@@ -57,7 +57,7 @@ they stay until the repositories' owner removes them, as for any host. `start` r
 volume is still there. A failed or interrupted `start` deletes what it made and exits 1 naming anything libvirt still lists.
 `up` is believed only by its lines: none failed, none waiting, and its summary of the host written.
 
-`--bare` stops once the VM answers ssh, as a provider hands a server over, and prints its host key's fingerprint. A
+`--bare` stops once the VM answers ssh, as a provider hands a server over, and prints its host key's fingerprint. Its own account's key is also pinned where the host's sshd reads keys after `up`, so `ssh` keeps its way in. A
 person then prepares it in the interface's *Prepare a server* on its address. The bootstrap line the dialog shows runs
 in the VM's own account, reached with `build/rehearse-move.sh ssh`, and from then on the interface logs in as root and
 runs `up` itself. Such a host is taken down by the interface; `down` here then only deletes the VM.

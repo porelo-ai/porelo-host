@@ -150,6 +150,17 @@ start() {
         || fail "cloud-init on $name did not finish cleanly: $(on_vm cloud-init status --long < /dev/null 2>&1)"
     say "$name is up at $(cat "$state/address") after $(($(date +%s) - started)) s"
     if [ -n "$bare" ]; then
+        # The host's sshd reads an account's keys only from /etc/ssh/authorized_keys once up has run; the run's own key
+        # is pinned there, so ssh and a watch from here keep their way in. Nothing else is set up.
+        on_vm sudo sh -s "$account" <<'EOF' || fail "the run's key could not be pinned on $name"
+set -eu
+umask 022
+install -d -m 0755 /etc/ssh/authorized_keys
+awk '$1 == "ssh-ed25519" { print $1 " " $2; exit }' "/home/$1/.ssh/authorized_keys" > "/etc/ssh/authorized_keys/$1"
+[ -s "/etc/ssh/authorized_keys/$1" ]
+EOF
+        # A person's window prepares and takes down such a host; down here only deletes the VM.
+        : > "$state/bare"
         say "bare, as a provider hands a server over: its host key $(ssh-keygen -lf "$state/host_ed25519.pub" | cut -d' ' -f2)"
         return
     fi
@@ -229,7 +240,7 @@ EOF
 down() {
     name=$(recorded)
     # The host's own down first, as on a rented host; a VM that does not run has nothing left to take down in it.
-    if virsh domstate "$name" 2>/dev/null | grep -qx running; then
+    if [ ! -e "$state/bare" ] && virsh domstate "$name" 2>/dev/null | grep -qx running; then
         on_vm sudo bash -s <<'EOF' || fail "down on $name failed; the VM is kept, run down again"
 set -uo pipefail
 # A host a person's window prepared is taken down by that window; only the rehearsal's own up is taken down here.

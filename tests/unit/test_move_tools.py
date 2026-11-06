@@ -348,3 +348,17 @@ def test_a_size_that_is_no_whole_number_is_refused_before_anything_is_made(tmp_p
     assert done.returncode != 0, "a start with that size must fail"
     assert calls == "", "nothing is listed, fetched or made"
     assert not state.exists(), "no run's directory is made"
+
+
+def test_down_of_a_bare_run_deletes_the_vm_without_asking_it(tmp_path):
+    """Prevent down keeping a bare VM a person's window prepared, whose up took the run's way in."""
+    state, call = rehearsal(tmp_path, running=True)
+    state.mkdir(parents=True)
+    (state / "name").write_text("porelo-host-rehearsal-20261106t150000z\n")
+    (state / "address").write_text("192.168.122.9\n")
+    (state / "bare").write_text("")
+    done, calls = call("down")
+    assert done.returncode == 0, done.stderr
+    assert "ssh " not in calls, "nothing is asked of the VM itself"
+    assert "porelo-vm delete porelo-host-rehearsal-20261106t150000z" in calls, "the VM is deleted"
+    assert not state.exists(), "the run's directory goes with it"
