@@ -15,6 +15,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho131"></a>[HO131](HO131-A-Task-Reads-Its-Projects-Snapshots.md) | S | - | A task's token also reads its organization's packages, `read:package`, so a task resolves its project's snapshots from the host's forge; it writes none. |
 | <a id="ho129"></a>[HO129](HO129-The-Web-Gate-Serves-Its-Own-Site-Alone.md) | S | - | The web gate refuses a `Host` other than the forge's own site, and on a request that changes something a foreign `Origin` or a cross-site `Sec-Fetch-Site`, so another page in the browser cannot act as the person. |
 | <a id="ho126"></a>[HO126](HO126-A-Reverted-Pool-VM-Keeps-The-Snapshots-Clock.md) | - | - | A pool VM reverted to its live snapshot keeps that clock, and `apt` refuses what was published since; the host's time is set by the guest agent. |
 | <a id="ho116"></a>[HO116](HO116-The-Firewall-Left-By-Down.md) | - | - | `down` leaves the firewall's file and, by reading, its unit: taken off, or said why it stays |
@@ -39,7 +40,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho131"></a>[HO131](HO131-A-Task-Reads-Its-Projects-Snapshots.md) | S | - | A task's token also reads its organization's packages, `read:package`, so a task resolves its project's snapshots from the host's forge; it writes none. |
 
 ## Backlog
 

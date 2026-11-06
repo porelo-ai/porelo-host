@@ -101,8 +101,10 @@ Porelo reads build verdicts and failed-job logs through the `forgejo` build read
 delivers them into the task's `/porelo/files`. Where the forge is enabled, `up` installs `porelo-adapter-forgejo`, which
 provides `/usr/libexec/porelo/builds/forgejo`. The host keeps no lasting token for it or for the task gates. Each
 task's gate pushes as `porelo-<login>`, a member of the project's `developers` team, with the token the host made for
-that task at its start. The reader uses the person's own forge token. Tasks receive no forge socket; the host passes
-their branch with the task token outside the container. No forge-specific `/etc/hosts` block is installed.
+that task at its start. That token also reads, and never writes, the packages of every organization `porelo-<login>`
+is in, so a task can resolve its project's snapshots with it. Forgejo's scopes name no organization: only Porelo's
+task gate can hold a task to its own project's. The reader uses the person's own forge token. Tasks receive no forge
+socket; the host passes their branch with the task token outside the container. No forge-specific `/etc/hosts` block is installed.
 
 The reader receives its credential from the vault for each call, independently of any task access to declared services.
 The project's build configuration names `forge: forgejo` and a token credential, with its API transport reaching

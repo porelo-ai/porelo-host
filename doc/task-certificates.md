@@ -34,9 +34,11 @@ the remaining deletions; any failure still returns nonzero. Expiration cleanup c
 Admission creates the person's forge users without tokens. `sudo porelo-host-person forge-token` replaces all tokens
 of the calling person's forge login and answers one token alone on stdout. Its scopes are `write:repository`,
 `write:issue`, `write:organization` and `read:user`; organization and user access support the person's own forge calls.
-Task tokens belong to `porelo-<login>`, have distinct names and use `write:repository`. The existing token-generation
-command supplies API scopes with no repository selector. Repository write access reaches repositories granted to that
-forge identity by its teams; the gate must restrict use to the repository certified for the task. A token scope alone
+Task tokens belong to `porelo-<login>`, have distinct names and use `write:repository` and `read:package`, the
+latter so a task resolves its project's snapshots. The existing token-generation command supplies API scopes with no
+repository or organization selector. Repository write and package read reach every organization whose teams name that
+forge identity, a task of the default project's too; the gate must restrict use to the project and repository
+certified for the task. A token scope alone
 does not provide that gate restriction. The pinned server's additional token restriction options remain unverified.
 
 Organization revocation locks the account, ends its sessions and deletes every token of the person's forge users after

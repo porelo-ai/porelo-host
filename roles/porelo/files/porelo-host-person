@@ -168,8 +168,9 @@ ADMIN = "porelo-admin"
 TASK_TOKEN = "porelo-task-"
 # A person's own forge token makes teams and Actions variables with the person's token and reads their standing in the organization.
 PERSON_SCOPES = "write:repository,write:issue,write:organization,read:user"
-# Forgejo's scopes name kinds of API, never a repository: a task reaches what porelo-<user>'s teams give it.
-TASK_SCOPES = "write:repository"
+# Forgejo's scopes name kinds of API, never a repository: a task reaches what porelo-<user>'s teams give it, its
+# project's snapshots among them, as the developers team reads packages.
+TASK_SCOPES = "write:repository,read:package"
 # ssh-keygen -L shows a certificate's validity in local time; it runs with TZ=UTC, so this reads it as UTC.
 TIME = "%Y-%m-%dT%H:%M:%S"
 # pam_umask reads the GECOS field's fifth part first, ahead of USERGROUPS_ENAB's 002 for a group of one's own:

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A task's token also reads packages** (`read:package`), so a task can resolve its project's snapshots from the
+  host's forge. It reads those of every organization its person's task account is in and writes none; Porelo's task
+  gate holds a task to its own project's.
+
 ### Security
 
 - **The forge's web gate serves the forge's own site alone,** so another page in the person's browser cannot act as

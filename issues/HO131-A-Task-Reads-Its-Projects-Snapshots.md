@@ -1,6 +1,6 @@
 # HO131 — A Task Reads Its Project's Snapshots
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** S - one scope in `porelo-host-person`'s task token, its unit test, a Molecule step on the real forge and the
 documents.
 
@@ -12,11 +12,14 @@ gate, not the token, bounds it to the task's own project.
 
 - `roles/porelo/files/porelo-host-person`: `TASK_SCOPES` becomes `write:repository,read:package`. The account
   `porelo-<login>` already reads the organization's packages through its `developers` team (`repo.packages: read`);
-  the token's scope is what Forgejo still refuses. The task start still answers one token alone on stdout.
+  Forgejo 17.0.0 answers a `write:repository` token there `401`, measured in Molecule with a real task start. The task
+  start still answers one token alone on stdout. A write stays refused twice: by the scope, and by the team, which
+  reads packages only; Molecule saw a `write:package` task token refused too.
 - Red first in `tests/unit/roles/test_porelo_host_person_tasks.py`: the task token is asked with exactly
   `write:repository,read:package`.
-- Molecule, on the real Forgejo: a task token reads a Maven file of its organization (200), its `PUT` there is refused,
-  and a package of an organization its person is not in is not read.
+- Molecule, on the real Forgejo, with a token from a real task start: it reads a package of its organization (200), its
+  `PUT` of a name nobody holds is refused (401 or 403), and a package of an organization its person is not in is
+  refused; a generic package, as Forgejo checks the scope alike for every kind. All it makes goes, also after a failure.
 - `doc/task-certificates.md` and `doc/local-forge.md` name the scope; `CHANGELOG.md`.
 
 ## Acceptance
@@ -25,7 +28,5 @@ gate, not the token, bounds it to the task's own project.
 
 ## To be checked
 
-- That Forgejo 17.0.0 refuses a `write:repository` token on `/api/packages` while the team grants the read: read in the
-  scope model, not yet measured. Molecule's step measures it red first.
 - A real task's Maven resolving a snapshot through its gate needs a host with Porelo's task start and the forge
   together; it is not measured here.

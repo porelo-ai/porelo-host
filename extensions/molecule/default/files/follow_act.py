@@ -264,8 +264,9 @@ if FORGE.exists():
         text, unused, code = done.stdout.rpartition("\n")
         return int(code or 0), json.loads(text) if text.strip().startswith(("{", "[")) else None
 
-    def package(method, secret):
-        # With the one user name the shared settings send for every organization's publisher, not the token's owner.
+    def package(method, secret, user="porelo-publisher", organization=PROJECT):
+        # By default the one user name the shared settings send for every organization's publisher, not the token's
+        # owner.
         done = run(
             "curl",
             "-sS",
@@ -281,8 +282,8 @@ if FORGE.exists():
             "%{http_code}",
             # With curl's form content type the registry looks for a form's file and answers 500.
             *(["--data-binary", "probe", "-H", "content-type: application/octet-stream"] if method == "PUT" else []),
-            f"http://localhost/api/packages/{PROJECT}/generic/follow-act/1/probe",
-            given=f'user = "porelo-publisher:{secret}"\n',
+            f"http://localhost/api/packages/{organization}/generic/follow-act/1/probe",
+            given=f'user = "{user}:{secret}"\n',
         )
         return done.stdout.strip()
 
@@ -320,8 +321,55 @@ if FORGE.exists():
     check(written.startswith("2"), "the publisher's token to write a package", written)
     read = package("GET", reader)
     check(read == "200", "the read token to read the package", read)
-    gone = package("DELETE", writer)
-    check(gone.startswith("2"), "the act's package to go", gone)
+
+    # A task's token, made by a real task start of fb's: it reads its project's snapshots, writes none, and reads no
+    # organization fb is not in. Everything it makes goes again, also when a step fails.
+    other = "follow-other"
+    record = Path("/var/lib/porelo-host/tasks/fb/pkgread.json")
+    try:
+        code = forge("POST", "orgs", {"username": other, "visibility": "private"})[0]
+        check(code == 201, "a second organization fb is not in", code)
+        placed = package("PUT", forge_token, "porelo-admin", other)
+        check(placed.startswith("2"), "a package in the second organization", placed)
+        there = package("GET", forge_token, "porelo-admin", other)
+        check(there == "200", "the second organization's package to be readable", there)
+        with tempfile.TemporaryDirectory(prefix="task-act-") as task_keys:
+            made = run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "", "-f", f"{task_keys}/task")
+            check(made.returncode == 0, "a task key", made.stderr)
+            signed = run(
+                "ssh-keygen", "-q", "-s", str(KEYS / "fb"), "-I", "porelo task pkgread by fb",
+                "-n", f"task:{PROJECT}:pkgread", "-V", "-5m:+1h", f"{task_keys}/task.pub",
+            )  # fmt: skip
+            check(signed.returncode == 0, "fb's certificate for the task", signed.stderr)
+            issued = Path(f"{task_keys}/task-cert.pub")
+            certificate = issued.read_text(encoding="utf-8") if issued.exists() else ""
+        started = run("runuser", "-u", "fb", "--", "sudo", "-n", HELPER, "task", "pkgread", given=certificate)
+        # Its stdout is the token alone, so only stderr is ever shown.
+        task_token = started.stdout.strip()
+        check(started.returncode == 0 and task_token, "fb's task start to answer a token", started.stderr)
+        if task_token:
+            read = package("GET", task_token, "porelo-fb")
+            check(read == "200", "the task's token to read its project's package", read)
+            gone = package("DELETE", writer)
+            check(gone.startswith("2"), "the act's package to go", gone)
+            # On a name nobody holds, so only a refusal of the write itself answers other than 201.
+            refused = package("PUT", task_token, "porelo-fb")
+            check(refused in ("401", "403"), "the task's token refused a package write", refused)
+            refused = package("GET", task_token, "porelo-fb", other)
+            check(refused in ("401", "403", "404"), "the task's token refused another organization's package", refused)
+    finally:
+        ended = run("runuser", "-u", "fb", "--", "sudo", "-n", HELPER, "task", "--end", "pkgread")
+        check(ended.returncode == 0 or not record.exists(), "fb's task to end", ended.stderr)
+        record.unlink(missing_ok=True)
+        if record.parent.exists() and not any(record.parent.iterdir()):
+            record.parent.rmdir()
+        for organization in (PROJECT, other):
+            package("DELETE", forge_token, "porelo-admin", organization)
+        code = forge("DELETE", f"orgs/{other}")[0]
+        check(code in (204, 404), "the second organization to go", code)
+        for organization in (PROJECT, other):
+            left = package("GET", forge_token, "porelo-admin", organization)
+            check(left == "404", f"no package left in {organization}", left)
 
     def followed():
         # A repository made here has no central address, so its members' push configs say so; only that may fail.

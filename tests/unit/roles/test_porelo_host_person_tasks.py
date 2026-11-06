@@ -385,7 +385,7 @@ def test_a_certificate_signed_by_the_persons_key_is_recorded_and_its_token_answe
     output = capsys.readouterr()
     token = output.out
     assert [item for item in tasks.forge.tokens["porelo-alice"].values() if item["secret"] == token] == [
-        {"name": "porelo-task-t1", "scopes": "write:repository", "secret": token}
+        {"name": "porelo-task-t1", "scopes": "write:repository,read:package", "secret": token}
     ]
     path = records(tasks) / "t1.json"
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
