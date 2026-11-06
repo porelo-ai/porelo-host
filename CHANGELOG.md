@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A person admitted before their project was carried reaches the Matrix gate.** Their `porelod` was started
+  without `porelo-people`, which they joined later, so the first task start failed at the gate's socket. The
+  follow now restarts such a user manager where no task certificate of the person is in force.
 - **A project file signed anew reaches the host's copy.** The follow brought the project's own `main` only up to the
   file's last change, below an empty commit that signs it anew, so Porelo refused every task there for an unsigned
   file. It now goes to the newer of the two, as Porelo judges the file.

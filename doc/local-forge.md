@@ -227,6 +227,10 @@ person's directories carry no group write; an account admitted before gets it on
 starts the person's user manager and runs `porelo setup` as the person with nothing on stdin, which registers the hooks
 and starts `porelod` for good, so the tunnel's `porelod.sock` answers before the person's first task. A daemon that
 does not start leaves the admission standing and says so on stderr: `porelo setup` as the person starts it.
+A person who joins `porelo-people` later, when a project of theirs is first carried, has a user manager started
+without it, and so a `porelod` that cannot open the Matrix gate's socket. Each follow finds such a manager by its
+groups and restarts it with `porelod`, unless a task certificate of the person is still in force; then it says so
+on stderr and restarts it at the first follow after the person's tasks have ended.
 Logins match `[a-z][a-z0-9-]{0,31}` and cannot be `porelo` or start with `porelo-`. A purged login is permanently
 refused through root's mode `0600` `/etc/porelo-host/people/purged`, including on a later organization intake.
 

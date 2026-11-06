@@ -1151,3 +1151,63 @@ def test_retry_does_not_forget_project_after_failed_follow_publication(cards):
     cards.calls.clear()
     follow(cards)
     assert ("teams", ("alpha", {"alice": membership(cards, "alice")})) in cards.calls
+
+
+def managers(cards, monkeypatch, groups):
+    """Each person's user manager running with the given supplementary groups, porelo-people being gid 4242."""
+    monkeypatch.setattr(
+        cards.scope["grp"], "getgrnam", lambda name: SimpleNamespace(gr_mem=["alice", "bob", "charlie"], gr_gid=4242)
+    )
+    host, plain = cards.host, cards.host.runner
+
+    def commands(args, input=None):
+        if args[:2] in (["systemctl", "show"], ["systemctl", "restart"]):
+            pid = 7000 + int(args[-1].removeprefix("user@").removesuffix(".service")) % 1000
+            if args[1] == "restart":  # A manager started anew takes the person's groups as they are now.
+                host.path(f"/proc/{pid}/status").write_text("Name:\tsystemd\nGroups:\t100 4242\n")
+                return plain(args, input=input)
+            return subprocess.CompletedProcess(args, 0, f"{pid}\n", "")
+        return plain(args, input=input)
+
+    host.runner = commands
+    for login, number in (("alice", 0), ("bob", 1), ("charlie", 2)):
+        status = host.path(f"/proc/{7000 + number}/status")
+        status.parent.mkdir(parents=True, exist_ok=True)
+        status.write_text(f"Name:\tsystemd\nGroups:\t{groups}\n")
+
+
+def task_held(cards, login, before):
+    """A task certificate of the person recorded on the host, valid until the given time."""
+    directory = cards.host.path(f"/var/lib/porelo-host/tasks/{login}")
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    directory.chmod(0o700)
+    directory.parent.chmod(0o700)
+    record = {"task": "one", "login": login, "certificate": "c", "fingerprint": "f", "valid_before": before}
+    cards.host.write(directory / "one.json", json.dumps(record), 0o600)
+
+
+def restarted(cards):
+    return [call[0][-1] for call in cards.calls if call[0][:2] == ["systemctl", "restart"]]
+
+
+def test_a_manager_started_before_its_person_joined_porelo_people_is_restarted(cards, monkeypatch):
+    """Prevent porelod running without the group that opens the host's Matrix gate, so a task cannot join its room."""
+    managers(cards, monkeypatch, "100")
+    follow(cards)
+    assert sorted(restarted(cards)) == ["user@1000.service", "user@1001.service", "user@1002.service"]
+
+
+def test_a_manager_that_holds_porelo_people_is_left_running(cards, monkeypatch):
+    """Prevent a follow every five minutes from ending a person's sessions for nothing."""
+    managers(cards, monkeypatch, "100 4242")
+    follow(cards)
+    assert restarted(cards) == []
+
+
+def test_a_person_with_a_task_that_may_run_keeps_the_manager_and_is_told(cards, monkeypatch, capsys):
+    """Prevent the restart from ending a running task; the follow after its certificate ends restarts it."""
+    managers(cards, monkeypatch, "100")
+    task_held(cards, "bob", "2026-10-31T00:00:00Z")
+    follow(cards)
+    assert "user@1001.service" not in restarted(cards)
+    assert "porelod of bob lacks porelo-people" in capsys.readouterr().err

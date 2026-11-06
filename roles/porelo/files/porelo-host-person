@@ -2811,6 +2811,44 @@ class Host:
         groups = self.groups if self.groups is not None else {entry.gr_name for entry in grp.getgrall()}
         for user in sorted(desired - current):
             self.join_groups(user, groups)
+        for user in sorted(desired):
+            self.renew_manager_groups(user)
+
+    def manager_without_people(self, user):
+        """Whether the person's running user manager started before they joined porelo-people, and so lacks it."""
+        try:
+            gid = grp.getgrnam("porelo-people").gr_gid
+            shown = self.runner(["systemctl", "show", "--property=MainPID", "--value", f"user@{self.uid(user)}.service"])
+        except (KeyError, AttributeError, OSError, subprocess.TimeoutExpired, UnicodeError):
+            return False
+        pid = shown.stdout.strip() if shown.returncode == 0 else ""
+        if not pid.isdecimal() or int(pid) == 0:
+            return False
+        try:
+            lines = self.path(f"/proc/{pid}/status").read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeError):
+            return False
+        held = next((line.split()[1:] for line in lines if line.startswith("Groups:")), None)
+        return held is not None and str(gid) not in held
+
+    def renew_manager_groups(self, user):
+        """Restart a person's user manager, porelod with it, that lacks porelo-people, unless a task of theirs may run.
+
+        A process keeps the groups it started with, so a person admitted before any project of theirs was carried runs
+        porelod without the group that opens the host's Matrix gate. A task certificate still in force may stand for a
+        running task, which the restart would end: then the person is told, and a later follow restarts it.
+        """
+        if not self.manager_without_people(user):
+            return
+        now = self.now()
+        if any((certificate_time(str(entry.get("valid_before")).removesuffix("Z")) or now) > now
+               for _, _, entry in self.task_records(user)):
+            print(f"porelo-host-person: porelod of {user} lacks porelo-people until their tasks end; "
+                  "the follow after that restarts it", file=sys.stderr)
+            return
+        self.require(["systemctl"])
+        self.command(["systemctl", "restart", f"user@{self.uid(user)}.service"])
+        self.start_daemon(user)
 
     def forge_project_apply(self, project, admin, persons):
         """Reconcile every project team, removing person and task identities only from this organization."""

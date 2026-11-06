@@ -1,6 +1,6 @@
 # HO136 — A Person's Daemon Takes The Group It Joins Later
 
-**Status:** Implementing.
+**Status:** Review.
 **Kind:** Bug.
 **Size:** S - the follow's group change followed by the person's user manager restarted where it is safe, with unit
 tests and a Molecule step.
@@ -37,3 +37,15 @@ but a running process keeps the groups it started with. The first task start, ru
 
 - Whether the window's long-lived ssh session needs the group too; the task start goes through `porelod`, so it does
   not today.
+
+## Done
+
+- `people_group` checks every admitted person's running user manager by the `Groups:` line of its process. One without
+  `porelo-people` is restarted with `porelod`, unless a task certificate of the person is in force, which may stand for
+  a running task: then the follow says so on stderr and a later follow restarts it.
+- Three unit tests: a manager without the group restarted, one with it left running, and one kept for a task in force
+  with the person told. The first and third were red without the call.
+- **Not done as planned:** the person's status in `org status` names it on stderr of the follow only, in the journal for
+  a timer's follow.
+- The Molecule step checks every admitted person's manager for the group after the follow; the scenario admits its
+  persons with their project already carried, so it shows the end state, not the late join.
