@@ -33,10 +33,9 @@ a fault in the host's setup can stop its own work.
 - The way back is shown once: the task's open work fetched from the host's forge into this machine's checkout, the
   upstream switched back, the local session resumed, as that procedure's way back says.
 
-## Open questions for the operator
+## Answered by the operator
 
-- **Where the move runs:** on the rehearsal's VM, as one more repository of pass 2, or on the rented host once there is
-  one. The task cannot change the host it runs on, so a fault in `up` found inside the task is fixed from this machine.
+- **Where the move runs:** on the rehearsal's VM, as one more repository of pass 2 (operator, 2026-11-06).
 
 ## To be checked
 

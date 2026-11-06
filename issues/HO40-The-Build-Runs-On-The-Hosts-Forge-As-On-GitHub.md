@@ -41,11 +41,10 @@ runner, against porelo-message-sluice's workflows, which already run on both.
 - Seen to fail first: today's `build.yml` on the host's Forgejo.
 - A `v*` tag on the host's forge starts no release that fails.
 
-## Open questions for the operator
+## Answered by the operator
 
-- **Molecule on the forge:** skipped there, with GitHub's run as the one that counts (proposed), or run on a VM of the
-  host's pool ([HO12](README.md#ho12)), which needs the pool on, that issue merged and a kind both forges serve, and makes this
-  issue L.
+- **Molecule on the forge:** skipped there; GitHub's run is the one that counts, and this issue stays M (operator,
+  2026-11-06).
 
 ## To be checked
 
