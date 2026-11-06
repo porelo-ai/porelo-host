@@ -1,6 +1,6 @@
 # HO134 — A Project's Why Gathers Its Repositories' Reasons
 
-**Status:** Backlog.
+**Status:** Accepted (operator, 2026-11-06).
 **Kind:** Bug.
 **Size:** XS - one function of the root helper and its unit tests.
 
