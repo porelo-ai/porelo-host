@@ -38,6 +38,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho129"></a>[HO129](HO129-The-Web-Gate-Serves-Its-Own-Site-Alone.md) | S | - | The web gate refuses a `Host` other than the forge's own site, and on a request that changes something a foreign `Origin` or a cross-site `Sec-Fetch-Site`, so another page in the browser cannot act as the person. |
 
 ## Backlog
 
