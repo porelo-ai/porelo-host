@@ -2802,7 +2802,7 @@ def test_the_projects_own_repository_is_never_taken_off_however_the_file_spells_
     files.run("b", token=True)
     files.state.reply["projects"][0]["repositories"] = ["one"]
     files.run("c", token=True)
-    assert "alpha" not in [name.lower() for name, _ in taken_off(files)]
+    assert "alpha" not in [entry[0].lower() for entry in taken_off(files)]
     assert repositories_said(files)[1]["self"]["state"] != "not-carried"
 
 
