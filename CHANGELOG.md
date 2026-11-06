@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A project file signed anew reaches the host's copy.** The follow brought the project's own `main` only up to the
+  file's last change, below an empty commit that signs it anew, so Porelo refused every task there for an unsigned
+  file. It now goes to the newer of the two, as Porelo judges the file.
 - **A pool VM's clock is set from the host's after each revert,** by a guest agent each VM now has, as a revert brings
   back the snapshot's clock and `apt` then refuses what was published since. The VM's link stays down until it is set.
   A VM whose clock cannot be set stays off and says so; `up` refuses a pool made before this, naming `down` and `up`.

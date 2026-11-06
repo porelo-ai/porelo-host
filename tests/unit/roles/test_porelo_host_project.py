@@ -2416,6 +2416,48 @@ def test_a_code_change_below_the_signed_file_does_not_move(memory_host, monkeypa
     only_main(local)
 
 
+def signed_anew(work):
+    """An empty commit that signs the project file anew, as `porelo project sign --base` makes it."""
+    message = "Sign the file anew\n\nPorelo-Signs-Anew: project.yml\n"
+    subprocess.run(["git", "-C", str(work), *IDENTITY, "commit", "-q", "--allow-empty", "-m", message], check=True)
+
+
+def test_the_hosts_copy_moves_to_a_file_signed_anew(memory_host, monkeypatch, capsys, tmp_path):
+    """Keep a task from reading the unsigned change below a commit that signs it anew, which Porelo judges."""
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local = repositories(tmp_path)
+    signed_anew(work)
+    result, tip, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work)
+    assert result[0] == 0 and json.loads(result[1]) == {"state": "moved"}, result
+    assert git_out(local, "rev-parse", "refs/heads/main") == tip, "main stands on the commit Porelo judges"
+    only_main(local)
+
+
+def test_a_signing_anew_below_the_files_last_change_is_passed_over(memory_host, monkeypatch, capsys, tmp_path):
+    """The newer of the two is judged: a later change of the file stands above an older signing anew."""
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local = repositories(tmp_path)
+    signed_anew(work)
+    central_commit(work, "project.yml", "third")
+    result, tip, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work)
+    assert result[0] == 0 and json.loads(result[1]) == {"state": "moved"}, result
+    assert git_out(local, "rev-parse", "refs/heads/main") == tip
+
+
+def test_a_signing_anew_above_a_code_change_does_not_move(memory_host, monkeypatch, capsys, tmp_path):
+    """Signing the file anew vouches for no other file, so a writer's commit below it still holds main back."""
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local = repositories(tmp_path)
+    before = git_out(local, "rev-parse", "refs/heads/main")
+    central_commit(work, "build.sh", "anyone's")
+    signed_anew(work)
+    result, _, told = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work)
+    assert result[0] == 0 and json.loads(result[1]) == {"state": "other-changes"}, result
+    assert git_out(local, "rev-parse", "refs/heads/main") == before
+    assert not told.exists()
+    only_main(local)
+
+
 def test_a_repository_no_task_works_in_follows_central_whatever_it_holds(memory_host, monkeypatch, capsys, tmp_path):
     """A hand edit at central must not stop later filings where nothing on the host runs what the repository holds."""
     advance_ready(memory_host, monkeypatch, capsys)

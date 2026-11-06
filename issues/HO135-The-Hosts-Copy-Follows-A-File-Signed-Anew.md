@@ -1,6 +1,6 @@
 # HO135 — The Host's Copy Follows A File Signed Anew
 
-**Status:** Implementing.
+**Status:** Review.
 **Kind:** Bug.
 **Size:** S - the advance script's target and the follow's record of it, with unit tests and a Molecule step.
 
@@ -39,3 +39,16 @@ project's `why` said nothing.
 
 - That Porelo's rule is read the same: `ProjectFile.judged` and `TreeRepository.signingAnew` in porelo, which take the
   first-parent line, as Agent Core named them.
+
+## Done
+
+- `ADVANCE_SCRIPT` targets the newer of the last first-parent change of `project.yml` and the last first-parent commit
+  whose `Porelo-Signs-Anew` trailer names `project.yml`. Everything else holds as before: the same file as the verified
+  commit, only forward, and no other file changed since the host's `main`.
+- Three unit tests run the script on real Git repositories: a signing anew on top moves `main` to it, red on the old
+  script; one below a later change is passed over; one above a writer's code change still answers `other-changes`, red
+  on the old script, which moved to the unsigned change.
+- **Not done as planned:** the follow's record. With the target fixed, `main` reaches the commit Porelo judges, which is
+  what the record stood for; the record still names the verified tip, as the copy is asked by it.
+- **Not done as planned:** the Molecule step. The scenario's project repository is made on the host's forge alone,
+  with no central forge to advance from, so the advance is covered by the unit tests, which run the script itself.

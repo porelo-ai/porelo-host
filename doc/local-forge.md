@@ -459,7 +459,8 @@ administrative authority. `/usr/local/sbin/porelo-host-push --pull <project> [re
 `central/main`, in the person's own account with the central token on stdin. Local `main` reaches it by a pull
 request. The project's own repository is the exception, as tasks read `project.yml` there: once Porelo's `project verify`
 has accepted central's file, the follow brings local `main` forward to it, past the branch rule and the push judge, as
-`main` stays closed to every push.
+`main` stays closed to every push. It goes to the commit Porelo judges the file by: the newer of the file's last change
+and the last commit that signs it anew (`Porelo-Signs-Anew: project.yml`) on `main`'s first-parent line.
 
 A project that lists repositories works only in those, so nothing on the host runs what its own repository holds. There
 `project.yml` changes only at the central forge, signed, by Porelo or by hand: that repository's `main` takes no merge on
