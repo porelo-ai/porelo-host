@@ -41,10 +41,15 @@ but a running process keeps the groups it started with. The first task start, ru
 ## Done
 
 - `people_group` checks every admitted person's running user manager by the `Groups:` line of its process. One without
-  `porelo-people` is restarted with `porelod`, unless a task certificate of the person is in force, which may stand for
-  a running task: then the follow says so on stderr and a later follow restarts it.
-- Three unit tests: a manager without the group restarted, one with it left running, and one kept for a task in force
-  with the person told. The first and third were red without the call.
+  `porelo-people` is restarted with `porelod`, unless a container of the person runs (`pgrep -u <login> -x conmon`),
+  a task's among them: then the follow says so on stderr and a later follow restarts it. A failed restart is said on
+  stderr and the follow goes on. Admission joins the groups before `loginctl enable-linger` starts the manager.
+- **Changed after review:** the first cut held the restart on a task certificate in force. That ended a task running
+  past its certificate's end and kept a manager without the group after `task --end`; a running `conmon` is the
+  person's work itself.
+- Unit tests: a manager without the group restarted, one with it left running, one kept for a running container with
+  the person told, one restarted though an ended task's certificate holds, a failed restart said with the follow going
+  on, and admission's group before linger. Each was red on the code before it.
 - **Not done as planned:** the person's status in `org status` names it on stderr of the follow only, in the journal for
   a timer's follow.
 - The Molecule step checks every admitted person's manager for the group after the follow; the scenario admits its

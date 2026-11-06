@@ -881,6 +881,13 @@ def test_admission_starts_the_persons_daemon_with_nothing_on_stdin(host, capsys)
     assert start > host.calls.index(["loginctl", "enable-linger", "alice"])
 
 
+def test_admission_joins_porelo_people_before_linger_starts_the_persons_manager(host):
+    """Prevent each admission starting a manager without the group, which the follow then restarts."""
+    assert host.admit() == 0
+    joined = next(i for i, args in enumerate(host.calls) if args[:2] == ["usermod", "--append"])
+    assert joined < host.calls.index(["loginctl", "enable-linger", "alice"])
+
+
 @pytest.mark.parametrize("missing", ["bus", "porelo", "running"])
 def test_a_daemon_that_does_not_start_leaves_the_admission_standing(host, capsys, missing):
     """Prevent a missing bus, Porelo or a failing setup from taking back the access just given."""

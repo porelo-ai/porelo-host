@@ -229,8 +229,9 @@ and starts `porelod` for good, so the tunnel's `porelod.sock` answers before the
 does not start leaves the admission standing and says so on stderr: `porelo setup` as the person starts it.
 A person who joins `porelo-people` later, when a project of theirs is first carried, has a user manager started
 without it, and so a `porelod` that cannot open the Matrix gate's socket. Each follow finds such a manager by its
-groups and restarts it with `porelod`, unless a task certificate of the person is still in force; then it says so
-on stderr and restarts it at the first follow after the person's tasks have ended.
+groups and restarts it with `porelod`, unless a container of the person runs, a task's among them; then it says so
+on stderr and restarts it at the first follow after the person's containers have ended. A restart that fails is said
+on stderr too, and the follow goes on. Admission joins the group before linger starts the manager.
 Logins match `[a-z][a-z0-9-]{0,31}` and cannot be `porelo` or start with `porelo-`. A purged login is permanently
 refused through root's mode `0600` `/etc/porelo-host/people/purged`, including on a later organization intake.
 

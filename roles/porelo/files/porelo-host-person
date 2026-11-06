@@ -1286,9 +1286,10 @@ class Host:
 
     def grant(self, user, card, groups, uid_range, gid_range, members):
         """Everything of an admission after the account, ending with the record that admits."""
+        # The group before linger starts the person's manager, which keeps the groups it starts with.
+        self.join_groups(user, groups)
         self.enable_linger(user)
         self.subordinate_ids(user, uid_range, gid_range)
-        self.join_groups(user, groups)
         self.admit_runtime(user)
         self.write_authorized_key(user, card["ssh"], self.card_expiry(card.get("expires")))
         self.hooks["forge_admit"](user, card)
@@ -2352,6 +2353,7 @@ class Host:
         if unlocked:
             self.hooks["forge_drop_tokens"](login)
             self.require(["usermod", "loginctl"])
+            self.join_groups(login, groups)
             self.enable_linger(login)
             self.subordinate_ids(login)
             self.command(["usermod", "--expiredate", "", login])
@@ -2836,22 +2838,27 @@ class Host:
         return held is not None and str(gid) not in held
 
     def renew_manager_groups(self, user):
-        """Restart a person's user manager, porelod with it, that lacks porelo-people, unless a task of theirs may run.
+        """Restart a person's user manager, porelod with it, that lacks porelo-people, unless a task of theirs runs.
 
         A process keeps the groups it started with, so a person admitted before any project of theirs was carried runs
-        porelod without the group that opens the host's Matrix gate. A task certificate still in force may stand for a
-        running task, which the restart would end: then the person is told, and a later follow restarts it.
+        porelod without the group that opens the host's Matrix gate. A task runs in a container of the person's, whose
+        conmon the restart would end: then the person is told, and a later follow restarts it. Not a refusal: the
+        follow's other work stands, as when porelod does not start at admission.
         """
         if not self.manager_without_people(user):
             return
-        now = self.now()
-        if any((certificate_time(str(entry.get("valid_before")).removesuffix("Z")) or now) > now
-               for _, _, entry in self.task_records(user)):
-            print(f"porelo-host-person: porelod of {user} lacks porelo-people until their tasks end; "
-                  "the follow after that restarts it", file=sys.stderr)
+        try:
+            self.require(["pgrep", "systemctl"])
+            running = self.command(["pgrep", "-u", user, "-x", "conmon"], accepted=(0, 1)).returncode == 0
+            if running:
+                print(f"porelo-host-person: porelod of {user} lacks porelo-people until their tasks end; "
+                      "the follow after that restarts it", file=sys.stderr)
+                return
+            self.command(["systemctl", "restart", f"user@{self.uid(user)}.service"])
+        except Refusal as error:
+            print(f"porelo-host-person: porelod of {user} lacks porelo-people and was not restarted ({error})",
+                  file=sys.stderr)
             return
-        self.require(["systemctl"])
-        self.command(["systemctl", "restart", f"user@{self.uid(user)}.service"])
         self.start_daemon(user)
 
     def forge_project_apply(self, project, admin, persons):

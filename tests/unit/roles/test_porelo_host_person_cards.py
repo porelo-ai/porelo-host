@@ -44,7 +44,7 @@ def cards(tmp_path, monkeypatch):
         return subprocess.CompletedProcess(args, 0, "", "")
 
     host.runner = commands
-    host.commands = {"gpasswd", "usermod", "loginctl", "systemctl", "runuser", "env", "porelo", "systemd-run"}
+    host.commands = {"gpasswd", "usermod", "loginctl", "systemctl", "runuser", "env", "porelo", "systemd-run", "pgrep"}
     monkeypatch.setattr(
         scope["pwd"],
         "getpwnam",
@@ -1153,14 +1153,22 @@ def test_retry_does_not_forget_project_after_failed_follow_publication(cards):
     assert ("teams", ("alpha", {"alice": membership(cards, "alice")})) in cards.calls
 
 
-def managers(cards, monkeypatch, groups):
-    """Each person's user manager running with the given supplementary groups, porelo-people being gid 4242."""
+def managers(cards, monkeypatch, groups, containers=(), failing=False):
+    """Each person's user manager running with the given supplementary groups, porelo-people being gid 4242.
+
+    The persons named in containers run a container, whose conmon pgrep finds; with failing, a restart fails.
+    """
     monkeypatch.setattr(
         cards.scope["grp"], "getgrnam", lambda name: SimpleNamespace(gr_mem=["alice", "bob", "charlie"], gr_gid=4242)
     )
     host, plain = cards.host, cards.host.runner
 
     def commands(args, input=None):
+        if args[0] == "pgrep":
+            return subprocess.CompletedProcess(args, 0 if args[2] in containers else 1, "", "")
+        if failing and args[:2] == ["systemctl", "restart"]:
+            cards.calls.append((args,))
+            return subprocess.CompletedProcess(args, 1, "", "")
         if args[:2] in (["systemctl", "show"], ["systemctl", "restart"]):
             pid = 7000 + int(args[-1].removeprefix("user@").removesuffix(".service")) % 1000
             if args[1] == "restart":  # A manager started anew takes the person's groups as they are now.
@@ -1204,10 +1212,26 @@ def test_a_manager_that_holds_porelo_people_is_left_running(cards, monkeypatch):
     assert restarted(cards) == []
 
 
-def test_a_person_with_a_task_that_may_run_keeps_the_manager_and_is_told(cards, monkeypatch, capsys):
-    """Prevent the restart from ending a running task; the follow after its certificate ends restarts it."""
-    managers(cards, monkeypatch, "100")
-    task_held(cards, "bob", "2026-10-31T00:00:00Z")
+def test_a_person_with_a_running_container_keeps_the_manager_and_is_told(cards, monkeypatch, capsys):
+    """Prevent the restart from ending a running task, however long it runs past its certificate."""
+    managers(cards, monkeypatch, "100", containers=("bob",))
+    task_held(cards, "bob", "2026-01-01T00:00:00Z")
     follow(cards)
     assert "user@1001.service" not in restarted(cards)
     assert "porelod of bob lacks porelo-people" in capsys.readouterr().err
+
+
+def test_an_ended_task_whose_certificate_holds_does_not_keep_the_manager(cards, monkeypatch):
+    """Prevent a task ended by hand from holding the person without the group until its certificate runs out."""
+    managers(cards, monkeypatch, "100")
+    task_held(cards, "bob", "2099-01-01T00:00:00Z")
+    follow(cards)
+    assert "user@1001.service" in restarted(cards)
+
+
+def test_a_restart_that_fails_is_said_and_the_follow_goes_on(cards, monkeypatch, capsys):
+    """Prevent one person's manager failing the follow, the other persons' restarts and its other work with it."""
+    managers(cards, monkeypatch, "100", failing=True)
+    follow(cards)
+    assert sorted(set(restarted(cards))) == ["user@1000.service", "user@1001.service", "user@1002.service"]
+    assert "porelod of bob lacks porelo-people and was not restarted" in capsys.readouterr().err
