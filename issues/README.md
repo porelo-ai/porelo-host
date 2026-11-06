@@ -46,6 +46,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho133"></a>[HO133](HO133-A-Host-Carries-Single-Repositories-Of-A-Project.md) | M | - | Single repositories of a project carried: the follow takes only those the host's card names, one taken off the forge with its read key at the central forge given the token, status per repository. |
 
 ## Backlog
 
@@ -59,7 +60,6 @@ it is left out.
 
 | # | Size | Blocked by | Open questions | What it covers |
 |---|---|---|---|---|
-| <a id="ho133"></a>[HO133](HO133-A-Host-Carries-Single-Repositories-Of-A-Project.md) | M | - | 1 | Single repositories of a project carried: the follow takes only those the host's card names, one taken off the forge with its read key at the central forge given the token, status per repository. |
 | <a id="ho40"></a>[HO40](HO40-The-Build-Runs-On-The-Hosts-Forge-As-On-GitHub.md) | M | - | 1 | The move's builds on the host's forge: `build.yml` green on the host's Forgejo and on GitHub unchanged, with task branches built, the tools without `podman run`, snapshots by variable and Molecule on a machine with KVM. |
 | <a id="ho39"></a>[HO39](HO39-The-Hosts-Agent-Works-In-A-Porelo-Task.md) | S | [HO40](#ho40) | 1 | porelo-host's agent, `Agent Host`, in a Porelo task on the move's host, with a way back: the image from `porelo.yml`. |
 
