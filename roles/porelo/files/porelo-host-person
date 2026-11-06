@@ -195,13 +195,14 @@ def taken_as(repository, row):
 def no_task_in_own(project, file):
     """A project that lists repositories works only in those, unless one of them is its own repository again.
 
-    A row is known by its name and its central address alone: the project file names no host.
+    A row is known by its central address alone, whatever the file calls it: the project file names no host, and a row
+    with no central address has no copy here for a task to work in.
     """
     own = CENTRAL_ADDRESS.fullmatch(project["address"]).group("repository").lower()
     rows = file.get("repositories", {})
 
     def reads_own(repository, row):
-        return own in (repository.lower(), taken_as(repository, row).lower())
+        return row["central"] is not None and taken_as(repository, row).lower() == own
 
     return bool(rows) and not any(reads_own(repository, row) for repository, row in rows.items())
 

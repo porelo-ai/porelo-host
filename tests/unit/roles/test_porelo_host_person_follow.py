@@ -2638,37 +2638,39 @@ def test_a_row_that_is_the_project_repository_keeps_it_a_place_of_work(files):
     assert files.protection["alpha"]["merge_whitelist_teams"] == ["Owners", "developers"]
 
 
-def test_a_row_named_as_the_project_repository_keeps_it_a_place_of_work(files):
-    """A row with no central address that bears the project repository's name is that repository."""
-    files.answer.update(repositories={"alpha": {"review": "optional", "central": None}})
-    files.main = "2" * 40
-    files.run("b")
-    assert files.advances[-1][-1] == "signed"
-    assert files.protection["alpha"]["merge_whitelist_teams"] == ["Owners", "developers"]
-
-
 @pytest.mark.parametrize(
-    "upstream",
-    ["http://127.0.0.1:3001/alpha/alpha.git", "git@example.org:acme/ALPHA.git", "http://127.0.0.1:3001/alpha"],
+    "name, row",
+    [
+        ("alpha", {"review": "optional", "central": None}),
+        ("alpha", {"review": "optional", "central": "git@example.org:acme/code.git"}),
+        ("code", {"review": "optional", "central": "git@example.org:acme/code.git"}),
+        (
+            "code",
+            {
+                "review": "optional",
+                "central": "git@example.org:acme/code.git",
+                "upstream": "http://127.0.0.1:3001/alpha/alpha.git",
+            },
+        ),
+        (
+            "code",
+            {
+                "review": "optional",
+                "central": "git@example.org:acme/code.git",
+                "upstream": "git@example.org:acme/ALPHA.git",
+            },
+        ),
+    ],
 )
-def test_an_upstream_key_names_no_repository_on_the_host(files, upstream):
-    """Prevent a host's address in the project file, the retired upstream key, deciding what the host keeps open."""
-    files.answer.update(
-        repositories={"code": {"review": "optional", "central": "git@example.org:acme/code.git", "upstream": upstream}}
-    )
+def test_only_a_central_address_names_the_project_repository(files, name, row):
+    """Prevent a row's name, or a host's address under the retired upstream key, keeping the project repository open."""
+    files.answer.update(repositories={name: row})
     files.main = "2" * 40
     files.repositories = ["alpha", "code"]
     files.run("b")
     assert files.advances[-1][-1] == "tip"
-    assert "upstream" not in files.item()["file"]["repositories"]["code"]
-
-
-def test_a_row_with_a_central_address_of_its_own_leaves_the_project_repository_closed(files):
-    files.answer.update(repositories={"code": {"review": "optional", "central": "git@example.org:acme/code.git"}})
-    files.main = "2" * 40
-    files.repositories = ["alpha", "code"]
-    files.run("b")
-    assert files.advances[-1][-1] == "tip"
+    assert files.protection["alpha"]["merge_whitelist_teams"] == []
+    assert "upstream" not in files.item()["file"]["repositories"][name]
 
 
 def test_the_room_reads_every_login_the_follow_admits():

@@ -18,7 +18,7 @@ project file names only the central forge.
 
 - `project_file_values` in `roles/porelo/files/porelo-host-person` keeps a row's `review` and `central`, and no
   `upstream`.
-- `no_task_in_own` knows the project's own repository by a row's name or its central address, not by `upstream`.
+- `no_task_in_own` knows the project's own repository by a row's central address, not by `upstream`.
 - `doc/local-forge.md` says the project file names each repository's `central` and no host, and how the host derives
   its forge's address.
 - `build/move-check.sh` no longer points at a `builds:` block as the way to a pushed commit.
@@ -31,11 +31,13 @@ project file names only the central forge.
 
 ## Done
 
-- `project_file_values` keeps `review` and `central` alone; `no_task_in_own` decides by a row's name and its central
-  address. A row named as the project's repository with no central address still keeps it a place of work.
-- Unit tests: a row whose `upstream` names the project's own repository, in three spellings, leaves it closed and is
-  not kept in the host's record (red on the old reading); the tests that read the own repository through `upstream`
-  are replaced by one through the row's name.
+- `project_file_values` keeps `review` and `central` alone; `no_task_in_own` knows the project's own repository by a
+  row's central address alone, whatever the file calls the row. **Changed after the reading (agy, gemini-4-argon-high):**
+  the first cut still took a row named like the project, with no central address or another one, for the project's
+  repository and left it open to merges.
+- Unit tests: a row whose `upstream` names the project's own repository leaves it closed, to merges and to the copy's
+  advance, and is not kept in the host's record (red on the reading by `upstream`); so do a row named like the project
+  with no central address or another one (red on the first cut).
 - `doc/local-forge.md`: the project file names `central` and no host; the host derives `http://127.0.0.1:<git_port>/
   <project>/<name>.git` for what it carries. The move check's text no longer names `builds:`.
 - **Not changed:** the move check still reads porelo's exit 78 of the build reader as "not configured", which is
