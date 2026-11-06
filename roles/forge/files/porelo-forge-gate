@@ -13,6 +13,9 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import unquote, urlsplit
 
 
+# The host's forge settings, where the forge role writes the name and the port the person's browser uses.
+FORGE_CONF = "/etc/porelo-host/forge.conf"
+
 HOP_HEADERS = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer",
                "transfer-encoding", "upgrade"}
 
@@ -110,6 +113,42 @@ def blocked_route(target, method, mode):
     return TOKEN_EXCHANGE.fullmatch(path) is not None
 
 
+def own_hosts():
+    """The Host values of the forge's own site, as the person's browser sends them; none when the settings cannot say."""
+    try:
+        with open(FORGE_CONF, encoding="utf-8", newline="") as conf:
+            lines = conf.read().split("\n")
+    except (OSError, UnicodeDecodeError):
+        return set()
+    # As the role writes it, or not at all: one key=value a line, each key once.
+    values = {}
+    for line in lines[:-1] if lines[-1] == "" else lines:
+        key, equals, value = line.partition("=")
+        if not equals or not re.fullmatch(r"[a-z_]+", key) or key in values or re.search(r"\s", value):
+            return set()
+        values[key] = value
+    name, port = values.get("name", ""), values.get("port", "")
+    if not re.fullmatch(r"[a-z0-9]([a-z0-9.-]*[a-z0-9])?", name) or not re.fullmatch(r"[1-9][0-9]{0,4}", port):
+        return set()
+    return {f"{name}:{port}", f"127.0.0.1:{port}"}
+
+
+def foreign_request(headers, method):
+    """A request another site made in the person's browser: by a name of its own that resolves to loopback, or, for one
+    that changes something, from a page of another origin."""
+    hosts = headers.get_all("Host", [])
+    if len(hosts) != 1 or hosts[0].lower() not in own_hosts():
+        return True
+    if method in ("GET", "HEAD"):
+        return False
+    # A browser sends both on every cross-site request that changes something; a client with a token sends neither.
+    origins = headers.get_all("Origin", [])
+    sites = headers.get_all("Sec-Fetch-Site", [])
+    return (len(origins) > 1 or len(sites) > 1 or
+            (origins and origins[0].lower() != "http://" + hosts[0].lower()) or
+            (sites and sites[0].strip().lower() not in ("same-origin", "none")))
+
+
 class RequestBody:
     def __init__(self, stream, length, chunked=False):
         self.stream = stream
@@ -170,6 +209,9 @@ class Handler(BaseHTTPRequestHandler):
         self.close_connection = True
         login = peer_login(self.server.uid) if self.server.mode == "web" else None
         if self.server.mode == "web" and login is None:
+            self.reply(403)
+            return
+        if self.server.mode == "web" and foreign_request(self.headers, self.command):
             self.reply(403)
             return
         if unsafe_path(self.path):

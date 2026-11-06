@@ -168,6 +168,29 @@ def project_state():
     return next((item for item in status()["projects"] if item["project"] == PROJECT), None)
 
 
+# The web gate serves the forge's own site alone: fa's browser creates a repository with a form, as a page of another
+# site in that browser cannot.
+SITE = dict(line.split("=", 1) for line in FORGE.read_text(encoding="utf-8").split())
+OWN = f"{SITE['name']}:{SITE['port']}"
+# Gone with the act, also when it ends early.
+GATE_JAR = tempfile.TemporaryDirectory(prefix="gate-act-")  # pylint: disable=consider-using-with
+JAR = Path(GATE_JAR.name)
+os.chown(JAR, int(run("id", "-u", "fa").stdout), -1)
+
+
+def browser(method, route, headers=(), form=None, host=OWN):
+    """A request through web.sock as fa's browser makes it, with its cookie jar; answers the status and the body."""
+    words = ["runuser", "-u", "fa", "--", "curl", "-sS", "-o", "-", "-w", "\n%{http_code}", "-X", method,
+             "--unix-socket", "/run/porelo-forge/web.sock", "-b", str(JAR / "jar"), "-c", str(JAR / "jar"),
+             "-H", f"Host: {host}"]
+    for header in headers:
+        words += ["-H", header]
+    for key, value in (form or {}).items():
+        words += ["--data-urlencode", f"{key}={value}"]
+    parts = run(*words, f"http://{OWN}{route}").stdout.rpartition("\n")
+    return parts[2], parts[0]
+
+
 if FORGE.exists():
     check(RECORD.exists(), "the follow to register the project", project_state())
     # Its central address is invented here, so its repository waits; the walk migrates a real one.
@@ -444,6 +467,37 @@ if FORGE.exists():
     said = {row["repository"]: row["state"] for row in project_state()["repositories"]}
     check(said == {"done": "taken", "later": "waiting", "local": "no-central"}, "each row named", project_state())
     check("local: " in str(project_state()["why"]), "a row with no central in the project's why", project_state())
+    FETCH = ("Sec-Fetch-Site: none", "Sec-Fetch-Mode: navigate")
+    SAME = (f"Origin: http://{OWN}", "Sec-Fetch-Site: same-origin", "Sec-Fetch-Mode: navigate")
+    code, page = browser("GET", "/repo/create", FETCH)
+    owner = re.search(r'name="uid" value="([0-9]+)"', page)
+    check(code == "200" and owner, "fa's browser to open the form to create a repository", [code, page[:300]])
+    form = {"uid": owner.group(1) if owner else "", "repo_name": "gate-own-site"}
+    # A form token where this Forgejo still renders one; without one it judges the request's origin itself.
+    token = re.search(r'name="_csrf" value="([^"]+)"', page)
+    if token:
+        form["_csrf"] = token.group(1)
+    code = browser("POST", "/repo/create", SAME, form)[0]
+    check(code == "303", "fa's browser to create a repository by its form", code)
+    code = forge("GET", "repos/fa/gate-own-site")[0]
+    check(code == 200, "the repository fa's browser created to exist", code)
+    for name, headers in (
+        ("gate-cross-origin", ("Origin: http://evil.example", "Sec-Fetch-Site: cross-site")),
+        ("gate-cross-site", (f"Origin: http://{OWN}", "Sec-Fetch-Site: cross-site")),
+        ("gate-other-origin", ("Origin: http://evil.example",)),
+    ):
+        code = browser("POST", "/repo/create", headers, dict(form, repo_name=name))[0]
+        check(code == "403", f"a form from another site not to create {name}", code)
+        code = forge("GET", f"repos/fa/{name}")[0]
+        check(code == 404, f"no repository {name}", code)
+    code = browser("GET", "/", FETCH, host=f"evil.example:{SITE['port']}")[0]
+    check(code == "403", "a page asked for by another name to be refused", code)
+    # Without the cookie, so only the gate's sign-in can open a form that needs one.
+    (JAR / "jar").unlink(missing_ok=True)
+    code, page = browser("GET", "/repo/create", FETCH, host=f"127.0.0.1:{SITE['port']}")
+    check(code == "200" and 'name="uid"' in page, "fa signed in by 127.0.0.1", [code, page[:300]])
+    code = forge("DELETE", "repos/fa/gate-own-site")[0]
+    check(code == 204, "the browser's repository removed", code)
     checkout.cleanup()
     check(forge("DELETE", repository)[0] == 204, "the act's repository removed")
     forge("DELETE", "users/porelo-admin/tokens/follow-act")

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **The forge's web gate serves the forge's own site alone,** so another page in the person's browser cannot act as
+  them: a `Host` other than the forge's name or `127.0.0.1` on its port gets `403`, and so does a request that changes
+  something from another origin or site. On the laptop, Maven reaches the forge's packages by `127.0.0.1`.
+
 ## [0.5.12] - 2026-11-05
 
 ### Fixed

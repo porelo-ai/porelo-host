@@ -1,6 +1,6 @@
 # HO129 — The Web Gate Serves Its Own Site Alone
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** S - one check in `porelo-forge-gate`'s web mode, its unit tests, a Molecule step on the real forge and the
 document.
 
@@ -18,14 +18,16 @@ and their tools with a token keep working.
   request's `Host`, and a `Sec-Fetch-Site` that is present and is neither `same-origin` nor `none`. An absent header
   passes: a browser sends both on every cross-site request that changes something, and a laptop client with a token,
   such as Maven or pip through the web port, sends neither.
-- A `forge.conf` that cannot be read, or that lacks `name` or `port`, refuses every web request.
+- A `forge.conf` that cannot be read, that lacks `name` or `port`, or that is not as the role writes it (one
+  `key=value` a line, each key once, no whitespace in a value) refuses every web request.
 - `git.sock` and `runner.sock` stay as they are: jobs reach the forge through the runner's gate, Git through its own.
 - Red first in `tests/unit/roles/test_forge_gate.py`: a foreign `Host`, a foreign `Origin` and a cross-site
   `Sec-Fetch-Site` on a POST are refused before any upstream request; the browser's own headers and a client's without
   either pass.
 - Molecule, on the real Forgejo: a person in `porelo-people` fetches `/repo/create` through `web.sock` with a browser's
-  headers, posts the form with its `_csrf`, and the repository exists; the same post with a foreign `Origin` and with
-  `Sec-Fetch-Site: cross-site` gets `403` and creates nothing.
+  headers, posts the form, and the repository exists; the same post with a foreign `Origin` and with
+  `Sec-Fetch-Site: cross-site` gets `403` and creates nothing; a page asked for by another name gets `403`, and the
+  form opens by `127.0.0.1` without a cookie.
 
 ## Acceptance
 
@@ -33,4 +35,12 @@ and their tools with a token keep working.
 
 ## To be checked
 
-- That the name the person's host card gives the browser is `forge_name` as `forge.conf` holds it.
+- That the name the person's host card gives the browser is `forge_name` as `forge.conf` holds it: read so far, the
+  interface opens `http://<card name>.localhost:<web_port>/` and the role writes `name=<porelo_host_name>.localhost`;
+  that the card's name is `porelo_host_name` is not yet read.
+
+## What is built
+
+As the plan says. The laptop's Maven reaches the forge's packages by `http://127.0.0.1:<web_port>/`, which the
+document now says, since `localhost` is not the forge's own site and Maven blocks plain HTTP to its name. This Forgejo
+renders no `_csrf` field in its forms; it judges a request's origin itself, and the gate's check stands before it.

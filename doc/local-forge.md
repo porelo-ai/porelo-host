@@ -9,7 +9,12 @@ also listens on `127.0.0.1:<git_port>` for the host's own Git, described below.
 
 Porelo forwards the browser's local web port over SSH to `web.sock`, at `http://<host>.localhost:<web_port>/`.
 The gate takes the login from Unix peer credentials and `porelo-people` membership, removes supplied identity headers,
-and signs the person in without a password when no Authorization header is present. Browser credential settings,
+and signs the person in without a password when no Authorization header is present. It serves the forge's own site alone: a `Host`
+other than `name:port` or `127.0.0.1:port` from `/etc/porelo-host/forge.conf` gets `403`, so a page that points a name of
+its own at loopback is never signed in. For a method other than GET and HEAD, an `Origin` other than `http://` and that
+`Host`, or a `Sec-Fetch-Site` other than `same-origin` or `none`, also gets `403`, so a form or script of another site in
+the person's browser changes nothing. A client with a token sends neither header and passes. A `forge.conf` that does not
+name both refuses every web request. Browser credential settings,
 password reset and user-administration routes, and API token or password mutations are refused.
 
 Every forge credential is made by the host, by Forgejo's CLI or Forgejo's own socket. On all three sockets the gate
@@ -125,7 +130,9 @@ sets the local forge's values only.
 [snapshots]: https://central.sonatype.com/repository/maven-snapshots/
 
 The default organization is `porelo`. The forge's browser address is `http://<host>.localhost:<web_port>/`.
-The Forge Maven URL is `http://localhost:<web_port>/api/packages/<project>/maven`.
+In jobs, the Forge Maven URL is `http://localhost:<web_port>/api/packages/<project>/maven`; on the laptop, through the
+forwarded web port, it is `http://127.0.0.1:<web_port>/api/packages/<project>/maven`, since the web gate serves only
+the forge's own name and `127.0.0.1`, and Maven blocks plain HTTP to any other.
 Registry clients in jobs use the shared loopback proxy with token authentication. External HTTPS uses the job image's
 own certificate authorities; no forge CA bundle or JVM trust store is injected.
 

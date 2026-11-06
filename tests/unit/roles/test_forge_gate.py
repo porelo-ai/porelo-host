@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 @pytest.fixture
-def gate(monkeypatch):
+def gate(monkeypatch, tmp_path):
     loader = importlib.machinery.SourceFileLoader("forge_gate", str(ROOT / "roles/forge/files/porelo-forge-gate"))
     spec = importlib.util.spec_from_loader(loader.name, loader)
     module = importlib.util.module_from_spec(spec)
@@ -23,10 +23,16 @@ def gate(monkeypatch):
         lambda uid: SimpleNamespace(pw_name="person", pw_uid=uid, pw_gid=1000, pw_shell="/bin/bash"),
     )
     monkeypatch.setattr(module.grp, "getgrnam", lambda name: SimpleNamespace(gr_gid=2000, gr_mem=["person"]))
+    # As the forge role writes it.
+    conf = tmp_path / "forge.conf"
+    conf.write_text("host=host\nname=host.localhost\nport=3000\ngit_port=3001\naccount=porelo-forge\n")
+    monkeypatch.setattr(module, "FORGE_CONF", str(conf), raising=False)
     return module
 
 
-def request(gate, mode="web", uid=1000, path="/", headers=(), method="GET", body=b"", chunked=False):
+def request(
+    gate, mode="web", uid=1000, path="/", headers=(), method="GET", body=b"", chunked=False, host="host.localhost:3000"
+):
     calls = []
 
     class Upstream:
@@ -50,7 +56,8 @@ def request(gate, mode="web", uid=1000, path="/", headers=(), method="GET", body
         def makefile(self, *args, **kwargs):
             return io.BytesIO(
                 (
-                    f"{method} {path} HTTP/1.1\r\nHost: host.localhost\r\n"
+                    f"{method} {path} HTTP/1.1\r\n"
+                    + (f"Host: {host}\r\n" if host is not None else "")
                     + "".join(f"{key}: {value}\r\n" for key, value in headers)
                     + ("\r\n" if chunked else f"Content-Length: {len(body)}\r\n\r\n")
                 ).encode()
@@ -511,3 +518,145 @@ def test_peer_checked_modes_refuse_a_tcp_connection(mode):
     code, answer, stderr = loopback_gate(mode, b"GET / HTTP/1.1\r\nHost: x\r\n\r\n")
     assert answer == b"" and code != 0
     assert f"{mode} mode serves a Unix socket alone".encode() in stderr
+
+
+# Another page in the person's browser reaches the forwarded web port too: by a name it resolves to loopback, or by a
+# form or script it posts there. The gate would sign either in as the person.
+@pytest.mark.parametrize(
+    "host", ["evil.example:3000", "host.localhost:3001", "localhost:3000", "host.localhost", "127.0.0.1:3001", None]
+)
+def test_the_browser_socket_serves_its_own_site_alone(gate, host):
+    response, calls = request(gate, host=host)
+
+    assert response.startswith(b"HTTP/1.1 403 "), (host, response)
+    assert calls == [], host
+
+
+@pytest.mark.parametrize("host", ["host.localhost:3000", "HOST.localhost:3000", "127.0.0.1:3000"])
+def test_the_browser_socket_serves_its_own_site_by_either_name(gate, host):
+    response, calls = request(gate, host=host)
+
+    assert response.startswith(b"HTTP/1.1 200 "), (host, response)
+    assert calls[0][3]["X-WEBAUTH-USER"] == "person"
+
+
+@pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+@pytest.mark.parametrize(
+    "headers",
+    [
+        [("Origin", "http://evil.example")],
+        [("Origin", "null")],
+        [("Origin", "https://host.localhost:3000")],
+        [("Origin", "http://127.0.0.1:3000")],
+        [("Origin", "http://host.localhost:3000"), ("Origin", "http://evil.example")],
+        [("Sec-Fetch-Site", "cross-site")],
+        [("Sec-Fetch-Site", "same-site")],
+        [("Origin", "http://host.localhost:3000"), ("Sec-Fetch-Site", "cross-site")],
+    ],
+)
+def test_a_change_from_another_site_is_refused_before_any_upstream_request(gate, method, headers):
+    response, calls = request(gate, method=method, headers=headers)
+
+    assert response.startswith(b"HTTP/1.1 403 "), (method, headers, response)
+    assert calls == [], (method, headers)
+
+
+@pytest.mark.parametrize("method", ["POST", "DELETE"])
+@pytest.mark.parametrize(
+    "headers, host",
+    [
+        ([("Origin", "http://host.localhost:3000"), ("Sec-Fetch-Site", "same-origin")], "host.localhost:3000"),
+        ([("Origin", "http://127.0.0.1:3000"), ("Sec-Fetch-Site", "same-origin")], "127.0.0.1:3000"),
+        ([("Sec-Fetch-Site", "none")], "host.localhost:3000"),
+        ([("Authorization", "token abc")], "host.localhost:3000"),
+        ([], "host.localhost:3000"),
+    ],
+)
+def test_the_persons_own_browser_and_tools_still_change_things(gate, method, headers, host):
+    response, calls = request(gate, method=method, headers=headers, host=host)
+
+    assert response.startswith(b"HTTP/1.1 200 "), (method, headers, response)
+    assert calls[0][0] == method
+
+
+@pytest.mark.parametrize(
+    "conf",
+    [
+        None,
+        "",
+        "name=host.localhost\n",
+        "port=3000\n",
+        "name=evil example\nport=3000\n",
+        "name=host.localhost\nport=3000x\n",
+    ],
+)
+def test_a_forge_conf_that_cannot_say_the_site_refuses_every_browser_request(gate, conf, tmp_path):
+    path = tmp_path / "broken.conf"
+    if conf is not None:
+        path.write_text(conf)
+    gate.FORGE_CONF = str(path)
+
+    response, calls = request(gate)
+
+    assert response.startswith(b"HTTP/1.1 403 "), (conf, response)
+    assert calls == [], conf
+
+
+def test_the_git_socket_takes_any_host_as_before(gate):
+    response, calls = request(
+        gate,
+        mode="git",
+        host="localhost:3001",
+        method="POST",
+        headers=[("Authorization", "token abc"), ("Origin", "http://evil.example")],
+    )
+
+    assert response.startswith(b"HTTP/1.1 200 "), response
+
+
+def test_a_second_host_or_site_header_is_refused(gate):
+    for headers, method, host in (
+        ([("Host", "evil.example:3000")], "GET", "host.localhost:3000"),
+        ([("Sec-Fetch-Site", "same-origin"), ("Sec-Fetch-Site", "cross-site")], "POST", "host.localhost:3000"),
+    ):
+        response, calls = request(gate, method=method, headers=headers, host=host)
+        assert response.startswith(b"HTTP/1.1 403 "), (headers, response)
+        assert calls == [], headers
+
+
+def test_the_browsers_own_spelling_of_its_site_passes(gate):
+    response, calls = request(
+        gate,
+        method="POST",
+        host="HOST.localhost:3000",
+        headers=[("Origin", "http://host.localhost:3000"), ("Sec-Fetch-Site", " Same-Origin")],
+    )
+
+    assert response.startswith(b"HTTP/1.1 200 "), response
+
+
+def test_a_link_from_another_site_still_opens_a_page(gate):
+    response, calls = request(gate, headers=[("Sec-Fetch-Site", "cross-site"), ("Origin", "http://evil.example")])
+
+    assert response.startswith(b"HTTP/1.1 200 "), response
+
+
+@pytest.mark.parametrize(
+    "conf",
+    [
+        b"\xff\xfe",
+        b"name=host.localhost\r\nport=3000\r\n",
+        b"name=evil example\rname=host.localhost\nport=3000\n",
+        b"name=evil.example\nname=host.localhost\nport=3000\n",
+        b"name=host.localhost\nport=3000\nstray\n",
+    ],
+)
+def test_a_forge_conf_not_as_the_role_writes_it_refuses_every_browser_request(gate, conf, tmp_path):
+    path = tmp_path / "odd.conf"
+    path.write_bytes(conf)
+    gate.FORGE_CONF = str(path)
+
+    response, calls = request(gate)
+
+    assert response.startswith(b"HTTP/1.1 403 "), (conf, response)
+    assert calls == [], conf
