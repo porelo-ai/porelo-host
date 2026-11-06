@@ -2694,3 +2694,143 @@ def test_the_advance_is_for_a_repository_with_a_read_key(memory_host, monkeypatc
         overrides={"forge_exec": lambda *a, **k: pytest.fail("the forge was asked")},
     )
     assert result[0] == 69, result
+
+
+def two_repository_project(host, monkeypatch, capsys):
+    """A project with read keys for code and docs, each a repository on the host's forge, answered one by one."""
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    directory, address = read_key_project(host)
+    docs = "https://forge.example.org/acme/docs.git"
+    entries = json.loads((directory / "repositories.json").read_text())
+    entries.append({"name": "docs", "address": docs, "key_id": 8, "title": "porelo host h project alpha"})
+    (directory / "repositories.json").write_text(json.dumps(entries))
+    (directory / "docs").write_text("fixture-private-key")
+    (directory / "docs").chmod(0o600)
+    (directory / "docs.pub").write_text(KEY + "\n")
+    host["forge"].repositories["alpha"].append({"name": "docs", "original_url": docs})
+    original = host["forge"].request
+
+    def requests(method, path, body):
+        parts = path.removeprefix("/api/v1/").split("/")
+        if method == "GET" and parts[0] == "repos" and len(parts) == 3:
+            found = [repo for repo in host["forge"].repositories.get(parts[1], []) if repo["name"] == parts[2]]
+            return (200, found[0]) if found else (404, {})
+        return original(method, path, body)
+
+    host["forge"].request = requests
+    return directory
+
+
+def central_keys(seen, held=()):
+    """A central forge that deletes deploy keys and answers for those held as still there."""
+
+    class Central:
+        def __init__(self, token, origin):
+            assert token == CENTRAL_TOKEN and origin == "https://forge.example.org"
+
+        def request(self, method, path, body=None, expected=(200,)):
+            seen.append((method, path))
+            return {"id": 7} if method == "GET" and path in held else None
+
+    return Central
+
+
+def test_one_repository_is_taken_off_with_its_read_key_and_its_deploy_key(memory_host, monkeypatch, capsys):
+    """Prevent a repository left out of the host's card staying on its forge, or its key at the central forge."""
+    host = memory_host
+    directory = two_repository_project(host, monkeypatch, capsys)
+    seen = []
+    overrides = {
+        "forge_git": lambda *args: "a" * 40 + "\n",
+        "central_commits": lambda *args: {"a" * 40},
+        "Central": central_keys(seen),
+    }
+    result = project(
+        host,
+        monkeypatch,
+        capsys,
+        "take-off",
+        "alpha",
+        overrides=overrides,
+        piped=json.dumps({"repository": "code", "token": CENTRAL_TOKEN}),
+    )
+    assert result[0] == 0, result
+    assert json.loads(result[1]) == {"project": "alpha", "repository": "code", "removed": True}
+    assert [repo["name"] for repo in host["forge"].repositories["alpha"]] == ["docs"]
+    assert seen == [("DELETE", "/repos/acme/code/keys/7"), ("GET", "/repos/acme/code/keys/7")]
+    assert [entry["name"] for entry in json.loads((directory / "repositories.json").read_text())] == ["docs"]
+    assert sorted(path.name for path in directory.iterdir()) == ["docs", "docs.pub", "repositories.json"]
+    assert CENTRAL_TOKEN not in result[1] + result[2]
+
+
+def test_without_a_token_the_deploy_key_is_named_for_its_owner(memory_host, monkeypatch, capsys):
+    """Prevent a deploy key the host cannot delete being forgotten with the repository."""
+    host = memory_host
+    directory = two_repository_project(host, monkeypatch, capsys)
+    overrides = {
+        "forge_git": lambda *args: "a" * 40 + "\n",
+        "central_commits": lambda *args: {"a" * 40},
+        "Central": central_keys([]),
+    }
+    result = project(
+        host,
+        monkeypatch,
+        capsys,
+        "take-off",
+        "alpha",
+        overrides=overrides,
+        piped=json.dumps({"repository": "docs", "token": None}),
+    )
+    assert result[0] == 0, result
+    assert json.loads(result[1])["left_at_central"] == [
+        {"address": "https://forge.example.org/acme/docs.git", "title": "porelo host h project alpha"}
+    ]
+    assert not (directory / "docs").exists() and (directory / "code").exists()
+
+
+def test_a_repository_with_unpushed_work_is_held(memory_host, monkeypatch, capsys):
+    """Prevent the work of a task that never reached the central forge going with the repository."""
+    host = memory_host
+    directory = two_repository_project(host, monkeypatch, capsys)
+    seen = []
+    overrides = {
+        "forge_git": lambda *args: "a" * 40 + "\n" + "b" * 40 + "\n",
+        "central_commits": lambda *args: {"a" * 40},
+        "Central": central_keys(seen),
+    }
+    before = len(host["forge"].calls)
+    result = project(
+        host,
+        monkeypatch,
+        capsys,
+        "take-off",
+        "alpha",
+        overrides=overrides,
+        piped=json.dumps({"repository": "code", "token": CENTRAL_TOKEN}),
+    )
+    assert result[0] == 65 and "unpushed" in result[2], result
+    assert not [call for call in host["forge"].calls[before:] if call[0] == "DELETE"] and not seen
+    assert (directory / "code").exists()
+
+
+def test_a_deploy_key_still_listed_after_its_deletion_keeps_the_read_key(memory_host, monkeypatch, capsys):
+    """Prevent a deletion the central forge did not carry out reading as done."""
+    host = memory_host
+    directory = two_repository_project(host, monkeypatch, capsys)
+    overrides = {
+        "forge_git": lambda *args: "a" * 40 + "\n",
+        "central_commits": lambda *args: {"a" * 40},
+        "Central": central_keys([], held={"/repos/acme/code/keys/7"}),
+    }
+    result = project(
+        host,
+        monkeypatch,
+        capsys,
+        "take-off",
+        "alpha",
+        overrides=overrides,
+        piped=json.dumps({"repository": "code", "token": CENTRAL_TOKEN}),
+    )
+    assert result[0] == 69, result
+    assert (directory / "code").exists()
+    assert "code" in [entry["name"] for entry in json.loads((directory / "repositories.json").read_text())]

@@ -451,13 +451,21 @@ helper asks for the project's own central `main` with its read key, makes a bare
 commit or the signers changed, and an isolated `porelo project verify` with no network answers from that copy. The file's
 `repositories.<name>.central` names what else is taken: with the token at hand, all of them in the same follow, each
 with its own read key. One named later waits for a token and says so; one refused is named in `why`, and the rest go on;
-one taken out of the file stays with its work. The forge names each after its central repository. Each `main` needs one
+one taken out of the file stays with its work. Where the host's card in the organization's state names some of the
+file's repositories (`repositories: [...]` on its project; absent or null carries all), only those are taken; the
+project's own repository is taken in any case, as its file lives there. A name the file does not list stands in the
+project's `why`. One taken before and named no longer is taken off by `porelo-host-project take-off <project>`, which
+reads `{"repository", "token"}` on standard input: work on the host's copy that its central repository has not keeps
+it there, as `held`, and each follow tries again. Taken off, its read key goes; its deploy key at the central forge is
+deleted with the token at hand and believed by its absence after, or else named in `left_at_central` and the journal
+for its owner to remove. The forge names each after its central repository. Each `main` needs one
 approval by another person after which a push dismisses it, unless `repositories.<name>.review` or `project.review` is
 `optional`, when the author may merge their own. Either way nobody pushes straight to `main`, and only owners and
 developers merge. A rule changed by hand is set back at the next follow; a file that cannot be read keeps the last values.
 `org status` names, under each project's `repositories`, every row of the signed file last read, with `repository`, `state` and `why`:
-`taken`; `waiting`, with what stands in its way; or `no-central`, a row this host can give no copy and no task until the file names an
-address, a choice of the file that gives the project no `why`. The project's `why` says like reasons of its waiting rows once,
+`taken`; `waiting`, with what stands in its way; `no-central`, a row this host can give no copy and no task until the file names an
+address, a choice of the file that gives the project no `why`; `not-carried`, a row the host's card leaves to another
+host, which gives none either; or `held`, a row named no longer whose work has not reached its central repository. The project's `why` says like reasons of its waiting rows once,
 as `<names>: <reason>`, the names comma separated. The list is empty until a file was read. A line `main's review is ...` reaches
 the output of the run that changed the rule, the journal for a timer's follow, and no other run.
 Removing a project deletes its local

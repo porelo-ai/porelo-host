@@ -2693,3 +2693,97 @@ def test_the_room_reads_every_login_the_follow_admits():
     pattern = next(re.search(r"match\('(.*)'\)", c)[1] for c in conditions if "match(" in c)
     assert re.search(pattern, "a" * 32), "the follow admits 32 characters"
     assert not re.search(pattern, "a" * 33), "the follow does not admit 33"
+
+
+def taken_off(files):
+    """Each repository the follow asked the root helper to take off, with whether a token went along."""
+    return [
+        (supplied["repository"], supplied["token"] is not None)
+        for arguments, supplied in files.actions
+        if arguments[0] == "take-off"
+    ]
+
+
+def test_a_card_naming_one_repository_takes_that_one_alone(files):
+    """Prevent a host carrying a repository of the project its card leaves to another host."""
+    files.answer["repositories"] = named(one="required", two="required")
+    files.state.reply["projects"][0]["repositories"] = ["one"]
+    files.state.reply["host_card"]["services"] = {"forge": {"web_port": 3000, "git_port": 2222}}
+    files.main = "2" * 40
+    files.run("b", token=True)
+    assert "git@example.org:acme/one.git" in files.migrated()
+    assert not [address for address in files.migrated() if "two" in address]
+    alpha, said = repositories_said(files)
+    assert said["one"]["state"] == "taken"
+    assert said["two"] == {"repository": "two", "state": "not-carried", "why": None}
+    assert alpha["why"] is None, "a repository left to another host is the card's choice, not a fault"
+
+
+def test_a_project_carried_whole_takes_every_repository_as_before(files):
+    """Prevent a card with no repositories, or null, taking fewer than the file names."""
+    files.answer["repositories"] = named(one="required", two="required")
+    files.state.reply["projects"][0]["repositories"] = None
+    files.main = "2" * 40
+    files.run("b", token=True)
+    assert {"git@example.org:acme/one.git", "git@example.org:acme/two.git"} <= set(files.migrated())
+    assert not taken_off(files)
+
+
+@pytest.mark.parametrize("token", [True, False])
+def test_a_repository_the_card_no_longer_names_is_taken_off(files, token):
+    """Prevent a repository left out later staying on the host's forge, with or without a central token at hand."""
+    files.answer["repositories"] = named(one="required", two="required")
+    files.main = "2" * 40
+    files.run("b", token=True)
+    files.state.reply["projects"][0]["repositories"] = ["one"]
+    files.run("c", token=token)
+    assert taken_off(files) == [("two", token)]
+    assert "git@example.org:acme/two.git" not in files.item()["taken"]
+    assert repositories_said(files)[1]["two"]["state"] == "not-carried"
+    files.run("d", token=token)
+    assert len(taken_off(files)) == 1, "what is taken off is not asked again"
+
+
+def test_a_repository_with_work_not_at_the_central_forge_is_held_and_tried_again(files, monkeypatch):
+    """Prevent the work of a task going with its repository, and a held one being forgotten."""
+    files.answer["repositories"] = named(one="required", two="required")
+    files.main = "2" * 40
+    files.run("b", token=True)
+    files.state.reply["projects"][0]["repositories"] = ["one"]
+    helper = files.host.follow_project_command
+    holding = [True]
+
+    def refusing(arguments, supplied=None):
+        if arguments[0] == "take-off" and holding[0]:
+            files.actions.append((arguments, supplied))
+            raise files.state.scope["Refusal"]("alpha has unpushed commits in two", 65)
+        return helper(arguments, supplied)
+
+    monkeypatch.setattr(files.host, "follow_project_command", refusing)
+    files.run("c", token=True)
+    alpha, said = repositories_said(files)
+    assert said["two"]["state"] == "held" and "unpushed" in said["two"]["why"]
+    assert "two: held on this host" in alpha["why"]
+    assert "git@example.org:acme/two.git" in files.item()["taken"]
+    holding[0] = False
+    files.run("d", token=True)
+    assert repositories_said(files)[1]["two"]["state"] == "not-carried"
+
+
+def test_a_name_the_project_file_does_not_list_is_said_in_the_projects_why(files):
+    """Prevent a card naming a repository that is not the project's reading as carried."""
+    files.answer["repositories"] = named(one="required")
+    files.state.reply["projects"][0]["repositories"] = ["one", "ghost"]
+    files.main = "2" * 40
+    files.run("b", token=True)
+    alpha = repositories_said(files)[0]
+    assert "does not list: ghost" in alpha["why"]
+
+
+@pytest.mark.parametrize("repositories", [["one", "one"], "one", [""], ["One"], [7]])
+def test_a_malformed_list_of_repositories_refuses_the_project_alone(files, repositories):
+    """Prevent a card the host cannot read narrowing or widening what it carries."""
+    files.state.reply["projects"][0]["repositories"] = repositories
+    files.run("b", token=True)
+    alpha = repositories_said(files)[0]
+    assert alpha["state"] == "refused" and "malformed repositories" in alpha["why"]

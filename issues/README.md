@@ -15,6 +15,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho133"></a>[HO133](HO133-A-Host-Carries-Single-Repositories-Of-A-Project.md) | M | - | Single repositories of a project carried: the follow takes only those the host's card names, one taken off the forge with its read key at the central forge given the token, status per repository. |
 | <a id="ho138"></a>[HO138](HO138-The-Move-Check-Reads-Each-Line-Where-It-Stands.md) | S | - | Bug: the move check reads the push from the forge's branch the task names, not the build reader, and the conversation from the task, not the peers list. |
 | <a id="ho137"></a>[HO137](HO137-A-Tasks-Account-Opens-Its-Pull-Request.md) | S | - | The task's token opens its pull request `porelo/<task>` → `main` on the host's forge, and the person's approval counts, measured in the follow act. |
 | <a id="ho136"></a>[HO136](HO136-A-Persons-Daemon-Takes-The-Group-It-Joins-Later.md) | S | - | Bug: a person who joins `porelo-people` after admission gets a `porelod` with that group, its user manager restarted where no task runs. |
@@ -46,7 +47,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho133"></a>[HO133](HO133-A-Host-Carries-Single-Repositories-Of-A-Project.md) | M | - | Single repositories of a project carried: the follow takes only those the host's card names, one taken off the forge with its read key at the central forge given the token, status per repository. |
 
 ## Backlog
 

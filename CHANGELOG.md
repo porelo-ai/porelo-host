@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A host carries single repositories of a project.** Where the organization's state names the host's
+  `repositories` of a project, the follow takes only those and the project's own; one named no longer is taken off the
+  host's forge by `porelo-host-project take-off`, held while its work is not at the central forge, its deploy key
+  deleted with a token or named for its owner. `org status` says `not-carried` and `held` per repository.
 - **A task's token also reads packages** (`read:package`), so a task can resolve its project's snapshots from the
   host's forge. It reads those of every organization its person's task account is in and writes none; Porelo's task
   gate holds a task to its own project's.

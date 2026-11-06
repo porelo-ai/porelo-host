@@ -591,6 +591,20 @@ if FORGE.exists():
     said = {row["repository"]: row["state"] for row in project_state()["repositories"]}
     check(said == {"done": "taken", "later": "waiting", "local": "no-central"}, "each row named", project_state())
     check("local" not in str(project_state()["why"]), "no row with no central in the project's why", project_state())
+
+    # Taking one repository off, as the follow asks it of the root helper: the scenario has no central forge, so this
+    # holds the verb to its form on the host, and the unit tests hold what it does at a central forge.
+    taker = "/usr/local/sbin/porelo-host-project"
+    done = run(taker, "take-off", PROJECT, given=json.dumps({"repository": "absent", "token": 7}))
+    check(done.returncode == 64, "take-off to refuse a token that is no text", done.returncode)
+    done = run(taker, "take-off", PROJECT, given=json.dumps({"repository": "absent", "token": None}))
+    check(
+        done.returncode == 0 and json.loads(done.stdout or "{}").get("removed") is True,
+        "take-off of a repository the host does not hold to answer it taken off",
+        (done.returncode, done.stderr),
+    )
+    code = forge("GET", f"repos/{PROJECT}/{code_name}")[0]
+    check(code == 200, "the project's own repository to stay through another's take-off", code)
     FETCH = ("Sec-Fetch-Site: none", "Sec-Fetch-Mode: navigate")
     SAME = (f"Origin: http://{OWN}", "Sec-Fetch-Site: same-origin", "Sec-Fetch-Mode: navigate")
     code, page = browser("GET", "/repo/create", FETCH)

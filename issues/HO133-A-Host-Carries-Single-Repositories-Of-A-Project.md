@@ -1,6 +1,6 @@
 # HO133 — A Host Carries Single Repositories Of A Project
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** M - the follow's taking narrowed to the repositories the host's card names, one repository taken off the
 host's forge on its own with its read key, and the project's status per repository; unit tests and the Molecule
 scenario's follow act.
@@ -45,10 +45,10 @@ Read in `roles/porelo/files/porelo-host-person` (`follow_take_named_repositories
   or is named for removal without it.
 - Unit tests seen red first; the Molecule scenario green with the new follow steps.
 
-## Open questions for the operator
+## Answered by the operator
 
-- **A repository with unpushed work on the host** when taken off the card: is it held until the work reaches the
-  central forge, as a project is today (proposed), or taken off at once with the work named as lost?
+- **A repository with unpushed work on the host** when taken off the card is held until the work reaches the central
+  forge, as a project is today (operator, 2026-11-06).
 
 ## To be checked
 
@@ -56,3 +56,27 @@ Read in `roles/porelo/files/porelo-host-person` (`follow_take_named_repositories
   field.
 - Whether the task gate and a person's push configuration need to know a repository was taken off. A task on a
   repository no longer carried is refused at its start today through the project file.
+
+## Done
+
+- **The state's field:** a project in the organization's state may carry `repositories`, a list of the project file's
+  repository names, the form agreed with porelo's own part; absent or null carries the project whole, as before. A list
+  that does not read refuses that project alone.
+- **The follow:** `follow_take_named_repositories` takes only the named ones and the project's own. One taken before
+  and named no longer is taken off; a name the file does not list stands in the project's `why`.
+- **Taking off:** `porelo-host-project take-off <project>` with `{"repository", "token"}` on standard input checks the
+  repository's refs against its central repository with its read key, as `remove` does, deletes it from the host's
+  forge, deletes its deploy key at the central forge with the token, believed by a GET answering 404 after, or names it
+  in `left_at_central` without one, then its read key and its manifest row. Work not yet at the central forge refuses
+  with 65 and leaves everything; the follow says the row `held` and tries again at each follow (as the operator
+  answered).
+- **Status:** `org status` says `not-carried` or `held` per repository; `not-carried` gives the project no `why`.
+- **Unit tests,** each seen red first: four of the verb (taken off with both keys, no token naming the key, unpushed
+  work held, a key still listed after its deletion keeping the read key) and ten of the follow (one named taken
+  alone, taken off with and without token, held and tried again, a name the file lacks, five malformed lists).
+- **Not done as planned:** the Molecule scenario has no central forge, so its follow act cannot migrate or take off a
+  repository with a deploy key. It holds the verb to its form on the real host (a malformed token refused with 64,
+  an absent repository answered taken off, the project's own repository kept). The whole flow belongs to the next
+  rehearsal on a VM with a central forge.
+- **Not done:** a deploy key named without a token is said once, in the follow that took the repository off; the
+  manifest row goes with the repository, so no later follow names it again.

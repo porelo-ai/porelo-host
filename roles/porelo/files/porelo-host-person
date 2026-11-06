@@ -1755,6 +1755,12 @@ class Host:
                 or not isinstance(project.get("signing_keys"), list)
                 or "address" not in project):
             refuse("porelo org fetch answered a malformed or duplicate project", 65)
+        # The repositories of the project file this host carries; absent or null, all of them.
+        named = project.get("repositories")
+        if named is not None and (
+                not isinstance(named, list) or len(set(map(str, named))) != len(named)
+                or any(not isinstance(name, str) or not re.fullmatch(REPOSITORY, name) for name in named)):
+            refuse("porelo org fetch answered malformed repositories for the project", 65)
         members = set()
         # A first-seen person has a role here and no card anyone vouches for yet: no key, so no access.
         project = {**project, "members": [
@@ -1960,9 +1966,15 @@ class Host:
         said = []
         waiting = item.get("repositories_why") or {}
         file = item.get("file") or {}
+        named = item.get("named")
         for repository, row in sorted((file.get("repositories") or {}).items()):
             central = row["central"]
-            if central is None:
+            if named is not None and repository not in named and central != file.get("address"):
+                if repository in waiting:
+                    said.append({"repository": repository, "state": "held", "why": waiting[repository]})
+                else:
+                    said.append({"repository": repository, "state": "not-carried", "why": None})
+            elif central is None:
                 said.append({"repository": repository, "state": "no-central", "why": NO_CENTRAL})
             elif repository not in waiting and (central in item.get("taken", []) or (
                     item.get("migrated") and central == file.get("address"))):
@@ -2050,6 +2062,8 @@ class Host:
             raise Refusal(words, 69, told=result.returncode)
         if arguments[0] == "remove":
             self.say_left_at_central(arguments[1], result.stdout)
+        if arguments[0] == "take-off":
+            self.say_left_at_central(f"{arguments[1]}/{supplied['repository']}", result.stdout)
         return {}
 
     def say_left_at_central(self, project, answer):
@@ -2377,7 +2391,7 @@ class Host:
             if why != NO_CENTRAL:
                 gathered.setdefault(why, []).append(name)
         return "; ".join(filter(None, (item.get("migrate_refused"), project.get("why"), item.get("file_refused"),
-                                       item.get("advance_refused"),
+                                       item.get("advance_refused"), item.get("named_refused"),
                                        *(f"{', '.join(names)}: {why}" for why, names in gathered.items())))) or None
 
     def follow_read_project_file(self, project, item, signers, account, deadline):
@@ -2469,11 +2483,30 @@ class Host:
             item["advance_refused"] = older + "the host's forge could not be brought up to it"
 
     def follow_take_named_repositories(self, project, item, token):
-        """Take each repository the file names with the one token at hand; each stands alone, and what waits says so."""
+        """Take each repository the file names with the one token at hand; each stands alone, and what waits says so.
+
+        Where the host's card names some repositories, only those are taken, and one taken before and named no longer
+        is taken off. The project's own repository stays, as its file lives there.
+        """
         taken = set(item.get("taken", []))
         waiting = {}
-        for repository, row in (item.get("file") or {}).get("repositories", {}).items():
+        rows = (item.get("file") or {}).get("repositories", {})
+        named = project.get("repositories")
+        item["named"] = named
+        unknown = sorted(set(named or []) - set(rows))
+        item["named_refused"] = (f"the host's card names repositories the project file does not list: "
+                                 f"{', '.join(unknown)}") if unknown and item.get("file") else None
+        for repository, row in rows.items():
             central = row["central"]
+            if named is not None and repository not in named:
+                if central is not None and central != project["address"] and central in taken:
+                    try:
+                        self.follow_project_command(["take-off", project["project"]],
+                                                    {"repository": taken_as(repository, row), "token": token})
+                        taken.discard(central)
+                    except Refusal as error:
+                        waiting[repository] = f"held on this host: {error.shown()}"
+                continue
             if central is None:
                 waiting[repository] = NO_CENTRAL
                 continue

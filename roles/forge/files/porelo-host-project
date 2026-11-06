@@ -1385,6 +1385,60 @@ def migrate(forge, project, supplied):
     protect_repository(forge, project, name)
 
 
+def take_off(forge, project, supplied):
+    """Take one repository off the host's forge, and its read key; its deploy key at the central forge, given a token.
+
+    Work on the host's copy that the central forge has not keeps it, as it keeps a whole project. Without a token the
+    deploy key is answered for its owner to remove, by its title and address.
+    """
+    try:
+        request = json.loads(supplied)
+    except (ValueError, UnicodeError):
+        refuse("taking a repository off requires a JSON request on standard input", 64)
+    if (not isinstance(request, dict) or set(request) != {"repository", "token"}
+            or not isinstance(request["repository"], str)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", request["repository"])
+            or not (request["token"] is None
+                    or isinstance(request["token"], str) and re.fullmatch(r"[!-~]{1,4096}", request["token"]))):
+        refuse("taking a repository off requires a repository's name and one printable token or null", 64)
+    name = request["repository"]
+    directory, entries = project_manifest(project)
+    item = next((entry for entry in entries if entry["name"].lower() == name.lower()), None)
+    if item is not None:
+        read_key_paths(project)
+    local = forge.request("GET", f"/repos/{project}/{name}", expected=(200, 404))
+    if local is not None:
+        if not isinstance(local, dict) or not isinstance(local.get("name"), str):
+            refuse(f"the forge answered no repository for {project}/{name}", 69)
+        check_read_keys(forge, project, [local])
+        forge.request("DELETE", f"/repos/{project}/{local['name']}", expected=(204,))
+        if forge.request("GET", f"/repos/{project}/{name}", expected=(200, 404)) is not None:
+            refuse(f"the forge still holds {project}/{name}; keeping its read key", 69)
+    left = []
+    if item is None:
+        return {"project": project, "repository": name, "removed": True}
+    if item["key_id"] > 0 and request["token"] is None:
+        left.append({"address": item["address"], "title": item.get("title", "porelo-host-" + project)})
+    elif item["key_id"] > 0:
+        origin, owner, central_name = central_address(item["address"])[:3]
+        route = f"/repos/{owner}/{central_name}/keys/{item['key_id']}"
+        Central(request["token"], origin).request("DELETE", route, expected=(204, 404))
+        # Believed by its absence after, not by the answer to the deletion.
+        if Central(request["token"], origin).request("GET", route, expected=(200, 404)) is not None:
+            refuse(f"the central forge still holds the read key of {project}/{name}", 69)
+    # The keys before the manifest that names them, so a run broken in between is taken up again by the next.
+    for suffix in (".pub", ""):
+        path = os.path.join(directory, item["name"].lower() + suffix)
+        if os.path.lexists(path):
+            with writing(path):
+                os.unlink(path)
+    write_manifest(directory, [entry for entry in entries if entry is not item])
+    answer = {"project": project, "repository": name, "removed": True}
+    if left:
+        answer["left_at_central"] = left
+    return answer
+
+
 def read_key_paths(project):
     """Refuse unknown read-directory entries before any destructive operation."""
     directory, entries = project_manifest(project)
@@ -1526,7 +1580,7 @@ def run():
         return
     if len(arguments) == 5 and arguments[0] == "add" and arguments[3] == "--signed-by":
         action, project, admin, _, key = arguments
-    elif len(arguments) == 2 and arguments[0] in ("remove", "migrate", "central-state"):
+    elif len(arguments) == 2 and arguments[0] in ("remove", "migrate", "take-off", "central-state"):
         action, project = arguments
         admin = key = None
     elif len(arguments) == 4 and arguments[0] == "project-copy":
@@ -1542,7 +1596,8 @@ def run():
                 or reach not in ("signed", "tip")):
             refuse("project-advance takes a repository's name, a commit, a copy of this helper's and signed or tip", 64)
     else:
-        refuse('usage: add <project> <admin> --signed-by "ssh-ed25519 <base64>" | remove <project> | central-state <project>', 64)
+        refuse('usage: add <project> <admin> --signed-by "ssh-ed25519 <base64>" | remove <project> '
+               '| take-off <project> | central-state <project>', 64)
     if not re.fullmatch(PROJECT_PATTERN, project):
         refuse("project must be 1 to 40 lowercase letters, digits or internal hyphens", 64)
     if action == "add":
@@ -1580,7 +1635,7 @@ def run():
             person_content = format_person([*members, f"{project} project-admin"], locked, pending, card)
             affected = None
             publisher = None
-        elif action in ("central-state", "project-copy", "project-advance"):
+        elif action in ("central-state", "project-copy", "project-advance", "take-off"):
             publisher = affected = person_content = None
         else:
             publisher = registered_publisher(project, record)
@@ -1605,6 +1660,10 @@ def run():
             add(forge, project, admin, key, record, person, person_content)
         elif action == "migrate":
             migrate(forge, project, sys.stdin.read(16385))
+        elif action == "take-off":
+            taken = take_off(forge, project, sys.stdin.read(16385))
+            with writing("standard output"):
+                print(json.dumps(taken, separators=(",", ":")), flush=True)
         else:
             remove(forge, project, record, publisher, affected)
     if action == "remove":
