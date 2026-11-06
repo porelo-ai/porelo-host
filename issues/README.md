@@ -65,6 +65,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho137"></a>[HO137](HO137-A-Tasks-Account-Opens-Its-Pull-Request.md) | S | - | The task's token opens its pull request `porelo/<task>` → `main` on the host's forge, and the person's approval counts, measured in the follow act. |
 
 ## Idea
 
