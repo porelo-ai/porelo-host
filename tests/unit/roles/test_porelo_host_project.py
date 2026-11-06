@@ -2444,6 +2444,28 @@ def test_a_signing_anew_below_the_files_last_change_is_passed_over(memory_host, 
     assert git_out(local, "rev-parse", "refs/heads/main") == tip
 
 
+def trailer_commit(work, trailer):
+    """An empty commit whose message ends in the given Porelo-Signs-Anew trailer, as anyone who writes may make it."""
+    message = f"Say something\n\nPorelo-Signs-Anew: {trailer}\n"
+    subprocess.run(["git", "-C", str(work), *IDENTITY, "commit", "-q", "--allow-empty", "-m", message], check=True)
+
+
+@pytest.mark.parametrize("trailer", ["other.txt project.yml", "other.txt\n {below} project.yml"])
+def test_only_a_trailer_that_says_the_file_alone_signs_it_anew(memory_host, monkeypatch, capsys, tmp_path, trailer):
+    """Prevent a second word, or a folded line naming a commit, from reading as the file signed anew.
+
+    Read so, it would take the copy up onto a writer's change; the file's own last change is what Porelo judges.
+    """
+    advance_ready(memory_host, monkeypatch, capsys)
+    work, local = repositories(tmp_path)
+    changed = git_out(work, "rev-parse", "HEAD")
+    central_commit(work, "build.sh", "anyone's")
+    trailer_commit(work, trailer.format(below=git_out(work, "rev-parse", "HEAD")))
+    result, _, _ = advancing(tmp_path, monkeypatch, memory_host, capsys, local=local, central=work)
+    assert result[0] == 0 and json.loads(result[1]) == {"state": "moved"}, result
+    assert git_out(local, "rev-parse", "refs/heads/main") == changed
+
+
 def test_a_signing_anew_above_a_code_change_does_not_move(memory_host, monkeypatch, capsys, tmp_path):
     """Signing the file anew vouches for no other file, so a writer's commit below it still holds main back."""
     advance_ready(memory_host, monkeypatch, capsys)

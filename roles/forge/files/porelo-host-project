@@ -1084,9 +1084,15 @@ git fetch -q --no-tags "$bundle" "+refs/heads/main:refs/porelo/central" || done_
 # first-parent line, as Porelo's own reading of the project file takes it.
 signed=$(git log -1 --first-parent --format=%H refs/porelo/central -- project.yml)
 [ -n "$signed" ] || done_with 65
-anew=$(git log --first-parent --format='%H %(trailers:key=Porelo-Signs-Anew,valueonly,separator=%x20)' \
-    refs/porelo/central | awk '{ for (i = 2; i <= NF; i++) if ($i == "project.yml") { print $1; exit } }') || done_with 69
-if [ -n "$anew" ] && [ "$anew" != "$signed" ] && above "$signed" "$anew"; then
+# Each trailer unfolded on a line of its own, its whole value compared, so neither a folded line nor a second word
+# reads as the file signed anew.
+trailers=$(git log --first-parent --format='commit %H%n%(trailers:key=Porelo-Signs-Anew,valueonly,unfold)' \
+    refs/porelo/central) || done_with 69
+anew=$(printf '%s\n' "$trailers" | awk '
+    /^commit [0-9a-f]+$/ { hash = $2; next }
+    $0 == "project.yml" && hash != "" { print hash; exit }
+') || done_with 69
+if [ -n "$anew" ] && [ "$anew" != "$signed" ] && above "$signed" "$anew" && above "$anew" "$commit"; then
     signed=$anew
 fi
 [ "$(git rev-parse --verify --quiet "$signed:project.yml")" = "$(git rev-parse --verify --quiet "$commit:project.yml")" ] \
