@@ -1,6 +1,6 @@
 # HO138 — The Move Check Reads Each Line Where It Stands
 
-**Status:** Accepted (operator, 2026-11-06).
+**Status:** Implementing.
 **Kind:** Bug.
 **Size:** S - two lines of `build/move-check.sh` read anew, with their unit tests in `tests/unit/test_move_tools.py`.
 

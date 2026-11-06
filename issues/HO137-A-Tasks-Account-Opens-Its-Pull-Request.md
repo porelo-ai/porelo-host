@@ -1,6 +1,6 @@
 # HO137 — A Task's Account Opens Its Pull Request
 
-**Status:** Accepted (operator, 2026-11-06).
+**Status:** Implementing.
 **Size:** S - mostly a measurement in the Molecule scenario's follow act; a host change only where it fails.
 
 **What must be true.** On the host's forge, the token a task start makes for the person's task account

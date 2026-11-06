@@ -41,6 +41,11 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho138"></a>[HO138](HO138-The-Move-Check-Reads-Each-Line-Where-It-Stands.md) | S | - | Bug: the move check reads the push from the forge's branch the task names, not the build reader, and the conversation from the task, not the peers list. |
+| <a id="ho137"></a>[HO137](HO137-A-Tasks-Account-Opens-Its-Pull-Request.md) | S | - | The task's token opens its pull request `porelo/<task>` → `main` on the host's forge, and the person's approval counts, measured in the follow act. |
+| <a id="ho136"></a>[HO136](HO136-A-Persons-Daemon-Takes-The-Group-It-Joins-Later.md) | S | - | Bug: a person who joins `porelo-people` after admission gets a `porelod` with that group, its user manager restarted where no task runs. |
+| <a id="ho135"></a>[HO135](HO135-The-Hosts-Copy-Follows-A-File-Signed-Anew.md) | S | - | Bug: the host's copy of a project's own repository advances to a commit signing `project.yml` anew, not only to its last change, and the follow records what `main` reached. |
+| <a id="ho134"></a>[HO134](HO134-A-Projects-Why-Gathers-Its-Repositories-Reasons.md) | XS | - | Bug: a project's `why` gathers like reasons of its repositories in one line, none for repositories without a central address; the detail stays in `repositories[]`. |
 
 ## Backlog
 
@@ -62,11 +67,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho138"></a>[HO138](HO138-The-Move-Check-Reads-Each-Line-Where-It-Stands.md) | S | - | Bug: the move check reads the push from the forge's branch the task names, not the build reader, and the conversation from the task, not the peers list. |
-| <a id="ho136"></a>[HO136](HO136-A-Persons-Daemon-Takes-The-Group-It-Joins-Later.md) | S | - | Bug: a person who joins `porelo-people` after admission gets a `porelod` with that group, its user manager restarted where no task runs. |
-| <a id="ho135"></a>[HO135](HO135-The-Hosts-Copy-Follows-A-File-Signed-Anew.md) | S | - | Bug: the host's copy of a project's own repository advances to a commit signing `project.yml` anew, not only to its last change, and the follow records what `main` reached. |
-| <a id="ho134"></a>[HO134](HO134-A-Projects-Why-Gathers-Its-Repositories-Reasons.md) | XS | - | Bug: a project's `why` gathers like reasons of its repositories in one line, none for repositories without a central address; the detail stays in `repositories[]`. |
-| <a id="ho137"></a>[HO137](HO137-A-Tasks-Account-Opens-Its-Pull-Request.md) | S | - | The task's token opens its pull request `porelo/<task>` → `main` on the host's forge, and the person's approval counts, measured in the follow act. |
 
 ## Idea
 

@@ -1,6 +1,6 @@
 # HO135 — The Host's Copy Follows A File Signed Anew
 
-**Status:** Accepted (operator, 2026-11-06).
+**Status:** Implementing.
 **Kind:** Bug.
 **Size:** S - the advance script's target and the follow's record of it, with unit tests and a Molecule step.
 

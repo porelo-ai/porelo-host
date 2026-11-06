@@ -1,6 +1,6 @@
 # HO136 — A Person's Daemon Takes The Group It Joins Later
 
-**Status:** Accepted (operator, 2026-11-06).
+**Status:** Implementing.
 **Kind:** Bug.
 **Size:** S - the follow's group change followed by the person's user manager restarted where it is safe, with unit
 tests and a Molecule step.
