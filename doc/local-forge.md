@@ -273,6 +273,10 @@ The pin holds the machine's host admins first, then the keys of the organization
 names them, so a host admin they replace is replaced at the next follow, with no step of the former admin's. The role
 gets no account and no root here.
 
+A machine's only admin who withdrew or lost their card can leave its `admins` empty, though Porelo's `org host admin
+remove` keeps the last one. The host refuses that state and keeps the last it took; an Organization Admin ends it by adding
+a new admin.
+
 When an owner has replaced a host admin's card, no key the host holds signed that change, so every fetch is refused.
 The way out is on the machine: root gives the host admins' keys, one `login key` line each, on standard input of
 `porelo-host-person org renew-pin`, root's alone, which replaces the pin and the keys in the state taken, and answers as
