@@ -347,8 +347,10 @@ the pushes take, never while a follow, a lock or a removal is half done.
 
 ## The person's two decisions
 
-**First, accept the work by merging `porelo/<task>` into local `main`.** The person reads the pull request and its local
-build before merging in Forgejo. On every configured repository, local `main` is protected: direct pushes are disabled,
+**First, accept the work by merging `porelo/<task>` into local `main`.** The pull request's author is the task's own
+account `porelo-<login>`: Porelo opens it with the token the task's start made, since Forgejo counts no approval by a
+pull request's own author. The person reads the pull request and its local build, approves it and merges it in
+Forgejo. On every configured repository, local `main` is protected: direct pushes are disabled,
 one approval is required, and only members of `Owners` or `developers` can supply the counted
 approval and merge the pull request. Administrator merge overrides are disabled. The pull request reaches `main` by
 fast-forward only, so its own commits arrive unchanged and the forge adds no commit of its own. Status checks are not

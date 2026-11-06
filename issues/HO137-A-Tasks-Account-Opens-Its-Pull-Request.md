@@ -1,6 +1,6 @@
 # HO137 — A Task's Account Opens Its Pull Request
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** S - mostly a measurement in the Molecule scenario's follow act; a host change only where it fails.
 
 **What must be true.** On the host's forge, the token a task start makes for the person's task account
@@ -37,3 +37,14 @@ The task's own account as the pull request's author keeps that rule meaningful a
 
 - Settled with porelo's part: the account is the person's task account, one per person and project, with a token
   per task, not a new account per task or per repository's agent.
+
+## Done
+
+- **Measured, no host change needed:** the follow act starts a task `prown` of `fb`, pushes `porelo/prown` with the
+  task's token, and opens the pull request to `main` with that token; its author is `porelo-fb`. Unapproved, `fb`'s
+  merge is refused. An account outside `Owners` and `developers`, a writer of the repository, approves; Forgejo takes
+  the review and the merge is still refused. `fb` approves, and the fast-forward merge as `fb` succeeds. Green on the
+  Molecule scenario (2026-11-06, 197 facts of the follow).
+- The outsider is made by Forgejo's own `admin user create --random-password`, so no password is on a command line,
+  and is purged with the task's end.
+- doc/local-forge.md, "The person's two decisions", names the task's account as the pull request's author.

@@ -180,9 +180,28 @@ os.chown(JAR, int(run("id", "-u", "fa").stdout), -1)
 
 def browser(method, route, headers=(), form=None, host=OWN):
     """A request through web.sock as fa's browser makes it, with its cookie jar; answers the status and the body."""
-    words = ["runuser", "-u", "fa", "--", "curl", "-sS", "-o", "-", "-w", "\n%{http_code}", "-X", method,
-             "--unix-socket", "/run/porelo-forge/web.sock", "-b", str(JAR / "jar"), "-c", str(JAR / "jar"),
-             "-H", f"Host: {host}"]
+    words = [
+        "runuser",
+        "-u",
+        "fa",
+        "--",
+        "curl",
+        "-sS",
+        "-o",
+        "-",
+        "-w",
+        "\n%{http_code}",
+        "-X",
+        method,
+        "--unix-socket",
+        "/run/porelo-forge/web.sock",
+        "-b",
+        str(JAR / "jar"),
+        "-c",
+        str(JAR / "jar"),
+        "-H",
+        f"Host: {host}",
+    ]
     for header in headers:
         words += ["-H", header]
     for key, value in (form or {}).items():
@@ -212,38 +231,25 @@ if FORGE.exists():
     uid = run("id", "-u", account).stdout.strip()
     socket = f"/run/user/{uid}/porelo-forge/http.sock"
 
+    def forge_admin(*words):
+        # Forgejo's own admin command in its container, whose answers stay on this process's pipes.
+        return run(
+            "runuser", "-u", account, "--", "env", "-C", "/", f"XDG_RUNTIME_DIR=/run/user/{uid}",
+            "podman", "exec", "forgejo", "forgejo", "admin", *words,
+        )  # fmt: skip
+
     def forge_token_of(username, scopes):
-        made = run(
-            "runuser",
-            "-u",
-            account,
-            "--",
-            "env",
-            "-C",
-            "/",
-            f"XDG_RUNTIME_DIR=/run/user/{uid}",
-            "podman",
-            "exec",
-            "forgejo",
-            "forgejo",
-            "admin",
-            "user",
-            "generate-access-token",
-            "--username",
-            username,
-            "--token-name",
-            f"follow-act-{scopes.replace(':', '-')}",
-            "--scopes",
-            scopes,
-            "--raw",
-        )
+        made = forge_admin(
+            "user", "generate-access-token", "--username", username,
+            "--token-name", f"follow-act-{scopes.replace(':', '-')}", "--scopes", scopes, "--raw",
+        )  # fmt: skip
         value = made.stdout.strip()
         check(made.returncode == 0 and value, f"a {scopes} token of {username} for the act", made.stderr)
         return value
 
     forge_token = forge_token_of("porelo-admin", "all")
 
-    def forge(method, route, body=None):
+    def forge(method, route, body=None, token=None):
         done = run(
             "curl",
             "-sS",
@@ -259,7 +265,7 @@ if FORGE.exists():
             "\n%{http_code}",
             *(["-d", json.dumps(body)] if body is not None else []),
             f"http://localhost/api/v1/{route}",
-            given=f'header = "Authorization: token {forge_token}"\n',
+            given=f'header = "Authorization: token {token or forge_token}"\n',
         )
         text, unused, code = done.stdout.rpartition("\n")
         return int(code or 0), json.loads(text) if text.strip().startswith(("{", "[")) else None
@@ -417,7 +423,7 @@ if FORGE.exists():
     checkout = tempfile.TemporaryDirectory(prefix="follow-act-")
     git_port = re.search(r"^git_port=(\d+)$", FORGE.read_text(encoding="utf-8"), re.M).group(1)
 
-    def git(*words):
+    def git(*words, token=None):
         return subprocess.run(
             [
                 "git",
@@ -444,7 +450,7 @@ if FORGE.exists():
                 "GIT_TERMINAL_PROMPT": "0",
                 "GIT_CONFIG_COUNT": "1",
                 "GIT_CONFIG_KEY_0": "http.extraHeader",
-                "GIT_CONFIG_VALUE_0": f"Authorization: token {forge_token}",
+                "GIT_CONFIG_VALUE_0": f"Authorization: token {token or forge_token}",
             },
         )
 
@@ -454,7 +460,7 @@ if FORGE.exists():
     def commit_on_main(name):
         for words in (("fetch", "-q", "origin", "main"), ("checkout", "-q", "-B", name, "origin/main")):
             git(*words)
-        Path(checkout.name, f"{name}.txt").write_text(name, encoding="utf-8")
+        Path(checkout.name, f"{name.replace('/', '-')}.txt").write_text(name, encoding="utf-8")
         git("add", ".")
         made = git("commit", "-q", "-m", name)
         check(made.returncode == 0, f"a signed commit for {name}", made.stderr)
@@ -501,6 +507,76 @@ if FORGE.exists():
     check(len(on_main) == 1, "no second rule on main", rules)
     check(on_main and on_main[0]["required_approvals"] == 1, "a rule renamed in case to be set back", on_main)
     check(400 <= merged_alone("renamed") < 500, "the author not to merge alone under a renamed rule")
+    # A task's pull request: opened by its own account with its task's token, approved and merged by its person, so a
+    # project of one member merges under a required review. Its task goes again, also when a step fails.
+    record = Path("/var/lib/porelo-host/tasks/fb/prown.json")
+    try:
+        with tempfile.TemporaryDirectory(prefix="task-act-") as task_keys:
+            made = run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "", "-f", f"{task_keys}/task")
+            check(made.returncode == 0, "a task key for the pull request", made.stderr)
+            signed = run(
+                "ssh-keygen", "-q", "-s", str(KEYS / "fb"), "-I", "porelo task prown by fb",
+                "-n", f"task:{PROJECT}:prown", "-V", "-5m:+1h", f"{task_keys}/task.pub",
+            )  # fmt: skip
+            check(signed.returncode == 0, "fb's certificate for the pull request's task", signed.stderr)
+            issued = Path(f"{task_keys}/task-cert.pub")
+            certificate = issued.read_text(encoding="utf-8") if issued.exists() else ""
+        started = run("runuser", "-u", "fb", "--", "sudo", "-n", HELPER, "task", "prown", given=certificate)
+        task_token = started.stdout.strip()
+        check(started.returncode == 0 and task_token, "fb's task start to answer a token", started.stderr)
+        if task_token:
+            commit_on_main("porelo/prown")
+            pushed = git("push", "-q", "origin", "porelo/prown", token=task_token)
+            check(pushed.returncode == 0, "the task's token to push its branch", pushed.stderr)
+            code, pull = forge(
+                "POST", f"{repository}/pulls", {"head": "porelo/prown", "base": "main", "title": "prown"}, task_token
+            )
+            check(code == 201, "the task's token to open its pull request", [code, pull])
+            author = (pull or {}).get("user", {}).get("login")
+            check(author == "porelo-fb", "the pull request to be the task account's", author)
+            number = (pull or {}).get("number")
+            check(isinstance(number, int), "the pull request to have a number", pull)
+            person_token = forge_token_of("fb", "write:repository")
+            code = forge("POST", f"{repository}/pulls/{number}/merge", {"Do": "fast-forward-only"}, person_token)[0]
+            check(number and 400 <= code < 500 and code != 404, "the pull request not to merge unapproved", code)
+            # A writer outside Owners and developers approves: Forgejo takes the review, and it counts for nothing.
+            # Its password is Forgejo's own random one, on no command line and read by nobody.
+            made = forge_admin(
+                "user", "create", "--username", "follow-outsider", "--email", "outsider@example.org",
+                "--random-password", "--must-change-password=false",
+            )  # fmt: skip
+            check(made.returncode == 0, "an account outside the project's teams", made.stderr)
+            code = forge("PUT", f"{repository}/collaborators/follow-outsider", {"permission": "write"})[0]
+            check(code == 204, "the outsider to write the repository", code)
+            outsider_token = forge_token_of("follow-outsider", "write:repository")
+            code = forge("POST", f"{repository}/pulls/{number}/reviews", {"event": "APPROVED"}, outsider_token)[0]
+            check(code == 200, "the outsider's approval to be taken as a review", code)
+            code = forge("POST", f"{repository}/pulls/{number}/merge", {"Do": "fast-forward-only"}, person_token)[0]
+            check(400 <= code < 500 and code != 404, "an outsider's approval not to let it merge", code)
+            code, review = forge("POST", f"{repository}/pulls/{number}/reviews", {"event": "APPROVED"}, person_token)
+            check(code == 200, "fb to approve its task's pull request", [code, review])
+            code = forge("POST", f"{repository}/pulls/{number}/merge", {"Do": "fast-forward-only"}, person_token)[0]
+            check(code == 200, "fb to merge its task's pull request under a required review", code)
+    finally:
+        forge("DELETE", "admin/users/follow-outsider?purge=true")
+        ended = run("runuser", "-u", "fb", "--", "sudo", "-n", HELPER, "task", "--end", "prown")
+        check(ended.returncode == 0 or not record.exists(), "fb's pull request task to end", ended.stderr)
+        record.unlink(missing_ok=True)
+        if record.parent.exists() and not any(record.parent.iterdir()):
+            record.parent.rmdir()
+    # Every person's running user manager holds porelo-people, which opens the host's Matrix gate to their porelod.
+    people = run("getent", "group", "porelo-people").stdout.split(":")
+    for login in ("fa", "fb"):
+        user_id = run("id", "-u", login).stdout.strip()
+        pid = run("systemctl", "show", "--property=MainPID", "--value", f"user@{user_id}.service").stdout.strip()
+        running = pid.isdecimal() and int(pid) > 0
+        check(running, f"{login}'s user manager to run", pid)
+        held = next(
+            (line.split()[1:] for line in Path(f"/proc/{pid}/status").read_text().splitlines()
+             if line.startswith("Groups:")),
+            [],
+        ) if running else []  # fmt: skip
+        check(len(people) > 2 and people[2] in held, f"{login}'s user manager to hold porelo-people", held)
     # What org status says of each row: taken, waiting for the token this follow has not, and with no central.
     done_row = f"git@example.org:{PROJECT}/done.git"
     entries = json.loads(PROGRESS.read_text(encoding="utf-8"))
@@ -514,7 +590,7 @@ if FORGE.exists():
     followed()
     said = {row["repository"]: row["state"] for row in project_state()["repositories"]}
     check(said == {"done": "taken", "later": "waiting", "local": "no-central"}, "each row named", project_state())
-    check("local: " in str(project_state()["why"]), "a row with no central in the project's why", project_state())
+    check("local" not in str(project_state()["why"]), "no row with no central in the project's why", project_state())
     FETCH = ("Sec-Fetch-Site: none", "Sec-Fetch-Mode: navigate")
     SAME = (f"Origin: http://{OWN}", "Sec-Fetch-Site: same-origin", "Sec-Fetch-Mode: navigate")
     code, page = browser("GET", "/repo/create", FETCH)
