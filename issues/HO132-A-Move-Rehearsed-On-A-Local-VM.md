@@ -1,6 +1,6 @@
 # HO132 — A Move Rehearsed On A Local VM
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** S - one shell script beside `build/molecule.sh`, on the same VM code, and its trial on this kind of machine up to
 an empty `up` and a clean `down`.
 
@@ -19,7 +19,8 @@ one is given explicitly, so nothing outside is touched by default.
   - `ssh [<command>]`: the VM's admin login, with the run's own key and host key.
   - `tunnel <login> <port>`: `build/room-tunnel.sh` to the VM, with the run's host key.
   - `down`: `down` on the VM, then the VM, its disk and its seed deleted, believed only as libvirt lists none of
-    them, and the run's directory removed.
+    them, and the run's directory removed. A real organization keeps the host's read keys on its repositories, as for
+    any host, until their owner removes them.
 - `porelo-vm make` takes its disk size from `PORELO_VM_DISK`, default today's `20G`, so the pool and Molecule are unchanged.
 - An interrupt or a failed `start` deletes the VM it made.
 - `AGENTS.md` names the script among the files that cannot be Java.
@@ -29,6 +30,13 @@ one is given explicitly, so nothing outside is touched by default.
 - `start` on this machine reaches an `up` that ends with no failed and no waiting step, and `down` leaves libvirt listing
   nothing of the run. Both are observed, not taken from exit codes.
 - A second `start` over a left VM is refused and names it.
+
+## Declined from the reading
+
+- The seed ISO holding the VM's host key stays in libvirt's pool until `down`, as `build/molecule.sh`'s does: the key is a
+  throwaway VM's, made for the run on this machine, and goes with the VM.
+- The collection's tarball is built by `build/tools.sh`, which mounts the whole checkout, the run's keys under `target/`
+  included, into the pinned tools image as the calling account; it is the same account's own files.
 
 ## To be checked
 

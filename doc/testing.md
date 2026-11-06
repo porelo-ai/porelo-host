@@ -38,3 +38,27 @@ project's own pull requests: about three minutes, the runner adding libvirt by p
 **How long it takes**, measured on this project's workstation (16 threads, AMD): about a minute from start to clean-up
 with the image cached - 52 s for a run whose `up` has no role yet, of which the VM takes about 15 s to answer ssh.
 The first run on a machine also downloads the image, 825 MB, about 70 s at the measured 12 MB/s.
+
+## Rehearsing a move
+
+An agent's move can be rehearsed before a host is rented, on a VM made the same way on the development machine:
+
+    build/rehearse-move.sh start [--machine-file <file>]
+    build/rehearse-move.sh ssh [<command>...]
+    build/rehearse-move.sh tunnel <login> <homeserver port>
+    build/rehearse-move.sh down
+
+`start` makes one domain `porelo-host-rehearsal-<time>` with 8 vCPUs, 16 GiB and an 80 GiB disk. It installs the collection
+built from the checkout and runs `porelo.host.up` on the VM with the forge on, no VM pool and no KVM asked; `up`'s lines stay
+on the VM in `/root/rehearsal-up.lines`. Without `--machine-file`, the organization is Molecule's stand-in on the
+host's own forge, and nothing outside the machine is touched. With it, the file is the machine file a person's interface
+writes for a real organization, and the follow puts the host's read keys on that organization's repositories, where
+they stay until the repositories' owner removes them, as for any host. `start` refuses while any rehearsal's domain or
+volume is still there. A failed or interrupted `start` deletes what it made and exits 1 naming anything libvirt still lists.
+`up` is believed only by its lines: none failed, none waiting, and its summary of the host written.
+
+`ssh` logs in as the VM's admin with the run's own key and host key. `tunnel` runs `build/room-tunnel.sh` to the VM for an
+admitted login, accepting only the run's host key, and stops once `down` has removed it. `down` runs
+`porelo.host.down` on a running VM first, as on a rented host, and keeps the VM when that fails. It then deletes the
+VM, its disk and its seed by the name its `start` recorded, believes that only once libvirt lists no rehearsal, and
+removes the run's files under `target/rehearsal`.

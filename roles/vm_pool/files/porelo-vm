@@ -8,9 +8,10 @@
 #                                                            and the key, the host key, and the part appended
 #        porelo-vm make <name> <volume> <seed-dir> <memory-MiB> <vcpus> <osinfo>
 #                                                            a VM on a copy-on-write disk over the base volume, its
-#                                                            seed made from <seed-dir>/user-data and meta-data
+#                                                            seed made from <seed-dir>/user-data and meta-data;
+#                                                            PORELO_VM_CPU replaces its --cpu, for a test without KVM,
+#                                                            PORELO_VM_DISK its disk's 20G
 #        porelo-vm address <name> <seconds>                  waits for the VM's address on libvirt's network
-#                                                            PORELO_VM_CPU replaces its --cpu, for a test without KVM
 #        porelo-vm delete <name>                             the VM, its disk and its seed, believed only as seen
 set -eu
 export LIBVIRT_DEFAULT_URI="${LIBVIRT_DEFAULT_URI:-qemu:///system}"
@@ -67,11 +68,15 @@ seed() {
 make() {
     name=$1 volume=$2 seed=$3 memory=$4 vcpus=$5 osinfo=$6
     name_ok "$name"
+    disk=${PORELO_VM_DISK:-20G}
+    case $disk in *'
+'*) fail "PORELO_VM_DISK holds a second line" ;; esac
+    printf '%s\n' "$disk" | grep -Eqx '[1-9][0-9]{0,3}G' || fail "'$disk' is no disk size in G"
     if virsh dominfo "$name" >/dev/null 2>&1; then fail "a VM '$name' is already there"; fi
     [ -f "$seed/user-data" ] && [ -f "$seed/meta-data" ] || fail "$seed holds no user-data and meta-data"
     xorriso -as mkisofs -quiet -o "$seed/seed.iso" -V cidata -J -r "$seed/user-data" "$seed/meta-data"
     if ! {
-        virsh vol-create-as "$pool" "$name.qcow2" 20G --format qcow2 --backing-vol "$volume" \
+        virsh vol-create-as "$pool" "$name.qcow2" "$disk" --format qcow2 --backing-vol "$volume" \
             --backing-vol-format qcow2 >/dev/null \
         && virsh vol-create-as "$pool" "$name-seed.iso" "$(stat -c %s "$seed/seed.iso")" --format raw >/dev/null \
         && virsh vol-upload "$name-seed.iso" "$seed/seed.iso" --pool "$pool" \
