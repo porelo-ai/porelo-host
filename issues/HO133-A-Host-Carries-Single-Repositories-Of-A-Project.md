@@ -50,17 +50,11 @@ Read in `roles/porelo/files/porelo-host-person` (`follow_take_named_repositories
 - **A repository with unpushed work on the host** when taken off the card is held until the work reaches the central
   forge, as a project is today (operator, 2026-11-06).
 
-## To be checked
-
-- The state's form for named repositories, settled with porelo's part before this is built, so both read the same
-  field.
-- Whether the task gate and a person's push configuration need to know a repository was taken off. A task on a
-  repository no longer carried is refused at its start today through the project file.
-
 ## Done
 
 - **The state's field:** a project in the organization's state may carry `repositories`, a list of the project file's
-  repository names, the form agreed with porelo's own part; absent or null carries the project whole, as before. A list
+  repository names, the form agreed with porelo's own part; absent, null or empty carries the project whole, as
+  porelo writes it. A list
   that does not read refuses that project alone.
 - **The follow:** `follow_take_named_repositories` takes only the named ones and the project's own. One taken before
   and named no longer is taken off; a name the file does not list stands in the project's `why`.
@@ -80,3 +74,15 @@ Read in `roles/porelo/files/porelo-host-person` (`follow_take_named_repositories
   rehearsal on a VM with a central forge.
 - **Not done:** a deploy key named without a token is said once, in the follow that took the repository off; the
   manifest row goes with the repository, so no later follow names it again.
+- **Checked against porelo's part:** Core's local commit 4d4ce6e3 (work-b479-core) writes a host's repositories per
+  project, an empty list for a project carried whole; the host reads an empty list so. Its `org fetch` state does not
+  yet carry the field on each project, which porelo's part adds; until then every project is carried whole, as today.
+- **Push configurations:** a follow that took a repository off writes the members' push configurations again at once,
+  token or not. The task gate was not checked: a task on a repository no longer carried is refused at its start by the
+  project file, as before.
+- **Changed after the reading (agy, gemini-4-argon-high):** the project's own repository is known by its name on the
+  forge, however a row spells its address, and a repository another named row carries is never taken off. `take-off`
+  deletes the central key before the host's copy, so whatever fails after the work was checked leaves the repository
+  held on the host for the next follow. It refuses Forgejo's answer for a renamed repository, sends a token to the
+  organization's forge alone (the check `migrate` makes), and takes the repository's arrivals along. A new forge
+  organization clears what the card named. Each of the seven new unit tests was red on the first cut.

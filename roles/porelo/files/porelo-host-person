@@ -1755,7 +1755,7 @@ class Host:
                 or not isinstance(project.get("signing_keys"), list)
                 or "address" not in project):
             refuse("porelo org fetch answered a malformed or duplicate project", 65)
-        # The repositories of the project file this host carries; absent or null, all of them.
+        # The repositories of the project file this host carries; absent, null or empty, all of them.
         named = project.get("repositories")
         if named is not None and (
                 not isinstance(named, list) or len(set(map(str, named))) != len(named)
@@ -1905,14 +1905,16 @@ class Host:
         # Access is taken away first, so no failure in a service can leave a removed member reading.
         self.follow_publish(applied, files, signers, records, accounts)
         errors = []
+        self.taken_off = False
         for step in (lambda: self.apply_org_cards(applied["persons"], applied["revoked"], records, previous),
                      lambda: self.follow_memberships(applied, records, accounts),
                      lambda: self.follow_projects(applied, previous, token),
                      lambda: self.follow_forge_members(applied, previous, records, self.account_ids()),
-                     # After the removals above, as this can take long; a token's new repositories reach the members now.
+                     # After the removals above, as this can take long; a token's new repositories reach the members now,
+                     # and so does a repository taken off, which their push configs no longer name.
                      lambda: self.follow_project_repositories(applied, token),
-                     lambda: None if token is None else self.follow_forge_members(applied, previous, records,
-                                                                                  self.account_ids())):
+                     lambda: None if token is None and not self.taken_off else self.follow_forge_members(
+                         applied, previous, records, self.account_ids())):
             try:
                 step()
             except Refusal as error:
@@ -1969,7 +1971,8 @@ class Host:
         named = item.get("named")
         for repository, row in sorted((file.get("repositories") or {}).items()):
             central = row["central"]
-            if named is not None and repository not in named and central != file.get("address"):
+            own = CENTRAL_ADDRESS.fullmatch(file["address"]).group("repository").lower() if file.get("address") else None
+            if named is not None and repository not in named and taken_as(repository, row).lower() != own:
                 if repository in waiting:
                     said.append({"repository": repository, "state": "held", "why": waiting[repository]})
                 else:
@@ -2107,7 +2110,8 @@ class Host:
             admin, key = self.follow_project_admin(project, self.records())
             self.follow_project_command(["add", name, admin, "--signed-by", key])
             # A new forge organization holds no repository, whatever a record that outlived the old one says.
-            for done in ("migrated", "migrate_refused", "taken", "repositories_why", "advanced", "advance_refused"):
+            for done in ("migrated", "migrate_refused", "taken", "repositories_why", "advanced", "advance_refused",
+                         "named", "named_refused"):
                 item.pop(done, None)
         if item.get("migrated"):
             item["state"] = "carried"
@@ -2491,19 +2495,26 @@ class Host:
         taken = set(item.get("taken", []))
         waiting = {}
         rows = (item.get("file") or {}).get("repositories", {})
-        named = project.get("repositories")
+        # None or an empty list, as porelo writes a project carried whole, takes every repository.
+        named = project.get("repositories") or None
         item["named"] = named
         unknown = sorted(set(named or []) - set(rows))
         item["named_refused"] = (f"the host's card names repositories the project file does not list: "
                                  f"{', '.join(unknown)}") if unknown and item.get("file") else None
+        # The project's own repository by its name on the forge, however the file spells its address.
+        own = CENTRAL_ADDRESS.fullmatch(project["address"]).group("repository").lower()
+        # What any named row still carries stays, though another row names the same repository.
+        kept = {own} | {taken_as(name, rows[name]).lower() for name in rows
+                        if (named is None or name in named) and rows[name]["central"] is not None}
         for repository, row in rows.items():
             central = row["central"]
             if named is not None and repository not in named:
-                if central is not None and central != project["address"] and central in taken:
+                if central is not None and taken_as(repository, row).lower() not in kept and central in taken:
                     try:
                         self.follow_project_command(["take-off", project["project"]],
                                                     {"repository": taken_as(repository, row), "token": token})
                         taken.discard(central)
+                        self.taken_off = True
                     except Refusal as error:
                         waiting[repository] = f"held on this host: {error.shown()}"
                 continue

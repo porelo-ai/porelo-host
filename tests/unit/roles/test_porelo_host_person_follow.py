@@ -2719,10 +2719,11 @@ def test_a_card_naming_one_repository_takes_that_one_alone(files):
     assert alpha["why"] is None, "a repository left to another host is the card's choice, not a fault"
 
 
-def test_a_project_carried_whole_takes_every_repository_as_before(files):
-    """Prevent a card with no repositories, or null, taking fewer than the file names."""
+@pytest.mark.parametrize("whole", [None, []])
+def test_a_project_carried_whole_takes_every_repository_as_before(files, whole):
+    """Prevent a card with no repositories, null or an empty list as porelo writes a whole project, taking fewer."""
     files.answer["repositories"] = named(one="required", two="required")
-    files.state.reply["projects"][0]["repositories"] = None
+    files.state.reply["projects"][0]["repositories"] = whole
     files.main = "2" * 40
     files.run("b", token=True)
     assert {"git@example.org:acme/one.git", "git@example.org:acme/two.git"} <= set(files.migrated())
@@ -2730,15 +2731,20 @@ def test_a_project_carried_whole_takes_every_repository_as_before(files):
 
 
 @pytest.mark.parametrize("token", [True, False])
-def test_a_repository_the_card_no_longer_names_is_taken_off(files, token):
+def test_a_repository_the_card_no_longer_names_is_taken_off(files, monkeypatch, token):
     """Prevent a repository left out later staying on the host's forge, with or without a central token at hand."""
     files.answer["repositories"] = named(one="required", two="required")
     files.main = "2" * 40
     files.run("b", token=True)
     files.state.reply["projects"][0]["repositories"] = ["one"]
+    order = []
+    for step in ("follow_project_repositories", "follow_forge_members"):
+        done = getattr(files.host, step)
+        monkeypatch.setattr(files.host, step, lambda *args, done=done, step=step: order.append(step) or done(*args))
     files.run("c", token=token)
     assert taken_off(files) == [("two", token)]
     assert "git@example.org:acme/two.git" not in files.item()["taken"]
+    assert order[-2:] == ["follow_project_repositories", "follow_forge_members"], "push configs leave it at once"
     assert repositories_said(files)[1]["two"]["state"] == "not-carried"
     files.run("d", token=token)
     assert len(taken_off(files)) == 1, "what is taken off is not asked again"
@@ -2787,3 +2793,30 @@ def test_a_malformed_list_of_repositories_refuses_the_project_alone(files, repos
     files.run("b", token=True)
     alpha = repositories_said(files)[0]
     assert alpha["state"] == "refused" and "malformed repositories" in alpha["why"]
+
+
+def test_the_projects_own_repository_is_never_taken_off_however_the_file_spells_it(files):
+    """Prevent the repository the project file lives in leaving the host when the card names only others."""
+    files.answer["repositories"] = {
+        **named(one="required"),
+        "self": {"review": "required", "upstream": None, "central": "https://example.org/acme/Alpha.git"},
+    }
+    files.main = "2" * 40
+    files.run("b", token=True)
+    files.state.reply["projects"][0]["repositories"] = ["one"]
+    files.run("c", token=True)
+    assert "alpha" not in [name.lower() for name, _ in taken_off(files)]
+    assert repositories_said(files)[1]["self"]["state"] != "not-carried"
+
+
+def test_a_repository_another_named_row_carries_is_not_taken_off(files):
+    """Prevent two rows of one repository taking it off for the row the card does not name."""
+    files.answer["repositories"] = {
+        **named(one="required"),
+        "again": {"review": "required", "upstream": None, "central": "git@example.org:acme/one.git"},
+    }
+    files.main = "2" * 40
+    files.run("b", token=True)
+    files.state.reply["projects"][0]["repositories"] = ["one"]
+    files.run("c", token=True)
+    assert not taken_off(files)

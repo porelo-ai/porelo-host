@@ -452,13 +452,15 @@ commit or the signers changed, and an isolated `porelo project verify` with no n
 `repositories.<name>.central` names what else is taken: with the token at hand, all of them in the same follow, each
 with its own read key. One named later waits for a token and says so; one refused is named in `why`, and the rest go on;
 one taken out of the file stays with its work. Where the host's card in the organization's state names some of the
-file's repositories (`repositories: [...]` on its project; absent or null carries all), only those are taken; the
+file's repositories (`repositories: [...]` on its project; absent, null or empty carries all), only those are taken; the
 project's own repository is taken in any case, as its file lives there. A name the file does not list stands in the
 project's `why`. One taken before and named no longer is taken off by `porelo-host-project take-off <project>`, which
 reads `{"repository", "token"}` on standard input: work on the host's copy that its central repository has not keeps
-it there, as `held`, and each follow tries again. Taken off, its read key goes; its deploy key at the central forge is
-deleted with the token at hand and believed by its absence after, or else named in `left_at_central` and the journal
-for its owner to remove. The forge names each after its central repository. Each `main` needs one
+it there, as `held`, and each follow tries again. Its deploy key at the central forge goes first, deleted with the token
+at hand, which reaches the organization's forge alone, and believed by its absence after, or else named in
+`left_at_central` and the journal for its owner to remove; then the host's copy, its read key and its arrivals. What
+fails on the way leaves the copy held for the next follow. The members' push configurations leave it in the same
+follow. The project's own repository is never taken off, however a row spells its address. The forge names each after its central repository. Each `main` needs one
 approval by another person after which a push dismisses it, unless `repositories.<name>.review` or `project.review` is
 `optional`, when the author may merge their own. Either way nobody pushes straight to `main`, and only owners and
 developers merge. A rule changed by hand is set back at the next follow; a file that cannot be read keeps the last values.

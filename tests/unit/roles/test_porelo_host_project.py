@@ -2718,6 +2718,9 @@ def two_repository_project(host, monkeypatch, capsys):
         return original(method, path, body)
 
     host["forge"].request = requests
+    settings = host["etc"] / "organization/organization.yml"
+    settings.write_text("adapter: git\nsettings:\n  repository: git@forge.example.org:acme/organization.git\n")
+    settings.chmod(0o600)
     return directory
 
 
@@ -2817,10 +2820,11 @@ def test_a_deploy_key_still_listed_after_its_deletion_keeps_the_read_key(memory_
     """Prevent a deletion the central forge did not carry out reading as done."""
     host = memory_host
     directory = two_repository_project(host, monkeypatch, capsys)
+    seen = []
     overrides = {
         "forge_git": lambda *args: "a" * 40 + "\n",
         "central_commits": lambda *args: {"a" * 40},
-        "Central": central_keys([], held={"/repos/acme/code/keys/7"}),
+        "Central": central_keys(seen, held={"/repos/acme/code/keys/7"}),
     }
     result = project(
         host,
@@ -2832,5 +2836,79 @@ def test_a_deploy_key_still_listed_after_its_deletion_keeps_the_read_key(memory_
         piped=json.dumps({"repository": "code", "token": CENTRAL_TOKEN}),
     )
     assert result[0] == 69, result
+    assert seen == [("DELETE", "/repos/acme/code/keys/7"), ("GET", "/repos/acme/code/keys/7")]
+    assert "code" in [repo["name"] for repo in host["forge"].repositories["alpha"]], "the copy stays, held"
     assert (directory / "code").exists()
     assert "code" in [entry["name"] for entry in json.loads((directory / "repositories.json").read_text())]
+
+
+PUSHED = {"forge_git": lambda *args: "a" * 40 + "\n", "central_commits": lambda *args: {"a" * 40}}
+
+
+def test_a_token_goes_to_no_forge_but_the_organizations(memory_host, monkeypatch, capsys):
+    """Prevent a manifest row of another forge receiving the organization's central token."""
+    host = memory_host
+    directory = two_repository_project(host, monkeypatch, capsys)
+    (host["etc"] / "organization/organization.yml").write_text(
+        "adapter: git\nsettings:\n  repository: git@elsewhere.example:acme/organization.git\n"
+    )
+    seen = []
+    result = project(
+        host,
+        monkeypatch,
+        capsys,
+        "take-off",
+        "alpha",
+        overrides={**PUSHED, "Central": central_keys(seen)},
+        piped=json.dumps({"repository": "code", "token": CENTRAL_TOKEN}),
+    )
+    assert result[0] == 65 and not seen, result
+    assert "code" in [repo["name"] for repo in host["forge"].repositories["alpha"]]
+    assert (directory / "code").exists()
+
+
+def test_a_renamed_repository_answered_under_the_old_name_is_not_taken_off(memory_host, monkeypatch, capsys):
+    """Prevent Forgejo's answer for an old name taking off the repository that was renamed from it."""
+    host = memory_host
+    two_repository_project(host, monkeypatch, capsys)
+    original = host["forge"].request
+
+    def renamed(method, path, body):
+        if method == "GET" and path == "/api/v1/repos/alpha/old":
+            return 200, {"name": "docs", "original_url": "https://forge.example.org/acme/docs.git"}
+        return original(method, path, body)
+
+    host["forge"].request = renamed
+    result = project(
+        host,
+        monkeypatch,
+        capsys,
+        "take-off",
+        "alpha",
+        overrides={**PUSHED, "Central": central_keys([])},
+        piped=json.dumps({"repository": "old", "token": None}),
+    )
+    assert result[0] == 69, result
+    assert "docs" in [repo["name"] for repo in host["forge"].repositories["alpha"]]
+
+
+def test_a_repository_taken_off_takes_its_arrivals_along(memory_host, monkeypatch, capsys):
+    """Prevent a repository carried again later reading the verdicts of the copy taken off."""
+    host = memory_host
+    two_repository_project(host, monkeypatch, capsys)
+    directory = host["tmp"] / "arrivals/alpha"
+    directory.mkdir(parents=True, mode=0o700, exist_ok=True)
+    for name in ("docs", "code"):
+        (directory / f"{name}.jsonl").write_text("{}\n")
+        (directory / f"{name}.jsonl").chmod(0o600)
+    result = project(
+        host,
+        monkeypatch,
+        capsys,
+        "take-off",
+        "alpha",
+        overrides={**PUSHED, "Central": central_keys([])},
+        piped=json.dumps({"repository": "docs", "token": None}),
+    )
+    assert result[0] == 0, result
+    assert not (directory / "docs.jsonl").exists() and (directory / "code.jsonl").exists()

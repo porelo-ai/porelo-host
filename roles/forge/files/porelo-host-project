@@ -1300,14 +1300,7 @@ def migrate(forge, project, supplied):
             or not re.fullmatch(r"[!-~]{1,4096}", request["token"])):
         refuse("migration requires an address and one printable token on standard input", 64)
     origin, owner, name, address, _ssh = central_address(request["address"])
-    settings = os.path.join(ETC, "organization", "organization.yml")
-    trusted(settings, private=True)
-    with open(settings, encoding="utf-8") as stream:
-        text = stream.read()
-    # Porelo has already accepted these adapter settings; refuse spellings this helper cannot bind to one origin.
-    matches = re.findall(r"^\s+repository:\s*(['\"]?)([^\s'\"]+)\1\s*$", text, re.MULTILINE)
-    if len(matches) != 1 or central_address(matches[0][1])[0] != origin:
-        refuse("migration's central forge differs from the organization's forge or its settings do not read", 65)
+    organization_origin(origin, "migration")
     directory, entries = project_manifest(project)
     for path in (os.path.dirname(directory), directory):
         trusted_directory(path, private=True, missing=True)
@@ -1385,6 +1378,18 @@ def migrate(forge, project, supplied):
     protect_repository(forge, project, name)
 
 
+def organization_origin(origin, what):
+    """Refuse a central token for any forge but the organization's own, as its adapter settings name it."""
+    settings = os.path.join(ETC, "organization", "organization.yml")
+    trusted(settings, private=True)
+    with open(settings, encoding="utf-8") as stream:
+        text = stream.read()
+    # Porelo has already accepted these adapter settings; refuse spellings this helper cannot bind to one origin.
+    matches = re.findall(r"^\s+repository:\s*(['\"]?)([^\s'\"]+)\1\s*$", text, re.MULTILINE)
+    if len(matches) != 1 or central_address(matches[0][1])[0] != origin:
+        refuse(f"{what}'s central forge differs from the organization's forge or its settings do not read", 65)
+
+
 def take_off(forge, project, supplied):
     """Take one repository off the host's forge, and its read key; its deploy key at the central forge, given a token.
 
@@ -1407,25 +1412,38 @@ def take_off(forge, project, supplied):
     if item is not None:
         read_key_paths(project)
     local = forge.request("GET", f"/repos/{project}/{name}", expected=(200, 404))
+    # Forgejo answers a renamed repository under its old name too: only the one asked for is taken off.
+    if local is not None and (not isinstance(local, dict) or not isinstance(local.get("name"), str)
+                              or local["name"].lower() != name.lower()):
+        refuse(f"the forge answered another repository for {project}/{name}", 69)
     if local is not None:
-        if not isinstance(local, dict) or not isinstance(local.get("name"), str):
-            refuse(f"the forge answered no repository for {project}/{name}", 69)
-        check_read_keys(forge, project, [local])
-        forge.request("DELETE", f"/repos/{project}/{local['name']}", expected=(204,))
-        if forge.request("GET", f"/repos/{project}/{name}", expected=(200, 404)) is not None:
-            refuse(f"the forge still holds {project}/{name}; keeping its read key", 69)
+        check_read_keys(forge, project, [{**local, "name": item["name"] if item else local["name"]}])
+    arrivals = os.path.join(ARRIVALS, project, name.lower() + ".jsonl")
+    if os.path.lexists(arrivals):
+        trusted(arrivals, private=True)
     left = []
-    if item is None:
-        return {"project": project, "repository": name, "removed": True}
-    if item["key_id"] > 0 and request["token"] is None:
+    # The central key before the host's copy: whatever fails after the work was checked leaves the repository here,
+    # held, and the next follow takes it up again.
+    if item is not None and item["key_id"] > 0 and request["token"] is None:
         left.append({"address": item["address"], "title": item.get("title", "porelo-host-" + project)})
-    elif item["key_id"] > 0:
+    elif item is not None and item["key_id"] > 0:
         origin, owner, central_name = central_address(item["address"])[:3]
+        organization_origin(origin, "taking off")
         route = f"/repos/{owner}/{central_name}/keys/{item['key_id']}"
         Central(request["token"], origin).request("DELETE", route, expected=(204, 404))
         # Believed by its absence after, not by the answer to the deletion.
         if Central(request["token"], origin).request("GET", route, expected=(200, 404)) is not None:
             refuse(f"the central forge still holds the read key of {project}/{name}", 69)
+    if local is not None:
+        forge.request("DELETE", f"/repos/{project}/{local['name']}", expected=(204,))
+        if forge.request("GET", f"/repos/{project}/{name}", expected=(200, 404)) is not None:
+            refuse(f"the forge still holds {project}/{name}; keeping its read key", 69)
+    # A repository carried again later starts its arrivals anew, as a project brought again does.
+    if os.path.lexists(arrivals):
+        with writing(arrivals):
+            os.unlink(arrivals)
+    if item is None:
+        return {"project": project, "repository": name, "removed": True}
     # The keys before the manifest that names them, so a run broken in between is taken up again by the next.
     for suffix in (".pub", ""):
         path = os.path.join(directory, item["name"].lower() + suffix)

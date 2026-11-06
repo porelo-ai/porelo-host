@@ -604,7 +604,7 @@ if FORGE.exists():
         (done.returncode, done.stderr),
     )
     code = forge("GET", f"repos/{PROJECT}/{code_name}")[0]
-    check(code == 200, "the project's own repository to stay through another's take-off", code)
+    check(code == 200, "the project's own repository untouched by taking off one it does not hold", code)
     FETCH = ("Sec-Fetch-Site: none", "Sec-Fetch-Mode: navigate")
     SAME = (f"Origin: http://{OWN}", "Sec-Fetch-Site: same-origin", "Sec-Fetch-Mode: navigate")
     code, page = browser("GET", "/repo/create", FETCH)
