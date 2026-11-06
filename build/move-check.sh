@@ -50,32 +50,47 @@ pushed=$(printf '%s\n' "$text" | awk '$1 == "build" { print $2; exit }')
 conf=${PORELO_HOST_FORGE_CONF:-/etc/porelo-host/forge.conf}
 port=$(sed -n 's/^git_port=//p' "$conf" 2>/dev/null | head -n 1)
 forge=$(sed -n 's/^name=//p' "$conf" 2>/dev/null | head -n 1)
+one_line() { # <value> <extended regular expression the whole of it matches>, refusing a second line
+    case $1 in *'
+'*) return 1 ;; esac
+    printf '%s\n' "$1" | grep -Eqx "$2"
+}
+
 held=
 why=
-if ! printf '%s' "$branch" | grep -Eqx '[A-Za-z0-9][A-Za-z0-9._/-]*'; then
-    why="porelo task status names no forge branch"
+# What is asked of porelo and the forge below is named by these alone, each read and held to its form once.
+named=0
+if one_line "$branch" '[A-Za-z0-9][A-Za-z0-9._/-]*' \
+    && one_line "$project/$repository" '[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*'; then
+    named=1
+fi
+if [ "$named" != 1 ]; then
+    why="porelo task status names no forge branch and repository"
 elif [ -z "$pushed" ]; then
     why="porelo task status names no pushed commit, which it shows only with a builds: block"
-elif ! printf '%s' "$pushed" | grep -Eqx '[0-9a-f]{7,64}'; then
-    why="porelo task status names no commit but '$pushed'"
-elif ! printf '%s' "$port" | grep -Eqx '[1-9][0-9]{0,4}' \
-    || ! printf '%s' "$forge" | grep -Eqx '[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?'; then
+elif ! one_line "$pushed" '[0-9a-f]{7,64}'; then
+    why="porelo task status names no commit"
+elif ! one_line "$port" '[1-9][0-9]{0,4}' || ! one_line "$forge" '[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?'; then
     why="$conf names no valid git_port and name"
-elif ! printf '%s/%s' "$project" "$repository" | grep -Eqx '[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*'; then
-    why="the task names no forge repository"
 else
     base=http://127.0.0.1:$port
     # The person's vault answers Git for this one address; the token reaches Git on a pipe alone.
-    heads=$(GIT_TERMINAL_PROMPT=0 git -c credential.helper= \
+    # Nothing of the person's or the system's Git configuration takes part, a redirect included.
+    heads=$(GIT_TERMINAL_PROMPT=0 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null git \
         -c "credential.$base.helper=!porelo vault credential --entry $forge.person" \
-        -c protocol.allow=never -c protocol.http.allow=always -c http.proxy= \
+        -c protocol.allow=never -c protocol.http.allow=always -c http.proxy= -c http.followRedirects=false \
         ls-remote --heads "$base/$project/$repository.git" 2>/dev/null) \
         || why="the host's forge answered no branches of $project/$repository"
+    # The gate's latest forward of the push: the branch itself counts as 1, <branch>-<n> as n.
     held=$(printf '%s\n' "$heads" | awk -v branch="refs/heads/$branch" -v commit="$pushed" '
-        index($1, commit) == 1 && ($2 == branch \
-            || index($2, branch "-") == 1 && substr($2, length(branch) + 2) ~ /^[0-9]+$/) {
-            sub(/^refs\/heads\//, "", $2); print $2; exit
-        }')
+        index($1, commit) != 1 { next }
+        $2 == branch { n = 1 }
+        $2 != branch {
+            if (index($2, branch "-") != 1 || substr($2, length(branch) + 2) !~ /^[0-9]+$/) next
+            n = substr($2, length(branch) + 2) + 0
+        }
+        n > best { best = n; found = $2 }
+        END { if (found != "") { sub(/^refs\/heads\//, "", found); print found } }')
 fi
 if [ -n "$held" ]; then
     line 0 "its last push $pushed reached the forge as $held"
@@ -87,7 +102,7 @@ fi
 
 build=
 asked=1
-if [ -n "$project" ] && [ -n "${held:-$branch}" ]; then
+if [ "$named" = 1 ]; then
     build=$(porelo build status -p "$project" -r "$repository" "--branch=${held:-$branch}" --logs=none --json \
         2>/dev/null)
     asked=$?

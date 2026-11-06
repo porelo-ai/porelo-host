@@ -109,6 +109,29 @@ def test_the_push_is_found_on_the_branch_the_gate_forwarded_it_to(tmp_path, pore
     assert "--branch=porelo/t1-2" in calls.read_text()
 
 
+def test_the_latest_forward_of_the_push_is_named_when_several_hold_it(tmp_path, porelo):
+    """Prevent the name order of the forge's branches picking an older forward of the same push."""
+    calls = porelo(
+        heads="".join("a" * 40 + f"\trefs/heads/porelo/t1{tail}\n" for tail in ("", "-10", "-2", "x-3")),
+        build=json.dumps({"branch": "porelo/t1-10", "commit": "a" * 40, "verdict": "success"}),
+    )
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert any(line.startswith("ok:") and "as porelo/t1-10" in line for line in done.stdout.splitlines()), done.stdout
+    assert "--branch=porelo/t1-10" in calls.read_text()
+
+
+def test_a_repository_with_a_second_line_is_asked_of_nobody(tmp_path, porelo):
+    """Prevent a second line in the task's repository reaching the forge or the build reader as a name that held."""
+    calls = porelo(
+        status=json.dumps({"name": "t1", "running": True, "project": "porelo", "repository": "sluice\n--evil"}),
+    )
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert done.returncode == 1
+    assert any(line.startswith("FAILED") and "cannot say" in line for line in done.stdout.splitlines()), done.stdout
+    asked = calls.read_text()
+    assert "ls-remote" not in asked and "build status" not in asked, asked
+
+
 def test_a_project_without_builds_names_the_reader_not_configured(tmp_path, porelo):
     """Prevent a project with no builds: block reading as a Build that answered nothing."""
     porelo(status_text=GOOD["status_text"].replace("build      " + "a" * 12, "x"), build=NO_BUILDS, build_code="78")
