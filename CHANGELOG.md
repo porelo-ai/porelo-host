@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   host's forge. It reads those of every organization its person's task account is in and writes none; Porelo's task
   gate holds a task to its own project's.
 
+### Fixed
+
+- **The move check reads each line where its fact is held.** The push is found on the host's forge, as the task's
+  forge branch or the next free one the gate's approve took, read with the person's vault answering Git; the Build line
+  says `not configured` without a `builds:` block; and the conversation line counts a message the task sent into the
+  project's conversation, since `porelo talk peers` never lists a project's own tasks.
+
 ### Security
 
 - **The forge's web gate serves the forge's own site alone,** so another page in the person's browser cannot act as

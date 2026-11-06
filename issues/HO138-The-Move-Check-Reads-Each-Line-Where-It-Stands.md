@@ -1,6 +1,6 @@
 # HO138 — The Move Check Reads Each Line Where It Stands
 
-**Status:** Implementing.
+**Status:** Review.
 **Kind:** Bug.
 **Size:** S - two lines of `build/move-check.sh` read anew, with their unit tests in `tests/unit/test_move_tools.py`.
 
@@ -42,3 +42,24 @@ and `porelo/sluice-2`, its pull request #2 merged with the Build green. Still:
 
 - The exact field of `porelo task status --json` that names the task's forge branch and its last pushed commit, and
   what says the task joined its conversation; read from porelo before building.
+
+## Done
+
+- **Read from porelo:** `porelo task status --json` holds only `name`, `state`, `running`, `project`, `repository`,
+  `parameters` and `usage`: no forge branch, no pushed commit, nothing on the conversation. The readable form holds
+  `forge <branch>`, the branch the task's start settled, and one `build <commit> ...` line per push seen, the newest
+  first, only where a build reader follows the task. The gate's approve takes `<branch>-2`, `-3`, ... when the branch
+  holds earlier work, and records that choice nowhere `task status` shows. `porelo build status` exits 78 for a project
+  without a `builds:` block, and for nothing else. In `porelo talk log`, a message the task sent and a transport took
+  is a `sent` row whose detail names the transport, `matrix` for the project's conversation.
+- **The push:** the newest `build` commit, found on the host's forge as the `forge` branch or `<branch>-<n>`, read by
+  `git ls-remote` on `127.0.0.1:<git_port>` with `porelo vault credential --entry <forge name>.person` answering Git.
+  The vault is read rather than `porelo-host-person forge-token` called, since that makes the person's one token anew
+  and deletes the one their vault holds. Without a `builds:` block the line says `cannot say` and why.
+- **The Build:** asked for the branch that holds the push, `not configured` on exit 78.
+- **The conversation:** green on a `sent` row over `matrix` in `porelo talk log <task>`; `porelo task status` says
+  nothing about the conversation.
+- **Red first:** the new and changed unit tests, 10 of 28, failed on the script before the change; all 28 pass after.
+- **Still open:** on a host without a `builds:` block the push line cannot be green until `porelo task status` names
+  the task's last pushed commit and the branch the gate's approve chose; that is porelo's to add. The acceptance on the
+  rehearsal's host is not run yet.

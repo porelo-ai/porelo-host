@@ -487,9 +487,9 @@ and the UTC time that text last changed; change it in the channel first, never i
   `build/pom.xml`, which builds nothing; `build/tools.sh`, `build/sanity.sh`, `build/check-tarball.sh` and
   `build/molecule.sh`, shell, since they run the container, read its tarball and drive libvirt where the collection is
   checked;
-  `build/room-tunnel.sh` and `build/move-check.sh`, shell, since they only start `ssh` and read Porelo's answers during an
-  agent's move, on a development machine and a host that need no Java for them; `build/rehearse-move.sh`, shell like
-  `build/molecule.sh`, since it drives libvirt and ssh to rehearse a move on a VM;
+  `build/room-tunnel.sh` and `build/move-check.sh`, shell, since they only start `ssh` and read Porelo's and the forge's
+  answers during an agent's move, on a development machine and a host that need no Java for them;
+  `build/rehearse-move.sh`, shell like `build/molecule.sh`, since it drives libvirt and ssh to rehearse a move on a VM;
   `roles/vm_pool/files/porelo-vm`, `roles/vm_pool/files/porelo-pool-give-back` and
   `roles/vm_pool/files/porelo-pool-revert`, shell, since they drive virsh on the host and run inside a pool VM, where
   there is no Java; `roles/porelo/files/porelo-host-stop` and `roles/forge/files/porelo-host-push`, shell, since they

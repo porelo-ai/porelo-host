@@ -13,10 +13,21 @@ TUNNEL = ROOT / "build/room-tunnel.sh"
 
 GOOD = {
     "status": json.dumps({"name": "t1", "running": True, "project": "porelo", "repository": "sluice"}),
-    "status_text": "task       t1\nforge      porelo/t1\npull req   http://forge/pulls/7\n",
+    "status_text": (
+        "task       t1\nbranch     refs/porelo/incoming/t1\nforge      porelo/t1\n"
+        "builds     forgejo\npull req   http://forge/pulls/7\nbuild      " + "a" * 12 + "  success since 1m\n"
+    ),
     "build": json.dumps({"branch": "porelo/t1", "commit": "a" * 40, "verdict": "success"}),
-    "peers": "Agent Sluice\nAgent Core\n",
+    "build_code": "0",
+    "log": (
+        "AT                       EVENT        PEER                 MESSAGE                              DETAIL\n"
+        "2026-11-06T10:00:00Z     taken        -                    m1.json                              -\n"
+        "2026-11-06T10:00:01Z     sent         -                    m1.json                              matrix\n"
+    ),
+    "heads": "a" * 40 + "\trefs/heads/porelo/t1\n" + "c" * 40 + "\trefs/heads/main\n",
 }
+
+NO_BUILDS = "porelo: project 'porelo' has no builds: configuration; builds: needs security_class: online.\n"
 
 
 def fake(path, name, body):
@@ -27,13 +38,14 @@ def fake(path, name, body):
 
 @pytest.fixture
 def porelo(tmp_path):
-    """A stand-in for Porelo, recording each call, so that a write would show."""
+    """Stand-ins for Porelo and Git, recording each call, so that a write would show."""
 
     def install(**answers):
         values = {**GOOD, **answers}
         log = tmp_path / "calls"
         for key, value in values.items():
             (tmp_path / key).write_text(value)
+        (tmp_path / "forge.conf").write_text("host=forge.example\nname=forge.example\nport=3000\ngit_port=3022\n")
         fake(
             tmp_path,
             "porelo",
@@ -41,8 +53,21 @@ def porelo(tmp_path):
 case "$1 $2 $*" in
     "task status "*--json*) cat {tmp_path}/status ;;
     "task status "*) cat {tmp_path}/status_text ;;
-    "build status "*) cat {tmp_path}/build ;;
-    "talk peers "*) cat {tmp_path}/peers ;;
+    "build status "*) code=$(cat {tmp_path}/build_code)
+        [ "$code" = 0 ] && cat {tmp_path}/build || printf '%s' "$(cat {tmp_path}/build)" >&2
+        exit "$code" ;;
+    "talk log "*) cat {tmp_path}/log ;;
+    *) echo "unexpected: $*" >&2; exit 99 ;;
+esac
+""",
+        )
+        fake(
+            tmp_path,
+            "git",
+            f"""printf '%s\\n' "git $*" >> {log}
+env | grep -q '^GIT_TERMINAL_PROMPT=0$' || exit 98
+case " $* " in
+    *" ls-remote "*) cat {tmp_path}/heads ;;
     *) echo "unexpected: $*" >&2; exit 99 ;;
 esac
 """,
@@ -53,7 +78,11 @@ esac
 
 
 def check(tmp_path, *arguments):
-    environment = {**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}"}
+    environment = {
+        **os.environ,
+        "PATH": f"{tmp_path}:{os.environ['PATH']}",
+        "PORELO_HOST_FORGE_CONF": str(tmp_path / "forge.conf"),
+    }
     return subprocess.run([str(CHECK), *arguments], capture_output=True, text=True, env=environment, check=False)
 
 
@@ -63,18 +92,61 @@ def test_every_line_holds_once_the_agent_has_moved(tmp_path, porelo):
     done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
     assert done.returncode == 0, done.stdout + done.stderr
     assert done.stdout.count("ok:") == 6 and "FAILED" not in done.stdout
-    assert all(line.split()[0] in ("task", "build", "talk") for line in calls.read_text().splitlines())
+    assert all(line.split()[0] in ("task", "build", "talk", "git") for line in calls.read_text().splitlines())
     assert "--logs=none" in calls.read_text() and "--branch=porelo/t1" in calls.read_text()
+
+
+def test_the_push_is_found_on_the_branch_the_gate_forwarded_it_to(tmp_path, porelo):
+    """Prevent a push the gate forwarded to porelo/<task>-2 after an amend being missed on porelo/<task>."""
+    calls = porelo(
+        status_text=GOOD["status_text"].replace("a" * 12, "b" * 12),
+        heads="a" * 40 + "\trefs/heads/porelo/t1\n" + "b" * 40 + "\trefs/heads/porelo/t1-2\n",
+        build=json.dumps({"branch": "porelo/t1-2", "commit": "b" * 40, "verdict": "success"}),
+    )
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert any(line.startswith("ok:") and "as porelo/t1-2" in line for line in done.stdout.splitlines()), done.stdout
+    assert "--branch=porelo/t1-2" in calls.read_text()
+
+
+def test_a_project_without_builds_names_the_reader_not_configured(tmp_path, porelo):
+    """Prevent a project with no builds: block reading as a Build that answered nothing."""
+    porelo(status_text=GOOD["status_text"].replace("build      " + "a" * 12, "x"), build=NO_BUILDS, build_code="78")
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert done.returncode == 1
+    lines = done.stdout.splitlines()
+    assert any(line.startswith("FAILED") and "Build" in line and "not configured" in line for line in lines)
+    assert any(line.startswith("FAILED") and "last push" in line and "cannot say" in line for line in lines)
+
+
+def test_a_task_that_sent_into_its_conversation_has_joined_it(tmp_path, porelo):
+    """Prevent the conversation line asking talk peers, which never lists a project's own tasks."""
+    calls = porelo()
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert any(line.startswith("ok:") and "conversation" in line for line in done.stdout.splitlines()), done.stdout
+    assert "talk log t1" in calls.read_text() and "talk peers" not in calls.read_text()
+
+
+def test_the_forge_is_read_with_the_persons_vault_answering_git_and_no_token_in_an_argument(tmp_path, porelo):
+    """Prevent a token on a command line, and a check that makes the person's forge token anew."""
+    calls = porelo()
+    check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    git = [line for line in calls.read_text().splitlines() if line.startswith("git ")]
+    assert len(git) == 1 and "http://127.0.0.1:3022/porelo/sluice.git" in git[0] and "@" not in git[0]
+    assert "credential.http://127.0.0.1:3022.helper=!porelo vault credential --entry forge.example.person" in git[0]
+    assert "forge-token" not in calls.read_text() and "sudo" not in calls.read_text()
 
 
 @pytest.mark.parametrize(
     "answers, named",
     [
         (dict(status=json.dumps({"name": "t1", "state": "absent", "running": False})), "the task runs"),
-        (dict(build=json.dumps({"branch": "porelo/t1", "commit": None, "verdict": "unknown"})), "last push"),
+        (dict(heads="c" * 40 + "\trefs/heads/porelo/t1\n"), "last push"),
+        (dict(heads="a" * 40 + "\trefs/heads/porelo/t10\n"), "last push"),
+        (dict(status_text="task       t1\npull req   http://forge/pulls/7\n"), "last push"),
         (dict(build=json.dumps({"branch": "porelo/t1", "commit": "a" * 40, "verdict": "unknown"})), "Build"),
-        (dict(status_text="task       t1\n"), "pull request"),
-        (dict(peers="Agent Core\n"), "agent-card"),
+        (dict(status_text=GOOD["status_text"].replace("pull req", "x")), "pull request"),
+        (dict(log=GOOD["log"].replace("matrix", "local")), "conversation"),
     ],
 )
 def test_each_line_fails_by_name(tmp_path, porelo, answers, named):
