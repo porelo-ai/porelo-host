@@ -67,9 +67,10 @@ workflows. These are separate destinations, with separate credentials.
 
 A traffic cone marks a step not built yet.
 
-This arrangement uses a project whose security class is `online` and whose repositories name the local forge as their
-immediate Git destination. The literal project-file key is `upstream`: here it means the local forge, even though the
-central forge is the destination of the gathered push. See Porelo's [project
+This arrangement uses a project whose security class is `online`. Its project file names each repository's central
+forge as `central` and no host: the host derives its own forge for the repositories it carries, as the organization's
+state names them, tasks push there, and the gathered push takes their work on to `central`. A project or repository
+this host does not carry works against `central` directly. See Porelo's [project
 file](https://github.com/porelo-ai/porelo/blob/main/doc/project-file.md) for the schema and [security
 boundary](https://github.com/porelo-ai/porelo/blob/main/doc/security.md) for what the gate permits when the task pushes.
 
@@ -485,7 +486,7 @@ A project that lists repositories works only in those, so nothing on the host ru
 the host, and the follow brings it up to central's commit, whatever else that commit changes. Other branches can still
 be pushed there, and lead nowhere. The exceptions run what the repository holds, so there `main` goes by the signed change
 as below: a workflow under `.forgejo`, `.gitea` or `.github`, which the forge would start, and a file naming an
-`image.snippet_file`, from which a task's image is built. So is a row whose name or upstream reads that repository.
+`image.snippet_file`, from which a task's image is built. So is a row whose name or central address is that repository.
 
 A project that lists none works in its own repository, which keeps its merges. There `main` moves only to the newest
 change of `project.yml`, and only if nothing else differs, so a central writer brings no other work past the judge. So
@@ -494,7 +495,8 @@ if a project stops listing repositories, what its `main` took meanwhile stands, 
 If it cannot move, as local `main` holds commits central lacks or other files differ, it stays, and `org status`'s `why`
 says a task here reads an older project file, until a gathered push or a person's pull request joins them.
 A repository's address on the host is `http://127.0.0.1:<git_port>/<project>/<name>.git`, with `git_port` from the host
-card and `<name>` the repository's name at the central forge; a project's `upstream` names it and its `central` the other. Push and pull each call `sudo -n porelo-host-person forge-token` for the local token and put it into the
+card and `<name>` the repository's name at the central forge, which the project file's `central` names; the host
+derives the address, and no project file holds it. Push and pull each call `sudo -n porelo-host-person forge-token` for the local token and put it into the
 person's vault as `<forge>.person`, since it replaces the one there.
 No token for the central forge lies on the host.
 

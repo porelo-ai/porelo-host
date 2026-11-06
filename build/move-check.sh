@@ -67,7 +67,7 @@ fi
 if [ "$named" != 1 ]; then
     why="porelo task status names no forge branch and repository"
 elif [ -z "$pushed" ]; then
-    why="porelo task status names no pushed commit, which it shows only with a builds: block"
+    why="porelo task status names no pushed commit"
 elif ! one_line "$pushed" '[0-9a-f]{7,64}'; then
     why="porelo task status names no commit"
 elif ! one_line "$port" '[1-9][0-9]{0,4}' || ! one_line "$forge" '[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?'; then

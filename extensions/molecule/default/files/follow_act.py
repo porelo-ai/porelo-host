@@ -582,9 +582,9 @@ if FORGE.exists():
     entries = json.loads(PROGRESS.read_text(encoding="utf-8"))
     entries[PROJECT]["taken"] = [done_row]
     entries[PROJECT]["file"]["repositories"] = {
-        "done": {"review": "required", "upstream": None, "central": done_row},
-        "later": {"review": "required", "upstream": None, "central": f"git@example.org:{PROJECT}/later.git"},
-        "local": {"review": "optional", "upstream": None, "central": None},
+        "done": {"review": "required", "central": done_row},
+        "later": {"review": "required", "central": f"git@example.org:{PROJECT}/later.git"},
+        "local": {"review": "optional", "central": None},
     }
     PROGRESS.write_text(json.dumps(entries), encoding="utf-8")
     followed()

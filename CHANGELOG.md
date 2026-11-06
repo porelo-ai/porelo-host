@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The host reads the project file's `central` alone.** A row's `upstream`, a host's address the project file no
+  longer holds, no longer decides whether the project's own repository stays open to merges, and the host keeps none.
 - **A project's `why` in `org status` says each like reason of its repositories once,** as `<names>: <reason>`, and
   a repository the project file gives no central address no longer stands in it; `repositories[]` keeps each row.
 - **The move check reads each line where its fact is held.** The push is found on the host's forge, as the task's

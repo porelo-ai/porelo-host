@@ -193,13 +193,15 @@ def taken_as(repository, row):
 
 
 def no_task_in_own(project, file):
-    """A project that lists repositories works only in those, unless one of them reads its own repository again."""
+    """A project that lists repositories works only in those, unless one of them is its own repository again.
+
+    A row is known by its name and its central address alone: the project file names no host.
+    """
     own = CENTRAL_ADDRESS.fullmatch(project["address"]).group("repository").lower()
     rows = file.get("repositories", {})
 
     def reads_own(repository, row):
-        upstream = re.split(r"[/:]", (row.get("upstream") or "").rstrip("/"))[-1].lower().removesuffix(".git")
-        return own in (repository.lower(), taken_as(repository, row).lower(), upstream)
+        return own in (repository.lower(), taken_as(repository, row).lower())
 
     return bool(rows) and not any(reads_own(repository, row) for repository, row in rows.items())
 
@@ -238,11 +240,10 @@ def project_file_values(answer, name):
         if (not re.fullmatch(REPOSITORY, repository) or not isinstance(row, dict)
                 or row.get("review") not in ("required", "optional")
                 or not (row.get("central") is None or isinstance(row["central"], str))
-                or not (row.get("central") is None or CENTRAL_ADDRESS.fullmatch(row["central"]))
-                or not (row.get("upstream") is None or isinstance(row["upstream"], str))):
+                or not (row.get("central") is None or CENTRAL_ADDRESS.fullmatch(row["central"]))):
             refuse(f"porelo project verify answered a malformed repository {repository[:100]!r}", 65)
-    return {"review": review, "repositories": {repository: {"review": row["review"], "central": row.get("central"),
-                                                            "upstream": row.get("upstream")}
+    # Only what the host acts on is kept: a row's review and its central address, never a host's address.
+    return {"review": review, "repositories": {repository: {"review": row["review"], "central": row.get("central")}
                                                for repository, row in rows.items()}}
 
 

@@ -1932,8 +1932,7 @@ def files(following, monkeypatch):
 
 def named(**repositories):
     return {
-        name: {"review": review, "upstream": None, "central": f"git@example.org:acme/{name}.git"}
-        for name, review in repositories.items()
+        name: {"review": review, "central": f"git@example.org:acme/{name}.git"} for name, review in repositories.items()
     }
 
 
@@ -2131,7 +2130,7 @@ def test_a_repository_refused_is_named_and_the_next_is_still_taken(files, monkey
 
 def test_a_repository_with_no_central_is_not_taken_and_a_name_gone_from_the_file_stays(files):
     """Prevent a local-only repository being fetched from nowhere, and a removal from the file deleting work."""
-    files.answer["repositories"] = {"local": {"review": "optional", "upstream": None, "central": None}}
+    files.answer["repositories"] = {"local": {"review": "optional", "central": None}}
     files.main = "2" * 40
     files.repositories = ["alpha", "local"]
     files.run("b", token=True)
@@ -2154,7 +2153,7 @@ def test_org_status_names_each_repository_taken_waiting_or_with_no_central(files
     """Prevent a project reading carried with nothing said of a row the host could give no task."""
     files.answer["repositories"] = {
         **named(good="required", bad="required"),
-        "local": {"review": "optional", "upstream": None, "central": None},
+        "local": {"review": "optional", "central": None},
     }
     files.main = "2" * 40
     files.run("b")
@@ -2180,7 +2179,7 @@ def test_org_status_gives_no_why_for_a_project_whose_rest_has_no_central(files):
     """Prevent a choice of the project file reading as a fault, said once for each such repository."""
     files.answer["repositories"] = {
         **named(one="required", two="optional"),
-        **{f"local-{n:02}": {"review": "optional", "upstream": None, "central": None} for n in range(15)},
+        **{f"local-{n:02}": {"review": "optional", "central": None} for n in range(15)},
     }
     files.main = "2" * 40
     files.state.reply["host_card"]["services"] = {"forge": {"web_port": 3000, "git_port": 2222}}
@@ -2211,9 +2210,7 @@ def test_org_status_gathers_like_reasons_of_repositories_in_the_projects_why(fil
 
 def test_org_status_says_the_projects_own_repository_is_taken(files):
     """Prevent a row naming the project's own repository reading as waiting for ever, with no reason."""
-    files.answer["repositories"] = {
-        "own": {"review": "required", "upstream": None, "central": "git@example.org:acme/alpha.git"}
-    }
+    files.answer["repositories"] = {"own": {"review": "required", "central": "git@example.org:acme/alpha.git"}}
     files.main = "2" * 40
     files.run("b")
     assert repositories_said(files)[1]["own"] == {"repository": "own", "state": "taken", "why": None}
@@ -2223,7 +2220,7 @@ def test_org_status_gives_a_reason_for_rows_kept_from_before_a_project_was_put_o
     """Prevent a row from a remembered file standing with no reason while the project itself waits for its migration."""
     files.answer["repositories"] = {
         **named(later="required"),
-        "local": {"review": "optional", "upstream": None, "central": None},
+        "local": {"review": "optional", "central": None},
     }
     files.main = "2" * 40
     files.run("b")
@@ -2260,9 +2257,7 @@ def test_an_optional_row_after_its_migration_changes_the_rule_and_says_so_once(f
 
 def test_review_goes_by_the_name_the_forge_gave_the_central_repository(files):
     """Prevent a file's own name for a repository leaving the forge's repository required by mistake."""
-    files.answer["repositories"] = {
-        "code": {"review": "optional", "upstream": None, "central": "git@example.org:acme/Central-Code.git"}
-    }
+    files.answer["repositories"] = {"code": {"review": "optional", "central": "git@example.org:acme/Central-Code.git"}}
     files.main = "2" * 40
     files.repositories = ["alpha", "Central-Code"]
     files.run("b")
@@ -2271,9 +2266,7 @@ def test_review_goes_by_the_name_the_forge_gave_the_central_repository(files):
 
 def test_one_row_opens_only_the_repository_it_names_on_the_forge(files):
     """Prevent a row with a central name also opening another repository that happens to bear the file's name."""
-    files.answer["repositories"] = {
-        "code": {"review": "optional", "upstream": None, "central": "git@example.org:acme/Central-Code.git"}
-    }
+    files.answer["repositories"] = {"code": {"review": "optional", "central": "git@example.org:acme/Central-Code.git"}}
     files.main = "2" * 40
     files.repositories = ["alpha", "code", "Central-Code"]
     files.run("b")
@@ -2645,31 +2638,33 @@ def test_a_row_that_is_the_project_repository_keeps_it_a_place_of_work(files):
     assert files.protection["alpha"]["merge_whitelist_teams"] == ["Owners", "developers"]
 
 
-@pytest.mark.parametrize(
-    "row",
-    [
-        {"central": None, "upstream": "http://127.0.0.1:3001/alpha/alpha.git"},
-        {"central": None, "upstream": "git@example.org:acme/ALPHA.git"},
-        {"central": "git@example.org:acme/code.git", "upstream": "http://127.0.0.1:3001/alpha/alpha"},
-        {"central": None, "upstream": None, "name": "alpha"},
-    ],
-)
-def test_a_row_reading_the_project_repository_under_another_name_keeps_it_a_place_of_work(files, row):
-    """A task fetches a row's upstream, whatever the row is called."""
-    name = row.pop("name", "code")
-    files.answer.update(repositories={name: {"review": "optional", **row}})
+def test_a_row_named_as_the_project_repository_keeps_it_a_place_of_work(files):
+    """A row with no central address that bears the project repository's name is that repository."""
+    files.answer.update(repositories={"alpha": {"review": "optional", "central": None}})
     files.main = "2" * 40
     files.run("b")
     assert files.advances[-1][-1] == "signed"
     assert files.protection["alpha"]["merge_whitelist_teams"] == ["Owners", "developers"]
 
 
-def test_a_row_at_a_host_address_of_its_own_leaves_the_project_repository_closed(files):
+@pytest.mark.parametrize(
+    "upstream",
+    ["http://127.0.0.1:3001/alpha/alpha.git", "git@example.org:acme/ALPHA.git", "http://127.0.0.1:3001/alpha"],
+)
+def test_an_upstream_key_names_no_repository_on_the_host(files, upstream):
+    """Prevent a host's address in the project file, the retired upstream key, deciding what the host keeps open."""
     files.answer.update(
-        repositories={
-            "code": {"review": "optional", "central": None, "upstream": "http://127.0.0.1:3001/alpha/code.git"}
-        }
+        repositories={"code": {"review": "optional", "central": "git@example.org:acme/code.git", "upstream": upstream}}
     )
+    files.main = "2" * 40
+    files.repositories = ["alpha", "code"]
+    files.run("b")
+    assert files.advances[-1][-1] == "tip"
+    assert "upstream" not in files.item()["file"]["repositories"]["code"]
+
+
+def test_a_row_with_a_central_address_of_its_own_leaves_the_project_repository_closed(files):
+    files.answer.update(repositories={"code": {"review": "optional", "central": "git@example.org:acme/code.git"}})
     files.main = "2" * 40
     files.repositories = ["alpha", "code"]
     files.run("b")
@@ -2799,7 +2794,7 @@ def test_the_projects_own_repository_is_never_taken_off_however_the_file_spells_
     """Prevent the repository the project file lives in leaving the host when the card names only others."""
     files.answer["repositories"] = {
         **named(one="required"),
-        "self": {"review": "required", "upstream": None, "central": "https://example.org/acme/Alpha.git"},
+        "self": {"review": "required", "central": "https://example.org/acme/Alpha.git"},
     }
     files.main = "2" * 40
     files.run("b", token=True)
@@ -2813,7 +2808,7 @@ def test_a_repository_another_named_row_carries_is_not_taken_off(files):
     """Prevent two rows of one repository taking it off for the row the card does not name."""
     files.answer["repositories"] = {
         **named(one="required"),
-        "again": {"review": "required", "upstream": None, "central": "git@example.org:acme/one.git"},
+        "again": {"review": "required", "central": "git@example.org:acme/one.git"},
     }
     files.main = "2" * 40
     files.run("b", token=True)
