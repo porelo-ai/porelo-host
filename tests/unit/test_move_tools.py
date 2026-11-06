@@ -338,3 +338,13 @@ def test_the_tunnel_takes_only_the_runs_host_key_and_refuses_once_it_is_gone(tmp
     known.unlink()
     done, calls_after = call("tunnel", "alice", "8448")
     assert calls_after == calls, "no ssh runs once the run's host key is gone"
+
+
+@pytest.mark.parametrize("size", ["24x", "0", "1+1", "a[$(id)]", "16\n32", ""])
+def test_a_size_that_is_no_whole_number_is_refused_before_anything_is_made(tmp_path, size):
+    """Prevent a size reaching shell arithmetic, virt-install or virsh as anything but digits."""
+    state, call = rehearsal(tmp_path)
+    done, calls = call("start", "--memory", size)
+    assert done.returncode != 0, "a start with that size must fail"
+    assert calls == "", "nothing is listed, fetched or made"
+    assert not state.exists(), "no run's directory is made"

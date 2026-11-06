@@ -4,7 +4,8 @@
 # Molecule's stand-in unless a machine file for a real one is given, so by default nothing outside is touched. `down`
 # runs the host's own down, then deletes exactly this run's VM, believed only as libvirt lists none of it. A real
 # organization keeps the host's read key on its repositories: nobody takes it off but the repositories' owner.
-# usage: build/rehearse-move.sh start [--machine-file <file>]   the VM made and up run on it
+# usage: build/rehearse-move.sh start [--machine-file <file>] [--cpus <n>] [--memory <GiB>] [--disk <GiB>]
+#                                                              the VM made (8, 16, 80 by default) and up run on it
 #        build/rehearse-move.sh ssh [<command>...]               the VM's admin login, with the run's keys
 #        build/rehearse-move.sh tunnel <login> <port>            build/room-tunnel.sh to the VM, with its host key
 #        build/rehearse-move.sh down                             the host's down, then the VM deleted
@@ -23,7 +24,7 @@ vm=$root/roles/vm_pool/files/porelo-vm
 
 say() { printf '%s\n' "$*" >&2; }
 fail() { say "FAILED: $*"; exit 1; }
-usage() { fail "usage: $0 start [--machine-file <file>] | ssh [<command>...] | tunnel <login> <port> | down"; }
+usage() { fail "usage: $0 start [--machine-file <file>] [--cpus <n>] [--memory <GiB>] [--disk <GiB>] | ssh [<command>...] | tunnel <login> <port> | down"; }
 
 # What libvirt lists of any rehearsal: its domains and volumes, one name a line.
 listed() {
@@ -55,11 +56,25 @@ recorded() { # the VM's name from the run's record, refused unless it is a rehea
 }
 
 start() {
-    machine_file=
-    if [ $# -gt 0 ]; then
-        [ $# -eq 2 ] && [ "$1" = --machine-file ] || usage
-        machine_file=$2
-        [ -f "$machine_file" ] && [ -r "$machine_file" ] || fail "no readable machine file at $machine_file"
+    machine_file= cpus=8 memory=16 disk=80
+    while [ $# -gt 0 ]; do
+        [ $# -ge 2 ] || usage
+        case $1 in
+            --machine-file) machine_file=$2 ;;
+            --cpus) cpus=$2 ;;
+            --memory) memory=$2 ;;
+            --disk) disk=$2 ;;
+            *) usage ;;
+        esac
+        shift 2
+    done
+    for size in "$cpus" "$memory" "$disk"; do
+        case $size in *'
+'*) usage ;; esac
+        printf '%s\n' "$size" | grep -Eqx '[1-9][0-9]{0,3}' || fail "'$size' is no size: a whole number from 1"
+    done
+    if [ -n "$machine_file" ] && ! { [ -f "$machine_file" ] && [ -r "$machine_file" ]; }; then
+        fail "no readable machine file at $machine_file"
     fi
     [ ! -e "$state" ] || fail "$state is there from an earlier run; run down, or remove it once libvirt lists no rehearsal"
     left=$(listed)
@@ -114,7 +129,7 @@ start() {
     # Marked before it is made, so a half-made VM is deleted too.
     made=yes
     # ubuntu25.10: osinfo-db as Ubuntu 26.04 ships it knows no ubuntu26.04 yet.
-    PORELO_VM_DISK=80G "$vm" make "$name" "$base" "$state" 16384 8 ubuntu25.10
+    PORELO_VM_DISK=${disk}G "$vm" make "$name" "$base" "$state" $((memory * 1024)) "$cpus" ubuntu25.10
     started=$(date +%s)
     "$vm" address "$name" "$limit" > "$state/address"
     printf '%s %s\n' "$(cat "$state/address")" "$(cut -d' ' -f1,2 "$state/host_ed25519.pub")" > "$state/known_hosts"

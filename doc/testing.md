@@ -43,12 +43,12 @@ The first run on a machine also downloads the image, 825 MB, about 70 s at the m
 
 An agent's move can be rehearsed before a host is rented, on a VM made the same way on the development machine:
 
-    build/rehearse-move.sh start [--machine-file <file>]
+    build/rehearse-move.sh start [--machine-file <file>] [--cpus <n>] [--memory <GiB>] [--disk <GiB>]
     build/rehearse-move.sh ssh [<command>...]
     build/rehearse-move.sh tunnel <login> <homeserver port>
     build/rehearse-move.sh down
 
-`start` makes one domain `porelo-host-rehearsal-<time>` with 8 vCPUs, 16 GiB and an 80 GiB disk. It installs the collection
+`start` makes one domain `porelo-host-rehearsal-<time>`, by default with 8 vCPUs, 16 GiB and an 80 GiB disk. It installs the collection
 built from the checkout and runs `porelo.host.up` on the VM with the forge on, no VM pool and no KVM asked; `up`'s lines stay
 on the VM in `/root/rehearsal-up.lines`. Without `--machine-file`, the organization is Molecule's stand-in on the
 host's own forge, and nothing outside the machine is touched. With it, the file is the machine file a person's interface
