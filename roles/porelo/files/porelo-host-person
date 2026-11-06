@@ -2368,11 +2368,15 @@ class Host:
             self.start_daemon(login)
 
     def project_why(self, item, project):
-        """All that stands in a project's way, as org status says it."""
-        repositories = item.get("repositories_why") or {}
+        """All that stands in a project's way, as org status says it: like reasons of its repositories said once."""
+        gathered = {}
+        # A repository with no central address is the project file's choice, said in repositories[] alone.
+        for name, why in sorted((item.get("repositories_why") or {}).items()):
+            if why != NO_CENTRAL:
+                gathered.setdefault(why, []).append(name)
         return "; ".join(filter(None, (item.get("migrate_refused"), project.get("why"), item.get("file_refused"),
                                        item.get("advance_refused"),
-                                       *(f"{name}: {why}" for name, why in sorted(repositories.items()))))) or None
+                                       *(f"{', '.join(names)}: {why}" for why, names in gathered.items())))) or None
 
     def follow_read_project_file(self, project, item, signers, account, deadline):
         """Take the values of the project's own main, as Porelo verified them; the last ones hold if it cannot say."""

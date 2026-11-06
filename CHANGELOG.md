@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A project's `why` in `org status` says each like reason of its repositories once,** as `<names>: <reason>`, and
+  a repository the project file gives no central address no longer stands in it; `repositories[]` keeps each row.
 - **The move check reads each line where its fact is held.** The push is found on the host's forge, as the task's
   forge branch or the next free one the gate's approve took, read with the person's vault answering Git; the Build line
   says `not configured` without a `builds:` block; and the conversation line counts a message the task sent into the

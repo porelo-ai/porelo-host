@@ -1,6 +1,6 @@
 # HO134 — A Project's Why Gathers Its Repositories' Reasons
 
-**Status:** Implementing.
+**Status:** Review.
 **Kind:** Bug.
 **Size:** XS - one function of the root helper and its unit tests.
 
@@ -30,3 +30,13 @@ its row on its side.
 
 - The two unit tests, seen red on today's `project_why` and green after.
 - `repositories[]` unchanged: each repository with its state and reason as today.
+
+## Done
+
+`project_why` leaves out rows with no central address and says each other reason once, as `<names>: <reason>`, the
+names comma separated, groups in the name order of their first repository. **Changed from the plan:** not `<n>
+repositories <reason>: <names>`, which made the reasons' own wording ungrammatical ("2 repositories waits for …"),
+but the form a single row already had. Two new unit tests were
+red on the old code and are green now; the test naming each row now expects no `local` in the project's `why`, and
+`doc/local-forge.md` says so. `repositories[]` is unchanged. Molecule's `follow_act.py` now checks that a row with no
+central address stays out of the project's `why`.

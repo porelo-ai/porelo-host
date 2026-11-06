@@ -2173,7 +2173,40 @@ def test_org_status_names_each_repository_taken_waiting_or_with_no_central(files
     assert said["good"] == {"repository": "good", "state": "taken", "why": None}
     assert said["bad"]["state"] == "waiting" and "differs" in said["bad"]["why"]
     assert said["local"]["state"] == "no-central" and "no central" in said["local"]["why"]
-    assert "local: " in alpha["why"], "a row the host can give no task stands in the project's why too"
+    assert "bad: " in alpha["why"] and "local" not in alpha["why"], "a row with no central is the file's choice"
+
+
+def test_org_status_gives_no_why_for_a_project_whose_rest_has_no_central(files):
+    """Prevent a choice of the project file reading as a fault, said once for each such repository."""
+    files.answer["repositories"] = {
+        **named(one="required", two="optional"),
+        **{f"local-{n:02}": {"review": "optional", "upstream": None, "central": None} for n in range(15)},
+    }
+    files.main = "2" * 40
+    files.state.reply["host_card"]["services"] = {"forge": {"web_port": 3000, "git_port": 2222}}
+    files.run("b", token=True)
+    alpha, said = repositories_said(files)
+    assert said["one"]["state"] == "taken" and said["two"]["state"] == "taken"
+    assert [row["state"] for name, row in said.items() if name.startswith("local-")] == ["no-central"] * 15
+    assert alpha["why"] is None
+
+
+def test_org_status_gathers_like_reasons_of_repositories_in_the_projects_why(files):
+    """Prevent one sentence standing once for each repository in a project's why."""
+    # One follow either has a token or not, so a token's wait and a refusal stand together only across follows.
+    item = {
+        "file_refused": "the project file: it does not read",
+        "repositories_why": {
+            "gamma": "waits for a central token",
+            "beta": "waits for a central token",
+            "bad": "migration's central forge differs",
+            "local": files.state.scope["NO_CENTRAL"],
+        },
+    }
+    assert files.host.project_why(item, {"why": None}) == (
+        "the project file: it does not read; bad: migration's central forge differs; "
+        "beta, gamma: waits for a central token"
+    )
 
 
 def test_org_status_says_the_projects_own_repository_is_taken(files):
