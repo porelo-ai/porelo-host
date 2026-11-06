@@ -55,6 +55,7 @@ it is left out.
 
 | # | Size | Blocked by | Open questions | What it covers |
 |---|---|---|---|---|
+| <a id="ho136"></a>[HO136](HO136-A-Persons-Daemon-Takes-The-Group-It-Joins-Later.md) | S | - | 0 | Bug: a person who joins `porelo-people` after admission gets a `porelod` with that group, its user manager restarted where no task runs. |
 | <a id="ho135"></a>[HO135](HO135-The-Hosts-Copy-Follows-A-File-Signed-Anew.md) | S | - | 0 | Bug: the host's copy of a project's own repository advances to a commit signing `project.yml` anew, not only to its last change, and the follow records what `main` reached. |
 | <a id="ho133"></a>[HO133](HO133-A-Host-Carries-Single-Repositories-Of-A-Project.md) | M | - | 1 | Single repositories of a project carried: the follow takes only those the host's card names, one taken off the forge with its read key at the central forge given the token, status per repository. |
 | <a id="ho40"></a>[HO40](HO40-The-Build-Runs-On-The-Hosts-Forge-As-On-GitHub.md) | M | - | 1 | The move's builds on the host's forge: `build.yml` green on the host's Forgejo and on GitHub unchanged, with task branches built, the tools without `podman run`, snapshots by variable and Molecule on a machine with KVM. |
