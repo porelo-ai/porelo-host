@@ -40,6 +40,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho132"></a>[HO132](HO132-A-Move-Rehearsed-On-A-Local-VM.md) | S | - | `build/rehearse-move.sh` makes a throwaway VM, runs `up` with the forge and no pool, opens the room tunnel and takes it all down again, so a move is rehearsed before a host is rented. |
 
 ## Backlog
 
