@@ -39,6 +39,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho131"></a>[HO131](HO131-A-Task-Reads-Its-Projects-Snapshots.md) | S | - | A task's token also reads its organization's packages, `read:package`, so a task resolves its project's snapshots from the host's forge; it writes none. |
 
 ## Backlog
 
