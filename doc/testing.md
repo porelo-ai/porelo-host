@@ -43,7 +43,7 @@ The first run on a machine also downloads the image, 825 MB, about 70 s at the m
 
 An agent's move can be rehearsed before a host is rented, on a VM made the same way on the development machine:
 
-    build/rehearse-move.sh start [--machine-file <file>] [--cpus <n>] [--memory <GiB>] [--disk <GiB>]
+    build/rehearse-move.sh start [--machine-file <file> | --bare] [--cpus <n>] [--memory <GiB>] [--disk <GiB>]
     build/rehearse-move.sh ssh [<command>...]
     build/rehearse-move.sh tunnel <login> <homeserver port>
     build/rehearse-move.sh down
@@ -56,6 +56,11 @@ writes for a real organization, and the follow puts the host's read keys on that
 they stay until the repositories' owner removes them, as for any host. `start` refuses while any rehearsal's domain or
 volume is still there. A failed or interrupted `start` deletes what it made and exits 1 naming anything libvirt still lists.
 `up` is believed only by its lines: none failed, none waiting, and its summary of the host written.
+
+`--bare` stops once the VM answers ssh, as a provider hands a server over, and prints its host key's fingerprint. A
+person then prepares it in the interface's *Prepare a server* on its address. The bootstrap line the dialog shows runs
+in the VM's own account, reached with `build/rehearse-move.sh ssh`, and from then on the interface logs in as root and
+runs `up` itself. Such a host is taken down by the interface; `down` here then only deletes the VM.
 
 `ssh` logs in as the VM's admin with the run's own key and host key. `tunnel` runs `build/room-tunnel.sh` to the VM for an
 admitted login, accepting only the run's host key, and stops once `down` has removed it. `down` runs

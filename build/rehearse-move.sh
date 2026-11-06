@@ -4,8 +4,9 @@
 # Molecule's stand-in unless a machine file for a real one is given, so by default nothing outside is touched. `down`
 # runs the host's own down, then deletes exactly this run's VM, believed only as libvirt lists none of it. A real
 # organization keeps the host's read key on its repositories: nobody takes it off but the repositories' owner.
-# usage: build/rehearse-move.sh start [--machine-file <file>] [--cpus <n>] [--memory <GiB>] [--disk <GiB>]
-#                                                              the VM made (8, 16, 80 by default) and up run on it
+# usage: build/rehearse-move.sh start [--machine-file <file> | --bare] [--cpus <n>] [--memory <GiB>] [--disk <GiB>]
+#                                                              the VM made (8, 16, 80 by default) and up run on it;
+#                                                              bare, without up, for a person's window to prepare
 #        build/rehearse-move.sh ssh [<command>...]               the VM's admin login, with the run's keys
 #        build/rehearse-move.sh tunnel <login> <port>            build/room-tunnel.sh to the VM, with its host key
 #        build/rehearse-move.sh down                             the host's down, then the VM deleted
@@ -24,7 +25,7 @@ vm=$root/roles/vm_pool/files/porelo-vm
 
 say() { printf '%s\n' "$*" >&2; }
 fail() { say "FAILED: $*"; exit 1; }
-usage() { fail "usage: $0 start [--machine-file <file>] [--cpus <n>] [--memory <GiB>] [--disk <GiB>] | ssh [<command>...] | tunnel <login> <port> | down"; }
+usage() { fail "usage: $0 start [--machine-file <file> | --bare] [--cpus <n>] [--memory <GiB>] [--disk <GiB>] | ssh [<command>...] | tunnel <login> <port> | down"; }
 
 # What libvirt lists of any rehearsal: its domains and volumes, one name a line.
 listed() {
@@ -56,8 +57,13 @@ recorded() { # the VM's name from the run's record, refused unless it is a rehea
 }
 
 start() {
-    machine_file= cpus=8 memory=16 disk=80
+    machine_file= bare= cpus=8 memory=16 disk=80
     while [ $# -gt 0 ]; do
+        if [ "$1" = --bare ]; then
+            bare=yes
+            shift
+            continue
+        fi
         [ $# -ge 2 ] || usage
         case $1 in
             --machine-file) machine_file=$2 ;;
@@ -73,6 +79,7 @@ start() {
 '*) usage ;; esac
         printf '%s\n' "$size" | grep -Eqx '[1-9][0-9]{0,3}' || fail "'$size' is no size: a whole number from 1"
     done
+    [ -z "$bare" ] || [ -z "$machine_file" ] || usage
     if [ -n "$machine_file" ] && ! { [ -f "$machine_file" ] && [ -r "$machine_file" ]; }; then
         fail "no readable machine file at $machine_file"
     fi
@@ -123,8 +130,10 @@ start() {
     ssh-keygen -q -t ed25519 -N '' -C "$name" -f "$state/id_ed25519"
     ssh-keygen -q -t ed25519 -N '' -C "$name" -f "$state/host_ed25519"
     "$vm" seed "$state" "$name" "$account" "$state/id_ed25519.pub" "$state/host_ed25519"
-    "$root/build/tools.sh" ansible-galaxy collection build --force --output-path target/rehearsal >/dev/null
-    tarball=$(ls "$state"/porelo-host-*.tar.gz)
+    if [ -z "$bare" ]; then
+        "$root/build/tools.sh" ansible-galaxy collection build --force --output-path target/rehearsal >/dev/null
+        tarball=$(ls "$state"/porelo-host-*.tar.gz)
+    fi
 
     # Marked before it is made, so a half-made VM is deleted too.
     made=yes
@@ -140,6 +149,10 @@ start() {
     on_vm cloud-init status --wait < /dev/null >/dev/null 2>&1 \
         || fail "cloud-init on $name did not finish cleanly: $(on_vm cloud-init status --long < /dev/null 2>&1)"
     say "$name is up at $(cat "$state/address") after $(($(date +%s) - started)) s"
+    if [ -n "$bare" ]; then
+        say "bare, as a provider hands a server over: its host key $(ssh-keygen -lf "$state/host_ed25519.pub" | cut -d' ' -f2)"
+        return
+    fi
 
     on_vm 'cat > /tmp/porelo-host.tar.gz' < "$tarball"
     if [ -n "$machine_file" ]; then
@@ -219,6 +232,8 @@ down() {
     if virsh domstate "$name" 2>/dev/null | grep -qx running; then
         on_vm sudo bash -s <<'EOF' || fail "down on $name failed; the VM is kept, run down again"
 set -uo pipefail
+# A host a person's window prepared is taken down by that window; only the rehearsal's own up is taken down here.
+[ -f /root/porelo-host-inventory.yml ] || exit 0
 status=0
 ANSIBLE_STDOUT_CALLBACK=porelo.host.lines LC_ALL=C.UTF-8 \
     ansible-playbook -c local -i /root/porelo-host-inventory.yml porelo.host.down > /root/rehearsal-down.lines || status=$?
