@@ -30,14 +30,6 @@ it is left out.
 | <a id="ho81"></a>[HO81](HO81-The-Gates-Route-Match-Holds-For-Every-Decoded-Byte.md) | XS | - | No decoded byte takes a refused route past the forge gate's match, and `web.sock` challenges a client that waits for one. |
 | <a id="ho83"></a>[HO83](HO83-The-Persons-Token-Kept-Where-Each-Tool-Reads-It.md) | S | - | The vault's person token stays the one in force after every remake; each task-start and token-handling check is tested by its absence. |
 | <a id="ho85"></a>[HO85](HO85-The-Push-Judge-Armed-Only-Where-It-Holds.md) | S | - | A repository is armed only where the judge's hook holds, a removal takes the arrivals along, and each verdict is recorded only whole. |
-| <a id="ho103"></a>[HO103](HO103-A-Project-Put-On-Again-After-Off.md) | M | - | A project put on a host, taken off and put on again is taken, and no deploy key of the host's stays behind unsaid. |
-| <a id="ho100"></a>[HO100](HO100-A-Project-Helpers-Own-Words-In-Status.md) | S | - | A project helper's refusal reaches `org status`'s `why` in its own words. |
-| <a id="ho104"></a>[HO104](HO104-A-Refusals-Why-Lasts.md) | S | - | A refused migration's `why` in `org status` stands until a later try ends otherwise |
-| <a id="ho108"></a>[HO108](HO108-Approved-Commits-Not-Yet-At-The-Central-Forge.md) | M | - | A person or the interface asks the host, with no root and no central token, how many approved commits on `main` the central forge lacks, with up to date, gone apart and cannot say as the other answers |
-| <a id="ho110"></a>[HO110](HO110-A-Server-Follows-The-Organization-Admins-Keys.md) | S | - | A server's pin holds the Organization Admins' keys beside its Machine Admins, so a Machine Admin they replace takes effect at the next follow |
-| <a id="ho60"></a>[HO60](HO60-Each-Repositorys-Review-Set-On-The-Forge.md) | L | - | The host takes every repository the signed project file names, and protects each one's `main` as that file says |
-| <a id="ho112"></a>[HO112](HO112-The-Project-File-Reaches-A-Task-On-The-Host.md) | M | - | What a Project Admin files at the central forge reaches a task on the host at the next follow. |
-| <a id="ho102"></a>[HO102](HO102-A-Persons-Projects-Named-On-The-Host.md) | S | - | A person's host account names their projects before their first start there. |
 | <a id="ho124"></a>[HO124](HO124-A-Login-Closed-At-Once-On-A-Host.md) | - | - | A login closed at once on a host, by reading sshd's own per-source penalty: reproduce it on the test VM, and say so. |
 | <a id="ho121"></a>[HO121](HO121-One-Check-Before-Any-Installation.md) | - | [HO118](#ho118) | One read-only check before any installation, the same code `up` runs first, every finding at once with its value, what was asked and what to do. |
 | <a id="ho122"></a>[HO122](HO122-A-Project-Says-What-The-Follow-Took.md) | - | - | `org status` names what the follow took of a project and why not, a row with no `central` included. |
@@ -69,6 +61,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho128"></a>[HO128](HO128-A-Tasks-Login-Cannot-Approve-Or-Merge.md) | - | - | A task's gate login on the forge can neither approve nor merge a pull request on `main`, by the forge's own rule, not only because the task never holds its token. |
 | <a id="ho117"></a>[HO117](HO117-The-Sanity-Images-Two-Pins.md) | - | - | The `pip` and `pylint` the sanity image pins, with open alerts, raised or said why they stay |
 | <a id="ho115"></a>[HO115](HO115-The-Pool-VM-Not-Ready-On-GitHubs-Runner.md) | - | - | The pool's VM says ready on GitHub's runner, or the reason it cannot is known; until then GitHub does not check the pool. |
 | <a id="ho114"></a>[HO114](HO114-A-Hosts-Read-Keys-Taken-Off-The-Central-Forge.md) | - | - | Taking a project off and `down` delete the host's read-only keys at the central forge, the token asked once and kept nowhere; if impossible, each is named with a link. |
@@ -159,6 +152,14 @@ it is left out.
 | <a id="ho55"></a>HO55 | A Person Leaves When No Membership Is Left | Every person is on the host by a membership and is locked when none is left, and `down` refuses while anyone holds one, naming each. |
 | <a id="ho63"></a>HO63 | Podman Reached Through The Account's Session Bus | Every podman call as a service account reaches that account's session bus, and a missing bus refuses loudly, naming the account. |
 | <a id="ho74"></a>HO74 | Every Role Tested Without The VPN | Molecule shows every role of the host over SSH alone, through a tunnel with a person's key, with the persons' lock and purge in its act. |
+| <a id="ho60"></a>HO60 | Each Repository's Review Set On The Forge | The host takes every repository the signed project file names and protects each one's `main` as its `review` value says, set back at each follow; tested in sprint 6q: passed. |
+| <a id="ho100"></a>HO100 | A Project Helper's Own Words In Status | A project helper's refusal reaches `org status`'s `why` and the journal in its own words; tested in sprint 6q: passed. |
+| <a id="ho102"></a>HO102 | A Person's Projects Named On The Host | Each follow publishes one file per person naming their projects, readable by that person alone, so `porelo project list` names them before a first start; tested in sprint 6q: passed. |
+| <a id="ho103"></a>HO103 | A Project Put On Again After Off | A project taken off and put on again is taken, and `off` says which deploy key stays at the central forge; tested in sprint 6q: passed. |
+| <a id="ho104"></a>HO104 | A Refusal's Why Lasts | A refused migration's `why` in `org status` stands until a later try ends otherwise; tested in sprint 6q: passed. |
+| <a id="ho108"></a>HO108 | Approved Commits Not Yet At The Central Forge | A person or the interface asks the host, without root or a central token, how each approved `main` stands against the central forge; tested in sprint 6q: passed. |
+| <a id="ho110"></a>HO110 | A Server Follows The Organization Admins' Keys | A server's pin holds the Organization Admins' keys beside its Machine Admins, so a Machine Admin they replace takes effect at the next follow; tested in sprint 6q: passed. |
+| <a id="ho112"></a>HO112 | The Project File Reaches A Task On The Host | What a Project Admin files at the central forge reaches a task on the host at the next follow; tested in sprint 6q: passed. |
 
 ## Rejected
 
