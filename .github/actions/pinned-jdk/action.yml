@@ -1,0 +1,42 @@
+# The shared build tools by the wrapper's pinned Maven, and the GraalVM porelo-machines pins, checked against its
+# digest, as JAVA_HOME for the rest of the job. The runner's own Java 25 only runs porelo-machines once to install it.
+# Leaves the tools' class path in $RUNNER_TEMP/tools-cp.txt. Needs the repository checked out.
+name: Pinned GraalVM
+description: Installs the GraalVM porelo-machines pins, checked against its digest, as JAVA_HOME for the rest of the job, and lists the shared build tools' class path.
+runs:
+    using: composite
+    steps:
+        - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+          with:
+              path: ~/.m2/repository
+              key: maven-${{ runner.os }}-${{ hashFiles('build/pom.xml') }}
+              restore-keys: maven-${{ runner.os }}-
+
+        # The wrapper's Maven, fetched once per pin: without it every job fetched it with one wget and no retry, and a
+        # single network hiccup failed a Build (2026-11-06).
+        - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+          with:
+              path: ~/.m2/wrapper
+              key: maven-wrapper-${{ runner.os }}-${{ hashFiles('.mvn/wrapper/maven-wrapper.properties') }}
+
+        - name: The shared build tools and the pinned GraalVM
+          shell: bash
+          run: |
+              set -eu
+              [ -n "${JAVA_HOME_25_X64:-}" ] || { echo "::error::this runner has no Java 25 (JAVA_HOME_25_X64)"; exit 1; }
+              export JAVA_HOME="$JAVA_HOME_25_X64"
+              # The wrapper fetches its Maven once, checks it against distributionSha256Sum and installs it only whole, so
+              # asking it again after a failed fetch is a retry; a cached one answers at once.
+              for attempt in 1 2 3 4 5; do
+                  if ./mvnw -B -q --version >/dev/null; then
+                      break
+                  fi
+                  if [ "$attempt" = 5 ]; then
+                      echo "::error::the wrapper could not fetch its Maven in 5 attempts"
+                      exit 1
+                  fi
+                  echo "::warning::the wrapper's Maven did not arrive (attempt $attempt); trying again"
+                  sleep $((attempt * 10))
+              done
+              ./mvnw -B -q -f build/pom.xml dependency:build-classpath -Dmdep.outputFile="$RUNNER_TEMP/tools-cp.txt"
+              "$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.machines.Main jdk --github

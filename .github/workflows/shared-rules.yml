@@ -26,15 +26,8 @@ jobs:
                   persist-credentials: false
                   fetch-depth: 0
 
-            # Maven by the wrapper's pinned distribution and digest; the runner's own Java 25 only runs porelo-machines
-            # once, which installs the pinned GraalVM, checked against its digest, as JAVA_HOME for the steps after it.
             - name: The shared build tools and the pinned GraalVM
-              run: |
-                  set -eu
-                  [ -n "${JAVA_HOME_25_X64:-}" ] || { echo "::error::this runner has no Java 25 (JAVA_HOME_25_X64)"; exit 1; }
-                  export JAVA_HOME="$JAVA_HOME_25_X64"
-                  ./mvnw -B -q -f build/pom.xml dependency:build-classpath -Dmdep.outputFile="$RUNNER_TEMP/tools-cp.txt"
-                  "$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.machines.Main jdk --github
+              uses: ./.github/actions/pinned-jdk
 
             - name: The shared blocks against their hashes
               run: '"$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.release.Main check-shared AGENTS.md .editorconfig'
