@@ -48,6 +48,9 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho143"></a>[HO143](HO143-Work-Ahead-Of-Central-Is-Said-And-Holds-The-Give-Back.md) | S | - | Bug: `org status` says each taken repository's state against central, and `down` refuses while work is not at central, unless given back anyway. |
+| <a id="ho142"></a>[HO142](HO142-The-Persons-Vault-Holds-Their-Forge-Token-From-The-Start.md) | S | - | Bug: the person's vault holds `<forge>.person` from the start, made the one way `porelo-host-push` makes it. |
+| <a id="ho141"></a>[HO141](HO141-The-Move-Check-Reads-Push-And-Pull-Request-From-The-Forge.md) | S | - | Bug: the move check reads the push and the pull request from the host's forge, and names the Build not configured without `builds:`. |
 
 ## Backlog
 
