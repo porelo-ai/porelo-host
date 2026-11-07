@@ -1,6 +1,6 @@
 # HO141 — The Move Check Reads Push And Pull Request From The Forge
 
-**Status:** Implementing.
+**Status:** Review.
 **Kind:** Bug.
 **Size:** S - `build/move-check.sh` reads two lines anew, with their unit tests in `tests/unit/test_move_tools.py`.
 

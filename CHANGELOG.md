@@ -27,9 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer holds, no longer decides whether the project's own repository stays open to merges, and the host keeps none.
 - **A project's `why` in `org status` says each like reason of its repositories once,** as `<names>: <reason>`, and
   a repository the project file gives no central address no longer stands in it; `repositories[]` keeps each row.
-- **The move check reads each line where its fact is held.** The push is found on the host's forge, as the task's
-  forge branch or the next free one the gate's approve took, read with the person's vault answering Git; the Build line
-  says `not configured` without a `builds:` block; and the conversation line counts a message the task sent into the
+- **The move check reads each line where its fact is held.** The pushed commit comes from the task's branch on the
+  host's forge or the next free one the gate's approve took, with the person's vault answering Git. The pull request
+  comes from the forge's open requests for that branch targeting the repository's default branch, using the same
+  credential. Both checks work without build monitoring. The Build line passes with `not configured` without a
+  `builds:` block; other build-reader errors fail. The conversation line counts a message the task sent into the
   project's conversation, since `porelo talk peers` never lists a project's own tasks.
 
 ### Security

@@ -24,7 +24,12 @@ GOOD = {
         "2026-11-06T10:00:00Z     taken        -                    m1.json                              -\n"
         "2026-11-06T10:00:01Z     sent         -                    m1.json                              matrix\n"
     ),
-    "heads": "a" * 40 + "\trefs/heads/porelo/t1\n" + "c" * 40 + "\trefs/heads/main\n",
+    "heads": "ref: refs/heads/main\tHEAD\n" + "a" * 40 + "\trefs/heads/porelo/t1\n",
+    "pulls": json.dumps([{"head": {"ref": "porelo/t1"}, "base": {"ref": "main"}}]),
+    "pulls_next": "[]",
+    "git_code": "0",
+    "curl_code": "0",
+    "credential_code": "0",
 }
 
 NO_BUILDS = "porelo: project 'porelo' has no builds: configuration; builds: needs security_class: online.\n"
@@ -38,7 +43,7 @@ def fake(path, name, body):
 
 @pytest.fixture
 def porelo(tmp_path):
-    """Stand-ins for Porelo and Git, recording each call, so that a write would show."""
+    """Stand-ins for Porelo, Git and curl, recording arguments so writes and credential leaks show."""
 
     def install(**answers):
         values = {**GOOD, **answers}
@@ -54,9 +59,12 @@ case "$1 $2 $*" in
     "task status "*--json*) cat {tmp_path}/status ;;
     "task status "*) cat {tmp_path}/status_text ;;
     "build status "*) code=$(cat {tmp_path}/build_code)
-        [ "$code" = 0 ] && cat {tmp_path}/build || printf '%s' "$(cat {tmp_path}/build)" >&2
+        cat {tmp_path}/build
         exit "$code" ;;
     "talk log "*) cat {tmp_path}/log ;;
+    "vault credential "*) cat >/dev/null
+        printf 'username=alice\\npassword=%s\\n\\n' "$MOVE_CHECK_TOKEN"
+        exit "$(cat {tmp_path}/credential_code)" ;;
     *) echo "unexpected: $*" >&2; exit 99 ;;
 esac
 """,
@@ -67,7 +75,31 @@ esac
             f"""printf '%s\\n' "git $*" >> {log}
 env | grep -q '^GIT_TERMINAL_PROMPT=0$' || exit 98
 case " $* " in
-    *" ls-remote "*) cat {tmp_path}/heads ;;
+    *" ls-remote "*) cat {tmp_path}/heads; exit "$(cat {tmp_path}/git_code)" ;;
+    *) echo "unexpected: $*" >&2; exit 99 ;;
+esac
+""",
+        )
+        fake(
+            tmp_path,
+            "curl",
+            f"""printf '%s\\n' "curl $*" >> {log}
+case " $* " in
+    *" -K - "*) python3 -Ic 'import os,sys
+config = sys.stdin.read()
+expected = "Authorization: token " + os.environ["MOVE_CHECK_TOKEN"]
+sys.exit(0 if expected in config else 97)' || exit $? ;;
+    *) exit 96 ;;
+esac
+[ "$(cat {tmp_path}/curl_code)" = 0 ] || exit "$(cat {tmp_path}/curl_code)"
+[ ! -f {tmp_path}/pulls_endless ] || {{ cat {tmp_path}/pulls; exit 0; }}
+case "$*" in
+    *"/api/v1/repos/porelo/sluice/pulls?state=open"*)
+        case "$*" in
+            *"page=2"*) cat {tmp_path}/pulls_next ;;
+            *"page=3"*) printf '[]' ;;
+            *) cat {tmp_path}/pulls ;;
+        esac ;;
     *) echo "unexpected: $*" >&2; exit 99 ;;
 esac
 """,
@@ -82,8 +114,14 @@ def check(tmp_path, *arguments):
         **os.environ,
         "PATH": f"{tmp_path}:{os.environ['PATH']}",
         "PORELO_HOST_FORGE_CONF": str(tmp_path / "forge.conf"),
+        "MOVE_CHECK_TOKEN": "synthetic-person-token",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_SYSTEM": "/dev/null",
     }
-    return subprocess.run([str(CHECK), *arguments], capture_output=True, text=True, env=environment, check=False)
+    # A check that loops must fail the test, not hold the suite.
+    return subprocess.run(
+        [str(CHECK), *arguments], capture_output=True, text=True, env=environment, check=False, timeout=30
+    )
 
 
 def test_every_line_holds_once_the_agent_has_moved(tmp_path, porelo):
@@ -92,7 +130,9 @@ def test_every_line_holds_once_the_agent_has_moved(tmp_path, porelo):
     done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
     assert done.returncode == 0, done.stdout + done.stderr
     assert done.stdout.count("ok:") == 6 and "FAILED" not in done.stdout
-    assert all(line.split()[0] in ("task", "build", "talk", "git") for line in calls.read_text().splitlines())
+    assert all(
+        line.split()[0] in ("task", "build", "talk", "git", "vault", "curl") for line in calls.read_text().splitlines()
+    )
     assert "--logs=none" in calls.read_text() and "--branch=porelo/t1" in calls.read_text()
 
 
@@ -100,7 +140,12 @@ def test_the_push_is_found_on_the_branch_the_gate_forwarded_it_to(tmp_path, pore
     """Prevent a push the gate forwarded to porelo/<task>-2 after an amend being missed on porelo/<task>."""
     calls = porelo(
         status_text=GOOD["status_text"].replace("a" * 12, "b" * 12),
-        heads="a" * 40 + "\trefs/heads/porelo/t1\n" + "b" * 40 + "\trefs/heads/porelo/t1-2\n",
+        heads="ref: refs/heads/main\tHEAD\n"
+        + "a" * 40
+        + "\trefs/heads/porelo/t1\n"
+        + "b" * 40
+        + "\trefs/heads/porelo/t1-2\n",
+        pulls=json.dumps([{"head": {"ref": "porelo/t1-2"}, "base": {"ref": "main"}}]),
         build=json.dumps({"branch": "porelo/t1-2", "commit": "b" * 40, "verdict": "success"}),
     )
     done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
@@ -112,7 +157,9 @@ def test_the_push_is_found_on_the_branch_the_gate_forwarded_it_to(tmp_path, pore
 def test_the_latest_forward_of_the_push_is_named_when_several_hold_it(tmp_path, porelo):
     """Prevent the name order of the forge's branches picking an older forward of the same push."""
     calls = porelo(
-        heads="".join("a" * 40 + f"\trefs/heads/porelo/t1{tail}\n" for tail in ("", "-10", "-2", "x-3")),
+        heads="ref: refs/heads/main\tHEAD\n"
+        + "".join("a" * 40 + f"\trefs/heads/porelo/t1{tail}\n" for tail in ("", "-10", "-2", "x-3")),
+        pulls=json.dumps([{"head": {"ref": "porelo/t1-10"}, "base": {"ref": "main"}}]),
         build=json.dumps({"branch": "porelo/t1-10", "commit": "a" * 40, "verdict": "success"}),
     )
     done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
@@ -133,13 +180,20 @@ def test_a_repository_with_a_second_line_is_asked_of_nobody(tmp_path, porelo):
 
 
 def test_a_project_without_builds_names_the_reader_not_configured(tmp_path, porelo):
-    """Prevent a project with no builds: block reading as a Build that answered nothing."""
-    porelo(status_text=GOOD["status_text"].replace("build      " + "a" * 12, "x"), build=NO_BUILDS, build_code="78")
+    """Prevent a guarded move failing because build monitoring never recorded its existing forge push and PR."""
+    calls = porelo(
+        status_text="task       t1\nforge      porelo/t1\n",
+        build=NO_BUILDS,
+        build_code="78",
+    )
     done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
-    assert done.returncode == 1
+    assert done.returncode == 0, done.stdout + done.stderr
     lines = done.stdout.splitlines()
-    assert any(line.startswith("FAILED") and "Build" in line and "not configured" in line for line in lines)
-    assert any(line.startswith("FAILED") and "last push" in line and "cannot say" in line for line in lines)
+    assert len(lines) == 6 and "FAILED" not in done.stdout, "each move fact holds without build monitoring"
+    assert any("Build" in line and "not configured: the project has no builds:" in line for line in lines)
+    assert any(line.startswith("ok:") and "a" * 40 in line and "last push" in line for line in lines)
+    assert any(line.startswith("ok:") and "pull request" in line for line in lines)
+    assert "curl " in calls.read_text(), "the PR is read from the forge"
 
 
 def test_a_task_that_sent_into_its_conversation_has_joined_it(tmp_path, porelo):
@@ -153,22 +207,39 @@ def test_a_task_that_sent_into_its_conversation_has_joined_it(tmp_path, porelo):
 def test_the_forge_is_read_with_the_persons_vault_answering_git_and_no_token_in_an_argument(tmp_path, porelo):
     """Prevent a token on a command line, and a check that makes the person's forge token anew."""
     calls = porelo()
-    check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert done.returncode == 0, done.stdout + done.stderr
     git = [line for line in calls.read_text().splitlines() if line.startswith("git ")]
     assert len(git) == 1 and "http://127.0.0.1:3022/porelo/sluice.git" in git[0] and "@" not in git[0]
+    assert "--symref" in git[0] and "--heads" not in git[0], "Git must also advertise the default branch"
     assert "credential.http://127.0.0.1:3022.helper=!porelo vault credential --entry forge.example.person" in git[0]
-    assert "forge-token" not in calls.read_text() and "sudo" not in calls.read_text()
+    asked = calls.read_text()
+    assert any(line.startswith("curl ") for line in asked.splitlines()), "the API also uses the person's credential"
+    assert "vault credential --entry forge.example.person" in asked
+    assert "synthetic-person-token" not in asked, "no fake receives the credential in its argument list"
+    assert "synthetic-person-token" not in done.stdout + done.stderr, "the credential stays out of check output"
+    assert "forge-token" not in asked and "sudo" not in asked
 
 
 @pytest.mark.parametrize(
     "answers, named",
     [
         (dict(status=json.dumps({"name": "t1", "state": "absent", "running": False})), "the task runs"),
-        (dict(heads="c" * 40 + "\trefs/heads/porelo/t1\n"), "last push"),
+        (dict(heads="ref: refs/heads/main\tHEAD\n"), "last push"),
         (dict(heads="a" * 40 + "\trefs/heads/porelo/t10\n"), "last push"),
         (dict(status_text="task       t1\npull req   http://forge/pulls/7\n"), "last push"),
         (dict(build=json.dumps({"branch": "porelo/t1", "commit": "a" * 40, "verdict": "unknown"})), "Build"),
-        (dict(status_text=GOOD["status_text"].replace("pull req", "x")), "pull request"),
+        # A Build the reader holds of an earlier commit on the branch is not one of this push.
+        (dict(build=json.dumps({"branch": "porelo/t1", "commit": "c" * 40, "verdict": "success"})), "Build"),
+        # HEAD naming no branch gives the pull request no base to be asked against.
+        (
+            dict(
+                heads="ref: refs/tags/v1\tHEAD\n" + "a" * 40 + "\trefs/heads/porelo/t1\n",
+                pulls=json.dumps([{"head": {"ref": "porelo/t1"}, "base": {"ref": "refs/tags/v1"}}]),
+            ),
+            "pull request",
+        ),
+        (dict(pulls="[]"), "pull request"),
         (dict(log=GOOD["log"].replace("matrix", "local")), "conversation"),
     ],
 )
@@ -177,6 +248,72 @@ def test_each_line_fails_by_name(tmp_path, porelo, answers, named):
     porelo(**answers)
     done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
     assert done.returncode == 1
+    assert any(line.startswith("FAILED") and named in line for line in done.stdout.splitlines()), done.stdout
+
+
+@pytest.mark.parametrize(
+    "pulls",
+    [
+        [{"head": {"ref": "porelo/t10"}, "base": {"ref": "main"}}],
+        [{"head": {"ref": "porelo/t1"}, "base": {"ref": "release"}}],
+    ],
+)
+def test_a_pull_request_for_another_head_or_base_does_not_count(tmp_path, porelo, pulls):
+    """Prevent another task's or another target branch's review being accepted as this move's review."""
+    porelo(pulls=json.dumps(pulls))
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert done.returncode == 1
+    assert any(line.startswith("FAILED") and "pull request" in line for line in done.stdout.splitlines()), done.stdout
+
+
+def test_the_pull_request_targets_the_repositorys_actual_default_branch(tmp_path, porelo):
+    """Prevent a move requiring review on main when the forge's default branch has another name."""
+    porelo(
+        heads=GOOD["heads"].replace("refs/heads/main", "refs/heads/trunk"),
+        pulls=json.dumps([{"head": {"ref": "porelo/t1"}, "base": {"ref": "trunk"}}]),
+        status_text="task       t1\nforge      porelo/t1\n",
+    )
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_the_pull_request_can_be_on_a_later_page(tmp_path, porelo):
+    """Prevent a reviewed move failing just because other open requests fill the first API page."""
+    calls = porelo(
+        pulls=json.dumps([{"head": {"ref": "another-task"}, "base": {"ref": "main"}}]),
+        pulls_next=GOOD["pulls"],
+        status_text="task       t1\nforge      porelo/t1\n",
+    )
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "page=2" in calls.read_text(), "the next page is read before declaring the PR missing"
+
+
+def test_a_forge_that_never_ends_its_pages_fails_the_line(tmp_path, porelo):
+    """Prevent a forge that answers every page with requests from holding the check forever."""
+    porelo(pulls=json.dumps([{"head": {"ref": "another-task"}, "base": {"ref": "main"}}]))
+    (tmp_path / "pulls_endless").write_text("")
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert "pages" in done.stdout, done.stdout
+
+
+@pytest.mark.parametrize("response", ["not JSON", "{}", "[{}]"])
+def test_an_invalid_forge_response_cannot_count_as_review(tmp_path, porelo, response):
+    """Prevent malformed forge evidence being accepted as an existing pull request."""
+    porelo(pulls=response)
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert any(line.startswith("FAILED") and "pull request" in line for line in done.stdout.splitlines()), done.stdout
+
+
+@pytest.mark.parametrize("failure", ["git_code", "curl_code", "credential_code", "build_code"])
+def test_a_failed_reader_cannot_pass_with_plausible_output(tmp_path, porelo, failure):
+    """Prevent unavailable forge evidence or a failed build reader being accepted as a checked move."""
+    porelo(**{failure: "69"})
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert done.returncode == 1, done.stdout + done.stderr
+    named = "Build" if failure == "build_code" else "last push" if failure == "git_code" else "pull request"
     assert any(line.startswith("FAILED") and named in line for line in done.stdout.splitlines()), done.stdout
 
 
