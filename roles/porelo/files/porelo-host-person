@@ -2634,7 +2634,7 @@ class Host:
 
     def follow_project_file(self, project, applied):
         """Build the member contract from accepted organization fields and the host's installed services."""
-        fetch_from = None
+        fetch_from = builds = None
         if self.forge_configuration(applied["admins"][0]["login"]) is not None and project["address"] is not None:
             services = applied["host_card"].get("services")
             forge = services.get("forge") if isinstance(services, dict) else None
@@ -2643,12 +2643,19 @@ class Host:
                 # On the host's forge the repository stands in the project's organization, under its central name.
                 repository = CENTRAL_ADDRESS.fullmatch(project["address"]).group("repository")
                 fetch_from = f'http://127.0.0.1:{port}/{project["project"]}/{repository}.git'
+                # A task here reads its builds where it fetches, with the vault entry porelo-host-forge-token makes.
+                try:
+                    builds = {"forge": "forgejo", "api": f"http://127.0.0.1:{port}/api/v1",
+                              "credential": self.forge_domain() + ".person", "logs": "failure"}
+                except Refusal as error:
+                    # Builds are a task's to read, never a reason to keep a project's copy from its members.
+                    print(f'porelo-host-person: {project["project"]}: no builds named: {error}', file=sys.stderr)
             else:
                 project["why"] = "the host card names no forge git port"
                 print(f'porelo-host-person: {project["project"]}: {project["why"]}', file=sys.stderr)
         return {"project": project["project"], "host": applied["host_card"]["host"], "revision": applied["revision"],
                 "address": project["address"], "fetch_from": fetch_from, "signing_keys": project["signing_keys"],
-                **self.follow_project_room(project)}
+                **({"builds": builds} if builds else {}), **self.follow_project_room(project)}
 
     def follow_publish(self, applied, files, signers, records, accounts):
         """Replace each member publication whole, its ACL set before any reader can see it, so none sees it missing."""

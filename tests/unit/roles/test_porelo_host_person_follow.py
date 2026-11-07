@@ -521,14 +521,56 @@ def test_project_file_names_the_hosts_forge_by_the_project_and_the_central_repos
     """Prevent a member fetching from a forge path that does not exist: the local organization is the project's."""
     state = following
     state.reply["host_card"]["services"] = {"forge": {"web_port": 3000, "git_port": 2222}}
+    state.host.write(
+        state.host.path("/etc/porelo-host/forge.conf"), "host=host\nname=forge.example\naccount=git\n", 0o600
+    )
+    monkeypatch.setattr(state.host, "forge_configuration", lambda user: ("git", [user]))
+    monkeypatch.setattr(state.host, "follow_forge_members", lambda *args: None)
+    follow(state)
+    written = json.loads(state.host.path("/etc/porelo-host/organization/projects/alpha.json").read_text())
+    assert written["fetch_from"] == "http://127.0.0.1:2222/alpha/alpha.git"
+    # A task on the host reads its builds from the forge it fetches from, as the person who started it.
+    assert written["builds"] == {
+        "forge": "forgejo",
+        "api": "http://127.0.0.1:2222/api/v1",
+        "credential": "forge.example.person",
+        "logs": "failure",
+    }
+    assert written["host"] == "host"
+    assert state.host.path("/etc/porelo-host/signers/alpha.allowed").exists()
+
+
+def test_the_builds_go_with_the_copy_when_the_projects_address_goes(following, monkeypatch):
+    """Prevent a host file naming Builds of a copy the members can no longer fetch from, after its address went."""
+    state = following
+    state.reply["host_card"]["services"] = {"forge": {"web_port": 3000, "git_port": 2222}}
+    state.host.write(
+        state.host.path("/etc/porelo-host/forge.conf"), "host=host\nname=forge.example\naccount=git\n", 0o600
+    )
+    monkeypatch.setattr(state.host, "forge_configuration", lambda user: ("git", [user]))
+    monkeypatch.setattr(state.host, "follow_forge_members", lambda *args: None)
+    follow(state)
+    path = state.host.path("/etc/porelo-host/organization/projects/alpha.json")
+    assert "builds" in json.loads(path.read_text())
+    state.reply["projects"][0]["address"] = "has spaces"
+    follow(state, "b")
+    written = json.loads(path.read_text())
+    assert written["fetch_from"] is None
+    assert "builds" not in written, "no Builds named where no copy is fetched from"
+
+
+def test_a_forge_conf_naming_no_forge_leaves_the_builds_out_and_says_so(following, monkeypatch, capsys):
+    """Prevent a forge.conf without a usable name failing the whole follow, or naming a credential nobody holds."""
+    state = following
+    state.reply["host_card"]["services"] = {"forge": {"web_port": 3000, "git_port": 2222}}
     state.host.write(state.host.path("/etc/porelo-host/forge.conf"), "host=host\naccount=git\n", 0o600)
     monkeypatch.setattr(state.host, "forge_configuration", lambda user: ("git", [user]))
     monkeypatch.setattr(state.host, "follow_forge_members", lambda *args: None)
     follow(state)
     written = json.loads(state.host.path("/etc/porelo-host/organization/projects/alpha.json").read_text())
     assert written["fetch_from"] == "http://127.0.0.1:2222/alpha/alpha.git"
-    assert written["host"] == "host"
-    assert state.host.path("/etc/porelo-host/signers/alpha.allowed").exists()
+    assert "builds" not in written
+    assert "alpha: no builds named" in capsys.readouterr().err
 
 
 def test_a_host_with_no_forge_writes_certifiers_and_no_allowed_signers(following):
@@ -557,6 +599,7 @@ def test_one_projects_bad_address_does_not_stop_a_revocation(following):
     assert state.host.records()["charlie"]["locked"]
     written = json.loads(state.host.path("/etc/porelo-host/organization/projects/alpha.json").read_text())
     assert written["address"] is None and written["fetch_from"] is None
+    assert "builds" not in written, "no builds where no copy is fetched from"
     assert "unusable address" in answer["projects"][0]["why"]
     assert "has spaces" not in answer["projects"][0]["why"]
 

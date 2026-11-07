@@ -499,7 +499,11 @@ If it cannot move, as local `main` holds commits central lacks or other files di
 says a task here reads an older project file, until a gathered push or a person's pull request joins them.
 A repository's address on the host is `http://127.0.0.1:<git_port>/<project>/<name>.git`, with `git_port` from the host
 card and `<name>` the repository's name at the central forge, which the project file's `central` names; the host
-derives the address, and no project file holds it. After admission and with Porelo-Vault open, the person or their tool
+derives the address, and no project file holds it. Beside it the host's file for the project names the Builds a task
+here reads: `builds`, `{"forge": "forgejo", "api": "http://127.0.0.1:<git_port>/api/v1", "credential":
+"<forge>.person", "logs": "failure"}`, the credential being the vault entry `porelo-host-forge-token` makes; a guarded
+project's `project.yml` names nothing of the host. Without `fetch_from` there is no `builds`, and a forge.conf whose
+`name` does not read leaves it out with a line saying so. After admission and with Porelo-Vault open, the person or their tool
 runs `/usr/local/bin/porelo-host-forge-token` before reading the forge over git. It calls
 `sudo -n porelo-host-person forge-token` and pipes the local token into `<forge>.person`. Success prints nothing;
 a token request failure exits with `69`, and a refused vault write with `65`, each with a reason on stderr.

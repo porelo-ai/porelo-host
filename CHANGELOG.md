@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A task on the host reads its Builds from the host's forge.** Each project's file on the host names `builds` beside
+  `fetch_from`: the forge's API on the git port and the person's `<forge>.person` vault entry, so a guarded project's
+  task reads the Builds of its pushes while its `project.yml` stays the same everywhere.
 - **A host carries single repositories of a project.** Where the organization's state names the host's
   `repositories` of a project, the follow takes only those and the project's own; one named no longer is taken off the
   host's forge by `porelo-host-project take-off`, held while its work is not at the central forge, its deploy key

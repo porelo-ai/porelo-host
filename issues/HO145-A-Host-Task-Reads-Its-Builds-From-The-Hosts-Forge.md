@@ -1,6 +1,6 @@
 # HO145 — A Host Task Reads Its Builds From The Host's Forge
 
-**Status:** Implementing.
+**Status:** Review.
 **Kind:** Feature.
 **Size:** S - the follow writes `builds` into each project's file on the host beside `fetch_from`, with its tests and
 docs.
@@ -11,8 +11,8 @@ as the person who started it, without the project's signed `project.yml` naming 
 ## Why
 
 The trial move's Build line could only say `not configured`: porelo reads builds from `project.yml`'s `builds:`, and a
-guarded project names none. The operator chose that the host's per-project file names the builds, so `project.yml`
-stays the same on every machine and a guarded task's egress stays as it is. Porelo reads it (its own issue B493).
+guarded project names none. The host's per-project file names the builds instead, so `project.yml` stays the same on
+every machine and a guarded task's egress stays as it is; Porelo reads the field from that file.
 
 ## Plan
 

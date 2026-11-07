@@ -15,6 +15,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho145"></a>[HO145](HO145-A-Host-Task-Reads-Its-Builds-From-The-Hosts-Forge.md) | S | - | A host task reads its Builds from the host's forge: the follow names `builds` in each project's file beside `fetch_from`. |
 | <a id="ho142"></a>[HO142](HO142-The-Persons-Vault-Holds-Their-Forge-Token-From-The-Start.md) | S | - | Bug: the person's vault holds `<forge>.person` from the start, made the one way `porelo-host-push` makes it. |
 | <a id="ho144"></a>[HO144](HO144-The-Forge-Gates-Refusal-Names-Its-Address.md) | XS | - | Bug: the forge gate's 403 for a foreign `Host` names the address that works. |
 | <a id="ho141"></a>[HO141](HO141-The-Move-Check-Reads-Push-And-Pull-Request-From-The-Forge.md) | S | - | Bug: the move check reads the push and the pull request from the host's forge, and names the Build not configured without `builds:`. |
@@ -52,7 +53,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho145"></a>[HO145](HO145-A-Host-Task-Reads-Its-Builds-From-The-Hosts-Forge.md) | S | - | A host task reads its Builds from the host's forge: the follow names `builds` in each project's file beside `fetch_from`. |
 
 ## Backlog
 
