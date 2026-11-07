@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   how its `main` on the host's forge stands against central (`ahead` with its commits, `up-to-date`, `moved-on` or
   `cannot-say`); `taken` alone only ever said it was migrated. `down` refuses, before anyone is purged, while a
   repository's work is not known to be at central, unless the host is given back anyway.
+- **The forge's web gate names its two working addresses when it refuses a foreign Host.** The addresses come
+  from the forge's settings; other refusals and unreadable settings keep an empty response.
 - **The host reads the project file's `central` alone.** A row's `upstream`, a host's address the project file no
   longer holds, no longer decides whether the project's own repository stays open to merges, and the host keeps none.
 - **A project's `why` in `org status` says each like reason of its repositories once,** as `<names>: <reason>`, and

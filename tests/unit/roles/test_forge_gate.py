@@ -532,6 +532,83 @@ def test_the_browser_socket_serves_its_own_site_alone(gate, host):
     assert calls == [], host
 
 
+@pytest.mark.parametrize("name, port", [("forge.example", 3000), ("other.example", 3100)])
+def test_a_foreign_host_refusal_names_only_the_configured_addresses(gate, name, port):
+    """Prevent a refused Host being reflected as a trusted address or bypassing the browser gate."""
+    Path(gate.FORGE_CONF).write_text(f"name={name}\nport={port}\n")
+
+    response, calls = request(gate, host="localhost:3000")
+    headers, body = response.split(b"\r\n\r\n", 1)
+
+    assert response.startswith(b"HTTP/1.1 403 "), response
+    assert f"http://{name}:{port}/".encode() in body, body
+    assert f"http://127.0.0.1:{port}/".encode() in body, body
+    assert b"localhost" not in body, body
+    assert b"Content-Type: text/plain; charset=utf-8" in headers, headers
+    assert f"Content-Length: {len(body)}\r\n".encode() in headers + b"\r\n", response
+    assert b"Connection: close" in headers, headers
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"method": "POST", "headers": [("Origin", "http://evil.example")]},
+        {"method": "POST", "headers": [("Sec-Fetch-Site", "cross-site")]},
+        {"uid": 0, "host": "localhost:3000"},
+        {"path": "/user/settings/account"},
+        {"mode": "git", "path": "/user/settings/account", "host": "localhost:3000"},
+        {"mode": "runner", "path": "/user/settings/account", "host": "localhost:3000"},
+        {"host": "localhost:3000", "method": "POST", "headers": [("Origin", "http://evil.example")]},
+        {"host": "localhost:3000", "method": "POST", "headers": [("Sec-Fetch-Site", "cross-site")]},
+        {"host": "localhost:3000", "path": "/user/settings/account"},
+        {"host": "localhost:3000", "path": "http://["},
+        {"host": None, "method": "POST", "headers": [("Origin", "http://evil.example")]},
+        {"host": "localhost:3000", "path": "/owner/repo.git/info/refs", "headers": [("Sec-Fetch-Site", "none")]},
+    ],
+    ids=[
+        "foreign-origin",
+        "foreign-site",
+        "no-peer-login",
+        "blocked-route",
+        "git",
+        "runner",
+        "foreign-host-and-origin",
+        "foreign-host-and-site",
+        "foreign-host-and-blocked-route",
+        "foreign-host-and-invalid-target",
+        "missing-host-and-origin",
+        "foreign-host-and-token-only-route",
+    ],
+)
+def test_other_refusals_keep_their_empty_response(gate, kwargs):
+    """Prevent Host guidance leaking through authentication, route, or cross-site refusals."""
+    response, calls = request(gate, **kwargs)
+    headers, body = response.split(b"\r\n\r\n", 1)
+
+    assert response.startswith(b"HTTP/1.1 403 "), response
+    assert body == b"", body
+    assert b"Content-Length: 0\r\n" in headers + b"\r\n", headers
+    assert b"Connection: close" in headers, headers
+    assert b"Content-Type:" not in headers, headers
+    assert calls == []
+
+
+def test_an_unreadable_forge_conf_keeps_the_host_refusal_empty(gate):
+    """Prevent a configuration read failure admitting a foreign Host or advertising an invented address."""
+    Path(gate.FORGE_CONF).unlink()
+
+    response, calls = request(gate, host="localhost:3000")
+    headers, body = response.split(b"\r\n\r\n", 1)
+
+    assert response.startswith(b"HTTP/1.1 403 "), response
+    assert body == b"", body
+    assert b"Content-Length: 0\r\n" in headers + b"\r\n", headers
+    assert b"Connection: close" in headers, headers
+    assert b"Content-Type:" not in headers, headers
+    assert calls == []
+
+
 @pytest.mark.parametrize("host", ["host.localhost:3000", "HOST.localhost:3000", "127.0.0.1:3000"])
 def test_the_browser_socket_serves_its_own_site_by_either_name(gate, host):
     response, calls = request(gate, host=host)

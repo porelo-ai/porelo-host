@@ -134,19 +134,33 @@ def own_hosts():
 
 
 def foreign_request(headers, method):
-    """A request another site made in the person's browser: by a name of its own that resolves to loopback, or, for one
-    that changes something, from a page of another origin."""
-    hosts = headers.get_all("Host", [])
-    if len(hosts) != 1 or hosts[0].lower() not in own_hosts():
-        return True
+    """A request that changes something from a page of another origin."""
     if method in ("GET", "HEAD"):
         return False
+    hosts = headers.get_all("Host", [])
     # A browser sends both on every cross-site request that changes something; a client with a token sends neither.
     origins = headers.get_all("Origin", [])
     sites = headers.get_all("Sec-Fetch-Site", [])
     return (len(origins) > 1 or len(sites) > 1 or
-            (origins and origins[0].lower() != "http://" + hosts[0].lower()) or
+            (origins and (len(hosts) != 1 or origins[0].lower() != "http://" + hosts[0].lower())) or
             (sites and sites[0].strip().lower() not in ("same-origin", "none")))
+
+
+def host_refusal_body(headers, method, target, hosts):
+    """Trusted addresses for a Host refusal alone; other refusals keep an empty body."""
+    if not hosts or foreign_request(headers, method):
+        return b""
+    try:
+        if unsafe_path(target) or blocked_route(target, method, "web"):
+            return b""
+        if (not headers.get_all("Authorization", []) and SIGNED_IN_ONLY_BY_TOKEN.fullmatch(route(target)) and
+                any(key.lower().startswith("sec-fetch-") for key in headers.keys())):
+            return b""
+    except ValueError:
+        # A malformed target must not prevent a Host refusal.
+        return b""
+    addresses = " or ".join(f"http://{host}/" for host in sorted(hosts))
+    return f"Open this forge at {addresses}.\n".encode("utf-8")
 
 
 class RequestBody:
@@ -189,13 +203,17 @@ class Handler(BaseHTTPRequestHandler):
         # Paths and HTTP parser errors can contain credentials.
         pass
 
-    def reply(self, status, challenge=False):
+    def reply(self, status, challenge=False, body=b""):
         self.send_response_only(status)
         if challenge:
             self.send_header("WWW-Authenticate", "Basic")
-        self.send_header("Content-Length", "0")
+        if body:
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
         self.send_header("Connection", "close")
         self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
 
     def send_error(self, code, message=None, explain=None):
         self.close_connection = True
@@ -211,6 +229,12 @@ class Handler(BaseHTTPRequestHandler):
         if self.server.mode == "web" and login is None:
             self.reply(403)
             return
+        if self.server.mode == "web":
+            allowed_hosts = own_hosts()
+            hosts = self.headers.get_all("Host", [])
+            if len(hosts) != 1 or hosts[0].lower() not in allowed_hosts:
+                self.reply(403, body=host_refusal_body(self.headers, self.command, self.path, allowed_hosts))
+                return
         if self.server.mode == "web" and foreign_request(self.headers, self.command):
             self.reply(403)
             return
