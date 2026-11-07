@@ -73,6 +73,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho140"></a>[HO140](HO140-A-Host-Keeps-Its-Identity-Across-Rentals.md) | - | - | A host rented again and again keeps its read keys from the person's vault, so they stay registered between rentals and only a host given up for good has them removed. |
 | <a id="ho130"></a>[HO130](HO130-The-Web-Gates-Authorization-Edges.md) | - | - | `web.sock` treats an empty `Authorization` as a token and passes the cookie beside it, takes any scheme, and no test holds its refusal of a second `Authorization` or of a request target that is not a path. |
 | <a id="ho128"></a>[HO128](HO128-A-Tasks-Login-Cannot-Approve-Or-Merge.md) | - | - | A task's gate login on the forge can neither approve nor merge a pull request on `main`, by the forge's own rule, not only because the task never holds its token. |
 | <a id="ho117"></a>[HO117](HO117-The-Sanity-Images-Two-Pins.md) | - | - | The `pip` and `pylint` the sanity image pins, with open alerts, raised or said why they stay |
