@@ -1,8 +1,8 @@
 ---
 # What `host down` runs on the host itself, with `-c local`, before the host is given back. It refuses first while any
-# person still holds a membership, then runs the steps of the roles that bring something up, the other way round: the
-# homeserver, the VM pool, the forge, then cleanup of a legacy VPN. Each takes down only what is there, so it also
-# follows a failed `up`.
+# project's work on the host's forge is not at its central forge and while any person still holds a membership, then
+# runs the steps of the roles that bring something up, the other way round: the homeserver, the VM pool, the forge,
+# then cleanup of a legacy VPN. Each takes down only what is there, so it also follows a failed `up`.
 - name: Take the host down
   hosts: localhost
   connection: local
@@ -55,8 +55,24 @@
       loop: "{{ __porelo_follow_units.results }}"
       when: item.stat.exists
 
-    - name: Check memberships with the follow paused
+    - name: Read whether the forge's project helper is installed
+      ansible.builtin.stat:
+        path: /usr/local/sbin/porelo-host-project
+      register: __porelo_project_helper
+
+    - name: Check work and memberships with the follow paused
       block:
+        # Asked afresh, since the follow's last answer may predate a merge; giving the host back anyway skips this.
+        - name: Stop while any project's work on the host's forge is not at its central forge
+          ansible.builtin.command:
+            argv: [/usr/local/sbin/porelo-host-project, give-back-check]
+          changed_when: false
+          when: __porelo_project_helper.stat.exists
+          vars:
+            porelo_host_step:
+              text: Checking that each project's work is at its central forge
+              seconds: 20
+
         - name: Stop while any person still holds a membership on the host
           ansible.builtin.include_role:
             name: porelo.host.porelo
@@ -72,9 +88,9 @@
             state: started
           when: __porelo_follow_units.results[0].stat.exists
 
-        - name: Keep the membership refusal after resuming the follow
+        - name: Keep the refusal after resuming the follow
           ansible.builtin.fail:
-            msg: "{{ ansible_failed_result.msg }}"
+            msg: "{{ ansible_failed_result.stderr | default('', true) or ansible_failed_result.msg }}"
 
     - name: Take the organization's follow, the account's tasks and its vault off the host
       ansible.builtin.include_role:

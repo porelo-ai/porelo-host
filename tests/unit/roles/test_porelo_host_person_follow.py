@@ -2169,7 +2169,12 @@ def test_org_status_names_each_repository_taken_waiting_or_with_no_central(files
     monkeypatch.setattr(files.host, "follow_project_command", refusing)
     files.run("c", token=True)
     alpha, said = repositories_said(files)
-    assert said["good"] == {"repository": "good", "state": "taken", "why": None}
+    assert said["good"] == {
+        "repository": "good",
+        "state": "taken",
+        "why": None,
+        "central": {"state": "cannot-say", "why": "unreachable"},
+    }
     assert said["bad"]["state"] == "waiting" and "differs" in said["bad"]["why"]
     assert said["local"]["state"] == "no-central" and "no central" in said["local"]["why"]
     assert "bad: " in alpha["why"] and "local" not in alpha["why"], "a row with no central is the file's choice"
@@ -2213,7 +2218,12 @@ def test_org_status_says_the_projects_own_repository_is_taken(files):
     files.answer["repositories"] = {"own": {"review": "required", "central": "git@example.org:acme/alpha.git"}}
     files.main = "2" * 40
     files.run("b")
-    assert repositories_said(files)[1]["own"] == {"repository": "own", "state": "taken", "why": None}
+    assert repositories_said(files)[1]["own"] == {
+        "repository": "own",
+        "state": "taken",
+        "why": None,
+        "central": {"state": "cannot-say", "why": "unreachable"},
+    }
 
 
 def test_org_status_gives_a_reason_for_rows_kept_from_before_a_project_was_put_on_again(files):
@@ -2230,6 +2240,49 @@ def test_org_status_gives_a_reason_for_rows_kept_from_before_a_project_was_put_o
     said = repositories_said(files)[1]
     assert said["later"]["state"] == "waiting" and said["later"]["why"]
     assert said["local"]["state"] == "no-central" and "no central" in said["local"]["why"]
+
+
+def test_org_status_says_how_a_taken_repositorys_main_stands_against_central(files):
+    """Prevent a repository reading taken while its main on the host holds work no central forge has."""
+    files.answer["repositories"] = named(good="required", other="required")
+    files.main = "2" * 40
+    files.run("b")
+    files.run("c", token=True)
+    path = files.host.path("/etc/porelo-host/organization/central/alpha.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "project": "alpha",
+                "read_at": "2026-11-07T12:00:00Z",
+                "repositories": [{"repository": "Good", "state": "ahead", "commits": 2}],
+            }
+        )
+    )
+    said = repositories_said(files)[1]
+    assert said["good"]["state"] == "taken", "the state keeps its meaning"
+    assert said["good"]["central"] == {"state": "ahead", "commits": 2}, "the follow's answer, by the forge's name"
+    assert said["other"]["central"] == {"state": "cannot-say", "why": "unreachable"}, "no answer is never at central"
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        json.dumps({"project": "alpha", "repositories": [{"repository": "good", "state": "fine"}]}).encode(),
+        b"\xff\xfe not text",
+    ],
+    ids=["malformed", "not-utf-8"],
+)
+def test_org_status_reads_no_answer_from_a_malformed_central_state(files, content):
+    """Prevent a central state file that does not read from vouching for a repository's main, or stopping org status."""
+    files.answer["repositories"] = named(good="required")
+    files.main = "2" * 40
+    files.run("b")
+    files.run("c", token=True)
+    path = files.host.path("/etc/porelo-host/organization/central/alpha.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    assert repositories_said(files)[1]["good"]["central"] == {"state": "cannot-say", "why": "unreachable"}
 
 
 def test_org_status_names_no_repository_before_a_file_was_read(files):

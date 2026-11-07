@@ -39,8 +39,12 @@ half of `MemTotal`, naming both sides.
 it also refuses a pool whose memory (systems × accounts per system × memory per VM) exceeds half of `MemTotal`,
 naming the pool's memory and the host's total memory.
 
-**`porelo.host.down`, the other way round.** Pauses the follow timer and service before checking memberships,
-resuming the timer on refusal. Refuses while any person record in
+**`porelo.host.down`, the other way round.** Pauses the follow timer and service before its checks, resuming the
+timer on refusal. Refuses while any project's `main` on the host's forge is not known to be at its central forge,
+asked afresh with `porelo-host-project give-back-check`: `ahead`, `moved-on` or `cannot-say`, naming each repository;
+a row the project file gives no central address has no copy there to hold it, and a project whose first repository is
+not yet on the forge has none either. `porelo-host down --give-back-anyway` gives the host back
+knowingly, its work lost. Refuses while any person record in
 `/etc/porelo-host/people/` still holds a membership, naming each person and their memberships with `"Take the project
 off"` and `"Purge"`. Once no membership remains, it takes the homeserver, the VM pool and the forge off the host and
 removes any legacy VPN files last. Every step takes down only what is there, so `down` after a failed `up` works

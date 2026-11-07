@@ -15,6 +15,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho143"></a>[HO143](HO143-Work-Ahead-Of-Central-Is-Said-And-Holds-The-Give-Back.md) | S | - | Bug: `org status` says each taken repository's state against central, and `down` refuses while work is not at central, unless given back anyway. |
 | <a id="ho139"></a>[HO139](HO139-The-Host-Reads-Central-Alone.md) | XS | - | Bug: the host reads a repository of the project file by its name and `central` alone; the project file names no host. |
 | <a id="ho133"></a>[HO133](HO133-A-Host-Carries-Single-Repositories-Of-A-Project.md) | M | - | Single repositories of a project carried: the follow takes only those the host's card names, one taken off the forge with its read key at the central forge given the token, status per repository. |
 | <a id="ho138"></a>[HO138](HO138-The-Move-Check-Reads-Each-Line-Where-It-Stands.md) | S | - | Bug: the move check reads the push from the forge's branch the task names, not the build reader, and the conversation from the task, not the peers list. |
@@ -48,7 +49,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho143"></a>[HO143](HO143-Work-Ahead-Of-Central-Is-Said-And-Holds-The-Give-Back.md) | S | - | Bug: `org status` says each taken repository's state against central, and `down` refuses while work is not at central, unless given back anyway. |
 | <a id="ho142"></a>[HO142](HO142-The-Persons-Vault-Holds-Their-Forge-Token-From-The-Start.md) | S | - | Bug: the person's vault holds `<forge>.person` from the start, made the one way `porelo-host-push` makes it. |
 | <a id="ho141"></a>[HO141](HO141-The-Move-Check-Reads-Push-And-Pull-Request-From-The-Forge.md) | S | - | Bug: the move check reads the push and the pull request from the host's forge, and names the Build not configured without `builds:`. |
 | <a id="ho144"></a>[HO144](HO144-The-Forge-Gates-Refusal-Names-Its-Address.md) | XS | - | Bug: the forge gate's 403 for a foreign `Host` names the address that works. |

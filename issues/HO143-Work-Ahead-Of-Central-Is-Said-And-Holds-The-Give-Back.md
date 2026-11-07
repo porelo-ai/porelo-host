@@ -1,6 +1,6 @@
 # HO143 — Work Ahead Of Central Is Said And Holds The Give-Back
 
-**Status:** Implementing.
+**Status:** Review.
 **Kind:** Bug.
 **Size:** S - `org status` adds each repository's central state, and `down` refuses while work is not at central,
 with unit and Molecule checks.
@@ -21,8 +21,9 @@ per project, under `/etc/porelo-host/organization/central/`.
   (`ahead` with its count of commits, `up-to-date`, `moved-on`, or `cannot-say` with why), matched by the name the
   repository goes by on the host's forge; no answer yet reads `cannot-say`. The window and the person's guide read it.
 - **`down`:** before any person is purged or anything taken off, the play asks `porelo-host-project central-state`
-  afresh for every project on the host and stops while a repository is `ahead` or `moved-on`, or `cannot-say` for a
-  reason other than having no central forge, naming each with its state. The frontend's `--give-back-anyway`
+  afresh for every project on the host and stops while a repository is `ahead`, `moved-on` or `cannot-say`, naming
+  each with its state. Every copy on the forge was taken from a central forge, so each `cannot-say` stops it too; a row
+  the project file gives no central address has no copy on the forge to stop it. The frontend's `--give-back-anyway`
   already gives the host back after a play that did not finish.
 - **Red first:** a unit test of `org status` with a published central state `ahead`, and one of the play's refusal
   with a stand-in helper answering `ahead`, each red on today's code.
@@ -30,5 +31,7 @@ per project, under `/etc/porelo-host/organization/central/`.
 ## Acceptance
 
 - The unit tests, seen red on today's code and green after.
-- A Molecule check: `down` on a host whose forge `main` holds a commit central lacks stops and names it.
+- On the next rehearsal's host, `down` with a commit on the forge's `main` that central lacks stops and names it.
+  The Molecule scenario has no stand-in for a central forge, so it cannot hold this; making one is larger than this
+  issue.
 

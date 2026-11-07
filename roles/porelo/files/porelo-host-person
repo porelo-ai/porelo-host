@@ -1965,9 +1965,25 @@ class Host:
                  "repositories": self.repositories_said(item, name)}
                 for name, item in sorted(entries.items())]
 
+    def central_rows(self, name):
+        """The follow's last answer of how each repository's main stands against central, by its name on the forge."""
+        path = self.path(CENTRAL_STATES) / (name + ".json")
+        self.check(path)
+        try:
+            answer = json.loads(self.read(path)) if path.exists() else None
+        except (ValueError, UnicodeError, Refusal):
+            answer = None
+        rows = answer.get("repositories") if isinstance(answer, dict) and answer.get("project") == name else None
+        # A file that does not read vouches for nothing, as if no follow had asked yet.
+        if not isinstance(rows, list) or not all(central_row(row) for row in rows):
+            return {}
+        return {row["repository"].lower(): {key: value for key, value in row.items() if key != "repository"}
+                for row in rows}
+
     def repositories_said(self, item, name):
         """Each repository of the signed file last read: taken, waiting and why, or with no central address."""
         said = []
+        central_rows = None
         waiting = item.get("repositories_why") or {}
         file = item.get("file") or {}
         named = item.get("named")
@@ -1983,7 +1999,12 @@ class Host:
                 said.append({"repository": repository, "state": "no-central", "why": NO_CENTRAL})
             elif repository not in waiting and (central in item.get("taken", []) or (
                     item.get("migrated") and central == file.get("address"))):
-                said.append({"repository": repository, "state": "taken", "why": None})
+                if central_rows is None:
+                    central_rows = self.central_rows(name)
+                # Taken says only that it was migrated; whether main's work is at central is the follow's answer.
+                said.append({"repository": repository, "state": "taken", "why": None,
+                             "central": central_rows.get(taken_as(repository, row).lower(),
+                                                         {"state": "cannot-say", "why": "unreachable"})})
             else:
                 said.append({"repository": repository, "state": "waiting",
                              "why": waiting.get(repository) or f"waits for {name} to be on this host's forge"})

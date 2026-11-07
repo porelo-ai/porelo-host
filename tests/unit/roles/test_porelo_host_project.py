@@ -2131,6 +2131,78 @@ def test_a_repository_with_no_read_key_cannot_say(memory_host, monkeypatch, caps
     ]
 
 
+def give_back_check(host, monkeypatch, capsys, states):
+    """Run the give-back check over alpha, its repositories standing as given."""
+    assert project(host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    read_key_project(host)
+    return project(
+        host,
+        monkeypatch,
+        capsys,
+        "give-back-check",
+        overrides={
+            "repository_state": lambda _account, _project, name, _directory, _item: states[name],
+            "forge_repositories": lambda *args: list(states),
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        {"state": "ahead", "commits": 2},
+        {"state": "moved-on"},
+        {"state": "cannot-say", "why": "unreachable"},
+        {"state": "cannot-say", "why": "local"},
+        {"state": "cannot-say", "why": "no-central-main"},
+        # Migrated, so it has a central forge, but the host holds no key to ask it.
+        {"state": "cannot-say", "why": "no-read-key"},
+        # On the forge, yet missing from the manifest: the host lost what it would ask central with.
+        None,
+    ],
+)
+def test_a_host_is_not_given_back_while_work_is_not_at_central(memory_host, monkeypatch, capsys, state):
+    """Prevent the host being given back with work on its forge that no central forge has, or may not have."""
+    name = "code" if state else "unlisted"
+    states = {"code": {"state": "up-to-date"}, name: state} if state else {"code": {"state": "up-to-date"}, name: None}
+    result = give_back_check(memory_host, monkeypatch, capsys, states)
+    assert result[0] == 65, result
+    assert f"alpha/{name}" in result[2] and (state or {"state": "cannot-say"})["state"] in result[2], result
+    assert "give it back anyway" in result[2], result
+
+
+def test_a_host_whose_work_is_all_at_central_may_be_given_back(memory_host, monkeypatch, capsys):
+    """Prevent a host whose work is all at central being held from its give-back."""
+    result = give_back_check(memory_host, monkeypatch, capsys, {"code": {"state": "up-to-date"}})
+    assert result[0] == 0, result
+    project_record = memory_host["etc"] / "projects/alpha.conf"
+    assert project_record.exists(), "the check takes nothing off"
+
+
+def test_a_project_with_no_repository_on_the_forge_yet_may_be_given_back(memory_host, monkeypatch, capsys):
+    """Prevent a project still waiting for its token, whose folder Forgejo has not made, from holding the give-back."""
+    assert project(memory_host, monkeypatch, capsys, "add", "alpha", "alice", "--signed-by", KEY)[0] == 0
+    read_key_project(memory_host)
+    asked = []
+
+    def forge_exec(_account, *arguments):
+        asked.append(arguments[0])
+        return SimpleNamespace(returncode=1 if arguments[0] == "test" else 2, stdout="", stderr="")
+
+    result = project(
+        memory_host,
+        monkeypatch,
+        capsys,
+        "give-back-check",
+        overrides={
+            "repository_state": lambda *args: {"state": "up-to-date"},
+            "forge_exec": forge_exec,
+        },
+    )
+    assert result[0] == 0, result
+    assert "ls" not in asked, "a folder that is not there is not listed"
+
+
 def test_telling_the_state_asks_the_forge_nothing_and_leaves_it_no_token(memory_host, monkeypatch, capsys):
     """Prevent a read at every follow leaving a lasting admin token on the host's forge each time."""
     host = memory_host

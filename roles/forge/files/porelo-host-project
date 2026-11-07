@@ -1215,6 +1215,40 @@ def central_state(account, project):
     return {"project": project, "repositories": answers}
 
 
+def give_back_faults(account, project):
+    """Each repository of a project whose main's work is not known to be at central, said with how it stands."""
+    faults = []
+    for row in central_state(account, project)["repositories"]:
+        state = row["state"]
+        # Every copy on the forge was taken from a central forge, so none that cannot be told is let go: a row the
+        # project file gives no central address has no copy here, and a repository missing from the manifest is one
+        # the host lost the key to ask about.
+        if state == "up-to-date":
+            continue
+        said = {"ahead": f"ahead by {row.get('commits')} commit(s)", "moved-on": "moved-on from central",
+                "cannot-say": f"cannot-say ({row.get('why')})"}.get(state, state)
+        faults.append(f"{project}/{row['repository']} {said}")
+    return faults
+
+
+def give_back_check(account):
+    """Refuse while any project's work on this host's forge is not known to be at its central forge."""
+    directory = os.path.join(ETC, "projects")
+    names = sorted(name[:-len(".conf")] for name in os.listdir(directory) if name.endswith(".conf")) \
+        if os.path.isdir(directory) else []
+    faults = []
+    for project in names:
+        if not re.fullmatch(PROJECT_PATTERN, project):
+            refuse("the projects directory holds an invalid project record", 65)
+        trusted(os.path.join(directory, project + ".conf"), private=True)
+        faults.extend(give_back_faults(account, project))
+    if faults:
+        refuse("work on this host's forge is not at central: " + "; ".join(faults)
+               + "; bring it to central first, or give it back anyway to lose it", 65)
+    with writing("standard output"):
+        print(json.dumps({"projects": names, "at_central": True}, separators=(",", ":")), flush=True)
+
+
 def commit_set(text):
     """Reject incomplete or malformed Git answers before deciding that work is safe to delete."""
     lines = text.splitlines()
@@ -1252,7 +1286,11 @@ def forge_read(account, project, repository, *arguments):
 
 def forge_repositories(account, project):
     """The names of a project's repositories in Forgejo's own folder, as the API would take a new token to ask."""
-    result = forge_exec(account, "ls", "/var/lib/gitea/git/repositories/" + project)
+    folder = "/var/lib/gitea/git/repositories/" + project
+    # Forgejo makes the folder with the project's first repository; a project waiting for its token has none yet.
+    if forge_exec(account, "test", "-d", folder).returncode:
+        return []
+    result = forge_exec(account, "ls", folder)
     if result.returncode:
         refuse(f"the local forge could not list the repositories of {project}", 69)
     names = [line.removesuffix(".git") for line in result.stdout.splitlines()]
@@ -1596,6 +1634,16 @@ def run():
     if arguments[:1] == ["pool-key"]:
         run_pool_key(arguments[1] if len(arguments) == 2 else "", lock_fd)
         return
+    if arguments == ["give-back-check"]:
+        trusted_directory(os.path.join(ETC, "projects"), private=True, missing=True)
+        trusted(CONF)
+        with open(CONF, encoding="utf-8") as lock:
+            if lock_fd is None:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+            else:
+                inherited_lock(lock_fd)
+            give_back_check(setting(read_values(CONF), "account", r"[a-z_][a-z0-9_-]{0,31}"))
+        return
     if len(arguments) == 5 and arguments[0] == "add" and arguments[3] == "--signed-by":
         action, project, admin, _, key = arguments
     elif len(arguments) == 2 and arguments[0] in ("remove", "migrate", "take-off", "central-state"):
@@ -1615,7 +1663,7 @@ def run():
             refuse("project-advance takes a repository's name, a commit, a copy of this helper's and signed or tip", 64)
     else:
         refuse('usage: add <project> <admin> --signed-by "ssh-ed25519 <base64>" | remove <project> '
-               '| take-off <project> | central-state <project>', 64)
+               '| take-off <project> | central-state <project> | give-back-check', 64)
     if not re.fullmatch(PROJECT_PATTERN, project):
         refuse("project must be 1 to 40 lowercase letters, digits or internal hyphens", 64)
     if action == "add":

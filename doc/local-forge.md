@@ -468,7 +468,10 @@ developers merge. A rule changed by hand is set back at the next follow; a file 
 `org status` names, under each project's `repositories`, every row of the signed file last read, with `repository`, `state` and `why`:
 `taken`; `waiting`, with what stands in its way; `no-central`, a row this host can give no copy and no task until the file names an
 address, a choice of the file that gives the project no `why`; `not-carried`, a row the host's card leaves to another
-host, which gives none either; or `held`, a row named no longer whose work has not reached its central repository. The project's `why` says like reasons of its waiting rows once,
+host, which gives none either; or `held`, a row named no longer whose work has not reached its central repository. A
+`taken` row also carries `central`, how its `main` on the host's forge stood against central at the last follow, in
+that answer's shape: `ahead` with `commits`, `up-to-date`, `moved-on`, or `cannot-say` with `why`; no answer, or one
+that does not read, is `cannot-say` with `unreachable`, never at central. The project's `why` says like reasons of its waiting rows once,
 as `<names>: <reason>`, the names comma separated. The list is empty until a file was read. A line `main's review is ...` reaches
 the output of the run that changed the rule, the journal for a timer's follow, and no other run.
 Removing a project deletes its local

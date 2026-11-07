@@ -53,12 +53,15 @@ def test_down_refuses_teardown_while_people_hold_memberships(tmp_path):
     code, lines, output = run_down(tmp_path, people)
     assert code == 2, output
     plan = next(line for line in lines if line["state"] == "plan")
-    assert "people" in plan["steps"][0]["text"].lower(), f"down must check people first in its plan: {plan}"
+    texts = [step["text"].lower() for step in plan["steps"]]
+    assert "central" in texts[0] and "people" in texts[1], f"down must check work, then people, first: {plan}"
     failed = [line for line in lines if line["state"] == "failed"]
     assert len(failed) == 2, output
     started_tasks = [line["task"] for line in lines if line["state"] == "started"]
     assert not any(
-        role in task for task in started_tasks for role in ("matrix", "vm_pool", "forge", "vpn")
+        task.startswith(f"porelo.host.{role} :")
+        for task in started_tasks
+        for role in ("matrix", "vm_pool", "forge", "vpn")
     ), f"down must stop nothing while memberships remain: {started_tasks}"
     msg = failed[-1]["msg"]
     assert "alice" in msg and "host-admin" in msg and "alpha project-admin" in msg, msg
@@ -90,7 +93,9 @@ def test_down_fails_closed_on_a_malformed_or_untrusted_people_record(tmp_path):
         assert code == 2, f"{kind} must stop down: {output}"
         started_tasks = [line["task"] for line in lines if line["state"] == "started"]
         assert not any(
-            role in task for task in started_tasks for role in ("matrix", "vm_pool", "forge", "vpn")
+            task.startswith(f"porelo.host.{role} :")
+            for task in started_tasks
+            for role in ("matrix", "vm_pool", "forge", "vpn")
         ), f"{kind} must fail before stopping services: {started_tasks}"
 
 
@@ -139,11 +144,15 @@ def test_down_waits_for_the_follow_before_checking_people_and_resumes_on_refusal
     assert pause["loop"] == "{{ __porelo_follow_units.results }}"
     assert pause["ansible.builtin.systemd_service"] == {"name": "{{ item.item }}", "state": "stopped"}
     assert pause["when"] == "item.stat.exists", "absent units must be harmless"
-    assert check["block"][0]["ansible.builtin.include_role"]["tasks_from"] == "people"
+    work, people = check["block"]
+    assert work["ansible.builtin.command"]["argv"] == ["/usr/local/sbin/porelo-host-project", "give-back-check"]
+    assert people["ansible.builtin.include_role"]["tasks_from"] == "people"
     restart, refuse = check["rescue"]
     assert restart["ansible.builtin.systemd_service"] == {"name": "porelo-host-follow.timer", "state": "started"}
     assert restart["when"] == "__porelo_follow_units.results[0].stat.exists"
-    assert refuse["ansible.builtin.fail"]["msg"] == "{{ ansible_failed_result.msg }}"
+    assert refuse["ansible.builtin.fail"]["msg"] == (
+        "{{ ansible_failed_result.stderr | default('', true) or ansible_failed_result.msg }}"
+    ), "the give-back check's refusal is on its stderr; the people check's is its msg"
     assert tasks.index(check) < next(
         i for i, task in enumerate(tasks) if task.get("ansible.builtin.include_role", {}).get("tasks_from") == "down"
     )
