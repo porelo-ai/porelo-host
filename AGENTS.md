@@ -495,7 +495,9 @@ and the UTC time that text last changed; change it in the channel first, never i
   `build/rehearse-move.sh`, shell like `build/molecule.sh`, since it drives libvirt and ssh to rehearse a move on a VM;
   `roles/vm_pool/files/porelo-vm`, `roles/vm_pool/files/porelo-pool-give-back` and
   `roles/vm_pool/files/porelo-pool-revert`, shell, since they drive virsh on the host and run inside a pool VM, where
-  there is no Java; `roles/porelo/files/porelo-host-stop` and `roles/forge/files/porelo-host-push`, shell, since they
+  there is no Java; `roles/porelo/files/porelo-host-forge-token` and
+  `roles/porelo/files/porelo-host-forge-token.sh`, shell, since they prepare the person's forge credential on the host,
+  where there is no Java; `roles/porelo/files/porelo-host-stop` and `roles/forge/files/porelo-host-push`, shell, since they
   run on the host, where there is no Java, in the person's terminal or, for the stop's `--stdin`, as root on the
   desktop's pipeline; `roles/forge/files/porelo-forge-pre-receive`, shell, since it is the pre-receive hook inside
   Forgejo's container, where there is no Java; `roles/forge/files/porelo-host-forge-password` and `roles/forge/files/porelo-host-project`,

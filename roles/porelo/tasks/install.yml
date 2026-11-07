@@ -1,5 +1,6 @@
 ---
-# Run as root: Porelo's repository by its pinned key, Porelo's packages from it, and the stop command.
+# Run as root: Porelo's repository by its pinned key, Porelo's packages from it, the stop command, and the forge token
+# command with the helper it shares with porelo-host-push.
 - name: install | Make the directory the key is kept in
   ansible.builtin.file:
     path: /var/cache/porelo-host
@@ -97,6 +98,22 @@
   ansible.builtin.file:
     path: /etc/porelo-host
     state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: install | Install the shared person forge token helper
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/porelo-host-forge-token.sh"
+    dest: /usr/local/share/porelo-host-forge-token.sh
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: install | Install the person's forge token command
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/porelo-host-forge-token"
+    dest: /usr/local/bin/porelo-host-forge-token
     owner: root
     group: root
     mode: "0755"

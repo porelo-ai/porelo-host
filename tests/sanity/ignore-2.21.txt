@@ -13,6 +13,7 @@ roles/forge/files/porelo-host-project shebang # installed as root's program; -I 
 roles/forge/files/porelo-host-push shebang # the person's program; env -i keeps the caller's environment out
 roles/measure/files/porelo-host-measure shebang # root's local measuring program, run with Python's standard library
 roles/porelo/files/porelo-host-person shebang # installed as root's program; -I keeps the caller's environment out
+roles/porelo/files/porelo-host-forge-token shebang # installed as the person's program, run by its own bash
 roles/porelo/files/porelo-host-stop shebang # installed as the person's program, run by its own bash
 tests/unit/plugins/callback/test_lines.py pylint:disallowed-name # _ names a thrown-away value
 tests/unit/roles/test_down_people.py pylint:disallowed-name # _ names a thrown-away value

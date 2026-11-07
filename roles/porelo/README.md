@@ -2,7 +2,8 @@
 
 Porelo's packages and person records on the host: `tasks_from: install` adds Porelo's apt repository by its pinned key,
 installs `porelo` (and `porelo-adapter-forgejo`, providing `/usr/libexec/porelo/builds/forgejo`, when
-`porelo_host_forge` is true), makes `/etc/porelo-host`, and installs `/usr/local/bin/porelo-host-stop`, running no setup
+`porelo_host_forge` is true), makes `/etc/porelo-host`, and installs `/usr/local/bin/porelo-host-stop` and `/usr/local/bin/porelo-host-forge-token`
+with its helper `/usr/local/share/porelo-host-forge-token.sh`, which `porelo-host-push` shares, running no setup
 script for an account. `tasks_from: person` installs `/usr/local/sbin/porelo-host-person` (`purge`, `org follow`,
 `org refresh` and `org status`), private return-socket directories with the daemon link
 and the `porelo-people` group; the verified organization state lands in

@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repository's work is not known to be at central, unless the host is given back anyway.
 - **The forge's web gate names its two working addresses when it refuses a foreign Host.** The addresses come
   from the forge's settings; other refusals and unreadable settings keep an empty response.
+- **A person puts their forge token in the vault before the first push.** `porelo-host-forge-token` puts the admitted
+  person's token for the host's forge into Porelo-Vault as `<forge>.person` before their tools read the forge over git.
+  Push and pull refresh it through the same helper; a refused vault write warns while the transfer continues.
 - **The host reads the project file's `central` alone.** A row's `upstream`, a host's address the project file no
   longer holds, no longer decides whether the project's own repository stays open to merges, and the host keeps none.
 - **A project's `why` in `org status` says each like reason of its repositories once,** as `<names>: <reason>`, and

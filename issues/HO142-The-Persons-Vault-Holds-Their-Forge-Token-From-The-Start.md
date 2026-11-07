@@ -1,6 +1,6 @@
 # HO142 — The Person's Vault Holds Their Forge Token From The Start
 
-**Status:** Implementing.
+**Status:** Review.
 **Kind:** Bug.
 **Size:** S - one place on the host puts the person's `<forge>.person` vault entry, shared with `porelo-host-push`, with
 its unit tests.
@@ -16,11 +16,12 @@ of the host's `main` could not read the forge, and the work was taken from the f
 
 ## Plan
 
-- The entry is made where the person's vault is first open on the host, by the same helper `porelo-host-push` uses,
-  so there is one way of making it; the place is chosen after reading who runs the stop and as which user.
+- A person's command, `porelo-host-forge-token`, makes the entry with the vault open, by the same helper
+  `porelo-host-push` uses, so there is one way of making it. The stop cannot: it runs in `up` before the forge exists
+  and before the person is admitted to it.
 - The token passes only through a pipe, never an argument, a file or output; a failure stops with a reason.
-- **Red first:** with stand-ins for `sudo`, `porelo` and the forge, a person whose stop has run holds the entry; red
-  on today's code.
+- **Red first:** with stand-ins for `sudo`, `porelo` and the forge, the command puts the entry, fails loudly when the
+  forge refuses, and leaves a push its new token when only the vault refused; red on today's code.
 
 ## Acceptance
 

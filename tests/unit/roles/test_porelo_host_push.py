@@ -134,6 +134,13 @@ def host(tmp_path):
     script = moved_if_present(script, "PATH=/usr/sbin:/usr/bin", f"PATH={bin_dir}:/usr/sbin:/usr/bin")
     script = moved_if_present(script, "work=$(mktemp -d)", f"work=$(mktemp -d -p {temporary})")
     script = moved_if_present(script, "/usr/local/sbin/porelo-host-person", str(bin_dir / "porelo-host-person"))
+    library = tmp_path / "forge-token.sh"
+    library.write_text(
+        (ROOT / "roles/porelo/files/porelo-host-forge-token.sh")
+        .read_text()
+        .replace("forge_owner=0", f"forge_owner={os.getuid()}")
+    )
+    script = moved_if_present(script, "/usr/local/share/porelo-host-forge-token.sh", str(library))
     script = moved_if_present(script, "ca_owner=0", f"ca_owner={os.getuid()}")
     command = tmp_path / "porelo-host-push"
     command.write_text(script)
@@ -539,6 +546,7 @@ def test_a_vault_that_takes_no_token_is_said_and_the_push_goes_on(host):
     assert code == 0, output
     assert head(central) == approved
     assert f"your vault took no new forge token; {FORGE_NAME}.person works again" in output
+    assert "unlock it and retry" not in output, "the push says the vault's refusal once, in its own words"
     assert_no_token_anywhere(host, output)
 
 
