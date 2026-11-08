@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A host's first up waits out an outage of GitHub's release downloads.** The forge role fetches the runner's pinned
+  JDK again on a 5xx or no answer, a body broken off included, every 2 minutes for 14 minutes with a 60 s timeout,
+  instead of once with 10 s; a 4xx, a refused certificate, a wrong digest or a full disk still fails at once.
 - **The move check finds the push in the forge repository that holds the task's branch** instead of asking for the
   repository's key, under which the host's forge holds none; a Build line whose reader sees no `builds:` fails; and
   each failing line says what the forge (`HTTP <code> for <path>`), Git or the vault answered.

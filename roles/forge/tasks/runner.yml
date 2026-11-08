@@ -42,14 +42,29 @@
     group: root
     mode: "0755"
 
+# Tried again only on what waiting may mend: a 5xx, or no answer (a connection failed, timed out or broken off), every
+# 2 min for 14 min, the 15 min of the pinned downloads' rule; GitHub's release downloads answered 504 and timed out for
+# over ten minutes on 2026-11-08. A 4xx, a refused certificate and a wrong digest fail at once.
 - name: runner | Fetch the JDK once and check its pinned digest before unpacking
   ansible.builtin.get_url:
     url: "{{ __forge_runner_jdk.url }}"
     dest: "{{ __forge_runner_jdk_dir }}.tar.gz"
     checksum: "sha256:{{ __forge_runner_jdk.sha256 }}"
+    timeout: 60
     owner: root
     group: root
     mode: "0644"
+  register: __forge_runner_jdk_fetch
+  retries: 7
+  delay: 120
+  until: >-
+    __forge_runner_jdk_fetch is succeeded
+    or not (
+      (__forge_runner_jdk_fetch.status_code | default(0) | int) >= 500
+      or (__forge_runner_jdk_fetch.status_code is not defined
+          and __forge_runner_jdk_fetch.msg | default('') is regex(__forge_runner_jdk_fetch_unanswered)
+          and 'CERTIFICATE_VERIFY_FAILED' not in __forge_runner_jdk_fetch.msg | default(''))
+    )
   when: not __forge_runner_jdk_before.stat.exists
 
 - name: runner | Make the pinned JDK's directory

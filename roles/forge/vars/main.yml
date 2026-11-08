@@ -40,5 +40,10 @@ __forge_runner_jdk:
     OpenJDK25U-jdk_x64_linux_hotspot_25.0.5_8.tar.gz"
   sha256: 68982529869257d0ee6b824ec5aa270ff8b118bb438670da0b97ebdab178d7fb
 __forge_runner_jdk_dir: "/opt/porelo-host/jdk-{{ __forge_runner_jdk.version }}"
+# get_url's words for a fetch that got no answer: no connection, a timeout, a reply broken off, before the body or while
+# it streams ("failed to create temporary content file: " then the network's error, never the disk's).
+__forge_runner_jdk_fetch_unanswered: "^(Connection failure: |Request failed: <urlopen error |Incomplete read\
+  |failed to create temporary content file: (.*timed out|.*Connection (reset|aborted)|.*Broken pipe|IncompleteRead\
+  |EOF))"
 __forge_runner_job_hosts: /opt/porelo-host/runner-job-hosts
 __forge_runner_jdk_job_dir: /opt/porelo-jdk-25

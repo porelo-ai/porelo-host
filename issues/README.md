@@ -15,6 +15,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho150"></a>[HO150](HO150-The-Forge-Roles-JDK-Fetch-Tries-Again-By-The-Pinned-Rule.md) | XS | - | Bug: the forge role fetches the runner's JDK once, with a 10 s timeout, so one outage of GitHub's release downloads fails a host's first up; it tries again on a 5xx or no answer within 15 minutes and fails at once on anything else. |
 | <a id="ho148"></a>[HO148](HO148-The-Move-Check-Finds-The-Push-By-Its-Branch-And-Names-The-Answer.md) | XS | - | Bug: the move check finds the push in the forge repository that holds its branch, fails a Build nobody reads, and names what the forge, Git or the vault answered. |
 | <a id="ho147"></a>[HO147](HO147-A-Hosts-Builds-Also-Read-The-Upstream-Snapshots.md) | XS | - | Each organization the host registers holds `MAVEN_UPSTREAM_SNAPSHOTS_URL`, Sonatype's snapshots read anonymously, so a build resolves the snapshots the host's registry lacks. |
 | <a id="ho146"></a>[HO146](HO146-A-Lent-Forge-Token-Leaves-The-Persons-Token.md) | S | - | Porelo's git commands on the host's forge take a lent token of their own, so the person's `<forge>.person` token in the vault, which a task's builds read, stays valid. |
