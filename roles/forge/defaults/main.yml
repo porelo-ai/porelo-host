@@ -49,6 +49,8 @@ forge_variables:
   PORELO_DEPLOY_PROFILE: forge-release
   # On localhost, as Maven's default mirror blocks plain http to any other name, <host>.localhost among them.
   MAVEN_SNAPSHOTS_URL: "http://localhost:{{ forge_http_port }}/api/packages/{project}/maven"
+  # The registry holds only the organization's own snapshots; the others are read from here, without a token.
+  MAVEN_UPSTREAM_SNAPSHOTS_URL: "https://central.sonatype.com/repository/maven-snapshots/"
 
 forge_placeholder_secrets: [JF_ACCESS_TOKEN]
 

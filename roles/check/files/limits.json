@@ -7,7 +7,10 @@
   "disk_free_gib": null,
   "reach": {
     "always": ["fuinorg.jfrog.io:443"],
-    "forge": ["codeberg.org:443", "code.forgejo.org:443", "registry-1.docker.io:443", "ghcr.io:443", "github.com:443"],
+    "forge": [
+      "codeberg.org:443", "code.forgejo.org:443", "registry-1.docker.io:443", "ghcr.io:443", "github.com:443",
+      "central.sonatype.com:443"
+    ],
     "ubuntu": ["cloud-images.ubuntu.com:443"],
     "fedora": ["dl.fedoraproject.org:443"]
   }

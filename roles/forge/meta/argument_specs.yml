@@ -105,6 +105,7 @@ argument_specs:
           JF_URL: "https://jfrog.invalid"
           PORELO_DEPLOY_PROFILE: forge-release
           MAVEN_SNAPSHOTS_URL: "http://localhost/api/packages/{project}/maven"
+          MAVEN_UPSTREAM_SNAPSHOTS_URL: "https://central.sonatype.com/repository/maven-snapshots/"
         description: >-
           Nonsecret organization Actions variables; uppercase names and nonempty string values, only with repositories.
       forge_placeholder_secrets:

@@ -319,6 +319,13 @@ if FORGE.exists():
         check("PORELO_POOL_SSH" in secrets(), "the key back in the organization", secrets())
     code, variable = forge("GET", f"orgs/{PROJECT}/actions/variables/MAVEN_SNAPSHOTS_URL")
     check(code == 200 and f"/api/packages/{PROJECT}/maven" in str(variable), "its own snapshot URL", variable)
+    code, variable = forge("GET", f"orgs/{PROJECT}/actions/variables/MAVEN_UPSTREAM_SNAPSHOTS_URL")
+    upstream = "https://central.sonatype.com/repository/maven-snapshots/"
+    check(
+        code == 200 and isinstance(variable, dict) and variable.get("data") == upstream,
+        "the upstream snapshots",
+        variable,
+    )
     # The same scopes the helper asks for; the secrets themselves cannot be read back.
     reader, writer = forge_token_of(publisher, "read:package"), forge_token_of(publisher, "write:package")
     refused = package("PUT", reader)

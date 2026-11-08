@@ -152,6 +152,18 @@ def test_jobs_share_loopback_for_checkout_registry_and_cache():
     )
 
 
+def test_a_hosts_builds_read_the_upstream_snapshots_anonymously_beside_the_forges():
+    """Prevent a build on the host failing for another repository's snapshot, which the host's registry never holds."""
+    defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())["forge_variables"]
+    spec = yaml.safe_load((ROLE / "meta/argument_specs.yml").read_text())
+    options = spec["argument_specs"]["main"]["options"]["forge_variables"]["default"]
+    upstream = "https://central.sonatype.com/repository/maven-snapshots/"
+    assert defaults.get("MAVEN_UPSTREAM_SNAPSHOTS_URL") == upstream, defaults
+    assert options.get("MAVEN_UPSTREAM_SNAPSHOTS_URL") == upstream, options
+    limits = json.loads((ROLE.parents[1] / "roles/check/files/limits.json").read_text())
+    assert "central.sonatype.com:443" in limits["reach"]["forge"], "the host check asks a forge host to reach it"
+
+
 def test_existing_registration_moves_to_loopback_without_reissuing_its_token():
     """Prevent an upgraded runner keeping its previous unreachable forge address."""
     update = next((t for t in tasks("runner") if "ansible.builtin.replace" in t), None)

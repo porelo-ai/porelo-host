@@ -125,6 +125,7 @@ sets the local forge's values only.
 | `vars.PORELO_PUBLISH` | `false` | `true` |
 | `vars.PORELO_DEPLOY_PROFILE` | `forge-release` | `central-sonatype-release` |
 | `vars.MAVEN_SNAPSHOTS_URL` | Forge Maven URL below | [Sonatype snapshots][snapshots] |
+| `vars.MAVEN_UPSTREAM_SNAPSHOTS_URL` | [Sonatype snapshots][snapshots], read without a token for the snapshots of repositories the host does not build, under a repository id that no `<server>` names; set when the organization is registered, so one registered before it lacks it | Unset |
 | `secrets.PORELO_PACKAGES_READ_TOKEN` | The local publisher's `read:package` token, for resolving from the private registry | A placeholder, as Sonatype's snapshots are read anonymously |
 | `secrets.PORELO_PUBLISHER_TOKEN` | The local publisher's package token, for the step that deploys | A placeholder for anonymous Sonatype snapshot reads; central deployment uses its own credentials |
 | `vars.JF_URL` | `https://jfrog.invalid`, a placeholder: the variables API takes no empty value, and no real service answers it | The Artifactory instance that `PORELO_PUBLISH` uploads go to |

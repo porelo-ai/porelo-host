@@ -115,6 +115,8 @@ Registration gives each new organization the teams `developers`, `gates` and `ag
 direct push, needs one approval from `Owners` or `developers`, and merges by fast-forward alone.
 
 `forge_variables` defaults to `PORELO_PUBLISH: "false"`, `JF_URL: "https://jfrog.invalid"`, `PORELO_DEPLOY_PROFILE:
-forge-release` and `MAVEN_SNAPSHOTS_URL`, the forge's own Maven registry; GitHub holds the same names with its values.
+forge-release`, `MAVEN_SNAPSHOTS_URL`, the forge's own Maven registry, and `MAVEN_UPSTREAM_SNAPSHOTS_URL`, Sonatype's
+snapshots, which a build reads without a token for the snapshots of other repositories; GitHub holds the same names
+with its values.
 `forge_placeholder_secrets` defaults to `[JF_ACCESS_TOKEN]`; missing secrets get `porelo-host-placeholder`,
 and existing values are kept. Workflows differ between the forges only by variables and secrets.

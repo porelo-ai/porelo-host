@@ -15,6 +15,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho147"></a>[HO147](HO147-A-Hosts-Builds-Also-Read-The-Upstream-Snapshots.md) | XS | - | Each organization the host registers holds `MAVEN_UPSTREAM_SNAPSHOTS_URL`, Sonatype's snapshots read anonymously, so a build resolves the snapshots the host's registry lacks. |
 | <a id="ho146"></a>[HO146](HO146-A-Lent-Forge-Token-Leaves-The-Persons-Token.md) | S | - | Porelo's git commands on the host's forge take a lent token of their own, so the person's `<forge>.person` token in the vault, which a task's builds read, stays valid. |
 | <a id="ho145"></a>[HO145](HO145-A-Host-Task-Reads-Its-Builds-From-The-Hosts-Forge.md) | S | - | A host task reads its Builds from the host's forge: the follow names `builds` in each project's file beside `fetch_from`. |
 | <a id="ho142"></a>[HO142](HO142-The-Persons-Vault-Holds-Their-Forge-Token-From-The-Start.md) | S | - | Bug: the person's vault holds `<forge>.person` from the start, made the one way `porelo-host-push` makes it. |
@@ -54,7 +55,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho147"></a>[HO147](HO147-A-Hosts-Builds-Also-Read-The-Upstream-Snapshots.md) | XS | - | Each organization on the host holds `MAVEN_UPSTREAM_SNAPSHOTS_URL`, Sonatype's snapshots read anonymously, so a build resolves the snapshots the host's registry lacks. |
 
 ## Backlog
 
