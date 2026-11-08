@@ -1,6 +1,11 @@
 # The shared build tools by the wrapper's pinned Maven, and the GraalVM porelo-machines pins, checked against its
 # digest, as JAVA_HOME for the rest of the job. The runner's own Java 25 only runs porelo-machines once to install it.
 # Leaves the tools' class path in $RUNNER_TEMP/tools-cp.txt. Needs the repository checked out.
+#
+# The steps are porelo-buildtools' steps-for-build-pom.yml, and pinned.sh beside this file is porelo-buildtools' own,
+# copied unchanged: the GraalVM is kept by its digest, checked again after a cache hit, and tried again by the one
+# rule pinned.sh holds; from https://github.com it goes with the job's token. A job that uses this action needs
+# timeout-minutes of its usual time plus 15, for the rule's waiting.
 name: Pinned GraalVM
 description: Installs the GraalVM porelo-machines pins, checked against its digest, as JAVA_HOME for the rest of the job, and lists the shared build tools' class path.
 runs:
@@ -19,24 +24,43 @@ runs:
               path: ~/.m2/wrapper
               key: maven-wrapper-${{ runner.os }}-${{ hashFiles('.mvn/wrapper/maven-wrapper.properties') }}
 
-        - name: The shared build tools and the pinned GraalVM
+        - name: The shared build tools, and the pinned GraalVM's digest
+          id: graalvm-pin
           shell: bash
           run: |
               set -eu
-              [ -n "${JAVA_HOME_25_X64:-}" ] || { echo "::error::this runner has no Java 25 (JAVA_HOME_25_X64)"; exit 1; }
+              . "$GITHUB_ACTION_PATH/pinned.sh"
+              [ -n "${JAVA_HOME_25_X64:-}" ] || { echo "::error::this runner has no Java 25"; exit 1; }
               export JAVA_HOME="$JAVA_HOME_25_X64"
-              # The wrapper fetches its Maven once, checks it against distributionSha256Sum and installs it only whole, so
-              # asking it again after a failed fetch is a retry; a cached one answers at once.
-              for attempt in 1 2 3 4 5; do
-                  if ./mvnw -B -q --version >/dev/null; then
-                      break
-                  fi
-                  if [ "$attempt" = 5 ]; then
-                      echo "::error::the wrapper could not fetch its Maven in 5 attempts"
-                      exit 1
-                  fi
-                  echo "::warning::the wrapper's Maven did not arrive (attempt $attempt); trying again"
-                  sleep $((attempt * 10))
-              done
+              # The wrapper fetches its Maven once, checks it against distributionSha256Sum and installs it only whole,
+              # so asking it again after a failed fetch is a retry; a cached one answers at once.
+              pinned_retry "the wrapper's Maven" ./mvnw -B -q --version >/dev/null
               ./mvnw -B -q -f build/pom.xml dependency:build-classpath -Dmdep.outputFile="$RUNNER_TEMP/tools-cp.txt"
-              "$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.machines.Main jdk --github
+              # A failure says so: set -e alone would end the step at this assignment without a word.
+              sha256=$("$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" \
+                  org.fuin.porelo.machines.Main jdk --print-sha256) \
+                  || { echo "::error::porelo-machines could not name the pinned digest (exit $?)"; exit 1; }
+              [[ $sha256 =~ ^[0-9a-f]{64}$ ]] || { echo "::error::porelo-machines named no pinned digest"; exit 1; }
+              echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+
+        - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+          id: graalvm-cache
+          with:
+              path: ~/.cache/porelo-pinned/graalvm
+              key: pinned-graalvm-${{ steps.graalvm-pin.outputs.sha256 }}
+
+        - name: Install the pinned GraalVM
+          shell: bash
+          env:
+              # The job's token, for a download from https://github.com alone; none on a host's forge.
+              PORELO_PINNED_GITHUB_TOKEN: ${{ github.server_url == 'https://github.com' && github.token || '' }}
+          run: |
+              set -eu
+              "$JAVA_HOME_25_X64/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" \
+                  org.fuin.porelo.machines.Main jdk --github --cache "$HOME/.cache/porelo-pinned/graalvm"
+
+        - if: steps.graalvm-cache.outputs.cache-hit != 'true'
+          uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+          with:
+              path: ~/.cache/porelo-pinned/graalvm
+              key: pinned-graalvm-${{ steps.graalvm-pin.outputs.sha256 }}
