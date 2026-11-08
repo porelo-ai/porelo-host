@@ -1,6 +1,6 @@
 # HO146 — A Lent Forge Token Leaves The Person's Token
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** S - one verb's option in `porelo-host-person`, its sudoers line and its unit tests; Porelo's switch is its own.
 
 **What must be true.** A task's builds keep reading the host's forge while Porelo starts tasks, refreshes a gate's
@@ -19,8 +19,8 @@ token in the vault, and the builds watch was answered `401` by Forgejo until the
 ## Plan
 
 - `porelo-host-person`: `forge-token --lend` beside `forge-token` in the verb parsing; `person_forge_token` reads the
-  login's token list once and deletes, without `--lend`, every token not named `porelo-host-lend-…`, and with it only
-  lends whose name carries a time 24 hours or more before now (`self.now`), then makes the one token. A lend's name is
+  login's token list and deletes, without `--lend`, every token but lends younger than a day, and with it only lends
+  whose name carries a time 24 hours or more before now (`self.now`), then makes the one token. A lend's name is
   `porelo-host-lend-<UTC time>-<uuid>`, since Forgejo's API answers no token's creation time.
 - `porelo-host-person.sudoers`: `forge-token --lend` beside `forge-token ""`.
 - The header, `roles/porelo/README.md`, `doc/task-certificates.md` and `doc/local-forge.md` say it; a changelog entry.
@@ -30,12 +30,14 @@ token in the vault, and the builds watch was answered `401` by Forgejo until the
 ## The shape
 
 - `forge-token`, as today, deletes and makes only the login's person token, the one `porelo-host-forge-token` and
-  `porelo-host-push` write into `<forge>.person`; it deletes no lent token.
-- `forge-token --lend` makes a token named `porelo-host-lend-<uuid>` for one command and answers it alone on stdout,
+  `porelo-host-push` write into `<forge>.person`; of the lends it deletes only those a day old.
+- `forge-token --lend` makes a token named `porelo-host-lend-<UTC time>-<uuid>` for one command and answers it alone on stdout,
   as today's verb does. It deletes only the login's lent tokens made more than 24 hours before, never the person
   token, so a long first clone of a mirror keeps its token.
 - Revocation, lock, the last membership's removal and purge still delete every token of the login, and the daily
-  sweep stays as it is. The scopes stay as they are. The sudoers drop-in admits `forge-token --lend` beside
+  sweep stays as it is: a lend a day old is deleted by the person's next `forge-token` or lend, and until then reaches
+  no more than the person's own lasting token, of the same login and scopes, and lies in no file, so the sweep, which
+  opens the forge only for an ended task, does not reach for lends. The scopes stay as they are. The sudoers drop-in admits `forge-token --lend` beside
   `forge-token`.
 - Porelo uses `--lend` for its gate's git commands and for taking a project at a task start, and only on a host whose
   porelo-host has it: a sudo refusal there leaves a gate without the forge token and refuses a task start.
@@ -43,7 +45,8 @@ token in the vault, and the builds watch was answered `401` by Forgejo until the
 ## Acceptance
 
 - Unit tests, seen red on today's code: a lend leaves the person token valid; a second lend leaves the first; a lend
-  older than 24 hours is deleted by the next lend; `forge-token` leaves a lent token; revocation deletes both kinds.
+  older than 24 hours is deleted by the next lend and by the next `forge-token`; `forge-token` leaves a younger lend;
+  a lock deletes both kinds; sudoers admits `forge-token` with no argument or `--lend` alone.
 - On the next move's host, a task started after `porelo-host-forge-token` reads its builds without a `401`, also
   after a forwarded push.
 

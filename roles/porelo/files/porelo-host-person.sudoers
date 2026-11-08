@@ -1,4 +1,5 @@
 # Each helper checks SUDO_USER against root's records.
 %porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person forge-token ""
+%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person forge-token --lend
 %porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person task *
 %porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person arrivals *

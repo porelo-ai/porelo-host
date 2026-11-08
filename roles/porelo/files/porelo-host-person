@@ -25,8 +25,10 @@ organization/applied.json.
 With account= in forge.conf, admission creates the login and the porelo-<user>
 gate and no token, since Forgejo keeps only a token's hash; lock also revokes
 each <agent>-<user> a 6j host's agents= names. forge-token, by sudo alone, deletes
-every token of the caller's login and answers one new token alone on stdout;
-that token is written to no file. Lock prohibits all those logins and deletes all their tokens
+every token of the caller's login but its lends younger than a day and answers one new token alone on stdout;
+that token is written to no file. forge-token --lend makes a token of the login's own for one
+command, porelo-host-lend-<UTC time>-<uuid>, deletes only its lends a day old or older, and
+answers it alone the same way. Lock prohibits all those logins and deletes all their tokens
 through the forge's private socket API; its temporary admin token stays
 in memory. The follow applies card keys and locks every person whose current key it revokes.
 
@@ -166,6 +168,10 @@ MAX_CREDENTIAL = 1024 * 1024
 PUSH_HOOK = "/usr/local/libexec/porelo/pre-receive"
 ADMIN = "porelo-admin"
 TASK_TOKEN = "porelo-task-"
+# Forgejo's API answers no token's creation time, so a lend carries its own in its name.
+LEND_TOKEN = "porelo-host-lend-"
+LEND_TIME = "%Y%m%dT%H%M%SZ"
+LEND_AGE = datetime.timedelta(hours=24)
 # A person's own forge token makes teams and Actions variables with the person's token and reads their standing in the organization.
 PERSON_SCOPES = "write:repository,write:issue,write:organization,read:user"
 # Forgejo's scopes name kinds of API, never a repository: a task reaches what porelo-<user>'s teams give it, its
@@ -3731,17 +3737,41 @@ class Host:
             refuse(f"the sweep deleted {', '.join(sorted(swept)) or 'nothing'}; it failed for " + "; ".join(errors), 69)
         return {"swept": sorted(swept)}
 
-    def person_forge_token(self, user, records):
-        """The person's one forge token, made anew in place of every other of their login, answered alone."""
+    def person_forge_token(self, user, records, lend=False):
+        """The person's one forge token, made anew in place of every other but the lends younger than a day, or a lend
+        for one command beside it; answered alone."""
         self.person(user, records)
         if self.revoked(user):
             refuse(f"the host's organization names {user} revoked", 65)
         config = self.forge_configuration(user)
         if config is None:
             refuse("the host runs no forge, so there is no forge token to make", 69)
+        now = self.now()
         with self.forge_session(user) as (account, opener, base, token):
-            self.forge_drop_named(opener, base, token, user)
+            names = set(self.forge_tokens_of(opener, base, token, user).values())
+            if lend:
+                self.forge_drop_named(opener, base, token, user, {name for name in names if self.lend_due(name, now)})
+                name = LEND_TOKEN + now.astimezone(datetime.timezone.utc).strftime(LEND_TIME) + "-" + uuid.uuid4().hex
+                return self.forge_token(account, user, PERSON_SCOPES, name)
+            gone = {name for name in names if not self.lent(name) or self.lend_due(name, now)}
+            self.forge_drop_named(opener, base, token, user, gone)
             return self.forge_token(account, user, PERSON_SCOPES)
+
+    @staticmethod
+    def lent(name):
+        """Whether a token of a person's login is a lend for one command."""
+        return isinstance(name, str) and name.startswith(LEND_TOKEN)
+
+    @staticmethod
+    def lend_due(name, now):
+        """A lend made a day ago or longer, or one whose time does not read, which no command still holds."""
+        if not Host.lent(name):
+            return False
+        try:
+            made = datetime.datetime.strptime(name[len(LEND_TOKEN) :].split("-", 1)[0], LEND_TIME)
+        except ValueError:
+            return True
+        return made.replace(tzinfo=datetime.timezone.utc) <= now - LEND_AGE
 
     def tasks_verb(self, verb, value, data):
         """forge-token, task, task --end, task --show and sweep: they read the people records alone."""
@@ -3753,7 +3783,7 @@ class Host:
         if not self.sudo_user:
             refuse(f"{verb} runs through sudo, for the person who calls it", 64)
         if verb == "forge-token":
-            return self.person_forge_token(self.sudo_user, records)
+            return self.person_forge_token(self.sudo_user, records, lend=value == "--lend")
         if verb == "end":
             return self.end_task(self.sudo_user, value, records)
         return self.start_task(self.sudo_user, value, data, records)
@@ -3807,6 +3837,8 @@ class Host:
             verb, user = arguments
         elif arguments in (["forge-token"], ["sweep"]):
             verb, value = arguments[0], None
+        elif arguments == ["forge-token", "--lend"]:
+            verb, value = arguments
         elif len(arguments) in (2, 3) and arguments[0] == "task" and arguments[1:-1] in ([], ["--end"], ["--show"]):
             verb, value = {(): "task", ("--end",): "end", ("--show",): "show"}[tuple(arguments[1:-1])], arguments[-1]
             if not re.fullmatch(FINGERPRINT if verb == "show" else TASK, value):
@@ -3814,7 +3846,7 @@ class Host:
         else:
             refuse(
                 "use purge <user>,"
-                " org follow, org refresh, org renew-pin, org status, forge-token, task <task>, task --end <task>,"
+                " org follow, org refresh, org renew-pin, org status, forge-token [--lend], task <task>, task --end <task>,"
                 " task --show <fingerprint>, arrivals <project> <repository>, verify-push"
                 " or sweep"
             )

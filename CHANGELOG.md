@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Porelo's commands on the host's forge take a lend of their own.** `porelo-host-person forge-token --lend` makes a
+  token of the person's login for one command, beside the person's token, and deletes only lends a day old;
+  `forge-token` replaces every token but the lends younger than a day. A gate command or a task start that asks for a lend no longer
+  deletes the `<forge>.person` token a task's builds watch reads from the vault.
 - **A task on the host reads its Builds from the host's forge.** Each project's file on the host names `builds` beside
   `fetch_from`: the forge's API on the git port and the person's `<forge>.person` vault entry, so a guarded project's
   task reads the Builds of its pushes while its `project.yml` stays the same everywhere.

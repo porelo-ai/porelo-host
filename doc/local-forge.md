@@ -505,7 +505,8 @@ here reads: `builds`, `{"forge": "forgejo", "api": "http://127.0.0.1:<git_port>/
 project's `project.yml` names nothing of the host. Without `fetch_from` there is no `builds`, and a forge.conf whose
 `name` does not read leaves it out with a line saying so. After admission and with Porelo-Vault open, the person or their tool
 runs `/usr/local/bin/porelo-host-forge-token` before reading the forge over git. It calls
-`sudo -n porelo-host-person forge-token` and pipes the local token into `<forge>.person`. Success prints nothing;
+`sudo -n porelo-host-person forge-token` and pipes the local token into `<forge>.person`; Porelo's own commands on the
+forge take `forge-token --lend`, which leaves that token valid. Success prints nothing;
 a token request failure exits with `69`, and a refused vault write with `65`, each with a reason on stderr.
 `--if-forge` does nothing when the host runs no forge. Push and pull refresh the same entry through the shared helper,
 since the new token replaces the one there; a refused vault write warns while their transfer continues.

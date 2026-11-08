@@ -32,7 +32,12 @@ recorded certificates have expired. It skips hosts without `forge.conf`. One per
 the remaining deletions; any failure still returns nonzero. Expiration cleanup can lag until the daily sweep runs.
 
 Admission creates the person's forge users without tokens. `sudo porelo-host-person forge-token` replaces all tokens
-of the calling person's forge login and answers one token alone on stdout. Its scopes are `write:repository`,
+of the calling person's forge login but its lends younger than a day and answers one token alone on stdout: the person's token, which
+their vault keeps as `<forge>.person`. `sudo porelo-host-person forge-token --lend` makes a lend beside it, a token for
+one of Porelo's commands named `porelo-host-lend-<UTC time>-<uuid>`, deletes only the login's lends a day old or
+older, and answers it the same way. A lend left over until then reaches no more than the person's own token, of
+the same login and scopes, and lies in no file, so Porelo's gate commands and task starts leave the vault's token valid and two
+commands at once each keep their own. Lock, the last membership's removal, purge and revocation delete every token. Its scopes are `write:repository`,
 `write:issue`, `write:organization` and `read:user`; organization and user access support the person's own forge calls.
 Task tokens belong to `porelo-<login>`, have distinct names and use `write:repository` and `read:package`, the
 latter so a task resolves its project's snapshots. The existing token-generation command supplies API scopes with no
@@ -50,6 +55,7 @@ following links.
 Porelo's task start is the consumer: it keeps the answered token in the task's vault entry for its gate, which pushes
 as `porelo-<login>` on the host's loopback. The host keeps no lasting gate token.
 
-Push, pull and migration take the person's token from `sudo -n porelo-host-person forge-token` at each run. Each puts it into the vault entry `<forge>.person` at once for the person's own tools, since it
+Push, pull and migration take the person's token from `sudo -n porelo-host-person forge-token` at each run; Porelo's
+own commands on the host's forge ask for `--lend`. Each puts it into the vault entry `<forge>.person` at once for the person's own tools, since it
 replaces the one before. No stop
 waits for an identity's token any more.

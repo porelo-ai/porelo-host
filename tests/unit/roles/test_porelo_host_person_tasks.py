@@ -607,6 +607,110 @@ def test_forge_token_replaces_the_persons_one_token_and_answers_it_alone(tasks, 
     no_secret_outside_the_forge(tasks, second)
 
 
+def lent(tasks):
+    return [name for name in tasks.forge.named("alice") if name.startswith("porelo-host-lend-")]
+
+
+def test_a_lend_leaves_the_persons_token_valid_and_answers_its_own(tasks, capsys):
+    """Prevent a git command of Porelo's deleting the person's token that their vault and builds watch hold."""
+    assert tasks.call("forge-token") == 0
+    person = capsys.readouterr().out
+    assert tasks.call("forge-token", "--lend") == 0
+    lend = capsys.readouterr()
+    secrets = [item["secret"] for item in tasks.forge.tokens["alice"].values()]
+    assert person in secrets and lend.out in secrets and lend.out != person, "both tokens stand"
+    assert len(lend.out) == 40 and lend.err == ""
+    (name,) = lent(tasks)
+    assert name.startswith("porelo-host-lend-20261030T120000Z-"), name
+    scopes = {item["scopes"] for item in tasks.forge.tokens["alice"].values()}
+    assert scopes == {"write:repository,write:issue,write:organization,read:user"}
+    no_secret_outside_the_forge(tasks, lend)
+
+
+def test_a_second_lend_leaves_the_first(tasks, capsys):
+    """Prevent two of Porelo's git commands at once taking each other's token mid-command."""
+    assert tasks.call("forge-token", "--lend") == 0
+    first = capsys.readouterr().out
+    assert tasks.call("forge-token", "--lend") == 0
+    second = capsys.readouterr().out
+    secrets = [item["secret"] for item in tasks.forge.tokens["alice"].values()]
+    assert len(lent(tasks)) == 2 and first in secrets and second in secrets and first != second, lent(tasks)
+
+
+def test_a_lend_a_day_old_is_deleted_by_the_next_lend_and_a_younger_one_stays(tasks, capsys):
+    """Prevent lent tokens piling up on the forge, or a long command's token going before a day has passed."""
+    tokens = tasks.forge.tokens.setdefault("alice", {})
+    for number, name in enumerate(
+        [
+            "porelo-host-lend-20261029T120000Z-old",
+            "porelo-host-lend-20261029T120001Z-young",
+            "porelo-host-lend-unreadable",
+            "porelo-host-person-legacy",
+        ],
+        start=900,
+    ):
+        tokens[number] = {"name": name, "scopes": "write:repository", "secret": f"{number:040d}"}
+    assert tasks.call("forge-token", "--lend") == 0
+    capsys.readouterr()
+    names = tasks.forge.named("alice")
+    assert "porelo-host-lend-20261029T120000Z-old" not in names and "porelo-host-lend-unreadable" not in names
+    assert "porelo-host-lend-20261029T120001Z-young" in names and "porelo-host-person-legacy" in names
+    assert len(lent(tasks)) == 2
+
+
+def test_forge_token_replaces_every_token_of_the_login_but_its_lends(tasks, capsys):
+    """Prevent the person's token outliving its replacement, or a replacement taking a running command's lend."""
+    tasks.forge.tokens.setdefault("alice", {})[900] = {
+        "name": "porelo-host-person-legacy",
+        "scopes": "write:repository",
+        "secret": "0" * 40,
+    }
+    assert tasks.call("forge-token", "--lend") == 0
+    lend = capsys.readouterr().out
+    assert tasks.call("forge-token") == 0
+    person = capsys.readouterr().out
+    secrets = [item["secret"] for item in tasks.forge.tokens["alice"].values()]
+    assert sorted(secrets) == sorted([lend, person]), "the legacy token is gone, the lend stays"
+
+
+def plant(tasks, user, *names):
+    tokens = tasks.forge.tokens.setdefault(user, {})
+    for number, name in enumerate(names, start=900 + len(tokens)):
+        tokens[number] = {"name": name, "scopes": "write:repository", "secret": f"{number:040d}"}
+
+
+def test_forge_token_also_deletes_a_lend_a_day_old(tasks, capsys):
+    """Prevent a lend no command holds any more staying valid on the forge after the person's token is replaced."""
+    plant(tasks, "alice", "porelo-host-lend-20261029T120000Z-old", "porelo-host-lend-20261030T110000Z-young")
+    assert tasks.call("forge-token") == 0
+    capsys.readouterr()
+    assert lent(tasks) == ["porelo-host-lend-20261030T110000Z-young"]
+
+
+def test_a_lock_deletes_the_persons_token_and_every_lend(tasks, capsys):
+    """Prevent a locked person keeping a lend that still reaches the forge."""
+    assert tasks.call("forge-token") == 0
+    assert tasks.call("forge-token", "--lend") == 0
+    capsys.readouterr()
+    tasks.host.forge_drop_tokens("alice")
+    assert tasks.forge.named("alice") == []
+
+
+def test_the_sudoers_rules_admit_forge_token_and_its_lend_exactly():
+    """Prevent sudo handing a person forge-token with any argument but none or --lend."""
+    rules = (ROOT / "roles/porelo/files/porelo-host-person.sudoers").read_text().splitlines()
+    forge = [line.split("porelo-host-person ", 1)[1] for line in rules if "porelo-host-person forge-token" in line]
+    assert sorted(forge) == ['forge-token ""', "forge-token --lend"], forge
+
+
+@pytest.mark.parametrize("args", [("forge-token", "--lend", "x"), ("forge-token", "--lent"), ("forge-token", "")])
+def test_a_wrong_lend_call_reaches_no_forge(tasks, capsys, args):
+    """Prevent a misspelt option making or deleting a token."""
+    assert tasks.call(*args) == 64
+    assert capsys.readouterr().out == ""
+    assert tasks.forge.calls == []
+
+
 @pytest.mark.parametrize(
     "caller, change, code",
     [(None, None, 64), ("alice", "locked", 65), ("alice", "revoked", 65), ("carol", None, 65)],
@@ -618,6 +722,7 @@ def test_forge_token_is_refused_to_root_a_locked_revoked_or_unknown_person(tasks
     elif change == "revoked":
         revoke(tasks)
     assert tasks.call("forge-token", caller=caller) == code
+    assert tasks.call("forge-token", "--lend", caller=caller) == code
     assert capsys.readouterr().out == ""
     assert tasks.forge.calls == []
 
