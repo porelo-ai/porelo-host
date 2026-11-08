@@ -25,11 +25,19 @@ GOOD = {
         "2026-11-06T10:00:01Z     sent         -                    m1.json                              matrix\n"
     ),
     "heads": "ref: refs/heads/main\tHEAD\n" + "a" * 40 + "\trefs/heads/porelo/t1\n",
+    # The forge holds a repository under its central name, which is not the key the task names it by.
+    "repos": json.dumps([{"name": "porelo-sluice"}, {"name": "porelo-other"}]),
+    "other_heads": "ref: refs/heads/main\tHEAD\n" + "c" * 40 + "\trefs/heads/porelo/t9\n",
     "pulls": json.dumps([{"head": {"ref": "porelo/t1"}, "base": {"ref": "main"}}]),
     "pulls_next": "[]",
     "git_code": "0",
     "curl_code": "0",
     "credential_code": "0",
+    "repos_status": "200",
+    "pulls_status": "200",
+    "git_err": "",
+    "other_git_code": "0",
+    "pulls_curl_code": "0",
 }
 
 NO_BUILDS = "porelo: project 'porelo' has no builds: configuration; builds: needs security_class: online.\n"
@@ -75,7 +83,9 @@ esac
             f"""printf '%s\\n' "git $*" >> {log}
 env | grep -q '^GIT_TERMINAL_PROMPT=0$' || exit 98
 case " $* " in
-    *" ls-remote "*) cat {tmp_path}/heads; exit "$(cat {tmp_path}/git_code)" ;;
+    *" ls-remote "*"/porelo/porelo-sluice.git "*) cat {tmp_path}/heads; cat {tmp_path}/git_err >&2
+        exit "$(cat {tmp_path}/git_code)" ;;
+    *" ls-remote "*) cat {tmp_path}/other_heads; exit "$(cat {tmp_path}/other_git_code)" ;;
     *) echo "unexpected: $*" >&2; exit 99 ;;
 esac
 """,
@@ -91,17 +101,36 @@ expected = "Authorization: token " + os.environ["MOVE_CHECK_TOKEN"]
 sys.exit(0 if expected in config else 97)' || exit $? ;;
     *) exit 96 ;;
 esac
-[ "$(cat {tmp_path}/curl_code)" = 0 ] || exit "$(cat {tmp_path}/curl_code)"
-[ ! -f {tmp_path}/pulls_endless ] || {{ cat {tmp_path}/pulls; exit 0; }}
+failed=$(cat {tmp_path}/curl_code)
+case "$*" in *"/pulls?"*) [ "$failed" != 0 ] || failed=$(cat {tmp_path}/pulls_curl_code) ;; esac
+status=200
 case "$*" in
-    *"/api/v1/repos/porelo/sluice/pulls?state=open"*)
+    *"/api/v1/orgs/porelo/repos?"*)
+        status=$(cat {tmp_path}/repos_status)
         case "$*" in
-            *"page=2"*) cat {tmp_path}/pulls_next ;;
-            *"page=3"*) printf '[]' ;;
-            *) cat {tmp_path}/pulls ;;
+            *"page=1"*) body=$(cat {tmp_path}/repos) ;;
+            *) body='[]' ;;
         esac ;;
+    *"/api/v1/repos/porelo/porelo-sluice/pulls?state=open"*)
+        status=$(cat {tmp_path}/pulls_status)
+        if [ -f {tmp_path}/pulls_endless ]; then body=$(cat {tmp_path}/pulls)
+        else
+            case "$*" in
+                *"page=2"*) body=$(cat {tmp_path}/pulls_next) ;;
+                *"page=3"*) body='[]' ;;
+                *) body=$(cat {tmp_path}/pulls) ;;
+            esac
+        fi ;;
     *) echo "unexpected: $*" >&2; exit 99 ;;
 esac
+[ "$status" = 200 ] || body='{{"message":"refused by the stand-in"}}'
+# As curl does: -w appends the status after the body; -f fails on one of 400 and above instead.
+# A transfer that fails may still have written a whole body and its status: only the exit code says so.
+case "$*" in
+    *"%{{http_code}}"*) printf '%s\n%s' "$body" "$status" ;;
+    *) [ "$status" -lt 400 ] || exit 22; printf '%s' "$body" ;;
+esac
+exit "$failed"
 """,
         )
         return log
@@ -179,21 +208,107 @@ def test_a_repository_with_a_second_line_is_asked_of_nobody(tmp_path, porelo):
     assert "ls-remote" not in asked and "build status" not in asked, asked
 
 
-def test_a_project_without_builds_names_the_reader_not_configured(tmp_path, porelo):
-    """Prevent a guarded move failing because build monitoring never recorded its existing forge push and PR."""
+def test_a_reader_without_builds_fails_the_build_line_on_a_host_with_a_forge(tmp_path, porelo):
+    """Prevent a move passing whose Builds nobody reads, as the host names builds: for every project on its forge."""
     calls = porelo(
         status_text="task       t1\nforge      porelo/t1\n",
         build=NO_BUILDS,
         build_code="78",
     )
     done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
-    assert done.returncode == 0, done.stdout + done.stderr
+    assert done.returncode == 1, done.stdout + done.stderr
     lines = done.stdout.splitlines()
-    assert len(lines) == 6 and "FAILED" not in done.stdout, "each move fact holds without build monitoring"
-    assert any("Build" in line and "not configured: the project has no builds:" in line for line in lines)
+    assert len(lines) == 6 and done.stdout.count("FAILED") == 1, done.stdout
+    assert any(line.startswith("FAILED") and "Build" in line and "not configured" in line for line in lines), lines
     assert any(line.startswith("ok:") and "a" * 40 in line and "last push" in line for line in lines)
     assert any(line.startswith("ok:") and "pull request" in line for line in lines)
     assert "curl " in calls.read_text(), "the PR is read from the forge"
+
+
+def test_the_push_is_read_in_the_forge_repository_that_holds_the_tasks_branch(tmp_path, porelo):
+    """Prevent the check asking the forge for the project.yml key, under which the forge holds no repository."""
+    calls = porelo()
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert any(line.startswith("ok:") and "porelo/porelo-sluice" in line for line in done.stdout.splitlines())
+    asked = calls.read_text()
+    assert "/porelo/sluice.git" not in asked and "/repos/porelo/sluice/" not in asked, asked
+    assert "/api/v1/repos/porelo/porelo-sluice/pulls" in asked
+    assert "-r sluice" in asked, "the build reader still takes the task's own key"
+
+
+def test_a_branch_held_by_two_repositories_names_both_and_fails(tmp_path, porelo):
+    """Prevent the check picking one of two repositories for a push it cannot place."""
+    porelo(other_heads=GOOD["heads"])
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert done.returncode == 1
+    failed = [line for line in done.stdout.splitlines() if line.startswith("FAILED") and "last push" in line]
+    assert failed and "porelo-sluice" in failed[0] and "porelo-other" in failed[0], done.stdout
+
+
+@pytest.mark.parametrize(
+    "repos", ["not JSON", "{}", "[{}]", json.dumps([{"name": "../x"}]), json.dumps([{"name": "a b"}])]
+)
+def test_an_invalid_repository_list_is_asked_of_no_repository(tmp_path, porelo, repos):
+    """Prevent a name the forge answered reaching Git as an address it did not hold to its form."""
+    calls = porelo(repos=repos)
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert done.returncode == 1
+    assert any(line.startswith("FAILED") and "cannot say" in line for line in done.stdout.splitlines()), done.stdout
+    assert "ls-remote" not in calls.read_text()
+
+
+@pytest.mark.parametrize(
+    "answers, named, said",
+    [
+        (dict(repos_status="401"), "last push", "HTTP 401 for orgs/porelo/repos"),
+        (dict(repos_status="403"), "last push", "HTTP 403 for orgs/porelo/repos"),
+        (dict(pulls_status="404"), "pull request", "HTTP 404 for repos/porelo/porelo-sluice/pulls"),
+        (dict(credential_code="1"), "last push", "the vault gave no token for forge.example.person"),
+        (
+            dict(
+                git_code="128",
+                git_err="fatal: Authentication failed for 'http://127.0.0.1:3022/porelo/porelo-sluice.git/'\n",
+            ),
+            "last push",
+            "fatal: Authentication failed",
+        ),
+    ],
+)
+def test_a_failing_line_says_what_was_answered(tmp_path, porelo, answers, named, said):
+    """Prevent a refused token, a missing scope and a missing repository reading alike, so a move's fault is found."""
+    porelo(**answers)
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert done.returncode == 1
+    failed = [line for line in done.stdout.splitlines() if line.startswith("FAILED") and named in line]
+    assert failed and said in failed[0], done.stdout
+    assert "synthetic-person-token" not in done.stdout + done.stderr
+
+
+def test_a_failed_pull_request_reader_fails_its_line_by_name(tmp_path, porelo):
+    """Prevent a pull request counted, or a failure named vaguely, when only the forge's pull request answer fails."""
+    porelo(pulls_curl_code="18")
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert done.returncode == 1
+    failed = [line for line in done.stdout.splitlines() if line.startswith("FAILED") and "pull request" in line]
+    assert failed and "gave no answer for repos/porelo/porelo-sluice/pulls" in failed[0], done.stdout
+
+
+def test_a_repository_git_cannot_read_after_one_that_held_the_push_fails_the_push(tmp_path, porelo):
+    """Prevent a push counted while a later repository of the project, which might hold it too, went unread."""
+    porelo(other_git_code="128")
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert done.returncode == 1
+    failed = [line for line in done.stdout.splitlines() if line.startswith("FAILED") and "last push" in line]
+    assert failed and "porelo/porelo-other" in failed[0], done.stdout
+
+
+def test_a_head_naming_the_tasks_branch_is_not_taken_for_its_commit(tmp_path, porelo):
+    """Prevent the symref line of HEAD standing in for the pushed commit."""
+    porelo(heads="ref: refs/heads/porelo/t1\tHEAD\n" + "a" * 40 + "\trefs/heads/porelo/t1\n")
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    pushed = [line for line in done.stdout.splitlines() if "last push" in line]
+    assert pushed and pushed[0].startswith("ok:") and "a" * 40 in pushed[0] and "ref:" not in pushed[0], done.stdout
 
 
 def test_a_task_that_sent_into_its_conversation_has_joined_it(tmp_path, porelo):
@@ -210,9 +325,10 @@ def test_the_forge_is_read_with_the_persons_vault_answering_git_and_no_token_in_
     done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
     assert done.returncode == 0, done.stdout + done.stderr
     git = [line for line in calls.read_text().splitlines() if line.startswith("git ")]
-    assert len(git) == 1 and "http://127.0.0.1:3022/porelo/sluice.git" in git[0] and "@" not in git[0]
-    assert "--symref" in git[0] and "--heads" not in git[0], "Git must also advertise the default branch"
-    assert "credential.http://127.0.0.1:3022.helper=!porelo vault credential --entry forge.example.person" in git[0]
+    assert any("http://127.0.0.1:3022/porelo/porelo-sluice.git" in line for line in git), git
+    for line in git:
+        assert "@" not in line and "--symref" in line and "--heads" not in line, "Git also advertises the default"
+        assert "credential.http://127.0.0.1:3022.helper=!porelo vault credential --entry forge.example.person" in line
     asked = calls.read_text()
     assert any(line.startswith("curl ") for line in asked.splitlines()), "the API also uses the person's credential"
     assert "vault credential --entry forge.example.person" in asked

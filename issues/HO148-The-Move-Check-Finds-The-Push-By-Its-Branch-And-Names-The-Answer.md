@@ -1,6 +1,6 @@
 # HO148 — The Move Check Finds The Push By Its Branch And Names The Answer
 
-**Status:** Implementing.
+**Status:** Review.
 **Size:** XS - one script, `build/move-check.sh`, and its unit tests.
 
 **What must be true.** The move check finds a task's push and pull request in the repository of the host's forge that
@@ -24,7 +24,8 @@ failing lines said only that a reader failed, which left a refused token and a m
   their own words; no token or header reaches a line.
 - **Red first** in `tests/unit/test_move_tools.py`: the push found under the central name, a branch in two
   repositories, an invalid repository list, 78 failing, and a 401, a 403, a vault without the entry and Git's refusal
-  each named.
+  each named; a pull request reader that fails alone, a later repository Git cannot read, and a `HEAD` naming the
+  task's branch. The temporary file for Git's answers goes on a signal too, as dash runs no `EXIT` trap on one.
 
 ## Acceptance
 

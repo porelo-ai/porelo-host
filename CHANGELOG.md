@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The move check finds the push in the forge repository that holds the task's branch** instead of asking for the
+  repository's key, under which the host's forge holds none; a Build line whose reader sees no `builds:` fails; and
+  each failing line says what the forge (`HTTP <code> for <path>`), Git or the vault answered.
 - **Work ahead of central is said and holds the give-back.** In `org status` a `taken` repository carries `central`,
   how its `main` on the host's forge stands against central (`ahead` with its commits, `up-to-date`, `moved-on` or
   `cannot-say`); `taken` alone only ever said it was migrated. `down` refuses, before anyone is purged, while a
