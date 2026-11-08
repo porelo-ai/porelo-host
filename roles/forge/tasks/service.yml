@@ -153,7 +153,8 @@
       - /bin/sh
       - -ec
       - >-
-        for unit in porelo-forge-web.socket porelo-forge-git.socket porelo-forge-runner.socket porelo-host-verify.socket;
+        for unit in porelo-forge-web.socket porelo-forge-git.socket porelo-forge-runner.socket
+        porelo-host-verify.socket;
         do systemctl is-active --quiet "$unit" || { echo "$unit is not active" >&2; exit 1; }; done;
         for path in /run/porelo-forge/web.sock /run/porelo-forge/git.sock /run/porelo-forge/runner.sock
         /run/porelo-host/verify/verify.sock;

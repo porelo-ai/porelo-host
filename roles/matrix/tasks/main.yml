@@ -301,6 +301,7 @@
       - /bin/sh
       - -ec
       - >-
-        systemctl is-active --quiet porelo-matrix-gate.socket || { echo "porelo-matrix-gate.socket is not active" >&2; exit 1; };
+        systemctl is-active --quiet porelo-matrix-gate.socket ||
+        { echo "porelo-matrix-gate.socket is not active" >&2; exit 1; };
         test -S /run/porelo-matrix/client.sock || { echo "/run/porelo-matrix/client.sock is no socket" >&2; exit 1; }
   changed_when: false
