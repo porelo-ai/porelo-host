@@ -78,7 +78,10 @@ boundary](https://github.com/porelo-ai/porelo/blob/main/doc/security.md) for wha
 
 An `online` task pushes through its gate to `porelo/<task>` on the local forge immediately. The host lends the Git
 credential; the task holds no credential for that Git destination. A refusal by the local forge fails the task's push.
-The branch is where the person can review the work in a pull request.
+The task's account, `porelo-<login>`, may push and force-push only `porelo/<task>` of its person's own tasks: an amend
+replaces its own branch, and the host refuses any other ref from that account, the branch of another task or person,
+`main` or a tag. Within one person's tasks, Porelo's task gate holds a task to its own branch. The branch is where the
+person can review the work in a pull request.
 
 The local build runs on the forge's runner, independently of checks the agent runs inside the task. The repository's
 workflow determines its triggers and checks. A repository's workflow must run on task-branch pushes or pull requests

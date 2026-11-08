@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A task's account pushes only its own person's task branches.** The host's push judge refuses an update or deletion
+  from `porelo-<login>` to any ref but `porelo/<task>` of that person's recorded tasks, so one task's token no longer
+  writes another person's task branch, a tag or a new branch. Force-pushing its own `porelo/<task>`, as an amend does,
+  stays allowed. The forge's hook now tells the judge the pusher.
 - **A burst of connections no longer stops a gate socket for good.** The forge's web, git and runner gates, the push
   judge and the Matrix client gate set no trigger limit, which systemd met by failing the socket and deleting its path,
   so every request through the window's forward came back empty. Each bounds its connections at once, and up fails

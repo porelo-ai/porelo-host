@@ -535,6 +535,18 @@ if FORGE.exists():
             commit_on_main("porelo/prown")
             pushed = git("push", "-q", "origin", "porelo/prown", token=task_token)
             check(pushed.returncode == 0, "the task's token to push its branch", pushed.stderr)
+            # An amend replaces the task's own branch; any other ref the host refuses the task's account, which it can
+            # tell only from the pusher Forgejo names to the judge.
+            amended = git("commit", "-q", "--amend", "--no-edit")
+            check(amended.returncode == 0, "the task's commit amended and signed again", amended.stderr)
+            forced = git("push", "-q", "--force-with-lease", "origin", "porelo/prown", token=task_token)
+            check(forced.returncode == 0, "the task's token to force-push its own branch", forced.stderr)
+            foreign = git("push", "-q", "origin", "HEAD:refs/heads/porelo/no-task-of-fb", token=task_token)
+            check(
+                foreign.returncode != 0 and "pushes only porelo/<task> of fb's own tasks" in foreign.stderr,
+                "the host to refuse the task's token a branch of no task of its person",
+                [foreign.returncode, foreign.stderr],
+            )
             code, pull = forge(
                 "POST", f"{repository}/pulls", {"head": "porelo/prown", "base": "main", "title": "prown"}, task_token
             )

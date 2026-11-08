@@ -3287,10 +3287,10 @@ class Host:
         values = {}
         for line in fields.split("\n"):
             key, _, value = line.partition(" ")
-            if key not in ("repository", "quarantine", "objects", "alternates") or key in values:
+            if key not in ("repository", "quarantine", "objects", "alternates", "pusher") or key in values:
                 refuse("the hook's request names an unknown or repeated field", 64)
             values[key] = value
-        if set(values) != {"repository", "quarantine", "objects", "alternates"}:
+        if set(values) != {"repository", "quarantine", "objects", "alternates", "pusher"}:
             refuse("the hook's request lacks a field", 64)
         update = rf"(?P<old>{COMMIT}) (?P<new>{COMMIT}) refs/[!-~]{{1,1000}}"
         lines = updates.split("\n")
@@ -3300,6 +3300,25 @@ class Host:
             refuse("the hook's updates are not 1 to 10000 lines <old> <new> <ref>", 64)
         deletions = all(set(line.split(" ")[1]) == {"0"} for line in lines)
         return values, "".join(line + "\n" for line in lines), deletions
+
+    def foreign_task_ref(self, pusher, updates):
+        """The refusal of a task account's update to a ref other than its person's own tasks' porelo/<task>, or None.
+
+        A task's token belongs to porelo-<login>, whose team writes every branch of the organization but main, and
+        Forgejo tells a hook only the account, not the token: the host holds the account to its person's tasks, and
+        Porelo's task gate holds a task to its own. A person's own account and the forge's are not held here."""
+        if not re.fullmatch(r"[A-Za-z0-9._-]{0,64}", pusher):
+            refuse("the hook names no valid pusher", 64)
+        login = pusher.removeprefix("porelo-")
+        # Only a person of the host has a task account; porelo-publisher-<project> and the like are no person's.
+        if login == pusher or not re.fullmatch(USER, login) or login not in self.records():
+            return None
+        own = {f"refs/heads/porelo/{task}" for _, task, _ in self.task_records(login)}
+        for line in updates.splitlines():
+            ref = line.split(" ", 2)[2]
+            if ref not in own:
+                return f"porelo: {pusher} pushes only porelo/<task> of {login}'s own tasks, and {ref} is none\n"
+        return None
 
     def push_repository(self, path):
         """The project and repository a container path names, both by their name rules alone."""
@@ -3474,6 +3493,9 @@ class Host:
         values, updates, deletions = self.push_request(stream)
         project, repository = self.push_repository(values["repository"])
         self.project_record(project)
+        foreign = self.foreign_task_ref(values.pop("pusher"), updates)
+        if foreign is not None:
+            return 403, foreign
         if deletions:
             # A push that only deletes refs brings no commit and no quarantine: nothing to judge or record.
             return 200, "porelo: the push brings no new commit\n"

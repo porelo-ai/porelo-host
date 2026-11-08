@@ -4,8 +4,10 @@
 set -u
 answer=$(
     {
-        printf 'repository %s\nquarantine %s\nobjects %s\nalternates %s\n\n' "$(pwd -P)" "${GIT_QUARANTINE_PATH-}" \
-            "${GIT_OBJECT_DIRECTORY-}" "${GIT_ALTERNATE_OBJECT_DIRECTORIES-}"
+        # Forgejo names the account it took the push from: a task's account is held to its own tasks' branches.
+        printf 'repository %s\nquarantine %s\nobjects %s\nalternates %s\npusher %s\n\n' "$(pwd -P)" \
+            "${GIT_QUARANTINE_PATH-}" "${GIT_OBJECT_DIRECTORY-}" "${GIT_ALTERNATE_OBJECT_DIRECTORIES-}" \
+            "${GITEA_PUSHER_NAME-}"
         cat
     } | curl -sS --max-time 300 --unix-socket /run/porelo-verify/verify.sock --data-binary @- \
         -H 'Content-Type: text/plain' -w '%{http_code}' http://localhost/verify 2>/dev/null

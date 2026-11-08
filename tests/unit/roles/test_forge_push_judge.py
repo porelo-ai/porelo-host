@@ -39,6 +39,7 @@ def run_hook(tmp_path, status, answer="porelo: 1 new commit(s) judged and record
             "GIT_QUARANTINE_PATH": f"{repository}/objects/incoming-x",
             "GIT_OBJECT_DIRECTORY": f"{repository}/objects/incoming-x",
             "GIT_ALTERNATE_OBJECT_DIRECTORIES": f"{repository}/objects",
+            "GITEA_PUSHER_NAME": "porelo-alice",
         },
         check=False,
     )
@@ -51,11 +52,8 @@ def test_the_hook_sends_the_push_and_its_quarantine_and_takes_only_200(tmp_path)
     assert result.stderr == "porelo: 1 new commit(s) judged and recorded\n"
     assert sent == (
         f"repository {repository}\nquarantine {repository}/objects/incoming-x\n"
-        f"objects {repository}/objects/incoming-x\nalternates {repository}/objects\n\n"
-        + "a" * 40
-        + " "
-        + "c" * 40
-        + " refs/heads/main\n"
+        f"objects {repository}/objects/incoming-x\nalternates {repository}/objects\n"
+        "pusher porelo-alice\n\n" + "a" * 40 + " " + "c" * 40 + " refs/heads/main\n"
     )
     arguments = argv.read_text().splitlines()
     assert arguments[arguments.index("--unix-socket") + 1] == "/run/porelo-verify/verify.sock"

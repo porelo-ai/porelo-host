@@ -964,6 +964,7 @@ def push_request(fields=None, lines=HOOK_LINES, headers=None, extra=""):
         "quarantine": QUARANTINE,
         "objects": QUARANTINE,
         "alternates": REPOSITORY + "/objects",
+        "pusher": "alice",
         **(fields or {}),
     }
     body = "".join(f"{key} {value}\n" for key, value in values.items()) + "\n" + lines
@@ -1212,6 +1213,100 @@ def test_a_host_unready_to_judge_refuses_the_push_unjudged(tasks, capsys, missin
     capsys.readouterr()
     assert hook.status() == 500, missing
     assert tasks.forge.verifies == [] and arrivals(tasks) == []
+
+
+def recorded_task(tasks, login, task):
+    """A task of login's as start-task records it: root's, private, of its own name."""
+    directory = tasks.root / f"var/lib/porelo-host/tasks/{login}"
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    directory.chmod(0o700)
+    directory.parent.chmod(0o700)
+    record = directory / f"{task}.json"
+    record.write_text(
+        json.dumps(
+            {
+                "task": task,
+                "login": login,
+                "certificate": "fixture",
+                "fingerprint": "SHA256:" + task,
+                "valid_before": "2099-01-01T00:00:00Z",
+            }
+        )
+    )
+    record.chmod(0o600)
+
+
+def task_push(ref, old="a" * 40, new="c" * 40):
+    return f"{old} {new} {ref}\n"
+
+
+def test_a_task_account_force_pushes_its_own_task_branch(tasks, capsys):
+    """A task's amend replaces its own porelo/<task>: the judge asks for no fast-forward, only signed new commits."""
+    judged_project(tasks)
+    recorded_task(tasks, "alice", "fix-1")
+    hook = judge(tasks, push_request({"pusher": "porelo-alice"}, lines=task_push("refs/heads/porelo/fix-1")))
+    capsys.readouterr()
+    assert hook.status() == 200, hook.text()
+    assert [verify["input"] for verify in tasks.forge.verifies] == [task_push("refs/heads/porelo/fix-1")]
+
+
+@pytest.mark.parametrize(
+    "ref",
+    [
+        "refs/heads/porelo/fix-2",
+        "refs/heads/porelo/bobs-task",
+        "refs/heads/main",
+        "refs/heads/feature",
+        "refs/heads/porelo/fix-1/more",
+        "refs/tags/v1",
+    ],
+)
+def test_a_task_account_pushes_no_ref_but_its_own_tasks_branches(tasks, capsys, ref):
+    """The task token writes every unprotected branch of the organization; the host holds it to its person's tasks."""
+    judged_project(tasks)
+    recorded_task(tasks, "alice", "fix-1")
+    recorded_task(tasks, "bob", "bobs-task")
+    hook = judge(
+        tasks, push_request({"pusher": "porelo-alice"}, lines=task_push("refs/heads/porelo/fix-1") + task_push(ref))
+    )
+    capsys.readouterr()
+    assert hook.status() == 403
+    assert hook.text() == f"porelo: porelo-alice pushes only porelo/<task> of alice's own tasks, and {ref} is none\n"
+    assert tasks.forge.verifies == [] and arrivals(tasks) == []
+
+
+def test_a_task_account_deletes_no_other_tasks_branch(tasks, capsys):
+    """A deletion brings no commit to judge, but the ref rule holds for it as for an update."""
+    judged_project(tasks)
+    recorded_task(tasks, "bob", "bobs-task")
+    deletion = push_request(
+        {"quarantine": "", "objects": "", "alternates": "", "pusher": "porelo-alice"},
+        lines=task_push("refs/heads/porelo/bobs-task", old="c" * 40, new="0" * 40),
+    )
+    hook = judge(tasks, deletion)
+    capsys.readouterr()
+    assert hook.status() == 403
+
+
+@pytest.mark.parametrize("pusher", ["alice", "", "porelo-publisher-alpha"])
+def test_a_person_and_the_forge_itself_push_as_before(tasks, capsys, pusher):
+    """The ref rule is the task accounts' alone: a person pushes any branch the forge lets them, as before."""
+    judged_project(tasks)
+    hook = judge(tasks, push_request({"pusher": pusher}, lines=task_push("refs/heads/feature")))
+    capsys.readouterr()
+    assert hook.status() == 200, hook.text()
+
+
+def test_a_request_without_its_pusher_is_refused(tasks, capsys):
+    judged_project(tasks)
+    request = push_request()
+    request = request.replace(b"pusher alice\n", b"").replace(
+        f"Content-Length: {len(push_request().partition(b'\r\n\r\n')[2])}".encode(),
+        f"Content-Length: {len(push_request().partition(b'\r\n\r\n')[2]) - len('pusher alice\n')}".encode(),
+    )
+    hook = Hook(request)
+    assert tasks.call("verify-push", data=hook, caller=None) != 0 or hook.status() != 200
+    capsys.readouterr()
 
 
 def test_a_push_that_only_deletes_refs_passes_unjudged_and_unrecorded(tasks, capsys):
