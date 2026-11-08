@@ -293,3 +293,14 @@
 
 - name: Restart the Matrix gate socket now if its unit changed
   ansible.builtin.meta: flush_handlers
+
+# A socket systemd stopped leaves the forward to it answering nothing; up says so here rather than Element.
+- name: Check that the Matrix gate socket listens
+  ansible.builtin.command:
+    argv:
+      - /bin/sh
+      - -ec
+      - >-
+        systemctl is-active --quiet porelo-matrix-gate.socket || { echo "porelo-matrix-gate.socket is not active" >&2; exit 1; };
+        test -S /run/porelo-matrix/client.sock || { echo "/run/porelo-matrix/client.sock is no socket" >&2; exit 1; }
+  changed_when: false

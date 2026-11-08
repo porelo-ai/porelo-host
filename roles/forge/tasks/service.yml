@@ -145,3 +145,17 @@
 
 - name: service | Apply changed gate units before the forge is used
   ansible.builtin.meta: flush_handlers
+
+# A socket systemd stopped leaves the forward to it answering nothing; up says so here rather than the person's browser.
+- name: service | Check that the gate sockets listen
+  ansible.builtin.command:
+    argv:
+      - /bin/sh
+      - -ec
+      - >-
+        for unit in porelo-forge-web.socket porelo-forge-git.socket porelo-forge-runner.socket porelo-host-verify.socket;
+        do systemctl is-active --quiet "$unit" || { echo "$unit is not active" >&2; exit 1; }; done;
+        for path in /run/porelo-forge/web.sock /run/porelo-forge/git.sock /run/porelo-forge/runner.sock
+        /run/porelo-host/verify/verify.sock;
+        do test -S "$path" || { echo "$path is no socket" >&2; exit 1; }; done
+  changed_when: false

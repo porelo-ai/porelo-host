@@ -12,6 +12,9 @@ SocketMode=0600
 RemoveOnStop=true
 DirectoryMode=0755
 MaxConnections=16
+# A burst of connections must not stop the socket for good: systemd's trigger limit would fail it, RemoveOnStop
+# deletes the path, and every request through the window's forward is then empty, as the forge page once was.
+TriggerLimitIntervalSec=0
 
 [Install]
 WantedBy=sockets.target

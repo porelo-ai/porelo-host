@@ -10,6 +10,11 @@ SocketGroup=porelo-people
 SocketMode=0660
 DirectoryMode=0755
 RemoveOnStop=true
+# A burst of connections must not stop the socket for good: systemd's trigger limit would fail it, RemoveOnStop
+# deletes the path, and every request through the window's forward is then empty, as the forge page once was.
+TriggerLimitIntervalSec=0
+# One process each: a browser's pages and polls, and every request of the runner's jobs, fit in this many at once.
+MaxConnections=256
 
 [Install]
 WantedBy=sockets.target

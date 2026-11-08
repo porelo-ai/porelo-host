@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A burst of connections no longer stops a gate socket for good.** The forge's web, git and runner gates, the push
+  judge and the Matrix client gate set no trigger limit, which systemd met by failing the socket and deleting its path,
+  so every request through the window's forward came back empty. Each bounds its connections at once, and up fails
+  when one of them is not listening.
 - **A host's first up waits out an outage of GitHub's release downloads.** The forge role fetches the runner's pinned
   JDK again on a 5xx or no answer, a body broken off included, every 2 minutes for 14 minutes with a 60 s timeout,
   instead of once with 10 s; a 4xx, a refused certificate, a wrong digest or a full disk still fails at once.
