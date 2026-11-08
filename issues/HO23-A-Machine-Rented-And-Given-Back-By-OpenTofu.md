@@ -57,7 +57,8 @@ provider and from a company's own tooling, outside the interface.
   The providers come by `tofu init` from the registry, checked against the lock file's hashes.
 - **`down`'s last step:** with the module, `porelo-host down` plays `porelo.host.down` first and keeps the host when
   the play does not finish, as today; only a finished play, or `--give-back-anyway`, runs `tofu destroy`.
-- **The state, decided:** it lies in the person's drive (a synchronized folder), in a folder per project,
+- **The state, decided:** it lies in the person's drive (a synchronized folder), in a folder per project. Where it
+  lies is superseded by "The state among the organization's admins" below; the encryption stands. It is
   encrypted by OpenTofu's own state encryption, `aes_gcm` with a `pbkdf2` key, `enforced` so a plain state is
   refused. Its passphrase lives in the system's secret store (Secret Service, Keychain, Credential Manager) beside the
   Scaleway key, and reaches `tofu` only in `TF_ENCRYPTION`; never a file, an argument or the folder. On another
@@ -87,6 +88,41 @@ provider and from a company's own tooling, outside the interface.
   porelo-frontend's own issue; the state's encryption and the handling of the two secrets
   reviewed by Codex `xhigh`.
 - **Red first:** `tofu test` against a module without the project tag, and with a plain state accepted.
+
+## The state among the organization's admins
+
+**The operator's direction (2026-11-08):**
+- The encrypted state is shared by all of the organization's admins, not kept in one admin's drive, so another admin
+  can take over a host, for example when its admin does not return.
+- The place is likely an S3 bucket all of them reach. The client-side encryption above stays: wherever the state lies,
+  it lies only encrypted.
+
+**Open: where.** The options I see, for a later decision:
+
+1. **An S3 bucket with OpenTofu's own lock.**
+   - OpenTofu's `s3` backend, on the provider's object storage (Scaleway's is S3-compatible) or another.
+   - It locks with `use_lockfile = true`, a lock object beside the state by a conditional write. No DynamoDB, no
+     second service.
+   - The bucket's versioning keeps every earlier state for a rollback. Each admin reaches it with an access key of
+     their own, so leaving the organization removes one key.
+   - To be checked: that the chosen storage honours the conditional write OpenTofu's lock needs.
+   - **Recommended, and the operator's likely choice.**
+2. **The organization's repository.**
+   - The encrypted state is committed per project. A push that loses the race is the lock, beside the provider-tag
+     guard above.
+   - No new service or credential: the admins already reach the repository.
+   - But every state stays in the history, encrypted, and a commit has to follow every `apply`.
+3. **An HTTP backend of Porelo's own**, OpenTofu's `http` backend with its lock, served by a Porelo service.
+   - It fits once Porelo has a server all admins reach. Today there is none to rely on, and Forgejo offers no such
+     backend.
+
+**In every option:**
+- The provider's tag stays the guard against a second rent, whatever the lock says.
+- **Still open, beside "where": how the passphrase reaches every admin.** One shared passphrase in each admin's system
+  store, handed over through the organization's vault, or one key per admin. OpenTofu's state encryption takes one
+  key and a fallback for rotation, so one per admin would need a rotation when an admin leaves.
+
+Nothing is built for this until the operator decides.
 
 ## Acceptance
 
