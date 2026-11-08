@@ -1,6 +1,7 @@
 # HO146 — A Lent Forge Token Leaves The Person's Token
 
-**Status:** Idea.
+**Status:** Implementing.
+**Size:** S - one verb's option in `porelo-host-person`, its sudoers line and its unit tests; Porelo's switch is its own.
 
 **What must be true.** A task's builds keep reading the host's forge while Porelo starts tasks, refreshes a gate's
 mirror and forwards a push: the person's `<forge>.person` token in their Porelo-Vault stays valid until the person's
@@ -14,6 +15,17 @@ for that for each git command of a gate against the host's forge and for taking 
 a task's builds watch reads the token the vault holds. So each start, mirror refresh and forwarded push deleted the
 token in the vault, and the builds watch was answered `401` by Forgejo until the person ran
 `porelo-host-forge-token` again.
+
+## Plan
+
+- `porelo-host-person`: `forge-token --lend` beside `forge-token` in the verb parsing; `person_forge_token` reads the
+  login's token list once and deletes, without `--lend`, every token not named `porelo-host-lend-…`, and with it only
+  lends whose name carries a time 24 hours or more before now (`self.now`), then makes the one token. A lend's name is
+  `porelo-host-lend-<UTC time>-<uuid>`, since Forgejo's API answers no token's creation time.
+- `porelo-host-person.sudoers`: `forge-token --lend` beside `forge-token ""`.
+- The header, `roles/porelo/README.md`, `doc/task-certificates.md` and `doc/local-forge.md` say it; a changelog entry.
+- **Red first** in `tests/unit/roles/test_porelo_host_person_tasks.py`: a lend leaves the person token; a second lend
+  leaves the first; a lend 24 hours old is deleted by the next lend; `forge-token` leaves a lend; lock deletes both.
 
 ## The shape
 
@@ -35,6 +47,3 @@ token in the vault, and the builds watch was answered `401` by Forgejo until the
 - On the next move's host, a task started after `porelo-host-forge-token` reads its builds without a `401`, also
   after a forwarded push.
 
-## Open questions
-
-- Whether this contract is built for the next move.
