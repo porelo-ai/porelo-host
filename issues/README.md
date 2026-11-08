@@ -81,6 +81,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho149"></a>[HO149](HO149-A-Refresh-Takes-A-Token-Only-When-Something-Waits.md) | XS | - | *Refresh* takes the host admin's central token only while a project, a repository or a take-off waits for one, on a host with a forge of its own as on one without, and otherwise refuses it the same way on both. |
 | <a id="ho140"></a>[HO140](HO140-A-Host-Keeps-Its-Identity-Across-Rentals.md) | - | - | A host rented again and again keeps its read keys from the person's vault, so they stay registered between rentals and only a host given up for good has them removed. |
 | <a id="ho130"></a>[HO130](HO130-The-Web-Gates-Authorization-Edges.md) | - | - | `web.sock` treats an empty `Authorization` as a token and passes the cookie beside it, takes any scheme, and no test holds its refusal of a second `Authorization` or of a request target that is not a path. |
 | <a id="ho128"></a>[HO128](HO128-A-Tasks-Login-Cannot-Approve-Or-Merge.md) | - | - | A task's gate login on the forge can neither approve nor merge a pull request on `main`, by the forge's own rule, not only because the task never holds its token. |
