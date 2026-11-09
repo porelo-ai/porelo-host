@@ -2,7 +2,7 @@
 
 ## Shared across the Porelo repositories
 
-> **BEGIN Shared Area** · sha256 `5009d5e8d774cb08` · changed 2026-11-08T14:09Z
+> **BEGIN Shared Area** · sha256 `3d30493cf384c7ea` · changed 2026-11-09T06:53Z
 
 Identical in every repository `project.yml` names but `porelo-parent`, which holds only the parent pom
 and no `AGENTS.md`. The markers carry the SHA-256 of the lines between them (the first 16 hex digits)
@@ -258,6 +258,11 @@ and the UTC time that text last changed; change it in the channel first, never i
   there is a documentation chapter, `check-doc-site`, with the tests tagged `documents`, on every
   push and pull request**, on a GitHub runner; the build skips a change to documents only.
 - **A test result names every skipped test**, never just a count.
+- **An obviously flaky test that blocks a delivery is disabled for the time being, and an issue for it
+  is filed in Backlog as the first row of its index (Highest).** The agent sets that state itself, the one
+  exception to the operator's states, and fixes the test right after. When two or three tries at the fix
+  have failed, it says so in the channel and stops; the coordinator tells the operator. A real fault is
+  fixed, never disabled.
 - **A failing check prints what it asked and what it got, never a guessed cause**, and its failure
   path has been made to happen once and read.
 - **An operator test starts with one complete guide assembled from each repository’s checked
@@ -485,7 +490,7 @@ and the UTC time that text last changed; change it in the channel first, never i
   with `+`: estimates summed, the earliest start and the stack's readiness, VM time and tokens counted
   once.
 
-> **END Shared Area** · sha256 `5009d5e8d774cb08`
+> **END Shared Area** · sha256 `3d30493cf384c7ea`
 
 ## Work in this repository
 
