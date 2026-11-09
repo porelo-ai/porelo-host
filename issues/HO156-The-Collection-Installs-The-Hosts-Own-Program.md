@@ -1,6 +1,6 @@
 # HO156 — The Collection Installs The Host's Own Program
 
-**Status:** Backlog; blocked until porelo publishes the `porelo-host` package with every verb below.
+**Status:** Implementing.
 **Size:** L - every role that installs or calls a host script changes, with its units, the sudo rules, `down`, the
 docs and the tests; no new logic, but it crosses into another repository's package.
 

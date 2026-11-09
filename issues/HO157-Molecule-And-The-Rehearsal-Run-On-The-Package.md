@@ -1,7 +1,6 @@
 # HO157 — Molecule And The Rehearsal Run On The Package
 
-**Status:** Backlog; blocked until porelo publishes the `porelo-host` package with every verb, and by
-[HO156](README.md#ho156).
+**Status:** Implementing.
 **Size:** M - `build/molecule.sh`, `build/rehearse-move.sh` and Molecule's acts change to install and call the
 package; `porelo-vm` moves to `build/`.
 
