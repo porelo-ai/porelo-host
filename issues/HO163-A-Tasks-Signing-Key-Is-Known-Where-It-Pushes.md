@@ -12,3 +12,11 @@ read as signed by an unknown key there.
   key does not.
 - What the central forge can be told of a task's key, and what it cannot (a certified key the central forge does not
   take), is measured and written down before anything is built for it.
+
+## Measured
+
+On the foo-org host (main at 888d1f0), 2026-11-09: a commit signed in task `pi` with its certified key
+(`ssh-ed25519-cert-v01`, principal `task:foo-project:pi`) passed the push judge and was forwarded by `porelo gate
+approve`; Forgejo's API reads it as `verified: false`, `gpg.error.no_gpg_keys_found`. A person's own signed commit
+reads the same. The forge account that receives the push holds no key of the task. GitHub was not measured: the
+test identity's token may not read checks or open pull requests there.
