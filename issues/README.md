@@ -191,6 +191,7 @@ it is left out.
 
 | # | Title | Why |
 |---|---|---|
+| <a id="ho155"></a>HO155 | A Person Reads How Their Project's Repositories Stand Against Central | `porelo-host-push --central <project>` already gives a project's unlocked members the follow's answer, in their own account and without sudo. |
 | <a id="ho22"></a>HO22 | Ssh Reached Only Through The VPN Once It Is Up | replaced by the one-key design; there is no VPN, and SSH on port 22 is the host's only way in. |
 | <a id="ho62"></a>HO62 | The Forge's Own Reason For A Refused Password | replaced by the one-key design; the forge has no password. |
 | <a id="ho65"></a>HO65 | The Host's Tunnel Addresses Answered | replaced by the one-key design; the host has no tunnel addresses. |
