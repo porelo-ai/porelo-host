@@ -2,7 +2,11 @@
 
 import json
 import os
+import shlex
+import signal
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -615,3 +619,943 @@ def test_down_of_a_bare_run_deletes_the_vm_without_asking_it(tmp_path):
     assert "ssh " not in calls, "nothing is asked of the VM itself"
     assert "porelo-vm delete porelo-host-rehearsal-20261106t150000z" in calls, "the VM is deleted"
     assert not state.exists(), "the run's directory goes with it"
+
+
+RENTED_COMMANDS = r"""
+import argparse
+import datetime
+import fnmatch
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import signal
+import subprocess
+import sys
+import time
+
+base = Path(os.environ['REHEARSAL_TEST_BASE'])
+guest = Path(os.environ['REHEARSAL_TEST_GUEST'])
+settings = json.loads((base / 'answers.json').read_text())
+name = Path(sys.argv[0]).name
+args = sys.argv[1:]
+
+def event(tool, **values):
+    with open(base / 'events', 'a') as stream:
+        stream.write(json.dumps(dict(tool=tool, **values)) + '\n')
+
+def mapped(value):
+    pattern = r'(?<![\w/.-])/(?:root|etc|run/porelo-rehearsal|proc/cpuinfo|dev/kvm|tmp/porelo-host\.tar\.gz)(?=/|[^\w.-]|$)'
+    return re.sub(pattern, lambda match: str(guest) + match[0], value)
+
+def alive(pid):
+    try:
+        return Path(f'/proc/{pid}/stat').read_text().rsplit(') ', 1)[1][0] != 'Z'
+    except FileNotFoundError:
+        return False
+
+if name == 'ssh':
+    remote = shlex.split(args[args.index('--') + 2])
+    body = sys.stdin.read()
+    event('ssh', args=args, remote=remote)
+    if (base / 'connection-lost').exists():
+        sys.exit(255)
+    if remote[:2] == ['sudo', '-n']:
+        if settings.get('sudo_denied'):
+            sys.exit(1)
+        remote = remote[2:]
+    cleanup = len(remote) >= 4 and remote[:2] == ['bash', '-s'] and remote[2].startswith('porelo-rehearsal-')
+    if cleanup and settings.get('cleanup_rc'):
+        (base / 'connection-lost').touch()
+        sys.exit(settings['cleanup_rc'])
+    if cleanup and settings.get('cleanup_sleep'):
+        event('cleanup_signal', disposition=int(signal.getsignal(signal.SIGTERM)))
+        (base / 'cleanup-sleeping').touch()
+        time.sleep(1)
+    if remote[:2] == ['python3', '-I'] and len(remote) > 2 and remote[2].endswith('/porelo-host-check'):
+        if settings.get('check_transport_error'):
+            print('preflight connection failed', file=sys.stderr)
+            sys.exit(255)
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--limits')
+        parser.add_argument('--choices', default='{}')
+        parser.add_argument('--wait-packages', type=int, default=0)
+        values = parser.parse_args(remote[3:])
+        event('check', limits=json.loads(values.limits) if values.limits else None,
+              choices=json.loads(values.choices), wait=values.wait_packages)
+        answer = dict(v=1, ok=not settings.get('check_failure'), complete=True,
+                      findings=[dict(id='ports', state='fail' if settings.get('check_failure') else 'pass', found=[3001])])
+        print(json.dumps(answer))
+        sys.exit(1 if settings.get('check_failure') else 0)
+    result = subprocess.run([mapped(value) for value in remote], input=mapped(body), text=True, capture_output=True)
+    output = result.stdout
+    if output.startswith('claimed ') and settings.get('claim_pause'):
+        if settings.get('claim_reply_first'):
+            sys.stdout.write(output)
+            sys.stdout.flush()
+            output = ''
+        (base / 'claim-sleeping').touch()
+        time.sleep(0.5)
+    staging = guest / 'run/porelo-rehearsal'
+    if settings.get('steal_before_write') == 'machine' and (staging / 'porelo-host.tar.gz').exists() and not (base / 'owner-stolen').exists():
+        (staging / 'owner').write_text('another-run\n')
+        target = guest / 'etc/porelo-host/setup/machine.yml'
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text('foreign machine\n')
+        (base / 'owner-stolen').touch()
+    if settings.get('bad_claim_reply') and output.startswith('claimed '):
+        output = 'claimed another-token\n'
+    sys.stdout.write(output)
+    sys.stderr.write(result.stderr)
+    sys.exit(result.returncode if result.returncode >= 0 else 128 - result.returncode)
+elif name == 'ssh-keygen':
+    if '-y' in args:
+        print(settings.get('public_key', 'ssh-ed25519 AAAATEST'))
+    else:
+        key = Path(args[args.index('-f') + 1])
+        key.write_text('stand-in key')
+        Path(str(key) + '.pub').write_text('ssh-ed25519 AAAAHOST\n')
+elif name == 'python3':
+    if len(args) > 1 and args[-2] == 'down.lines' and settings.get('emit_failure'):
+        sys.exit(73)
+    os.execv(sys.executable, [sys.executable, *args])
+elif name == 'date':
+    forms = {'+%s': '2000000000', '+%Y%m%dt%H%M%Sz': '20330518t033320z',
+             '+%Y-%m-%dT%H:%M:%SZ': '2033-05-18T03:33:20Z'}
+    if len(args) == 2 and args[0] == '-u' and args[1] in forms:
+        print(forms[args[1]])
+    else:
+        os.execv('/usr/bin/date', ['date', *args])
+elif name == 'collection-build':
+    event(name)
+    target = Path(os.environ['REHEARSAL_TEST_CHECKOUT']) / 'target/rented/porelo-host-test.tar.gz'
+    target.write_text('stand-in collection')
+elif name == 'mkdir':
+    staging = guest / 'run/porelo-rehearsal'
+    if str(staging) in args and settings.get('claim_race') and not staging.exists():
+        staging.mkdir(mode=0o700)
+        (staging / 'owner').write_text('another-run\n')
+    os.execv('/usr/bin/mkdir', ['mkdir', *args])
+elif name == 'install':
+    filtered = []
+    position = 0
+    while position < len(args):
+        if args[position] in ('-o', '-g'):
+            position += 2
+        else:
+            filtered.append(args[position])
+            position += 1
+    os.execv('/usr/bin/install', ['install', *filtered])
+elif name == 'rm':
+    result = subprocess.run(['/usr/bin/rm', *args], check=False)
+    if settings.get('steal_before_write') == 'collection' and str(guest / 'root/porelo-host-inventory.yml') in args and not (base / 'owner-stolen').exists():
+        staging = guest / 'run/porelo-rehearsal'
+        (staging / 'owner').write_text('another-run\n')
+        (staging / 'porelo-host.tar.gz').write_text('foreign collection\n')
+        (base / 'owner-stolen').touch()
+    sys.exit(result.returncode)
+elif name == 'cat':
+    destination = os.readlink('/proc/self/fd/1')
+    if settings.get('check_upload_failure') and destination == str(guest / 'run/porelo-rehearsal/porelo-host-check'):
+        print('preflight upload refused', file=sys.stderr)
+        sys.exit(73)
+    if settings.get('inventory_pause') and destination in (str(guest / 'root/porelo-host-inventory.yml'), str(guest / 'root/porelo-host-inventory.yml.tmp')):
+        contents = sys.stdin.read()
+        split = len(contents) // 2
+        sys.stdout.write(contents[:split])
+        sys.stdout.flush()
+        (base / 'inventory-sleeping').touch()
+        time.sleep(30)
+        sys.stdout.write(contents[split:])
+    else:
+        os.execv('/usr/bin/cat', ['cat', *args])
+elif name == 'apt-get':
+    event(name, args=args)
+    if 'install' in args:
+        (guest / 'packages').touch()
+        if settings.get('before_inventory'):
+            if settings.get('partial_inventory'):
+                (guest / 'root/porelo-host-inventory.yml').write_text('partial inventory\n')
+            sys.exit(2)
+        if settings.get('sleep_before_inventory'):
+            (base / 'sleeping').touch()
+            time.sleep(30)
+elif name == 'ansible-galaxy':
+    event(name, args=args)
+elif name == 'systemd-run':
+    unit = next(value.split('=', 1)[1] for value in args if value.startswith('--unit='))
+    command = args[args.index('bash'):]
+    request = json.dumps(dict(unit=unit, command=command, body=sys.stdin.read())) + '\n'
+    queue = base / 'queue'
+    (queue / (unit + '.tmp')).write_text(request)
+    (queue / (unit + '.tmp')).replace(queue / (unit + '.request'))
+    response = queue / (unit + '.response')
+    while not response.exists():
+        time.sleep(0.01)
+    answer = json.loads(response.read_text())
+    sys.stdout.write(answer['stdout'])
+    sys.stderr.write(answer['stderr'])
+    sys.exit(answer['code'])
+elif name == 'systemctl':
+    units = base / 'units'
+    if args[0] == 'list-units':
+        for path in units.iterdir():
+            retained = settings.get('retained_unit_state') and not (base / 'unit-reset').exists()
+            if fnmatch.fnmatch(path.name + '.service', args[-1]) and (alive(int(path.read_text())) or retained):
+                print(path.name + '.service loaded ' + (settings.get('retained_unit_state') or 'active') + ' waiting')
+    elif args[0] == 'stop':
+        event(name, args=args)
+        path = units / args[1].removesuffix('.service')
+        if not path.exists():
+            sys.exit(5)
+        pid = int(path.read_text())
+        if alive(pid):
+            os.killpg(pid, signal.SIGTERM)
+            deadline = time.monotonic() + 1
+            while alive(pid) and time.monotonic() < deadline:
+                time.sleep(0.01)
+            if alive(pid):
+                os.killpg(pid, signal.SIGKILL)
+    elif args[0] == 'show':
+        print(settings.get('retained_unit_state') or 'inactive')
+    elif args[0] == 'reset-failed':
+        event(name, args=args)
+        if not (units / args[1].removesuffix('.service')).exists():
+            sys.exit(5)
+        (base / 'unit-reset').touch()
+    else:
+        event(name, args=args)
+elif name == 'ansible-playbook':
+    verb = args[-1].rsplit('.', 1)[-1]
+    event(name, verb=verb, term_disposition=int(signal.getsignal(signal.SIGTERM)))
+    host = guest / 'etc/porelo-host'
+    if verb == 'up':
+        host.mkdir(parents=True, exist_ok=True)
+        (host / 'firewall.nft').write_text('retained firewall\n')
+        policy = guest / 'etc/ssh/sshd_config.d/10-porelo-host.conf'
+        policy.write_text('role-owned SSH policy\n')
+        if settings.get('steal_owner'):
+            (guest / 'run/porelo-rehearsal/owner').write_text('another-run\n')
+        if settings.get('up_sleep'):
+            (base / 'sleeping').touch()
+            time.sleep(30)
+        print(json.dumps(dict(state='failed' if settings.get('up_bad_lines') else 'host')))
+        sys.exit(settings.get('up_rc', 0))
+    if settings.get('down_sleep'):
+        (base / 'down-sleeping').touch()
+        time.sleep(1)
+    partial = 'partial' in (guest / 'root/porelo-host-inventory.yml').read_text()
+    print(json.dumps(dict(state=settings.get('down_state', 'failed' if partial else 'ok'), task='host down')))
+    sys.exit(settings.get('down_rc', 2 if partial else 0))
+elif name == 'sshd':
+    event(name, args=args)
+else:
+    raise SystemExit('unexpected stand-in ' + name)
+"""
+
+
+class RentedServer:
+    """Execute SSH commands on a private filesystem; external jobs belong to the test, not the SSH client."""
+
+    def __init__(self, tmp_path, settings):
+        import threading
+
+        self.base = tmp_path
+        self.guest = tmp_path / "guest"
+        self.root = tmp_path / "checkout"
+        self.bin = tmp_path / "bin"
+        self.settings = settings
+        self.jobs = []
+        self.queue = tmp_path / "queue"
+        self.queue.mkdir()
+        self.stopped = threading.Event()
+        self.handlers = []
+        self.root.joinpath("build").mkdir(parents=True)
+        self.script = self.root / "build/rehearse-move.sh"
+        self.script.write_bytes(REHEARSE.read_bytes())
+        self.script.chmod(0o755)
+        check = self.root / "roles/check/files"
+        check.mkdir(parents=True)
+        for name in ("porelo-host-check", "limits.json"):
+            (check / name).write_bytes((ROOT / "roles/check/files" / name).read_bytes())
+        for path in ("root/.ssh", "etc/ssh/sshd_config.d", "run", "proc", "dev", "tmp"):
+            (self.guest / path).mkdir(parents=True, exist_ok=True)
+        (self.guest / "etc/ssh/ssh_host_ed25519_key.pub").write_text("ssh-ed25519 AAAAHOST\n")
+        (self.guest / "proc/cpuinfo").write_text("flags : vmx\n" if settings.get("cpu", True) else "flags :\n")
+        if settings.get("device", True):
+            (self.guest / "dev/kvm").touch()
+        (tmp_path / "units").mkdir()
+        self.bin.mkdir()
+        for name in (
+            "ssh",
+            "ssh-keygen",
+            "date",
+            "collection-build",
+            "mkdir",
+            "install",
+            "apt-get",
+            "ansible-galaxy",
+            "systemd-run",
+            "systemctl",
+            "ansible-playbook",
+            "sshd",
+        ):
+            path = self.bin / name
+            path.write_text(f"#!{sys.executable}\n" + RENTED_COMMANDS)
+            path.chmod(0o755)
+        if settings.get("emit_failure"):
+            reader = self.bin / "python3"
+            reader.write_text(f"#!{sys.executable}\n" + RENTED_COMMANDS)
+            reader.chmod(0o755)
+        optional = []
+        if settings.get("steal_before_write") == "collection":
+            optional.append("rm")
+        if settings.get("inventory_pause") or settings.get("check_upload_failure"):
+            optional.append("cat")
+        for name in optional:
+            command = self.bin / name
+            command.write_text(f"#!{sys.executable}\n" + RENTED_COMMANDS)
+            command.chmod(0o755)
+        fake(self.root / "build", "tools.sh", 'exec "$REHEARSAL_TEST_BIN/collection-build" "$@"\n')
+        for name in ("virsh", "curl", "podman", "scp"):
+            fake(self.bin, name, f'echo "unexpected {name}" >&2\nexit 99\n')
+        self.key = tmp_path / "private key"
+        self.key.write_text("stand-in private key\n")
+        self.state = self.root / "target/rented"
+        self.environment = {
+            **os.environ,
+            "HOME": str(tmp_path),
+            "PATH": f"{self.bin}:{os.environ['PATH']}",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "REHEARSAL_TEST_BASE": str(tmp_path),
+            "REHEARSAL_TEST_GUEST": str(self.guest),
+            "REHEARSAL_TEST_CHECKOUT": str(self.root),
+            "REHEARSAL_TEST_BIN": str(self.bin),
+        }
+        self.environment.pop("PORELO_REHEARSAL_HARD_STOP_SECONDS", None)
+        (tmp_path / "answers.json").write_text(json.dumps(settings))
+
+        def answer_job(process, request, destination):
+            stdout, stderr = process.communicate(request["body"])
+            answer = dict(
+                code=process.returncode if process.returncode >= 0 else 128 - process.returncode,
+                stdout=stdout,
+                stderr=stderr,
+            )
+            temporary = destination.with_suffix(".tmp")
+            temporary.write_text(json.dumps(answer))
+            temporary.replace(destination)
+
+        def serve():
+            while not self.stopped.wait(0.01):
+                for path in self.queue.glob("*.request"):
+                    request = json.loads(path.read_text())
+                    path.unlink()
+                    process = subprocess.Popen(
+                        request["command"],
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        env=self.environment,
+                        start_new_session=True,
+                    )
+                    self.jobs.append(process)
+                    (tmp_path / "units" / request["unit"]).write_text(str(process.pid))
+                    handler = threading.Thread(
+                        target=answer_job,
+                        args=(process, request, self.queue / (request["unit"] + ".response")),
+                        daemon=True,
+                    )
+                    self.handlers.append(handler)
+                    handler.start()
+
+        self.thread = threading.Thread(target=serve, daemon=True)
+        self.thread.start()
+
+    def events(self, tool):
+        path = self.base / "events"
+        return (
+            [row for row in map(json.loads, path.read_text().splitlines()) if row["tool"] == tool]
+            if path.exists()
+            else []
+        )
+
+    def down_calls(self):
+        return [row for row in self.events("ansible-playbook") if row["verb"] == "down"]
+
+    def report(self):
+        reports = list((self.base / ".porelo/rehearsal").glob("192.0.2.10-*"))
+        assert len(reports) == 1
+        return reports[0], (reports[0] / "steps").read_text().splitlines()
+
+    def call(
+        self,
+        *arguments,
+        hard_stop=None,
+        signal_at=None,
+        signal_on_ok=None,
+        signal_before_wait=None,
+        signal_number=signal.SIGTERM,
+        address="192.0.2.10",
+    ):
+        environment = dict(self.environment)
+        if hard_stop is not None:
+            environment["PORELO_REHEARSAL_HARD_STOP_SECONDS"] = str(hard_stop)
+        command = [str(self.script), "rented", address, "--key", str(self.key), *arguments]
+        if signal_on_ok:
+            wrapper = """printf() {
+    command printf "$@"
+    case "$*" in *"OK $REHEARSAL_SIGNAL_STEP "*)
+        if [ "${signal_sent:-}" != yes ]; then signal_sent=yes; kill -TERM "$$"; fi ;;
+    esac
+}
+. "$0"
+"""
+            environment["REHEARSAL_SIGNAL_STEP"] = signal_on_ok
+            command = ["sh", "-c", wrapper, *command]
+        if signal_before_wait:
+            wrapper = """wait() {
+    if [ "${current:-}" = "$REHEARSAL_SIGNAL_WAIT" ] && [ "${signal_sent:-}" != yes ]; then
+        while [ ! -e "$REHEARSAL_TEST_BASE/sleeping" ]; do sleep 0.01; done
+        signal_sent=yes
+        kill -TERM "$$"
+    fi
+    command wait "$@"
+}
+. "$0"
+"""
+            environment["REHEARSAL_SIGNAL_WAIT"] = signal_before_wait
+            command = ["sh", "-c", wrapper, *command]
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=environment,
+            start_new_session=True,
+        )
+        try:
+            if signal_at:
+                deadline = time.monotonic() + 7
+                while not (self.base / signal_at).exists() and process.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                if (self.base / signal_at).exists():
+                    process.send_signal(signal_number)
+            stdout, stderr = process.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.communicate()
+            pytest.fail("the rehearsal failed to stop and report within its stand-in deadline")
+        return subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
+
+    def close(self):
+        self.stopped.set()
+        self.thread.join()
+        for process in self.jobs:
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+        for handler in self.handlers:
+            handler.join()
+
+
+@pytest.fixture
+def rented(tmp_path):
+    """All commands are local stand-ins; every launched remote worker is reclaimed."""
+    servers = []
+
+    def make(**settings):
+        server = RentedServer(tmp_path, settings)
+        servers.append(server)
+        return server
+
+    yield make
+    for server in servers:
+        server.close()
+
+
+def test_rented_atomic_claim_refuses_an_existing_host_without_any_other_command(rented):
+    """Prevent taking over or inspecting a host that this run did not claim."""
+    server = rented()
+    host = server.guest / "etc/porelo-host"
+    host.mkdir()
+    (host / "keep").write_text("untouched")
+    done = server.call()
+    assert done.returncode != 0
+    assert len(server.events("ssh")) == 1 and not server.down_calls()
+    assert (host / "keep").read_text() == "untouched"
+    assert not (server.state / "owns-host").exists()
+
+
+@pytest.mark.parametrize("race", [False, True])
+def test_rented_atomic_claim_never_steals_another_runs_staging(rented, race):
+    """Prevent concurrent setup or cleanup from using another run's staging and owner token."""
+    server = rented(claim_race=race)
+    staging = server.guest / "run/porelo-rehearsal"
+    if not race:
+        staging.mkdir()
+        (staging / "owner").write_text("another-run\n")
+    done = server.call()
+    assert done.returncode != 0
+    assert len(server.events("ssh")) == 1
+    assert not server.events("check") and not server.down_calls()
+    assert (staging / "owner").read_text() == "another-run\n"
+    assert not (server.state / "owns-host").exists()
+
+
+@pytest.mark.parametrize("settings", [{"bad_claim_reply": True}, {"sudo_denied": True}])
+def test_rented_requires_the_exact_claim_answer_before_cleanup_can_read_anything(rented, settings):
+    """Prevent an absent, foreign, or unconfirmed owner token authorizing cleanup reads."""
+    server = rented(**settings)
+    done = server.call("--login", "rehearsal")
+    assert done.returncode != 0 and len(server.events("ssh")) == 1
+    assert not (server.state / "owns-host").exists()
+
+
+@pytest.mark.parametrize("public_key", ["ssh-rsa AAAATEST", "ecdsa-sha2-nistp256 AAAATEST", "garbage"])
+def test_rented_ed25519_only_keys_are_checked_before_any_ssh(rented, public_key):
+    """Prevent an unusable admin key replacing server login keys before up can reject it."""
+    server = rented(public_key=public_key)
+    done = server.call()
+    assert done.returncode != 0 and not server.events("ssh")
+
+
+@pytest.mark.parametrize("login", ["root", "rehearsal"])
+def test_rented_key_pinning_replaces_symlinks_and_preserves_their_targets(rented, login):
+    """Prevent replacing the run's login key from overwriting a symlink's unrelated target."""
+    server = rented()
+    protected = server.guest / "protected"
+    protected.write_text("unrelated data\n")
+    root_key = server.guest / "root/.ssh/authorized_keys"
+    login_key = server.guest / f"etc/ssh/authorized_keys/{login}"
+    login_key.parent.mkdir()
+    root_key.symlink_to(protected)
+    login_key.symlink_to(protected)
+    done = server.call("--login", login)
+    assert done.returncode == 0, done.stderr
+    assert protected.read_text() == "unrelated data\n"
+    for path, mode in ((root_key, 0o600), (login_key, 0o644)):
+        assert not path.is_symlink() and path.read_text() == "ssh-ed25519 AAAATEST\n"
+        assert path.stat().st_mode & 0o777 == mode
+
+
+def test_rented_down_really_runs_once_and_retains_the_hosts_firewall_and_ssh_policy(rented):
+    """Prevent a successful rehearsal deleting the retained firewall or changing the host's SSH policy."""
+    server = rented()
+    done = server.call()
+    assert done.returncode == 0, done.stderr
+    assert len(server.down_calls()) == 1
+    assert (server.guest / "etc/porelo-host/firewall.nft").read_text() == "retained firewall\n"
+    assert (server.guest / "etc/ssh/sshd_config.d/10-porelo-host.conf").read_text() == "role-owned SSH policy\n"
+    assert not server.events("sshd")
+    assert not (server.guest / "run/porelo-rehearsal").exists()
+    report, steps = server.report()
+    assert [line.split()[:2] for line in steps[:-1]] == [
+        ["OK", "refuse-existing"],
+        ["OK", "check"],
+        ["OK", "up"],
+        ["SKIP", "stop"],
+        ["SKIP", "project"],
+        ["SKIP", "judge"],
+        ["SKIP", "push-pull"],
+        ["OK", "down"],
+        ["SKIP", "read-keys"],
+    ]
+    assert json.loads((report / "down.lines").read_text())["state"] == "ok"
+    assert report.stat().st_mode & 0o777 == 0o700
+    report.rename(server.base / "first-report")
+    calls_before = len(server.events("ssh"))
+    again = server.call()
+    assert again.returncode != 0 and len(server.events("ssh")) == calls_before + 1
+    assert len(server.down_calls()) == 1
+    assert (server.guest / "etc/porelo-host/firewall.nft").read_text() == "retained firewall\n"
+
+
+def test_rented_down_owner_token_protects_another_runs_host(rented):
+    """Prevent cleanup taking down a host after its staging ownership has changed."""
+    server = rented(steal_owner=True)
+    done = server.call()
+    assert done.returncode != 0 and not server.down_calls()
+    assert (server.guest / "run/porelo-rehearsal/owner").read_text() == "another-run\n"
+    assert (server.guest / "etc/porelo-host/firewall.nft").exists()
+
+
+@pytest.mark.parametrize("settings", [{"check_failure": True}, {"before_inventory": True}])
+def test_rented_down_ran_condition_does_not_claim_removal_without_an_inventory(rented, settings):
+    """Prevent a failed bootstrap being reported as a host whose down actually ran."""
+    server = rented(**settings)
+    done = server.call()
+    assert done.returncode != 0 and not server.down_calls()
+    report, steps = server.report()
+    reason = "check failed before up" if settings.get("check_failure") else "up did not reach its inventory"
+    assert any(line.startswith("SKIP down ") and reason in line for line in steps)
+    assert not any(line.startswith("OK down ") for line in steps)
+    assert not (report / "down.lines").exists()
+    assert not (server.guest / "run/porelo-rehearsal").exists()
+
+
+def test_rented_down_attempts_a_partial_inventory_and_reports_the_actual_failure(rented):
+    """Prevent partial inventory files from silently bypassing the host's real removal checks."""
+    server = rented(before_inventory=True, partial_inventory=True)
+    done = server.call()
+    assert done.returncode != 0 and len(server.down_calls()) == 1
+    report, steps = server.report()
+    assert any(line.startswith("FAIL down ") and "exit 2" in line for line in steps)
+    assert json.loads((report / "down.lines").read_text())["state"] == "failed"
+
+
+@pytest.mark.parametrize("code", [2, 124, 255])
+def test_rented_down_exit_status_and_saved_up_lines_survive_cleanup_failures(rented, code):
+    """Prevent losing completed up evidence, hiding down's real status, or retrying a dead connection."""
+    server = rented(**({"cleanup_rc": code} if code in (124, 255) else {"down_rc": code}))
+    done = server.call()
+    assert done.returncode != 0
+    report, steps = server.report()
+    assert json.loads((report / "up.lines").read_text())["state"] == "host"
+    assert any(line.startswith("FAIL down ") and f"exit {code}" in line for line in steps)
+    assert steps[-1].startswith("LEFT on server ")
+    if code in (124, 255):
+        assert not server.down_calls()
+        assert server.events("ssh")[-1]["remote"][:2] == ["bash", "-s"]
+    else:
+        assert len(server.down_calls()) == 1
+        assert json.loads((report / "down.lines").read_text())["state"] == "ok"
+
+
+@pytest.mark.parametrize("state", ["failed", "waiting"])
+def test_rented_down_failure_lines_cannot_be_hidden_by_a_zero_exit_status(rented, state):
+    """Prevent accepting an incomplete removal when its process incorrectly exits successfully."""
+    server = rented(down_state=state)
+    done = server.call()
+    assert done.returncode != 0 and len(server.down_calls()) == 1
+    report, steps = server.report()
+    assert json.loads((report / "down.lines").read_text())["state"] == state
+    assert any(line.startswith("FAIL down ") for line in steps)
+    assert steps[-1].startswith("LEFT on server ")
+
+
+@pytest.mark.parametrize("zone", [None, "zone-2"])
+def test_rented_delete_instruction_identifies_the_server_and_retained_software_at_the_current_utc_time(rented, zone):
+    """Prevent delaying deletion because a report falsely claims that the rented server was restored."""
+    server = rented()
+    done = server.call(*(() if zone is None else ("--zone", zone)))
+    assert done.returncode == 0, done.stderr
+    report, steps = server.report()
+    place = "" if zone is None else f" in zone {zone}"
+    assert (
+        steps[-1]
+        == done.stderr.splitlines()[-1]
+        == (
+            f"delete the server 192.0.2.10{place} now (2033-05-18T03:33:20Z); "
+            "the host's down ran, its software stays until the server is deleted"
+        )
+    )
+    assert (server.guest / "packages").exists() and (server.guest / "etc/porelo-host/firewall.nft").exists()
+
+
+@pytest.mark.parametrize("zone", ["", "ZONE", "zone/x", "zone\nother"])
+def test_rented_invalid_zones_are_refused_before_any_ssh(rented, zone):
+    """Prevent an ambiguous location from reaching the server-deletion instruction."""
+    server = rented()
+    done = server.call("--zone", zone)
+    assert done.returncode != 0 and not server.events("ssh")
+
+
+@pytest.mark.parametrize("age", [19799, 19800])
+def test_rented_hard_stop_default_really_bounds_the_lease_at_19800_seconds(rented, age):
+    """Prevent a changed default deadline from silently extending the paid server lease."""
+    from datetime import datetime, timezone
+
+    server = rented(sleep_before_inventory=True)
+    ordered = datetime.fromtimestamp(2000000000 - age, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    done = server.call("--order-time", ordered)
+    assert done.returncode != 0
+    if age == 19800:
+        assert not server.events("ssh")
+    else:
+        assert server.events("ssh"), done.stderr
+        assert "hard stop" in done.stderr
+        report, steps = server.report()
+        assert any(line.startswith("SKIP down ") for line in steps)
+        assert "the host's down ran" not in steps[-1]
+
+
+def test_rented_interrupt_stops_the_real_remote_unit_before_down(rented):
+    """Prevent an installation owned by the remote supervisor continuing after cleanup."""
+    server = rented(up_sleep=True)
+    done = server.call(signal_at="sleeping")
+    assert done.returncode != 0 and len(server.down_calls()) == 1
+    assert all(process.poll() is not None for process in server.jobs)
+    assert server.events("systemctl")[0]["args"][0] == "stop"
+
+
+def test_rented_cleanup_signals_do_not_make_its_children_ignore_term_or_repeat_down(rented):
+    """Prevent a signal during cleanup from disabling timeout termination or running down twice."""
+    server = rented(cleanup_sleep=True)
+    done = server.call(signal_at="cleanup-sleeping")
+    assert done.returncode != 0 and len(server.down_calls()) == 1
+    assert server.events("cleanup_signal")[0]["disposition"] == int(signal.SIG_DFL)
+
+
+def test_rented_check_uses_the_roles_limits_choices_and_package_wait(rented):
+    """Prevent preflight bypassing the port and package-lock checks that installation relies on."""
+    server = rented(check_failure=True)
+    done = server.call()
+    assert done.returncode != 0
+    checks = server.events("check")
+    assert len(checks) == 1
+    assert checks[0]["limits"] == json.loads((ROOT / "roles/check/files/limits.json").read_text())
+    assert checks[0]["choices"] == {"forge": True, "kvm": False, "ports": [3001]}
+    assert checks[0]["wait"] == 300
+    report, steps = server.report()
+    assert json.loads((report / "check.out").read_text())["findings"][0]["state"] == "fail"
+    assert any(line.startswith("FAIL check ") and str(report / "check.out") in line for line in steps)
+
+
+@pytest.mark.parametrize("cpu,device", [(True, True), (False, True), (True, False), (False, False)])
+def test_rented_kvm_is_enabled_only_when_both_cpu_and_device_were_observed(rented, cpu, device):
+    """Prevent installing a host with KVM that this machine cannot actually use."""
+    server = rented(cpu=cpu, device=device)
+    done = server.call("--login", "rehearsal")
+    assert done.returncode == 0, done.stderr
+    inventory = (server.guest / "root/porelo-host-inventory.yml").read_text()
+    assert f"porelo_host_kvm: {str(cpu and device).lower()}" in inventory
+    assert "porelo_host_name: rented" in inventory
+    assert all(call["remote"][:2] == ["sudo", "-n"] for call in server.events("ssh"))
+
+
+def test_rented_ssh_never_uses_another_identity_or_unpinned_host_key(rented):
+    """Prevent cleanup reconnecting with another identity or trusting a changed server key."""
+    server = rented()
+    done = server.call()
+    assert done.returncode == 0, done.stderr
+    calls = server.events("ssh")
+    assert len(calls) > 3
+    for index, call in enumerate(calls):
+        args = call["args"]
+        for option in (
+            "BatchMode=yes",
+            "IdentitiesOnly=yes",
+            "ConnectTimeout=5",
+            "IdentityAgent=none",
+            f"UserKnownHostsFile={server.state / 'known_hosts'}",
+            "GlobalKnownHostsFile=/dev/null",
+            f"StrictHostKeyChecking={'accept-new' if index == 0 else 'yes'}",
+        ):
+            assert any(args[position : position + 2] == ["-o", option] for position in range(len(args)))
+        assert args[args.index("-i") + 1] == str(server.key)
+
+
+@pytest.mark.parametrize("step", ["refuse-existing", "check", "up"])
+def test_rented_a_signal_after_ok_cannot_also_fail_the_completed_step(rented, step):
+    """Prevent a signal in step reporting from producing contradictory or unnamed results."""
+    server = rented()
+    done = server.call(signal_on_ok=step)
+    assert done.returncode != 0
+    report, steps = server.report()
+    assert any(line.startswith(f"OK {step} ") for line in steps)
+    assert not any(line.startswith(f"FAIL {step} ") for line in steps)
+    assert any("between steps" in line and step in line for line in steps if line.startswith("FAIL "))
+    assert len(server.down_calls()) == (1 if step == "up" else 0)
+
+
+def test_rented_stop_tree_allows_term_cleanup_before_forcing_a_child_to_die(tmp_path):
+    """Prevent immediate KILL from skipping a process's TERM cleanup and leaving child processes alive."""
+    library = tmp_path / "library.sh"
+    source = REHEARSE.read_text()
+    library.write_text(source.split("\n[ $# -ge 1 ] || usage\n")[0])
+    parent = tmp_path / "parent.sh"
+    ready = tmp_path / "ready"
+    cleaned = tmp_path / "cleaned"
+    parent.write_text(
+        f"trap 'sleep 0.1; printf cleaned > {shlex.quote(str(cleaned))}; exit 0' TERM\n"
+        f"printf ready > {shlex.quote(str(ready))}\n"
+        "while :; do sleep 0.1; done\n"
+    )
+    code = f""". {shlex.quote(str(library))}
+sh {shlex.quote(str(parent))} &
+worker=$!
+while [ ! -f {shlex.quote(str(ready))} ]; do sleep 0.01; done
+stop_tree "$worker"
+wait "$worker" || true
+"""
+    done = subprocess.run(["sh", "-c", code], capture_output=True, text=True, timeout=8, check=False)
+    assert done.returncode == 0, done.stderr
+    assert cleaned.read_text() == "cleaned"
+
+
+@pytest.mark.parametrize(
+    "address,arguments",
+    [
+        ("example.org", ()),
+        ("192.0.2.10\n192.0.2.11", ()),
+        ("192.0.2.10 extra", ()),
+        ("192.0.2.10", ("--key", "/missing/key")),
+        ("192.0.2.10", ("--order-time", "2099-01-01T00:00Z")),
+        ("192.0.2.10", ("--order-time", "yesterday")),
+        ("192.0.2.10", ("--login", "root;id")),
+    ],
+)
+def test_rented_unsafe_targets_keys_and_times_cannot_reach_ssh(rented, address, arguments):
+    """Prevent malformed inputs or future lease times from selecting a server or shell command."""
+    server = rented()
+    done = server.call(*arguments, address=address)
+    assert done.returncode != 0 and not server.events("ssh")
+
+
+def test_rented_an_existing_local_state_cannot_be_overwritten(rented):
+    """Prevent losing an earlier run's server ownership or pinned key records."""
+    server = rented()
+    server.state.mkdir(parents=True)
+    (server.state / "keep").write_text("earlier run\n")
+    done = server.call()
+    assert done.returncode != 0 and not server.events("ssh")
+    assert (server.state / "keep").read_text() == "earlier run\n"
+
+
+@pytest.mark.parametrize("code", [124, 255])
+def test_rented_remote_playbook_failures_keep_their_down_lines(rented, code):
+    """Prevent a playbook exit code being mistaken for failure of the still-open SSH connection."""
+    server = rented(down_rc=code)
+    done = server.call()
+    assert done.returncode == code and len(server.down_calls()) == 1
+    report, steps = server.report()
+    assert json.loads((report / "up.lines").read_text())["state"] == "host"
+    assert json.loads((report / "down.lines").read_text())["state"] == "ok"
+    assert any(line.startswith("FAIL down ") and f"exit {code}" in line for line in steps)
+
+
+def test_rented_downs_failure_status_cannot_be_replaced_by_an_artifact_read_error(rented):
+    """Prevent an error reading diagnostics from hiding the failure returned by the actual down process."""
+    server = rented(down_rc=2, emit_failure=True)
+    done = server.call()
+    assert done.returncode == 2 and len(server.down_calls()) == 1
+    report, steps = server.report()
+    assert any(line.startswith("FAIL down ") and "exit 2" in line for line in steps)
+    assert json.loads((report / "up.lines").read_text())["state"] == "host"
+
+
+@pytest.mark.parametrize("reply_first", [False, True])
+@pytest.mark.parametrize("received_signal", [signal.SIGINT, signal.SIGTERM, signal.SIGALRM])
+def test_rented_signal_during_claim_cannot_abandon_owned_staging(rented, reply_first, received_signal):
+    """Prevent an interrupted wait losing a completed claim and stranding the run's staging directory."""
+    server = rented(claim_pause=True, claim_reply_first=reply_first)
+    done = server.call(signal_at="claim-sleeping", signal_number=received_signal)
+    assert done.returncode != 0
+    assert not (server.guest / "run/porelo-rehearsal").exists()
+    assert not server.events("check") and not server.down_calls()
+    assert len(server.events("ssh")) == 2, "the confirmed claim must be followed by owner-checked cleanup"
+
+
+def test_rented_signal_before_wait_stops_the_active_step_promptly(rented):
+    """Prevent a signal handled immediately before wait from leaving the installation running until it finishes."""
+    server = rented(up_sleep=True)
+    done = server.call(signal_before_wait="up")
+    assert done.returncode != 0 and len(server.down_calls()) == 1
+    assert all(process.poll() is not None for process in server.jobs)
+
+
+@pytest.mark.parametrize("unit_state", ["inactive", "failed"])
+def test_rented_stopped_transient_units_cannot_block_down_and_are_reset(rented, unit_state):
+    """Prevent a stopped failed unit from bypassing down or leaving its failed state behind."""
+    server = rented(retained_unit_state=unit_state)
+    done = server.call()
+    assert done.returncode == 0, done.stderr
+    assert len(server.down_calls()) == 1
+    assert (server.base / "unit-reset").exists()
+    stopped = next(row for row in server.events("systemctl") if row["args"][0] == "stop")
+    reset = next(row for row in server.events("systemctl") if row["args"][0] == "reset-failed")
+    assert reset["args"][1] == stopped["args"][1]
+
+
+@pytest.mark.parametrize("check_failed", [False, True])
+def test_rented_skipped_down_deletion_line_cannot_claim_the_playbook_ran(rented, check_failed):
+    """Prevent the deletion instruction claiming down ran or packages were installed when neither happened."""
+    server = rented(**({"check_failure": True} if check_failed else {"before_inventory": True}))
+    done = server.call()
+    assert done.returncode != 0 and not server.down_calls()
+    report, steps = server.report()
+    final = steps[-1]
+    assert final == done.stderr.splitlines()[-1]
+    assert "the host's down ran" not in final
+    assert (server.guest / "packages").exists() is not check_failed
+    if check_failed:
+        assert "check failed before up" in final and "up installed no packages" in final
+    else:
+        assert "up did not reach its inventory" in final and "packages" in final
+
+
+def test_rented_interrupted_inventory_write_cannot_publish_an_unstarted_host(rented):
+    """Prevent cleanup using a half-written inventory before the up playbook can start."""
+    server = rented(inventory_pause=True)
+    done = server.call(signal_at="inventory-sleeping")
+    assert done.returncode != 0 and not server.down_calls()
+    assert not (server.guest / "root/porelo-host-inventory.yml").exists()
+    assert (server.guest / "root/porelo-host-inventory.yml.tmp").stat().st_size > 0
+
+
+@pytest.mark.parametrize("failure", ["check_upload_failure", "check_transport_error"])
+def test_rented_check_errors_cannot_point_at_missing_or_empty_findings(rented, failure):
+    """Prevent an installation failure directing diagnosis away from the log containing its real error."""
+    server = rented(**{failure: True})
+    done = server.call()
+    assert done.returncode != 0
+    report, steps = server.report()
+    assert (report / "check.log").stat().st_size > 0
+    assert any(line.startswith("FAIL check ") and str(report / "check.log") in line for line in steps)
+
+
+@pytest.mark.parametrize("write", ["collection", "machine"])
+def test_rented_prepare_writes_cannot_overwrite_another_owners_files(rented, write):
+    """Prevent ownership changing between setup commands from overwriting a foreign collection or machine file."""
+    server = rented(steal_before_write=write)
+    machine = server.base / "machine.yml"
+    machine.write_text("organization: {}\n")
+    done = server.call("--machine-file", str(machine))
+    assert done.returncode != 0 and not server.down_calls()
+    assert (server.guest / "run/porelo-rehearsal/owner").read_text() == "another-run\n"
+    if write == "collection":
+        assert (server.guest / "run/porelo-rehearsal/porelo-host.tar.gz").read_text() == "foreign collection\n"
+    else:
+        assert (server.guest / "etc/porelo-host/setup/machine.yml").read_text() == "foreign machine\n"
+
+
+def test_rented_pending_signal_is_checked_again_before_waiting_on_a_new_step(tmp_path):
+    """Prevent a signal received before child launch from waiting for work that should be aborted."""
+    library = tmp_path / "library.sh"
+    source = REHEARSE.read_text().split("\n[ $# -ge 1 ] || usage\n")[0]
+    library.write_text(source.replace("rented_abort_pending() {", "original_abort_pending() {", 1))
+    report = tmp_path / "report"
+    report.mkdir()
+    waited = tmp_path / "wait-entered"
+    code = f""". {shlex.quote(str(library))}
+report={shlex.quote(str(report))}
+pending_code=0 pending_reason='' current='' last_step='' active='' hook_sent=no
+rented_abort_pending() {{
+    original_abort_pending
+    if [ "$hook_sent" = no ]; then hook_sent=yes; rented_signal TERM 143; fi
+}}
+wait() {{ printf waited > {shlex.quote(str(waited))}; command wait "$@"; }}
+cleanup() {{
+    status=$?
+    trap - EXIT
+    if [ -n "$active" ]; then stop_tree "$active"; command wait "$active" || true; fi
+    exit "$status"
+}}
+trap cleanup EXIT
+rented_step up 'start a child only with no pending signal' sleep 30
+"""
+    process = subprocess.Popen(
+        ["sh", "-c", code], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=3)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.communicate()
+        pytest.fail("a pending signal entered wait for a newly launched child")
+    assert process.returncode == 143, stdout + stderr
+    assert not waited.exists()

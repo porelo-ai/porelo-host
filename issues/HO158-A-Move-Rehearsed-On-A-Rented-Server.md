@@ -18,16 +18,23 @@ spends a test on it.
 
 ## Plan
 
-- **The mode.** `build/rehearse-move.sh rented <address> --key <file> --machine-file <file> --order-time <UTC>`:
+- **The mode.** `build/rehearse-move.sh rented <address> --key <file> [--login <user>] [--machine-file <file>]
+  [--order-time <UTC>] [--zone <name>]`:
   - it makes and deletes no VM;
   - it reaches root by the given key alone (`IdentitiesOnly`), with the server's host key pinned at the first
     connection;
   - it refuses a server that already holds `/etc/porelo-host`, so it never acts on a host it did not set up.
+  - one root command checks the host and staging paths, exclusively creates staging and writes its owner token;
+    an interrupted claim finishes before its exact answer decides ownership; cleanup and every preparation write
+    check the token before acting on the server;
+  - the given private key must have an Ed25519 public half, checked before connecting; pinning replaces symlinks
+    rather than writing through them.
 - **The order of the run:**
   1. **Checks.** `porelo-host-check` first, its `vmx`/`svm` and `/dev/kvm` answer kept. With no KVM, the run goes on
      with the pool off and says so.
   2. **up.** The collection copied and installed, with the given machine file (the test organization's) and
-     `porelo_host_kvm` as the check said. up is judged by its lines, as the local rehearsal judges it.
+     `porelo_host_kvm` as the check said. Its inventory is moved into place immediately before the playbook starts.
+     up is judged by its lines, as the local rehearsal judges it.
   3. **The stop.** `porelo-host-stop --stdin vault-new keys` in the test person's account. Its lines come from the test
      identity's vault through a passphrase command, on stdin only.
   4. **The project.** `org refresh` takes the test token on stdin for the first migration. The run waits for the
@@ -46,7 +53,13 @@ spends a test on it.
 - **Fail fast.** A repeated failure stops the run at once and names what repeated. Every exit, an interrupt included,
   runs `down` and the key removal, and names whatever is left.
 - **The request to delete.** After `down`, the run's last line names the server, its zone and the time to delete it.
-  Deleting it in the provider's console stays the operator's.
+  Deleting it in the provider's console stays the operator's. The run never restores the server: the host's own
+  down keeps installed software and its firewall, and only the run's staging directory is removed afterward.
+- **Cleanup evidence.** `OK down` requires an actual playbook run with no failed or waiting lines. No inventory
+  means `SKIP down`, while a partial inventory still goes through down. The final line distinguishes a check that
+  failed before up from an up that never published its inventory, and names packages that may stay. Every remote
+  playbook exit still sends its lines; a local SSH failure or timeout starts no further remote reads. Already saved
+  report files are replaced only by complete copies.
 - **Red first:** the refusal over an existing `/etc/porelo-host`, and the trap that runs `down` on an interrupt, each
   tested against a stand-in server (a local rehearsal VM) before the first rented run.
 
@@ -56,8 +69,8 @@ spends a test on it.
   - the run passes end to end against the stand-in organization;
   - a second run on the same VM is refused;
   - an interrupt in the middle leaves `down` run and says so.
-- On one rented server, with the operator's word: the report holds a line per step, the server is left with no host,
-  and the read keys at central are deleted.
+- On one rented server, with the operator's word: the report holds a line per step, the host's own down has run,
+  its retained software and firewall stay until the server is deleted, and the read keys at central are deleted.
 
 ## To be checked
 
