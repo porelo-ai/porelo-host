@@ -68,6 +68,7 @@ it is left out.
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho125"></a>[HO125](HO125-What-A-Task-And-A-Job-Take.md) | - | [HO127](#ho127) | The measuring run also reads a task, an agent's fixed start and Maven jobs, so a size can rest on what work takes: the tool for one measuring issue in Porelo. |
 | <a id="ho127"></a>[HO127](HO127-The-Half-For-Jobs-Is-A-Setting.md) | S | - | The share of the host for jobs and the VM pool becomes a setting, today's half its default, `up`'s refusal naming it. |
+| <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
 
 ## Analyzed
 
@@ -113,7 +114,6 @@ it is left out.
 | <a id="ho90"></a>[HO90](HO90-Each-Persons-State-Named-By-Status.md) | S | - | `org status` leaves out revoked and refused logins and names a cut-off purge or a removal's window `pending`. |
 | <a id="ho109"></a>[HO109](HO109-How-Long-The-Host-Has-Not-Read-Its-Organization.md) | - | - | `org status` says when the host last read its organization, as a follow that cannot fetch keeps a removed member's login with nothing said |
 | <a id="ho111"></a>[HO111](HO111-The-Forges-Admin-Tokens-A-Project-Helper-Leaves.md) | - | - | A run of the project helper leaves no lasting admin token on the host's forge |
-| <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | The forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
 
 ## Estimated
 
