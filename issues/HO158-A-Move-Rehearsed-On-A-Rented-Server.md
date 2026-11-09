@@ -1,6 +1,6 @@
 # HO158 — A Move Rehearsed On A Rented Server
 
-**Status:** Backlog.
+**Status:** Implementing.
 **Size:** L - a new mode of `build/rehearse-move.sh` that drives a whole move on a real server, failing closed at every
 step, and one try on a rented server, which needs the operator's word.
 
