@@ -773,8 +773,9 @@ rented_stop() {
     printf 'vault-new %s\n' "$encoded" | on_person porelo host stop-secrets --stdin vault-new
     encoded=''
     on_person porelo host forge-token --if-forge
-    forge=$(on_rented sed -n 's/^host=//p' /etc/porelo-host/forge.conf)
-    case $forge in ''|*[!a-z0-9-]*) echo "no forge name in forge.conf: $forge"; return 1 ;; esac
+    # The client names the central token's vault entry after the forge's name, as forge.conf gives it.
+    forge=$(on_rented sed -n 's/^name=//p' /etc/porelo-host/forge.conf)
+    case $forge in ''|*[!a-z0-9.-]*) echo "no forge name in forge.conf: $forge"; return 1 ;; esac
     token=$("$central_token") || { echo 'the central token program failed'; return 1; }
     [ -n "$token" ] || { echo 'the central token program gave nothing'; return 1; }
     printf '%s\n' "$token" | on_person porelo vault put --json "$forge.central"
@@ -818,8 +819,9 @@ rented_push_pull() {
 
 # HO165's measurement: the answers go into the report as they come, the token itself never.
 rented_refused_token() {
-    forge=$(on_rented sed -n 's/^host=//p' /etc/porelo-host/forge.conf)
-    case $forge in ''|*[!a-z0-9-]*) echo "no forge name in forge.conf: $forge"; return 1 ;; esac
+    # The client names the central token's vault entry after the forge's name, as forge.conf gives it.
+    forge=$(on_rented sed -n 's/^name=//p' /etc/porelo-host/forge.conf)
+    case $forge in ''|*[!a-z0-9.-]*) echo "no forge name in forge.conf: $forge"; return 1 ;; esac
     out=$report/refused-token.answers
     : > "$out"
     measured=0

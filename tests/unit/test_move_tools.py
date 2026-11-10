@@ -850,7 +850,7 @@ elif name == 'ansible-playbook':
     host = guest / 'etc/porelo-host'
     if verb == 'up':
         host.mkdir(parents=True, exist_ok=True)
-        (host / 'forge.conf').write_text('host=rented\naccount=rehearsal\n')
+        (host / 'forge.conf').write_text('host=rented\nname=rented.localhost\naccount=rehearsal\n')
         (host / 'firewall.nft').write_text('retained firewall\n')
         # Up owns root's keys: the base role seeds them, and a follow later writes the host admins' keys there.
         root_keys = guest / 'etc/ssh/authorized_keys/root'
@@ -1726,7 +1726,7 @@ def test_rented_phase_two_hands_secrets_on_standard_input_alone(rented):
     stop = next(row for row in porelo if row["args"][:2] == ["host", "stop-secrets"])
     assert stop["args"] == ["host", "stop-secrets", "--stdin", "vault-new"] and stop["stdin_lines"] == ["vault-new"]
     put = next(row for row in porelo if row["args"][:2] == ["vault", "put"])
-    assert put["args"][-1] == "rented.central" and put["stdin_has_token"]
+    assert put["args"][-1] == "rented.localhost.central" and put["stdin_has_token"]
     assert all(row["args"][:2] == ["vault", "put"] for row in porelo if row["stdin_has_token"])
     events = (server.base / "events").read_text()
     report = server.report()[0]
