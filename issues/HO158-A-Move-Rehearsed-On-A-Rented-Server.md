@@ -88,4 +88,9 @@ spends a test on it.
 ## To be checked
 
 - That `porelo-host-push` takes the central token from a pipe as it does from a terminal.
-- Whether the rented servers offer KVM, measured by the run's first step.
+- (a) on one rented server (Scaleway Elastic Metal, fr-par-1, ordered 2026-11-10 13:16Z, deleted by the operator the
+  same day): `build/rehearse-move.sh rented` from main eeb3c08 with the pinned 462 packages and the foo-org machine
+  file, as `ubuntu` with sudo, ran 13:31:52Z to 13:36:47Z. `OK` refuse-existing, `OK` check (KVM: CPU flag and
+  `/dev/kvm` both there), `OK` up (512 lines, none failed or waiting; up did not stop for a person, since a fresh host
+  has none until the follow makes one), `OK` down (no failed or waiting lines); stop, project, judge, push-pull and
+  read-keys `SKIP` for phase 2. The last line named the server, its zone and the time to delete it.
