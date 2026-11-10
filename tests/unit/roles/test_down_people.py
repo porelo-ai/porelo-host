@@ -66,7 +66,7 @@ def test_down_refuses_teardown_while_people_hold_memberships(tmp_path):
     msg = failed[-1]["msg"]
     assert "alice" in msg and "host-admin" in msg and "alpha project-admin" in msg, msg
     assert "bob" in msg and "beta developer" in msg, msg
-    assert "carol" in msg, msg
+    assert "carol" not in msg, f"a host admin's own membership must not block down: {msg}"
     assert "dan" not in msg, f"a locked record with zero memberships left must not block down: {msg}"
     assert "Take the project off" in msg and "Purge" in msg, msg
     for secret_like in ("PLANTED_ALICE", "PLANTED_BOB", "PLANTED_CAROL", "PLANTED_DAN"):
@@ -111,6 +111,17 @@ def test_down_goes_through_when_people_directory_is_absent_or_holds_no_membershi
     locked.write_text("locked=true\nssh=ssh-ed25519 AAAA\nexpires=\n")
     locked.chmod(0o600)
     code, _, output = run_down(tmp_path, empty_memberships)
+    assert code == 0, output
+
+
+def test_a_host_admin_alone_lets_down_through(tmp_path):
+    """An organization always has a host admin, so counting that membership would keep every followed host up."""
+    people = tmp_path / "people"
+    people.mkdir(mode=0o700)
+    record = people / "hostadmin.conf"
+    record.write_text("member=host-admin\nlocked=false\nssh=ssh-ed25519 AAAA\nexpires=\n")
+    record.chmod(0o600)
+    code, _, output = run_down(tmp_path, people)
     assert code == 0, output
 
 

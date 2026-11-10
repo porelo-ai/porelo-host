@@ -47,8 +47,8 @@ asked afresh with `porelo-host-project give-back-check`: `ahead`, `moved-on` or 
 a row the project file gives no central address has no copy there to hold it, and a project whose first repository is
 not yet on the forge has none either. `porelo-host down --give-back-anyway` gives the host back
 knowingly, its work lost. Refuses while any person record in
-`/etc/porelo-host/people/` still holds a membership, naming each person and their memberships with `"Take the project
-off"` and `"Purge"`. Once no membership remains, it takes the homeserver, the VM pool and the forge off the host and
+`/etc/porelo-host/people/` still holds a project membership (a host admin's own does not count), naming each
+person and their memberships with `"Take the project off"` and `"Purge"`. Once no membership remains, it takes the homeserver, the VM pool and the forge off the host and
 removes any legacy VPN files last. Every step takes down only what is there, so `down` after a failed `up` works
 too. **The firewall stays on,** so that a machine kept after `down` does not expose the next service unasked; `down` ends by saying so, with the command that takes it off.
 

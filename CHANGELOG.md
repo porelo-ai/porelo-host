@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `down` no longer counts a host admin's own membership: an organization always has a host admin, so a host that
+  followed one could never be taken down. Any project membership still stops it.
 - Follow, forge gate and pool units use the pinned native host package. The collection installs the forge hook at
   the native follow's link target; each push to the host's forge is judged by `porelo-host judge-push`.
 

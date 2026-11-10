@@ -1,6 +1,6 @@
 ---
-# Start of down: refuse before anything is stopped while any person's record still holds a membership. Only names and
-# memberships leave the reader; card keys stay in root's 0600 records.
+# Start of down: refuse before anything is stopped while any person's record still holds a project membership; the host
+# admin's own does not count. Only names and memberships leave the reader; card keys stay in root's 0600 records.
 - name: people | Read the memberships still held in the people directory
   ansible.builtin.command:
     argv:
@@ -75,7 +75,8 @@
                                     "".join(line + "\n" for line in lines[index + 3 :]))
             ):
                 fail(f"the record for {user} is malformed")
-            if members:
+            # Down is the host admin's own act, and an organization never lacks one: only other memberships stop it.
+            if any(member != "host-admin" for member in members):
                 holders.append(f"{user} ({', '.join(members)})")
         print(json.dumps(holders))
       - "{{ __porelo_people_dir }}"

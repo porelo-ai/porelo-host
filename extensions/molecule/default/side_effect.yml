@@ -40,12 +40,6 @@
         executable: /bin/bash
       changed_when: false
 
-    # Down refuses while anyone holds a membership, and the follow keeps its host admin one: root purges them first.
-    - name: Read whether the follow left its host admin
-      ansible.builtin.stat:
-        path: /etc/porelo-host/people/hostadmin.conf
-      register: side_effect_host_admin
-
     # Check that up placed what down is expected to remove, so teardown cannot pass vacuously.
     - name: Read every account on the host before down
       ansible.builtin.getent:

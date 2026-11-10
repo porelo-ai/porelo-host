@@ -23,8 +23,9 @@ and the `porelo-people` group; the verified organization state belongs in
 memberships, `locked=` state, the one card's `ssh=` key and `expires=`, with an optional lock `reason=`.
 `tasks_from: people`
 runs at the start of `down` and refuses before
-anything is stopped while any record in `/etc/porelo-host/people/` holds a membership, naming each person and their
-memberships with `"Take the project off"` and `"Purge"`.
+anything is stopped while any record in `/etc/porelo-host/people/` holds a project membership, naming each person and
+their memberships with `"Take the project off"` and `"Purge"`. A host admin's own membership does not stop it: down is
+the host admin's act, and an organization never lacks one.
 
 Root's persistent `porelo-host-follow.timer` runs `org follow` every five minutes. It fetches the organization using
 the host's deploy key in an isolated unit with network access, reconciles cards and project memberships, and publishes

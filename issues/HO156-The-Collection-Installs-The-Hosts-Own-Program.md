@@ -112,3 +112,7 @@ installation, the measuring run and a pool VM's give-back.
   Molecule refuses without `PORELO_HOST_DEB`. The job now fetches the pinned published `porelo-host` and `porelo` of
   snapshot 462, signed by the pinned key, with `build/fetch-host-deb.sh`; a unit test over the workflow, seen red on
   main's, holds it.
+- Main's Molecule jobs then stopped at side_effect's down on hostadmin's host-admin membership: the package's purge
+  takes only a person seven days gone, and an organization cannot leave its host admin, so down refused on every
+  followed host. The operator chose (2026-11-10) that down does not count the host-admin membership; any other
+  membership still stops it. The down test that held the old rule was turned round, seen red first.
