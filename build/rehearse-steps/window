@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# The window's step of a rented host's rehearsal: runs tool/rehearse_window.sh from a porelo-frontend checkout
+# against the rented host, the window in a local VM. The rehearsal runs it once, from the porelo-host checkout,
+# with the REHEARSAL_* values of its step contract in the environment; it reads three more:
+#
+#   REHEARSAL_WINDOW_VM        USER@ADDRESS of the local VM the window runs in
+#   REHEARSAL_WINDOW_VM_KEY    the key file that reaches that VM
+#   REHEARSAL_WINDOW_CHECKOUT  a porelo-frontend checkout at the commit to run
+#
+# Exits 0 when every scenario is OK, 77 (SKIP, the last line says why) when the VM, the checkout or the time is
+# missing, and 1 for a failed rehearsal or a contract value missing. The report goes to REHEARSAL_REPORT/window.d.
+# The test person's key reaches the run only through the agent REHEARSAL_PERSON_AGENT names, for that one call.
+set -euo pipefail
+
+skip() {
+    echo "window: $*"
+    exit 77
+}
+
+for name in REHEARSAL_HOST REHEARSAL_HOST_NAME REHEARSAL_HOST_KEY REHEARSAL_PERSON REHEARSAL_PERSON_AGENT \
+    REHEARSAL_PROJECT REHEARSAL_REPORT REHEARSAL_DEADLINE; do
+    [ -n "${!name:-}" ] || {
+        echo "window: $name is not set"
+        exit 1
+    }
+done
+case "$REHEARSAL_DEADLINE" in *[!0-9]*) echo "window: REHEARSAL_DEADLINE is not in Unix seconds" && exit 1 ;; esac
+for name in REHEARSAL_WINDOW_VM REHEARSAL_WINDOW_VM_KEY REHEARSAL_WINDOW_CHECKOUT; do
+    [ -n "${!name:-}" ] || skip "$name is not set"
+done
+rehearse=$REHEARSAL_WINDOW_CHECKOUT/tool/rehearse_window.sh
+[ -x "$rehearse" ] || skip "the checkout has no executable tool/rehearse_window.sh"
+vm=(--vm "$REHEARSAL_WINDOW_VM" --vm-key "$REHEARSAL_WINDOW_VM_KEY")
+
+# Five minutes kept for the script's own cleanup, and every call ended half a minute before the deadline.
+left=$((REHEARSAL_DEADLINE - $(date +%s)))
+[ "$((left / 60 - 5))" -ge 10 ] || skip "only $((left / 60 - 5)) minutes left for the window, fewer than 10"
+
+# Without the VM, or with one that lacks something, the rehearsal goes on without the window. The check gets at most
+# a minute: a VM that does not answer must not hold the rehearsal.
+status=0
+said=$(env -u SSH_AUTH_SOCK timeout --signal=TERM --kill-after=10 60 "$rehearse" check "${vm[@]}" 2>&1) || status=$?
+if [ "$status" -ne 0 ]; then
+    [ -z "$said" ] || printf '%s\n' "$said"
+    [ "$status" -ne 124 ] && [ "$status" -ne 137 ] || skip "$REHEARSAL_WINDOW_VM did not answer the check within a minute"
+    skip "$(printf '%s\n' "$said" | tail -n 1)"
+fi
+printf '%s\n' "$said"
+
+left=$((REHEARSAL_DEADLINE - $(date +%s)))
+budget=$((left / 60 - 5))
+[ "$budget" -ge 10 ] || skip "only $budget minutes left for the window, fewer than 10"
+
+status=0
+SSH_AUTH_SOCK=$REHEARSAL_PERSON_AGENT timeout --signal=TERM --kill-after=20 $((left - 30)) \
+    "$rehearse" run "${vm[@]}" \
+    --host "$REHEARSAL_PERSON@$REHEARSAL_HOST" --host-key "$REHEARSAL_HOST_KEY" \
+    --host-name "$REHEARSAL_HOST_NAME" --project "$REHEARSAL_PROJECT" \
+    --report "$REHEARSAL_REPORT/window.d" --budget-minutes "$budget" || status=$?
+[ "$status" -ne 124 ] && [ "$status" -ne 137 ] || echo "window: stopped at the deadline"
+
+if [ -f "$REHEARSAL_REPORT/window.d/scenarios.txt" ]; then
+    echo "window: scenarios"
+    cat "$REHEARSAL_REPORT/window.d/scenarios.txt"
+fi
+[ "$status" -eq 0 ] || exit 1
