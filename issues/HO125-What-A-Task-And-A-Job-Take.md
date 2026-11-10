@@ -1,7 +1,10 @@
 # HO125 — What A Task And A Job Take
 
-**Status:** Backlog, by the operator's word. Nobody starts it yet: it follows the test, and its rented run needs their word,
-with its price and duration brought to them first.
+**Status:** Implementing. Its rented run still needs the operator's word, with its price and duration brought to them
+first; this round builds the tool and runs it on a local VM.
+
+**Size:** L - the measuring script learns three steps, each making and taking away what it reads, with their tests, the
+role's options and README, and a first run on a local VM.
 
 **What must be true.** `porelo.host.measure` also reads a task, an agent's fixed start, and a Maven build in a job at 1, 2 and 4
 parallel jobs and past the half, cold and with the cache, so a size can rest on what work takes and not on an idle host.
@@ -65,3 +68,24 @@ idle run makes. **Until this is done, a size that has to hold work does not rest
 - **[HO119](README.md#ho119)'s sizes:** each "not measured" there, the rule for parallel jobs, and what a person gives up below a size.
 - **`disk_free_gib`** in the check's limits, unset until work's disk is read.
 
+## Plan
+
+- **`task`**, in the shapes `room` and `both`: the run makes throwaway accounts as `porelo-host-person` would
+  (`useradd`, subordinate IDs, linger, `porelo-people` and, where they exist, `kvm` and `libvirt`), each with a
+  throwaway vault (`vault init` and `unlock --passphrase-stdin`, the passphrase a random one in the run's memory alone),
+  a checkout of a local repository, and five `porelo task start --agent stub --no-input --detach` tasks in `default`,
+  each named. It reads the accounts' slices: start time, memory peak, CPU time, disk growth; developers are raised 1, 2,
+  4 and on until a start fails or memory or CPU pressure (PSI) stays above its line, and the count where it stopped is a
+  fact. Each account's own homeserver is read from its unit, named in the facts, and stopped. The accounts go again with
+  their homes and linger, and a leftover stops the run as a failed `down` does.
+- **`agent`**: stays null with its why until a token is the operator's word on the rented run; `stub`'s fixed start is
+  read under `task`.
+- **`job`**, in the shapes `forge` and `both`: one project made through Forgejo's admin, one repository holding
+  `porelo-buildtools` at a pinned tag with a workflow building it with Maven; 1, 2 and 4 parallel jobs and past the
+  half, cold and with the cache, each its wall time and the runner's slices. Past the half goes through
+  [HO127](README.md#ho127)'s `porelo_host_work_share` on that `up`'s own command line and no other.
+- **`measure_steps`** takes `task` and `job` as measured; the README and argument specs say what each makes and takes
+  away.
+- **Red first:** with the `Machine` stand-in, each step's facts and its cleanup, a leftover account refused, an account
+  made by the run never kept after a failed step, and a share past the half reaching only that `up`.
+- **First run:** on a local VM, shape `room`, two stub tasks, about half an hour, before any rental.
