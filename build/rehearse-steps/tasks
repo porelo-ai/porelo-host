@@ -60,11 +60,16 @@ host_start() { # <task> [<start option>...]
 }
 # A start with a prompt stays with its run until the run ends, --host or not, so the pair's starts go on in the
 # background here, each bound to its run's minutes, and the status below tells when each runs.
+# The clients end with this step: a task started with --host runs on without its client, as an ended start showed.
+clients=''
+end_clients() { for client in $clients; do kill "$client" 2>/dev/null || true; done; }
+trap end_clients EXIT
 for name in a b; do
     timeout --kill-after=10 $(((answer_minutes + 10) * 60)) "$REHEARSAL_ORG" task start \
         --host "$REHEARSAL_PERSON@$REHEARSAL_HOST" --no-input --agent=pi --provider=openrouter --model="$model" \
         --clearance=deny -p "$REHEARSAL_PROJECT" -r "$REHEARSAL_REPOSITORY" --minutes=$((answer_minutes + 5)) \
         -P "$prompt" "rehearsal-$name" < /dev/null > "$REHEARSAL_REPORT/tasks-$name.start" 2>&1 &
+    clients="$clients $!"
 done
 # The third needs no run of its own: it is started and stopped.
 host_start c
