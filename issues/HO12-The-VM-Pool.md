@@ -1,7 +1,20 @@
 # HO12 — The VM Pool
 
-**Status:** Review.
-**Size:** L - one role here, but the pool is `porelo-machines`' to rent from, so what the role makes is a contract
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO12",
+  "title": "The VM Pool",
+  "state": "Review",
+  "size": "L",
+  "priority": "Medium",
+  "rank": 35,
+  "blockedBy": [],
+  "covers": "Role `vm_pool`: VMs with run accounts `porelo-machines` rents from, made by the same code as the test VM, deleted by name at `down`."
+}
+```
+
+**Why this size.** one role here, but the pool is `porelo-machines`' to rent from, so what the role makes is a contract
 with porelo-buildtools, and its VMs need nested KVM on the host.
 
 **What must be true.** Where the project names machine kinds for its tests, the host carries VMs with run accounts

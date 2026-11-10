@@ -1,6 +1,23 @@
 # HO126 — A Reverted Pool VM Keeps The Snapshot's Clock
 
-**Status:** Review. In `v0.5.12`, before the test, by the operator's word.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO126",
+  "title": "A Reverted Pool VM Keeps The Snapshot's Clock",
+  "state": "Review",
+  "size": "M",
+  "priority": "Medium",
+  "rank": 24,
+  "blockedBy": [],
+  "covers": "A pool VM reverted to its live snapshot keeps that clock, and `apt` refuses what was published since; the host's time is set by the guest agent."
+}
+```
+
+**Why this size.** the revert script, `LocalPool`'s wait, the pool's cloud-config and `up`'s refusal of an older pool, with unit
+tests over a stub and the pool leg.
+
+**2026-11-05:** In `v0.5.12`, before the test, by the operator's word.
 
 **What must be true.** A pool VM handed out after a revert has the host's time, so that `apt` in it does not refuse what
 was published after its base snapshot. A VM whose clock cannot be set says so and is not handed out.

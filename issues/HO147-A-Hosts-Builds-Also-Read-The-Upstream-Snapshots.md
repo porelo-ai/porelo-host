@@ -1,7 +1,20 @@
 # HO147 — A Host's Builds Also Read The Upstream Snapshots
 
-**Status:** Review.
-**Size:** XS - one default of the forge role, its argument spec, the host check's places, two documents and a changelog
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO147",
+  "title": "A Host's Builds Also Read The Upstream Snapshots",
+  "state": "Review",
+  "size": "XS",
+  "priority": "Medium",
+  "rank": 7,
+  "blockedBy": [],
+  "covers": "Each organization the host registers holds `MAVEN_UPSTREAM_SNAPSHOTS_URL`, Sonatype's snapshots read anonymously, so a build resolves the snapshots the host's registry lacks."
+}
+```
+
+**Why this size.** one default of the forge role, its argument spec, the host check's places, two documents and a changelog
 entry, with a unit test.
 
 **What must be true.** A build on the host's forge resolves the `org.fuin.porelo` snapshots the host's own registry does

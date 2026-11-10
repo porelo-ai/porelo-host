@@ -1,6 +1,20 @@
 # HO149 — A Refresh Takes A Token Only When Something Waits
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO149",
+  "title": "A Refresh Takes A Token Only When Something Waits",
+  "state": "Idea",
+  "size": "XS",
+  "priority": "Medium",
+  "rank": 4,
+  "blockedBy": [],
+  "covers": "*Refresh* takes the host admin's central token only while a project, a repository or a take-off waits for one, on a host with a forge of its own as on one without, and otherwise refuses it the same way on both."
+}
+```
+
+**Why this size.** one condition in `porelo-host-person refresh`, its tests, and a line in `doc/` where *Refresh* is described.
 
 **What must be true.** *Refresh* (`porelo-host-person org refresh`) takes the host admin's central token only while
 something on the host waits for one, on a host with a forge of its own as on one without:
@@ -33,7 +47,3 @@ run uses it for nothing when nothing waits. The admin sees no error and cannot t
   - A held take-off takes it.
   - A host without a forge refuses as before.
   - `org status` names what waits, so the admin knows before giving one.
-
-## Size
-
-XS: one condition in `porelo-host-person refresh`, its tests, and a line in `doc/` where *Refresh* is described.

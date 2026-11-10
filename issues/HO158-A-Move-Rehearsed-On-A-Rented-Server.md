@@ -1,7 +1,20 @@
 # HO158 — A Move Rehearsed On A Rented Server
 
-**Status:** Implementing.
-**Size:** L - a new mode of `build/rehearse-move.sh` that drives a whole move on a real server, failing closed at every
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO158",
+  "title": "A Move Rehearsed On A Rented Server",
+  "state": "Implementing",
+  "size": "L",
+  "priority": "Medium",
+  "rank": 4,
+  "blockedBy": [],
+  "covers": "The agents run a whole move on a server the operator rented, against a test organization, from `build/rehearse-move.sh`: check, up, vault, follow, forge, pool where KVM is, judge, push and pull, host check, down and read keys, a report per step, and one request to delete the server."
+}
+```
+
+**Why this size.** a new mode of `build/rehearse-move.sh` that drives a whole move on a real server, failing closed at every
 step, and one try on a rented server, which needs the operator's word.
 
 **What must be true.** Once the operator has rented a server and ticked the rehearsals' root key on it, the agents

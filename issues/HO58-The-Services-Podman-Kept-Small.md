@@ -1,6 +1,18 @@
 # HO58 — The Services' Podman Kept Small
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO58",
+  "title": "The Services' Podman Kept Small",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 22,
+  "blockedBy": [],
+  "covers": "Once a day, and after a missed day, each service account's Podman loses the images and volumes no container used for a set time."
+}
+```
 
 **What must be true.** Once a day the host clears the Podman store of each service account, `porelo-forge`,
 `porelo-runner` and `porelo-matrix`. It removes the images and volumes that no container has used for a set time, 7

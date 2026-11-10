@@ -1,6 +1,20 @@
 # HO120 — A Measuring Run For Any Machine
 
-**Status:** Review.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO120",
+  "title": "A Measuring Run For Any Machine",
+  "state": "Review",
+  "size": "L",
+  "priority": "Medium",
+  "rank": 28,
+  "blockedBy": [],
+  "covers": "One command that measures a given machine, again on any hardware, and writes one result file without secrets for the page's tables."
+}
+```
+
+**Why this size.** a new playbook and role, a versioned result file without secrets, the script for the page's tables, and runs on three VMs.
 
 **What must be true.** One command measures a given machine and writes one result file, so a new machine class is one run and
 a number on [HO119](README.md#ho119)'s page names the machine it came from.

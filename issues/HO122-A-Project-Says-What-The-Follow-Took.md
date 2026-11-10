@@ -1,6 +1,20 @@
 # HO122 — A Project Says What The Follow Took
 
-**Status:** Review.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO122",
+  "title": "A Project Says What The Follow Took",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 41,
+  "blockedBy": [],
+  "covers": "`org status` names what the follow took of a project and why not, a row with no `central` included."
+}
+```
+
+**Why this size.** `org status` names each repository of a project, with the helper's unit tests, Molecule and a page of `doc/`.
 
 **What must be true.** `org status` says which of a project's repositories the host took and why any was not. A row the host can
 give no task is named there, not found at the task's refusal.

@@ -1,6 +1,18 @@
 # HO130 — The Web Gate's Authorization Edges
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO130",
+  "title": "The Web Gate's Authorization Edges",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 6,
+  "blockedBy": [],
+  "covers": "`web.sock` treats an empty `Authorization` as a token and passes the cookie beside it, takes any scheme, and no test holds its refusal of a second `Authorization` or of a request target that is not a path."
+}
+```
 
 **What must be true.** On `web.sock`, a request with an `Authorization` header is a token client's: an empty or malformed
 header is refused as on `git.sock`, only the `Basic` and `token` schemes pass, and no cookie goes beside a token. Today

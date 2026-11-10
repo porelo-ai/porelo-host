@@ -1,7 +1,20 @@
 # HO61 — A Purged Person's Matrix Account Taken Off
 
-**Status:** Review.
-**Size:** S - finding and deactivating, or naming, the person's account on the host's homeserver at purge, with a
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO61",
+  "title": "A Purged Person's Matrix Account Taken Off",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 31,
+  "blockedBy": [],
+  "covers": "A purged person's account on the host's own Matrix homeserver is taken off or named, not left without a word when the transport refused to clear it."
+}
+```
+
+**Why this size.** finding and deactivating, or naming, the person's account on the host's homeserver at purge, with a
 unit test and a VM run; measured S 54 min, from one S build only, so nearly a guess. The homeserver's admin
 interface is the open part and could make it M.
 

@@ -1,6 +1,18 @@
 # HO115 — The Pool VM Not Ready On GitHub's Runner
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO115",
+  "title": "The Pool VM Not Ready On GitHub's Runner",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 9,
+  "blockedBy": [],
+  "covers": "The pool's VM says ready on GitHub's runner, or the reason it cannot is known; until then GitHub does not check the pool."
+}
+```
 
 **What must be true.** The pool's VM says ready within its 15 minutes on GitHub's runner, or the reason it cannot is
 known, so a Build there may check the pool again.

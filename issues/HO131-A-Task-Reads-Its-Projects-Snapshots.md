@@ -1,7 +1,20 @@
 # HO131 — A Task Reads Its Project's Snapshots
 
-**Status:** Review.
-**Size:** S - one scope in `porelo-host-person`'s task token, its unit test, a Molecule step on the real forge and the
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO131",
+  "title": "A Task Reads Its Project's Snapshots",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 22,
+  "blockedBy": [],
+  "covers": "A task's token also reads its organization's packages, `read:package`, so a task resolves its project's snapshots from the host's forge; it writes none."
+}
+```
+
+**Why this size.** one scope in `porelo-host-person`'s task token, its unit test, a Molecule step on the real forge and the
 documents.
 
 **What must be true.** A task on the host resolves its project's snapshots from the host's forge with the token the

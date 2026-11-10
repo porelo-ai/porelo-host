@@ -1,7 +1,20 @@
 # HO23 — A Machine Rented And Given Back By OpenTofu
 
-**Status:** Estimated.
-**Size:** L - a new tool in this repository (an OpenTofu module, its pins and its tests), the state's encryption, and
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO23",
+  "title": "A Machine Rented And Given Back By OpenTofu",
+  "state": "Estimated",
+  "size": "L",
+  "priority": "Medium",
+  "rank": 1,
+  "blockedBy": [],
+  "covers": "An administrator rents and gives back a host by one OpenTofu module per provider, its state kept encrypted with the administrator, outside the interface."
+}
+```
+
+**Why this size.** a new tool in this repository (an OpenTofu module, its pins and its tests), the state's encryption, and
 a hand-over to porelo-frontend's `porelo-host` that crosses repositories; Scaleway first, Hetzner later on the same
 pattern.
 

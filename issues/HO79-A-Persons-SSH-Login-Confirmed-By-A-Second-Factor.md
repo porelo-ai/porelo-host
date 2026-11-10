@@ -1,7 +1,20 @@
 # HO79 — A Person's SSH Login Confirmed By A Second Factor
 
-**Status:** Idea.
-**Size:** - (M proposed, for the recommended form).
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO79",
+  "title": "A Person's SSH Login Confirmed By A Second Factor",
+  "state": "Idea",
+  "size": "M",
+  "priority": "Medium",
+  "rank": 20,
+  "blockedBy": [],
+  "covers": "A person's SSH login needs a second factor beside their key: FIDO2 touch, or TOTP through PAM."
+}
+```
+
+**Why this size.** proposed, for the recommended form.
 
 Part of the project's decision that a person joins with one click: one SSH key per person, no VPN, the state signed in
 Git on the central forge, every service on the host behind a Unix socket.

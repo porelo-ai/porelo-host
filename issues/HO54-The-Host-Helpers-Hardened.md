@@ -1,6 +1,18 @@
 # HO54 — The Host's Helpers Hardened
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO54",
+  "title": "The Host's Helpers Hardened",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 23,
+  "blockedBy": [],
+  "covers": "The people's SSH drop-in read first and a project registration retried after a forge timeout."
+}
+```
 
 **What must be true.** The points a read-only review of sprint 6j's stack found and the sprint left for later, to be
 planned with the findings of the operator's 6j test:

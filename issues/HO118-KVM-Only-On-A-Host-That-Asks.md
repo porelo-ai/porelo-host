@@ -1,6 +1,20 @@
 # HO118 — KVM Only On A Host That Asks
 
-**Status:** Review.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO118",
+  "title": "KVM Only On A Host That Asks",
+  "state": "Review",
+  "size": "M",
+  "priority": "Medium",
+  "rank": 29,
+  "blockedBy": [],
+  "covers": "KVM and libvirt only on a host whose `porelo_host_kvm` says yes, off by default, and the CPU checked only there."
+}
+```
+
+**Why this size.** one setting read in `base`, `forge` and `up`, docs and decisions corrected, and a second Molecule leg.
 
 **What must be true.** A host's installation asks for KVM by one setting, off by default. Only a host that says yes has its
 CPU checked for `vmx` or `svm` and gets KVM and libvirt; any other host comes up on a CPU without them.

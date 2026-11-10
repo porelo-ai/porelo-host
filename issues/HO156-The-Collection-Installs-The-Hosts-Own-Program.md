@@ -1,7 +1,20 @@
 # HO156 — The Collection Installs The Host's Own Program
 
-**Status:** Implementing.
-**Size:** L - every role that installs or calls a host script changes, with its units, the sudo rules, `down`, the
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO156",
+  "title": "The Collection Installs The Host's Own Program",
+  "state": "Implementing",
+  "size": "L",
+  "priority": "Medium",
+  "rank": 3,
+  "blockedBy": [],
+  "covers": "The host runs its admin work, gates, judge and pool through the installed `porelo-host` at the pinned version; the collection's scripts go, but for the stated exceptions."
+}
+```
+
+**Why this size.** every role that installs or calls a host script changes, with its units, the sudo rules, `down`, the
 docs and the tests; no new logic, but it crosses into another repository's package.
 
 **What must be true.** A host set up by `up` runs its admin work, its gates, its push judge and its VM pool through the

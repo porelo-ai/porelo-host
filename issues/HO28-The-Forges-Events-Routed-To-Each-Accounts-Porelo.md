@@ -1,6 +1,20 @@
 # HO28 — The Forge's Events Routed To Each Account's Porelo
 
-**Status:** Idea. Optional and later: a speed-up only. Each daemon reads what it needs by asking the forge
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO28",
+  "title": "The Forge's Events Routed To Each Account's Porelo",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 25,
+  "blockedBy": [],
+  "covers": "Optional speed-up: the forge's webhooks, reviews included, reported to one router on the host, which checks the signature and hands only a wake-up hint to the daemon of the account whose task it concerns, known from the pusher's forge account or the pull request's branch."
+}
+```
+
+**2026-10-26:** Optional and later: a speed-up only. Each daemon reads what it needs by asking the forge
 itself (the operator's decision); a report through this router only makes it arrive sooner.
 
 **What must be true.** The host's forge serves every account on the host, and each account runs its own Porelo daemon

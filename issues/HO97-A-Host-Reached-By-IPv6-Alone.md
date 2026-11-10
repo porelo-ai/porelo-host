@@ -1,6 +1,18 @@
 # HO97 — A Host Reached By IPv6 Alone
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO97",
+  "title": "A Host Reached By IPv6 Alone",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 13,
+  "blockedBy": [],
+  "covers": "A server reached by IPv6 alone is prepared: its public interface told by the IPv6 default route, the firewall and the forge holding for it."
+}
+```
 
 **What must be true.** A server with no IPv4 default route, reached by IPv6 alone, is prepared like any other: the
 base role tells its public interface by the IPv6 default route where no IPv4 one exists, and the firewall, the

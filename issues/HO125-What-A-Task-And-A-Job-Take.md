@@ -1,10 +1,24 @@
 # HO125 — What A Task And A Job Take
 
-**Status:** Implementing. Its rented run still needs the operator's word, with its price and duration brought to them
-first; this round builds the tool and runs it on a local VM.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO125",
+  "title": "What A Task And A Job Take",
+  "state": "Implementing",
+  "size": "L",
+  "priority": "Medium",
+  "rank": 1,
+  "blockedBy": [],
+  "covers": "The measuring run also reads a task, an agent's fixed start and Maven jobs, so a size can rest on what work takes: the tool for one measuring issue in Porelo."
+}
+```
 
-**Size:** L - the measuring script learns three steps, each making and taking away what it reads, with their tests, the
+**Why this size.** the measuring script learns three steps, each making and taking away what it reads, with their tests, the
 role's options and README, and a first run on a local VM.
+
+**2026-11-10:** Its rented run still needs the operator's word, with its price and duration brought to them
+first; this round builds the tool and runs it on a local VM.
 
 **What must be true.** `porelo.host.measure` also reads a task, an agent's fixed start, and a Maven build in a job at 1, 2 and 4
 parallel jobs and past the half, cold and with the cache, so a size can rest on what work takes and not on an idle host.

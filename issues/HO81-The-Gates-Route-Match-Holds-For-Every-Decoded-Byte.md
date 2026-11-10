@@ -1,7 +1,20 @@
 # HO81 — The Gate's Route Match Holds For Every Decoded Byte
 
-**Status:** Review.
-**Size:** XS - one module (the forge gate): a stricter path check, two patterns and one answer, with unit tests.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO81",
+  "title": "The Gate's Route Match Holds For Every Decoded Byte",
+  "state": "Review",
+  "size": "XS",
+  "priority": "Medium",
+  "rank": 36,
+  "blockedBy": [],
+  "covers": "No decoded byte takes a refused route past the forge gate's match, and `web.sock` challenges a client that waits for one."
+}
+```
+
+**Why this size.** one module (the forge gate): a stricter path check, two patterns and one answer, with unit tests.
 
 **What must be true.** No byte a request's path decodes to takes a refused route of the forge gate past its match.
 A package or Git client on `web.sock` that waits for a challenge before it sends its token gets one.

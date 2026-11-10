@@ -1,7 +1,20 @@
 # HO151 — The Pinned-Jdk Action Takes The Shared Rule
 
-**Status:** Review.
-**Size:** XS - the steps of `.github/actions/pinned-jdk/action.yml`, `pinned.sh` beside it, and three jobs' time.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO151",
+  "title": "The Pinned-Jdk Action Takes The Shared Rule",
+  "state": "Review",
+  "size": "XS",
+  "priority": "Medium",
+  "rank": 4,
+  "blockedBy": [],
+  "covers": "The CI's pinned GraalVM is fetched by the shared rule: cached by its digest, tried again by `pinned.sh`, with the job's token from github.com."
+}
+```
+
+**Why this size.** the steps of `.github/actions/pinned-jdk/action.yml`, `pinned.sh` beside it, and three jobs' time.
 
 **What must be true.** The CI's pinned GraalVM is fetched by porelo-buildtools' shared rule for pinned downloads: kept
 by its digest, checked again after a cache hit, tried again by the one rule in `pinned.sh`, and, from

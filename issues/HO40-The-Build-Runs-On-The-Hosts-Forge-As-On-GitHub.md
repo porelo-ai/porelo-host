@@ -1,7 +1,21 @@
 # HO40 — The Build Runs On The Host's Forge As On GitHub
 
-**Status:** Analyzed.
-**Size:** M - three workflows and the tools' Maven pom changed alike for two forges, each leg seen red on a host's
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO40",
+  "title": "The Build Runs On The Host's Forge As On GitHub",
+  "state": "Analyzed",
+  "size": "M",
+  "priority": "Medium",
+  "rank": 1,
+  "blockedBy": [],
+  "covers": "The move's builds on the host's forge: `build.yml` green on the host's Forgejo and on GitHub unchanged, with task branches built, the tools without `podman run`, snapshots by variable and Molecule on a machine with KVM.",
+  "openQuestions": 1
+}
+```
+
+**Why this size.** three workflows and the tools' Maven pom changed alike for two forges, each leg seen red on a host's
 Forgejo first, run on a rehearsal VM's forge and on GitHub on the same commit.
 
 **What must be true.** This repository's workflows run unchanged and green on the host's Forgejo and on GitHub, the

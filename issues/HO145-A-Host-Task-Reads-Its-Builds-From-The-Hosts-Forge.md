@@ -1,12 +1,24 @@
 # HO145 — A Host Task Reads Its Builds From The Host's Forge
 
-**Status:** Review.
-**Kind:** Feature.
-**Size:** S - the follow writes `builds` into each project's file on the host beside `fetch_from`, with its tests and
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO145",
+  "title": "A Host Task Reads Its Builds From The Host's Forge",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 9,
+  "blockedBy": [],
+  "covers": "A host task reads its Builds from the host's forge: the follow names `builds` in each project's file beside `fetch_from`."
+}
+```
+
+**Why this size.** the follow writes `builds` into each project's file on the host beside `fetch_from`, with its tests and
 docs.
 
 **What must be true.** A task of a guarded project on the host reads the Builds of its pushes from the host's forge,
-as the person who started it, without the project's signed `project.yml` naming anything of the host.
+as the person who started it, without the project's signed `project.yml` naming anything of the host. It is a feature.
 
 ## Why
 

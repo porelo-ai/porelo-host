@@ -1,13 +1,25 @@
 # HO136 — A Person's Daemon Takes The Group It Joins Later
 
-**Status:** Review.
-**Kind:** Bug.
-**Size:** S - the follow's group change followed by the person's user manager restarted where it is safe, with unit
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO136",
+  "title": "A Person's Daemon Takes The Group It Joins Later",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 18,
+  "blockedBy": [],
+  "covers": "Bug: a person who joins `porelo-people` after admission gets a `porelod` with that group, its user manager restarted where no task runs."
+}
+```
+
+**Why this size.** the follow's group change followed by the person's user manager restarted where it is safe, with unit
 tests and a Molecule step.
 
 **What must be true.** A person who joins `porelo-people` after admission, by becoming a member of a project carried
 on the host, can open the Matrix gate's socket from their `porelod` without a login anew and without root's hand.
-Where a task of theirs runs, the restart waits, and `org status` names the person whose daemon still lacks the group.
+Where a task of theirs runs, the restart waits, and `org status` names the person whose daemon still lacks the group. It is a bug.
 
 ## Why
 

@@ -1,6 +1,18 @@
 # HO98 — A Project's Central Address Changed
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO98",
+  "title": "A Project's Central Address Changed",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 14,
+  "blockedBy": [],
+  "covers": "A signed change of a project's central address is named, not called carried over an absent repository."
+}
+```
 
 **What must be true.** When the signed organization changes a project's central address, the host says so and does not
 call the project carried. Today the follow takes `migrated` as lasting and compares no address: the old repository

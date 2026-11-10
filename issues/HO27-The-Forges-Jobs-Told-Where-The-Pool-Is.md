@@ -1,6 +1,18 @@
 # HO27 — The Forge's Jobs Told Where The Pool Is
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO27",
+  "title": "The Forge's Jobs Told Where The Pool Is",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 26,
+  "blockedBy": [],
+  "covers": "The forge's runner tells every job where the VM pool is, so one workflow takes a pool account on the forge and rents a server on GitHub."
+}
+```
 
 **What must be true.** One workflow, unchanged on GitHub and on the host's forge, rents a test machine of a kind:
 on the forge it takes a run account of the host's VM pool, on GitHub a rented server. The forge's runner tells

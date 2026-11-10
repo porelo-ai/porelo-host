@@ -11,6 +11,81 @@ channel.
 Its prefix is `HO`. *Open questions*, in *Analyzed* only, counts what waits on the operator. A group with nothing in
 it is left out.
 
+## Idea
+
+| # | Size | Blocked by | What it covers |
+|---|---|---|---|
+| <a id="ho160"></a>[HO160](HO160-A-Local-Rehearsal-Takes-The-Organizations-Host-Name.md) | - | - | Bug: a local rehearsal with a real organization's machine file runs `up` under that host's name, not `rehearsal`, so its fetch takes the pin. |
+| <a id="ho161"></a>[HO161](HO161-A-Local-Rehearsal-Pins-The-Host-Admins-Key-For-Root.md) | - | - | Bug: a local rehearsal with a real organization's machine file leaves root's login to the host admin's key, so `org host refresh` reaches it. |
+| <a id="ho166"></a>[HO166](HO166-A-Room-Refused-While-The-Homeserver-Is-Away-Is-Asked-Again.md) | - | - | Bug: a room the gate refused while the homeserver was away is asked again on a later follow pass, and `up` fails when its homeserver does not answer. |
+| <a id="ho149"></a>[HO149](HO149-A-Refresh-Takes-A-Token-Only-When-Something-Waits.md) | XS | - | *Refresh* takes the host admin's central token only while a project, a repository or a take-off waits for one, on a host with a forge of its own as on one without, and otherwise refuses it the same way on both. |
+| <a id="ho140"></a>[HO140](HO140-A-Host-Keeps-Its-Identity-Across-Rentals.md) | - | - | A host rented again and again keeps its read keys from the person's vault, so they stay registered between rentals and only a host given up for good has them removed. |
+| <a id="ho130"></a>[HO130](HO130-The-Web-Gates-Authorization-Edges.md) | - | - | `web.sock` treats an empty `Authorization` as a token and passes the cookie beside it, takes any scheme, and no test holds its refusal of a second `Authorization` or of a request target that is not a path. |
+| <a id="ho128"></a>[HO128](HO128-A-Tasks-Login-Cannot-Approve-Or-Merge.md) | - | - | A task's gate login on the forge can neither approve nor merge a pull request on `main`, by the forge's own rule, not only because the task never holds its token. |
+| <a id="ho117"></a>[HO117](HO117-The-Sanity-Images-Two-Pins.md) | - | - | The `pip` and `pylint` the sanity image pins, with open alerts, raised or said why they stay |
+| <a id="ho115"></a>[HO115](HO115-The-Pool-VM-Not-Ready-On-GitHubs-Runner.md) | - | - | The pool's VM says ready on GitHub's runner, or the reason it cannot is known; until then GitHub does not check the pool. |
+| <a id="ho114"></a>[HO114](HO114-A-Hosts-Read-Keys-Taken-Off-The-Central-Forge.md) | - | - | Taking a project off and `down` delete the host's read-only keys at the central forge, the token asked once and kept nowhere; if impossible, each is named with a link. |
+| <a id="ho91"></a>[HO91](HO91-SSHs-Edges-Left-From-Its-Readings.md) | - | - | The KRL validated before sshd reads it, a root key with an options prefix refused, and a lock ordered against a concurrent follow. |
+| <a id="ho92"></a>[HO92](HO92-The-Forges-Loopback-Port-Narrowed-To-Persons.md) | - | - | Only the persons and the forge account reach the forge on `127.0.0.1:<git_port>`, by an nftables rule on their uids. |
+| <a id="ho97"></a>[HO97](HO97-A-Host-Reached-By-IPv6-Alone.md) | - | - | A server reached by IPv6 alone is prepared: its public interface told by the IPv6 default route, the firewall and the forge holding for it. |
+| <a id="ho98"></a>[HO98](HO98-A-Projects-Central-Address-Changed.md) | - | - | A signed change of a project's central address is named, not called carried over an absent repository. |
+| <a id="ho99"></a>[HO99](HO99-A-Central-Forge-On-A-Private-Authority.md) | - | - | A central forge on a private authority is reached by the fetch, the read key, the migration and the push, from one setting. |
+| <a id="ho101"></a>[HO101](HO101-One-Forge-Over-SSH-And-HTTPS-On-A-Port.md) | - | - | One forge's ssh address and its https address on a port count as one forge. |
+| <a id="ho107"></a>[HO107](HO107-A-Project-That-No-Token-Can-Cure.md) | - | - | A project with no usable central address has a state of its own, `waiting-for-address`, as no token can cure it |
+| <a id="ho86"></a>[HO86](HO86-The-Push-Judges-Smaller-Edges.md) | - | [HO85](README.md#ho85) | The push judge's smaller edges from its reading, gathered: links in the arming, the removal's checks, a first-push race, the null object, the answer's field and record checks pinned by tests. |
+| <a id="ho78"></a>[HO78](HO78-Only-The-Gates-Sockets-Forwarded.md) | - | - | A person's SSH connection forwards only to the gates' sockets and their own return socket, and to no TCP address. |
+| <a id="ho79"></a>[HO79](HO79-A-Persons-SSH-Login-Confirmed-By-A-Second-Factor.md) | M | - | A person's SSH login needs a second factor beside their key: FIDO2 touch, or TOTP through PAM. |
+| <a id="ho77"></a>[HO77](HO77-Each-Job-In-A-Network-Of-Its-Own.md) | - | - | Concurrent jobs on a host cannot reach one another's network, and no host login reaches Forgejo over TCP. |
+| <a id="ho58"></a>[HO58](HO58-The-Services-Podman-Kept-Small.md) | - | - | Once a day, and after a missed day, each service account's Podman loses the images and volumes no container used for a set time. |
+| <a id="ho54"></a>[HO54](HO54-The-Host-Helpers-Hardened.md) | - | - | The people's SSH drop-in read first and a project registration retried after a forge timeout. |
+| <a id="ho30"></a>[HO30](HO30-The-Forges-Job-Bounds-Measured.md) | - | - | A running job's container measured to carry its bounds, beyond what Molecule reads from the files the roles write. |
+| <a id="ho28"></a>[HO28](HO28-The-Forges-Events-Routed-To-Each-Accounts-Porelo.md) | - | - | Optional speed-up: the forge's webhooks, reviews included, reported to one router on the host, which checks the signature and hands only a wake-up hint to the daemon of the account whose task it concerns, known from the pusher's forge account or the pull request's branch. |
+| <a id="ho27"></a>[HO27](HO27-The-Forges-Jobs-Told-Where-The-Pool-Is.md) | - | - | The forge's runner tells every job where the VM pool is, so one workflow takes a pool account on the forge and rents a server on GitHub. |
+| <a id="ho24"></a>[HO24](HO24-The-Setup-Runs-To-Its-End-On-The-Host.md) | - | - | `up`'s playbook runs on the host to its end whoever watches, and `porelo-host` attaches to it again when started again. |
+| <a id="ho15"></a>[HO15](HO15-The-Host-On-Fedora.md) | - | - | The host on Fedora as on Ubuntu 26.04: SELinux, firewalld, `dnf` and a Molecule scenario on Fedora to measure. |
+| <a id="ho90"></a>[HO90](HO90-Each-Persons-State-Named-By-Status.md) | S | - | `org status` leaves out revoked and refused logins and names a cut-off purge or a removal's window `pending`. |
+| <a id="ho109"></a>[HO109](HO109-How-Long-The-Host-Has-Not-Read-Its-Organization.md) | - | - | `org status` says when the host last read its organization, as a follow that cannot fetch keeps a removed member's login with nothing said |
+| <a id="ho111"></a>[HO111](HO111-The-Forges-Admin-Tokens-A-Project-Helper-Leaves.md) | - | - | A run of the project helper leaves no lasting admin token on the host's forge |
+
+## Accepted
+
+| # | Size | Blocked by | What it covers |
+|---|---|---|---|
+| <a id="ho159"></a>[HO159](HO159-The-Hosts-Tests-Follow-The-Pyramid.md) | L | - | The host's tests follow the pyramid (ST296): its pool and role logic unit-tested over fakes, its subprocess tests narrowed, `tests/unit` and `tests/integration` apart, and Molecule's sleeps gone. |
+
+## Analyzed
+
+| # | Size | Blocked by | What it covers | Open questions |
+|---|---|---|---|---|
+| <a id="ho40"></a>[HO40](HO40-The-Build-Runs-On-The-Hosts-Forge-As-On-GitHub.md) | M | - | The move's builds on the host's forge: `build.yml` green on the host's Forgejo and on GitHub unchanged, with task branches built, the tools without `podman run`, snapshots by variable and Molecule on a machine with KVM. | 1 |
+| <a id="ho39"></a>[HO39](HO39-The-Hosts-Agent-Works-In-A-Porelo-Task.md) | S | [HO40](README.md#ho40) | porelo-host's agent, `Agent Host`, in a Porelo task on the move's host, with a way back: the image from `porelo.yml`. | 1 |
+
+## Estimated
+
+| # | Size | Blocked by | What it covers |
+|---|---|---|---|
+| <a id="ho23"></a>[HO23](HO23-A-Machine-Rented-And-Given-Back-By-OpenTofu.md) | L | - | An administrator rents and gives back a host by one OpenTofu module per provider, its state kept encrypted with the administrator, outside the interface. |
+
+## Backlog
+
+| # | Size | Blocked by | What it covers |
+|---|---|---|---|
+| <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
+| <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
+| <a id="ho162"></a>[HO162](HO162-A-Person-Starts-The-Hosts-Follow-At-Once.md) | - | - | A person has the host read the organization now, from the window or a command, instead of waiting for the five-minute timer. |
+| <a id="ho163"></a>[HO163](HO163-A-Tasks-Signing-Key-Is-Known-Where-It-Pushes.md) | - | - | A task's signing key is registered with the forge account that receives its push, so its commits verify on the host's forge; what the central forge can take is measured first. |
+| <a id="ho164"></a>[HO164](HO164-A-Projects-Review-Setting-Reaches-The-Branch-Protection.md) | - | - | A project's `review: optional` or `required` reaches the host forge's protection of `main` on the next follow pass, so a single admin can merge. |
+| <a id="ho165"></a>[HO165](HO165-The-Push-To-Central-Takes-Repository-Names-And-Says-A-Refused-Token.md) | - | - | `porelo-host-push` takes the project's repository names as well as the forge's, and says plainly when the central forge refuses the token. |
+
+## Implementing
+
+| # | Size | Blocked by | What it covers |
+|---|---|---|---|
+| <a id="ho125"></a>[HO125](HO125-What-A-Task-And-A-Job-Take.md) | L | - | The measuring run also reads a task, an agent's fixed start and Maven jobs, so a size can rest on what work takes: the tool for one measuring issue in Porelo. |
+| <a id="ho157"></a>[HO157](HO157-Molecule-And-The-Rehearsal-Run-On-The-Package.md) | M | - | Molecule and the move rehearsal install the local `porelo-host` package and check its version; `porelo-vm` moves to `build/`. |
+| <a id="ho156"></a>[HO156](HO156-The-Collection-Installs-The-Hosts-Own-Program.md) | L | - | The host runs its admin work, gates, judge and pool through the installed `porelo-host` at the pinned version; the collection's scripts go, but for the stated exceptions. |
+| <a id="ho158"></a>[HO158](HO158-A-Move-Rehearsed-On-A-Rented-Server.md) | L | - | The agents run a whole move on a server the operator rented, against a test organization, from `build/rehearse-move.sh`: check, up, vault, follow, forge, pool where KVM is, judge, push and pull, host check, down and read keys, a report per step, and one request to delete the server. |
+
 ## Review
 
 | # | Size | Blocked by | What it covers |
@@ -38,13 +113,13 @@ it is left out.
 | <a id="ho132"></a>[HO132](HO132-A-Move-Rehearsed-On-A-Local-VM.md) | S | - | `build/rehearse-move.sh` makes a throwaway VM, runs `up` with the forge and no pool, opens the room tunnel and takes it all down again, so a move is rehearsed before a host is rented. |
 | <a id="ho131"></a>[HO131](HO131-A-Task-Reads-Its-Projects-Snapshots.md) | S | - | A task's token also reads its organization's packages, `read:package`, so a task resolves its project's snapshots from the host's forge; it writes none. |
 | <a id="ho129"></a>[HO129](HO129-The-Web-Gate-Serves-Its-Own-Site-Alone.md) | S | - | The web gate refuses a `Host` other than the forge's own site, and on a request that changes something a foreign `Origin` or a cross-site `Sec-Fetch-Site`, so another page in the browser cannot act as the person. |
-| <a id="ho126"></a>[HO126](HO126-A-Reverted-Pool-VM-Keeps-The-Snapshots-Clock.md) | - | - | A pool VM reverted to its live snapshot keeps that clock, and `apt` refuses what was published since; the host's time is set by the guest agent. |
-| <a id="ho116"></a>[HO116](HO116-The-Firewall-Left-By-Down.md) | - | - | `down` leaves the firewall's file and, by reading, its unit: taken off, or said why it stays |
-| <a id="ho106"></a>[HO106](HO106-A-Refused-Root-Key-File-Says-Why.md) | - | - | `up` refusing root's key file says how many keys it found and what to do, not only `non-zero return code` |
-| <a id="ho119"></a>[HO119](HO119-Which-Server-For-What.md) | - | [HO120](#ho120) | One page: which server for what, with and without Forgejo, each number measured or marked not, and the rule for parallel jobs. |
-| <a id="ho120"></a>[HO120](HO120-A-Measuring-Run-For-Any-Machine.md) | - | - | One command that measures a given machine, again on any hardware, and writes one result file without secrets for the page's tables. |
-| <a id="ho118"></a>[HO118](HO118-KVM-Only-On-A-Host-That-Asks.md) | - | - | KVM and libvirt only on a host whose `porelo_host_kvm` says yes, off by default, and the CPU checked only there. |
-| <a id="ho123"></a>[HO123](HO123-A-Socket-Forward-Reaches-Past-The-Agent-Rule.md) | - | - | Say what `AllowAgentForwarding no` stops, as a person's socket forward reaches past it. |
+| <a id="ho126"></a>[HO126](HO126-A-Reverted-Pool-VM-Keeps-The-Snapshots-Clock.md) | M | - | A pool VM reverted to its live snapshot keeps that clock, and `apt` refuses what was published since; the host's time is set by the guest agent. |
+| <a id="ho116"></a>[HO116](HO116-The-Firewall-Left-By-Down.md) | S | - | `down` leaves the firewall's file and, by reading, its unit: taken off, or said why it stays |
+| <a id="ho106"></a>[HO106](HO106-A-Refused-Root-Key-File-Says-Why.md) | S | - | `up` refusing root's key file says how many keys it found and what to do, not only `non-zero return code` |
+| <a id="ho119"></a>[HO119](HO119-Which-Server-For-What.md) | S | - | One page: which server for what, with and without Forgejo, each number measured or marked not, and the rule for parallel jobs. |
+| <a id="ho120"></a>[HO120](HO120-A-Measuring-Run-For-Any-Machine.md) | L | - | One command that measures a given machine, again on any hardware, and writes one result file without secrets for the page's tables. |
+| <a id="ho118"></a>[HO118](HO118-KVM-Only-On-A-Host-That-Asks.md) | M | - | KVM and libvirt only on a host whose `porelo_host_kvm` says yes, off by default, and the CPU checked only there. |
+| <a id="ho123"></a>[HO123](HO123-A-Socket-Forward-Reaches-Past-The-Agent-Rule.md) | XS | - | Say what `AllowAgentForwarding no` stops, as a person's socket forward reaches past it. |
 | <a id="ho61"></a>[HO61](HO61-A-Purged-Persons-Matrix-Account-Taken-Off.md) | S | - | A purged person's account on the host's own Matrix homeserver is taken off or named, not left without a word when the transport refused to clear it. |
 | <a id="ho113"></a>[HO113](HO113-A-Renamed-Branch-Rule-The-Follow-Does-Not-See.md) | S | - | The follow holds a branch rule to the signed values whatever the rule on `main` is called |
 | <a id="ho52"></a>[HO52](HO52-Snapshots-Resolved-With-A-Read-Only-Token.md) | M | - | Each project organization holds a `read:package` token as `PORELO_PACKAGES_READ_TOKEN` and its own `MAVEN_SNAPSHOTS_URL`, so builds resolve snapshots without the publisher's token. |
@@ -53,84 +128,9 @@ it is left out.
 | <a id="ho81"></a>[HO81](HO81-The-Gates-Route-Match-Holds-For-Every-Decoded-Byte.md) | XS | - | No decoded byte takes a refused route past the forge gate's match, and `web.sock` challenges a client that waits for one. |
 | <a id="ho83"></a>[HO83](HO83-The-Persons-Token-Kept-Where-Each-Tool-Reads-It.md) | S | - | The vault's person token stays the one in force after every remake; each task-start and token-handling check is tested by its absence. |
 | <a id="ho85"></a>[HO85](HO85-The-Push-Judge-Armed-Only-Where-It-Holds.md) | S | - | A repository is armed only where the judge's hook holds, a removal takes the arrivals along, and each verdict is recorded only whole. |
-| <a id="ho124"></a>[HO124](HO124-A-Login-Closed-At-Once-On-A-Host.md) | - | - | A login closed at once on a host, by reading sshd's own per-source penalty: reproduce it on the test VM, and say so. |
-| <a id="ho121"></a>[HO121](HO121-One-Check-Before-Any-Installation.md) | - | [HO118](#ho118) | One read-only check before any installation, the same code `up` runs first, every finding at once with its value, what was asked and what to do. |
-| <a id="ho122"></a>[HO122](HO122-A-Project-Says-What-The-Follow-Took.md) | - | - | `org status` names what the follow took of a project and why not, a row with no `central` included. |
-
-## Implementing
-
-| # | Size | Blocked by | What it covers |
-|---|---|---|---|
-| <a id="ho125"></a>[HO125](HO125-What-A-Task-And-A-Job-Take.md) | L | [HO127](#ho127) | The measuring run also reads a task, an agent's fixed start and Maven jobs, so a size can rest on what work takes: the tool for one measuring issue in Porelo. |
-| <a id="ho157"></a>[HO157](HO157-Molecule-And-The-Rehearsal-Run-On-The-Package.md) | M | - | Molecule and the move rehearsal install the local `porelo-host` package and check its version; `porelo-vm` moves to `build/`. |
-| <a id="ho156"></a>[HO156](HO156-The-Collection-Installs-The-Hosts-Own-Program.md) | L | - | The host runs its admin work, gates, judge and pool through the installed `porelo-host` at the pinned version; the collection's scripts go, but for the stated exceptions. |
-| <a id="ho158"></a>[HO158](HO158-A-Move-Rehearsed-On-A-Rented-Server.md) | L | - | The agents run a whole move on a server the operator rented, against a test organization, from `build/rehearse-move.sh`: check, up, vault, follow, forge, pool where KVM is, judge, push and pull, host check, down and read keys, a report per step, and one request to delete the server. |
-
-## Backlog
-
-| # | Size | Blocked by | What it covers |
-|---|---|---|---|
-| <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
-| <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
-| <a id="ho162"></a>[HO162](HO162-A-Person-Starts-The-Hosts-Follow-At-Once.md) | - | - | A person has the host read the organization now, from the window or a command, instead of waiting for the five-minute timer. |
-| <a id="ho163"></a>[HO163](HO163-A-Tasks-Signing-Key-Is-Known-Where-It-Pushes.md) | - | - | A task's signing key is registered with the forge account that receives its push, so its commits verify on the host's forge; what the central forge can take is measured first. |
-| <a id="ho164"></a>[HO164](HO164-A-Projects-Review-Setting-Reaches-The-Branch-Protection.md) | - | - | A project's `review: optional` or `required` reaches the host forge's protection of `main` on the next follow pass, so a single admin can merge. |
-| <a id="ho165"></a>[HO165](HO165-The-Push-To-Central-Takes-Repository-Names-And-Says-A-Refused-Token.md) | - | - | `porelo-host-push` takes the project's repository names as well as the forge's, and says plainly when the central forge refuses the token. |
-
-## Analyzed
-
-| # | Size | Blocked by | Open questions | What it covers |
-|---|---|---|---|---|
-| <a id="ho40"></a>[HO40](HO40-The-Build-Runs-On-The-Hosts-Forge-As-On-GitHub.md) | M | - | 1 | The move's builds on the host's forge: `build.yml` green on the host's Forgejo and on GitHub unchanged, with task branches built, the tools without `podman run`, snapshots by variable and Molecule on a machine with KVM. |
-| <a id="ho39"></a>[HO39](HO39-The-Hosts-Agent-Works-In-A-Porelo-Task.md) | S | [HO40](#ho40) | 1 | porelo-host's agent, `Agent Host`, in a Porelo task on the move's host, with a way back: the image from `porelo.yml`. |
-
-## Accepted
-
-| # | Size | Blocked by | What it covers |
-|---|---|---|---|
-| <a id="ho159"></a>[HO159](HO159-The-Hosts-Tests-Follow-The-Pyramid.md) | L | - | The host's tests follow the pyramid (ST296): its pool and role logic unit-tested over fakes, its subprocess tests narrowed, `tests/unit` and `tests/integration` apart, and Molecule's sleeps gone. |
-
-## Idea
-
-| # | Size | Blocked by | What it covers |
-|---|---|---|---|
-| <a id="ho160"></a>[HO160](HO160-A-Local-Rehearsal-Takes-The-Organizations-Host-Name.md) | - | - | Bug: a local rehearsal with a real organization's machine file runs `up` under that host's name, not `rehearsal`, so its fetch takes the pin. |
-| <a id="ho161"></a>[HO161](HO161-A-Local-Rehearsal-Pins-The-Host-Admins-Key-For-Root.md) | - | - | Bug: a local rehearsal with a real organization's machine file leaves root's login to the host admin's key, so `org host refresh` reaches it. |
-| <a id="ho166"></a>[HO166](HO166-A-Room-Refused-While-The-Homeserver-Is-Away-Is-Asked-Again.md) | - | - | Bug: a room the gate refused while the homeserver was away is asked again on a later follow pass, and `up` fails when its homeserver does not answer. |
-| <a id="ho149"></a>[HO149](HO149-A-Refresh-Takes-A-Token-Only-When-Something-Waits.md) | XS | - | *Refresh* takes the host admin's central token only while a project, a repository or a take-off waits for one, on a host with a forge of its own as on one without, and otherwise refuses it the same way on both. |
-| <a id="ho140"></a>[HO140](HO140-A-Host-Keeps-Its-Identity-Across-Rentals.md) | - | - | A host rented again and again keeps its read keys from the person's vault, so they stay registered between rentals and only a host given up for good has them removed. |
-| <a id="ho130"></a>[HO130](HO130-The-Web-Gates-Authorization-Edges.md) | - | - | `web.sock` treats an empty `Authorization` as a token and passes the cookie beside it, takes any scheme, and no test holds its refusal of a second `Authorization` or of a request target that is not a path. |
-| <a id="ho128"></a>[HO128](HO128-A-Tasks-Login-Cannot-Approve-Or-Merge.md) | - | - | A task's gate login on the forge can neither approve nor merge a pull request on `main`, by the forge's own rule, not only because the task never holds its token. |
-| <a id="ho117"></a>[HO117](HO117-The-Sanity-Images-Two-Pins.md) | - | - | The `pip` and `pylint` the sanity image pins, with open alerts, raised or said why they stay |
-| <a id="ho115"></a>[HO115](HO115-The-Pool-VM-Not-Ready-On-GitHubs-Runner.md) | - | - | The pool's VM says ready on GitHub's runner, or the reason it cannot is known; until then GitHub does not check the pool. |
-| <a id="ho114"></a>[HO114](HO114-A-Hosts-Read-Keys-Taken-Off-The-Central-Forge.md) | - | - | Taking a project off and `down` delete the host's read-only keys at the central forge, the token asked once and kept nowhere; if impossible, each is named with a link. |
-| <a id="ho91"></a>[HO91](HO91-SSHs-Edges-Left-From-Its-Readings.md) | - | - | The KRL validated before sshd reads it, a root key with an options prefix refused, and a lock ordered against a concurrent follow. |
-| <a id="ho92"></a>[HO92](HO92-The-Forges-Loopback-Port-Narrowed-To-Persons.md) | - | - | Only the persons and the forge account reach the forge on `127.0.0.1:<git_port>`, by an nftables rule on their uids. |
-| <a id="ho97"></a>[HO97](HO97-A-Host-Reached-By-IPv6-Alone.md) | - | - | A server reached by IPv6 alone is prepared: its public interface told by the IPv6 default route, the firewall and the forge holding for it. |
-| <a id="ho98"></a>[HO98](HO98-A-Projects-Central-Address-Changed.md) | - | - | A signed change of a project's central address is named, not called carried over an absent repository. |
-| <a id="ho99"></a>[HO99](HO99-A-Central-Forge-On-A-Private-Authority.md) | - | - | A central forge on a private authority is reached by the fetch, the read key, the migration and the push, from one setting. |
-| <a id="ho101"></a>[HO101](HO101-One-Forge-Over-SSH-And-HTTPS-On-A-Port.md) | - | - | One forge's ssh address and its https address on a port count as one forge. |
-| <a id="ho107"></a>[HO107](HO107-A-Project-That-No-Token-Can-Cure.md) | - | - | A project with no usable central address has a state of its own, `waiting-for-address`, as no token can cure it |
-| <a id="ho86"></a>[HO86](HO86-The-Push-Judges-Smaller-Edges.md) | - | [HO85](#ho85) | The push judge's smaller edges from its reading, gathered: links in the arming, the removal's checks, a first-push race, the null object, the answer's field and record checks pinned by tests. |
-| <a id="ho78"></a>[HO78](HO78-Only-The-Gates-Sockets-Forwarded.md) | - | - | A person's SSH connection forwards only to the gates' sockets and their own return socket, and to no TCP address. |
-| <a id="ho79"></a>[HO79](HO79-A-Persons-SSH-Login-Confirmed-By-A-Second-Factor.md) | - | - | A person's SSH login needs a second factor beside their key: FIDO2 touch, or TOTP through PAM. |
-| <a id="ho77"></a>[HO77](HO77-Each-Job-In-A-Network-Of-Its-Own.md) | - | - | Concurrent jobs on a host cannot reach one another's network, and no host login reaches Forgejo over TCP. |
-| <a id="ho58"></a>[HO58](HO58-The-Services-Podman-Kept-Small.md) | - | - | Once a day, and after a missed day, each service account's Podman loses the images and volumes no container used for a set time. |
-| <a id="ho54"></a>[HO54](HO54-The-Host-Helpers-Hardened.md) | - | - | The people's SSH drop-in read first and a project registration retried after a forge timeout. |
-| <a id="ho30"></a>[HO30](HO30-The-Forges-Job-Bounds-Measured.md) | - | - | A running job's container measured to carry its bounds, beyond what Molecule reads from the files the roles write. |
-| <a id="ho28"></a>[HO28](HO28-The-Forges-Events-Routed-To-Each-Accounts-Porelo.md) | - | - | Optional speed-up: the forge's webhooks, reviews included, reported to one router on the host, which checks the signature and hands only a wake-up hint to the daemon of the account whose task it concerns, known from the pusher's forge account or the pull request's branch. |
-| <a id="ho27"></a>[HO27](HO27-The-Forges-Jobs-Told-Where-The-Pool-Is.md) | - | - | The forge's runner tells every job where the VM pool is, so one workflow takes a pool account on the forge and rents a server on GitHub. |
-| <a id="ho24"></a>[HO24](HO24-The-Setup-Runs-To-Its-End-On-The-Host.md) | - | - | `up`'s playbook runs on the host to its end whoever watches, and `porelo-host` attaches to it again when started again. |
-| <a id="ho15"></a>[HO15](HO15-The-Host-On-Fedora.md) | - | - | The host on Fedora as on Ubuntu 26.04: SELinux, firewalld, `dnf` and a Molecule scenario on Fedora to measure. |
-| <a id="ho90"></a>[HO90](HO90-Each-Persons-State-Named-By-Status.md) | S | - | `org status` leaves out revoked and refused logins and names a cut-off purge or a removal's window `pending`. |
-| <a id="ho109"></a>[HO109](HO109-How-Long-The-Host-Has-Not-Read-Its-Organization.md) | - | - | `org status` says when the host last read its organization, as a follow that cannot fetch keeps a removed member's login with nothing said |
-| <a id="ho111"></a>[HO111](HO111-The-Forges-Admin-Tokens-A-Project-Helper-Leaves.md) | - | - | A run of the project helper leaves no lasting admin token on the host's forge |
-
-## Estimated
-
-| # | Size | Blocked by | What it covers |
-|---|---|---|---|
-| <a id="ho23"></a>[HO23](HO23-A-Machine-Rented-And-Given-Back-By-OpenTofu.md) | L | - | An administrator rents and gives back a host by one OpenTofu module per provider, its state kept encrypted with the administrator, outside the interface. |
+| <a id="ho124"></a>[HO124](HO124-A-Login-Closed-At-Once-On-A-Host.md) | S | - | A login closed at once on a host, by reading sshd's own per-source penalty: reproduce it on the test VM, and say so. |
+| <a id="ho121"></a>[HO121](HO121-One-Check-Before-Any-Installation.md) | L | - | One read-only check before any installation, the same code `up` runs first, every finding at once with its value, what was asked and what to do. |
+| <a id="ho122"></a>[HO122](HO122-A-Project-Says-What-The-Follow-Took.md) | S | - | `org status` names what the follow took of a project and why not, a row with no `central` included. |
 
 ## Finished
 
@@ -221,4 +221,3 @@ it is left out.
 | <a id="ho82"></a>HO82 | A Bring With No Token File | Bring and join are gone: the person's token comes from `forge-token` on standard output at each run, and a central token on standard input. |
 | <a id="ho87"></a>HO87 | The Host's Registry State Answered | `org status` replaced `registry status` and answers the host, the applied commit, the pin and each person's state. |
 | <a id="ho88"></a>HO88 | A Project Registered From The Admin's Own Account | The follow makes a project's organization and teams itself, with no person's act and no registry. |
-

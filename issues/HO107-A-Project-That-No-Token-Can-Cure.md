@@ -1,6 +1,18 @@
 # HO107 — A Project That No Token Can Cure
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO107",
+  "title": "A Project That No Token Can Cure",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 17,
+  "blockedBy": [],
+  "covers": "A project with no usable central address has a state of its own, `waiting-for-address`, as no token can cure it"
+}
+```
 
 **What must be true.** A project with no usable central address has a state of its own in `org status`, as it does not
 wait for a token and a token cannot cure it.

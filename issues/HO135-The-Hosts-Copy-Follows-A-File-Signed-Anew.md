@@ -1,12 +1,24 @@
 # HO135 — The Host's Copy Follows A File Signed Anew
 
-**Status:** Review.
-**Kind:** Bug.
-**Size:** S - the advance script's target and the follow's record of it, with unit tests and a Molecule step.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO135",
+  "title": "The Host's Copy Follows A File Signed Anew",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 19,
+  "blockedBy": [],
+  "covers": "Bug: the host's copy of a project's own repository advances to a commit signing `project.yml` anew, not only to its last change, and the follow records what `main` reached."
+}
+```
+
+**Why this size.** the advance script's target and the follow's record of it, with unit tests and a Molecule step.
 
 **What must be true.** The follow brings the project's own `main` on the host's forge up to the commit Porelo judges
 the project file by: the newest commit on the first-parent line that changed `project.yml` or carries the trailer
-`Porelo-Signs-Anew: project.yml`. The follow records as advanced only the commit the forge's `main` reached.
+`Porelo-Signs-Anew: project.yml`. The follow records as advanced only the commit the forge's `main` reached. It is a bug.
 
 ## Why
 

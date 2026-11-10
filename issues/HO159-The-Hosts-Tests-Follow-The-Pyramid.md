@@ -1,7 +1,20 @@
 # HO159 — The Host's Tests Follow The Pyramid
 
-**Status:** Accepted.
-**Size:** L - eight fixes in this repository, each S or XS, sized below; they come one after another, not as one change.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO159",
+  "title": "The Host's Tests Follow The Pyramid",
+  "state": "Accepted",
+  "size": "L",
+  "priority": "Medium",
+  "rank": 1,
+  "blockedBy": [],
+  "covers": "The host's tests follow the pyramid (ST296): its pool and role logic unit-tested over fakes, its subprocess tests narrowed, `tests/unit` and `tests/integration` apart, and Molecule's sleeps gone."
+}
+```
+
+**Why this size.** eight fixes in this repository, each S or XS, sized below; they come one after another, not as one change.
 
 **What must be true.** porelo-host's tests follow the test pyramid as AGENTS.md "Testing and machines" and
 porelo-project's `doc/test-pyramid.md` set it out (story ST296). Each flow of a role or a build script is plain logic

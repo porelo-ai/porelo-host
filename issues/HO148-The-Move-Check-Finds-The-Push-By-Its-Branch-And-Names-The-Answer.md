@@ -1,7 +1,20 @@
 # HO148 — The Move Check Finds The Push By Its Branch And Names The Answer
 
-**Status:** Review.
-**Size:** XS - one script, `build/move-check.sh`, and its unit tests.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO148",
+  "title": "The Move Check Finds The Push By Its Branch And Names The Answer",
+  "state": "Review",
+  "size": "XS",
+  "priority": "Medium",
+  "rank": 6,
+  "blockedBy": [],
+  "covers": "Bug: the move check finds the push in the forge repository that holds its branch, fails a Build nobody reads, and names what the forge, Git or the vault answered."
+}
+```
+
+**Why this size.** one script, `build/move-check.sh`, and its unit tests.
 
 **What must be true.** The move check finds a task's push and pull request in the repository of the host's forge that
 holds the task's branch, fails the Build line where the reader sees no `builds:`, and every failing line says what the

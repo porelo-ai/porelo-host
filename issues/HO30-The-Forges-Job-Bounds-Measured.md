@@ -1,6 +1,18 @@
 # HO30 — The Forge's Job Bounds Measured
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO30",
+  "title": "The Forge's Job Bounds Measured",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 24,
+  "blockedBy": [],
+  "covers": "A running job's container measured to carry its bounds, beyond what Molecule reads from the files the roles write."
+}
+```
 
 **What must be true.** What the forge's roles promise and Molecule reads only from the files they write is also seen
 in the running system: a job's container carries its bounds.

@@ -1,6 +1,18 @@
 # HO15 — The Host On Fedora
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO15",
+  "title": "The Host On Fedora",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 28,
+  "blockedBy": [],
+  "covers": "The host on Fedora as on Ubuntu 26.04: SELinux, firewalld, `dnf` and a Molecule scenario on Fedora to measure."
+}
+```
 
 **What must be true.** `host up` brings a Fedora host up as it brings an Ubuntu 26.04 one, and `host down` takes it
 down, with every role's promise kept the same way and proven by a Molecule scenario on Fedora; today every role is

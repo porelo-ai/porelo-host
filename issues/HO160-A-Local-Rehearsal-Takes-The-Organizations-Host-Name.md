@@ -1,6 +1,18 @@
 # HO160 — A Local Rehearsal Takes The Organization's Host Name
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO160",
+  "title": "A Local Rehearsal Takes The Organization's Host Name",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 1,
+  "blockedBy": [],
+  "covers": "Bug: a local rehearsal with a real organization's machine file runs `up` under that host's name, not `rehearsal`, so its fetch takes the pin."
+}
+```
 
 **What must be true.** `build/rehearse-move.sh start --machine-file` runs `up` under the host's name in the given
 organization, so the host's fetch reads that host's files and takes its pin. Today every local VM is named

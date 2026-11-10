@@ -1,11 +1,23 @@
 # HO138 — The Move Check Reads Each Line Where It Stands
 
-**Status:** Review.
-**Kind:** Bug.
-**Size:** S - two lines of `build/move-check.sh` read anew, with their unit tests in `tests/unit/test_move_tools.py`.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO138",
+  "title": "The Move Check Reads Each Line Where It Stands",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 16,
+  "blockedBy": [],
+  "covers": "Bug: the move check reads the push from the forge's branch the task names, not the build reader, and the conversation from the task, not the peers list."
+}
+```
+
+**Why this size.** two lines of `build/move-check.sh` read anew, with their unit tests in `tests/unit/test_move_tools.py`.
 
 **What must be true.** Each line of the move check reads the fact it names from the place that holds it, so it is
-green when that fact holds, whatever else is configured.
+green when that fact holds, whatever else is configured. It is a bug.
 
 ## Why
 

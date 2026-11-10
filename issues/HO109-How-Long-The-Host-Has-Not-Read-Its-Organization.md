@@ -1,6 +1,18 @@
 # HO109 — How Long The Host Has Not Read Its Organization
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO109",
+  "title": "How Long The Host Has Not Read Its Organization",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 30,
+  "blockedBy": [],
+  "covers": "`org status` says when the host last read its organization, as a follow that cannot fetch keeps a removed member's login with nothing said"
+}
+```
 
 **What must be true.** `org status` says when the host last read its organization, so the host admin, and the interface
 on their behalf, sees how long it has not. A follow that cannot fetch keeps the state it took, so a removed member keeps

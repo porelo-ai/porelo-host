@@ -1,8 +1,20 @@
 # HO127 — The Half For Jobs Is A Setting
 
-**Status:** Review.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO127",
+  "title": "The Half For Jobs Is A Setting",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 1,
+  "blockedBy": [],
+  "covers": "The share of the host for jobs and the VM pool becomes a setting, today's half its default, `up`'s refusal naming it."
+}
+```
 
-**Size:** S - one setting read in two roles and the check's fit, with their tests and docs; no contract another
+**Why this size.** one setting read in two roles and the check's fit, with their tests and docs; no contract another
 repository reads changes.
 
 **What must be true.** The share of the host that jobs and the VM pool may take is a setting, with today's half as its

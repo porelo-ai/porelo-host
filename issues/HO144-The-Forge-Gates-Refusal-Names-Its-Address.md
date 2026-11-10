@@ -1,11 +1,23 @@
 # HO144 — The Forge Gate's Refusal Names Its Address
 
-**Status:** Review.
-**Kind:** Bug.
-**Size:** XS - the 403 for a foreign `Host` in `porelo-forge-gate` says which address to use, with its unit test.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO144",
+  "title": "The Forge Gate's Refusal Names Its Address",
+  "state": "Review",
+  "size": "XS",
+  "priority": "Medium",
+  "rank": 11,
+  "blockedBy": [],
+  "covers": "Bug: the forge gate's 403 for a foreign `Host` names the address that works."
+}
+```
+
+**Why this size.** the 403 for a foreign `Host` in `porelo-forge-gate` says which address to use, with its unit test.
 
 **What must be true.** A person who opens the forwarded forge under another name than its own reads, in the refusal,
-the address that works.
+the address that works. It is a bug.
 
 ## Why
 

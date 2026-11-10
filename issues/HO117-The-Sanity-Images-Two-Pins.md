@@ -1,6 +1,18 @@
 # HO117 — The Sanity Image's Two Pins
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO117",
+  "title": "The Sanity Image's Two Pins",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 8,
+  "blockedBy": [],
+  "covers": "The `pip` and `pylint` the sanity image pins, with open alerts, raised or said why they stay"
+}
+```
 
 **What must be true.** `build/sanity/requirements.txt` holds no `pip` and no `pylint` with an open alert, or says why one stays, and sanity passes on what it holds.
 

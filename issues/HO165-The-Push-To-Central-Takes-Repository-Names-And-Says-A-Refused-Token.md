@@ -1,6 +1,18 @@
 # HO165 — The Push To Central Takes Repository Names And Says A Refused Token
 
-**Status:** Backlog.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO165",
+  "title": "The Push To Central Takes Repository Names And Says A Refused Token",
+  "state": "Backlog",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 6,
+  "blockedBy": [],
+  "covers": "`porelo-host-push` takes the project's repository names as well as the forge's, and says plainly when the central forge refuses the token."
+}
+```
 
 **What must be true.** `porelo-host-push` takes a repository by the name the project's file gives it as well as by its
 name on the host's forge, and when the central forge refuses the token it says that plainly, with the forge's answer,

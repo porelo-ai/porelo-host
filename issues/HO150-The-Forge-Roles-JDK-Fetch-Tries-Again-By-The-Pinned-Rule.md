@@ -1,7 +1,20 @@
 # HO150 — The Forge Role's JDK Fetch Tries Again By The Pinned Rule
 
-**Status:** Review.
-**Size:** XS - one task in `roles/forge/tasks/runner.yml`, its pattern in the role's vars, a unit test and the Molecule
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO150",
+  "title": "The Forge Role's JDK Fetch Tries Again By The Pinned Rule",
+  "state": "Review",
+  "size": "XS",
+  "priority": "Medium",
+  "rank": 5,
+  "blockedBy": [],
+  "covers": "Bug: the forge role fetches the runner's JDK once, with a 10 s timeout, so one outage of GitHub's release downloads fails a host's first up; it tries again on a 5xx or no answer within 15 minutes and fails at once on anything else."
+}
+```
+
+**Why this size.** one task in `roles/forge/tasks/runner.yml`, its pattern in the role's vars, a unit test and the Molecule
 job's time.
 
 **What must be true.** The forge role's fetch of the runner's pinned JDK tries again on what waiting may mend, a 5xx or

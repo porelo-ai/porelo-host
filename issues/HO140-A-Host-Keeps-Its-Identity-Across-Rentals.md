@@ -1,6 +1,18 @@
 # HO140 — A Host Keeps Its Identity Across Rentals
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO140",
+  "title": "A Host Keeps Its Identity Across Rentals",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 5,
+  "blockedBy": [],
+  "covers": "A host rented again and again keeps its read keys from the person's vault, so they stay registered between rentals and only a host given up for good has them removed."
+}
+```
 
 **What must be true.** A host rented for a few hours at a time is set up anew each time, but to the organization it stays
 the same host. Its read keys are the same from one rental to the next, as on a host that runs for good, and stay

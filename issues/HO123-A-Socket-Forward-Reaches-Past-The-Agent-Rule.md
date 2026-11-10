@@ -1,6 +1,20 @@
 # HO123 — A Socket Forward Reaches Past The Agent Rule
 
-**Status:** Review.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO123",
+  "title": "A Socket Forward Reaches Past The Agent Rule",
+  "state": "Review",
+  "size": "XS",
+  "priority": "Medium",
+  "rank": 30,
+  "blockedBy": [],
+  "covers": "Say what `AllowAgentForwarding no` stops, as a person's socket forward reaches past it."
+}
+```
+
+**Why this size.** `doc/ssh.md` says what the rule stops and what it does not; nothing else changes.
 
 **What must be true.** What a person's ssh can do with their agent on a host is written down and meant. `AllowAgentForwarding no`
 does not read as more than it is.

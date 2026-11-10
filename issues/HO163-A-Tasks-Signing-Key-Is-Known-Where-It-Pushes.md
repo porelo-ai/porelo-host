@@ -1,6 +1,18 @@
 # HO163 — A Task's Signing Key Is Known Where It Pushes
 
-**Status:** Backlog.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO163",
+  "title": "A Task's Signing Key Is Known Where It Pushes",
+  "state": "Backlog",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 4,
+  "blockedBy": [],
+  "covers": "A task's signing key is registered with the forge account that receives its push, so its commits verify on the host's forge; what the central forge can take is measured first."
+}
+```
 
 **What must be true.** A task's signed commits show as verified on the host's forge, since the key a task signs with is
 registered with the forge account that receives its push, and the same commits brought to the central forge do not

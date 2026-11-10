@@ -1,7 +1,20 @@
 # HO152 — A Burst Never Stops A Gate Socket
 
-**Status:** Review.
-**Size:** XS - five socket templates, two checks in up, one test file.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO152",
+  "title": "A Burst Never Stops A Gate Socket",
+  "state": "Review",
+  "size": "XS",
+  "priority": "Medium",
+  "rank": 3,
+  "blockedBy": [],
+  "covers": "Bug: a burst of connections never stops a gate socket for good: no trigger limit fails the forge, judge or Matrix gates, each bounds its connections, and up checks that every gate socket listens."
+}
+```
+
+**Why this size.** five socket templates, two checks in up, one test file.
 
 **What must be true.** A burst of connections never stops one of the host's gate sockets for good: the forge's web,
 git and runner gates, the push judge and the Matrix client gate. Each says how many connections it takes at once, and

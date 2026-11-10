@@ -1,6 +1,18 @@
 # HO99 — A Central Forge On A Private Authority
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO99",
+  "title": "A Central Forge On A Private Authority",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 15,
+  "blockedBy": [],
+  "covers": "A central forge on a private authority is reached by the fetch, the read key, the migration and the push, from one setting."
+}
+```
 
 **What must be true.** A central forge whose certificate a private authority signed is reachable by everything on the
 host that talks to it, from one setting: the follow's `org fetch`, the read key's calls, the migration and the gathered

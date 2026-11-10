@@ -1,7 +1,20 @@
 # HO14 — The Collection's Python Under `ansible-test sanity`
 
-**Status:** Review.
-**Size:** S - one pinned container image and one Build step; the findings it brings are fixed where they arise.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO14",
+  "title": "The Collection's Python Under `ansible-test sanity`",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 34,
+  "blockedBy": [],
+  "covers": "`ansible-test sanity` on the whole collection in the Build, offline, its requirements taken by hash."
+}
+```
+
+**Why this size.** one pinned container image and one Build step; the findings it brings are fixed where they arise.
 
 **What must be true.** The whole collection, its Python with the `lines` callback, passes `ansible-test sanity` in the Build, with
 everything it runs pinned, so a plugin's documentation is checked against its code as Galaxy's own import checks would.

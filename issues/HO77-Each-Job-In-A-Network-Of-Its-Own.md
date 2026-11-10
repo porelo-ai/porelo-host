@@ -1,7 +1,18 @@
 # HO77 — Each Job In A Network Of Its Own
 
-**Status:** Idea.
-**Size:** -
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO77",
+  "title": "Each Job In A Network Of Its Own",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 21,
+  "blockedBy": [],
+  "covers": "Concurrent jobs on a host cannot reach one another's network, and no host login reaches Forgejo over TCP."
+}
+```
 
 Part of the project's decision that a person joins with one click: one SSH key per person, no VPN, the state signed in
 Git on the central forge, every service on the host behind a Unix socket.

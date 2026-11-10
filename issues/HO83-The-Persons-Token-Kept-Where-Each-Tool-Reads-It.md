@@ -1,7 +1,20 @@
 # HO83 — The Person's Token Kept Where Each Tool Reads It
 
-**Status:** Review.
-**Size:** S - one line of the push, one helper check and the tests that pin six existing checks.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO83",
+  "title": "The Person's Token Kept Where Each Tool Reads It",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 37,
+  "blockedBy": [],
+  "covers": "The vault's person token stays the one in force after every remake; each task-start and token-handling check is tested by its absence."
+}
+```
+
+**Why this size.** one line of the push, one helper check and the tests that pin six existing checks.
 
 **What must be true.** The person's forge token in their vault is the one in force after every host command that
 remakes it, and each check of a task start fails its test when it is taken away.

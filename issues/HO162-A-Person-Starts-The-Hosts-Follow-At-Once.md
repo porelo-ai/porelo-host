@@ -1,6 +1,18 @@
 # HO162 — A Person Starts The Host's Follow At Once
 
-**Status:** Backlog.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO162",
+  "title": "A Person Starts The Host's Follow At Once",
+  "state": "Backlog",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 3,
+  "blockedBy": [],
+  "covers": "A person has the host read the organization now, from the window or a command, instead of waiting for the five-minute timer."
+}
+```
 
 **What must be true.** A person admitted to the host can have it read the organization now, from the window or a
 command, instead of waiting up to five minutes for the follow's timer; a change made in the organization reaches the

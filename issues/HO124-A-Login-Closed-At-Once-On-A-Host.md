@@ -1,6 +1,20 @@
 # HO124 — A Login Closed At Once On A Host
 
-**Status:** Review.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO124",
+  "title": "A Login Closed At Once On A Host",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 39,
+  "blockedBy": [],
+  "covers": "A login closed at once on a host, by reading sshd's own per-source penalty: reproduce it on the test VM, and say so."
+}
+```
+
+**Why this size.** a reproduction on the test VM and `doc/ssh.md` naming what a person meets.
 
 **What must be true.** A host's own ssh does not shut out a person's interface for what the interface itself did, or if it does, the
 person can read why and what to do.

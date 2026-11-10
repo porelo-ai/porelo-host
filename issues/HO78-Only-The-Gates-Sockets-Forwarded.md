@@ -1,7 +1,18 @@
 # HO78 — Only The Gates' Sockets Forwarded
 
-**Status:** Idea.
-**Size:** -
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO78",
+  "title": "Only The Gates' Sockets Forwarded",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 19,
+  "blockedBy": [],
+  "covers": "A person's SSH connection forwards only to the gates' sockets and their own return socket, and to no TCP address."
+}
+```
 
 Part of the project's decision that a person joins with one click: one SSH key per person, no VPN, the state signed in
 Git on the central forge, every service on the host behind a Unix socket.

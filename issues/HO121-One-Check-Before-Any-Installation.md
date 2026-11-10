@@ -1,6 +1,20 @@
 # HO121 — One Check Before Any Installation
 
-**Status:** Review.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO121",
+  "title": "One Check Before Any Installation",
+  "state": "Review",
+  "size": "L",
+  "priority": "Medium",
+  "rank": 40,
+  "blockedBy": [],
+  "covers": "One read-only check before any installation, the same code `up` runs first, every finding at once with its value, what was asked and what to do."
+}
+```
+
+**Why this size.** one new check script with its fixtures, the stops of many roles moved to it, an answer the interface reads, and Molecule runs.
 
 **What must be true.** Before anything changes on a machine, one read-only check answers whether it can do what this person
 wants, and names **every** finding at once: what was found, what was asked, what to do. `up` installs nothing unless it passes,

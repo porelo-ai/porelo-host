@@ -1,12 +1,24 @@
 # HO142 — The Person's Vault Holds Their Forge Token From The Start
 
-**Status:** Review.
-**Kind:** Bug.
-**Size:** S - one place on the host puts the person's `<forge>.person` vault entry, shared with `porelo-host-push`, with
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO142",
+  "title": "The Person's Vault Holds Their Forge Token From The Start",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 10,
+  "blockedBy": [],
+  "covers": "Bug: the person's vault holds `<forge>.person` from the start, made the one way `porelo-host-push` makes it."
+}
+```
+
+**Why this size.** one place on the host puts the person's `<forge>.person` vault entry, shared with `porelo-host-push`, with
 its unit tests.
 
 **What must be true.** Once a person is on the host, their Porelo-Vault holds `<forge>.person`, so anything they run
-on the host reads the host's forge over Git as them before their first gathered push.
+on the host reads the host's forge over Git as them before their first gathered push. It is a bug.
 
 ## Why
 

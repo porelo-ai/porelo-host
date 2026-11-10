@@ -1,10 +1,25 @@
 # HO07 — The Project's Store Restored And Kept
 
-**Status:** Backlog. It waits for the room's `backup <dir>` and `restore <dir>`,
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO07",
+  "title": "The Project's Store Restored And Kept",
+  "state": "Backlog",
+  "size": "L",
+  "priority": "Medium",
+  "rank": 1,
+  "blockedBy": [],
+  "covers": "Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it."
+}
+```
+
+**Why this size.** one role, a script and a timer here, but every entry's copy and restore is another repository's command,
+and the round trip is measured on a rented host.
+
+**2026-11-04:** It waits for the room's `backup <dir>` and `restore <dir>`,
 for a backup that holds only its own copy and never empties a directory another one filled (a late completion or a
 second backup into the same directory loses messages), and for `porelo keep [--restore] <dir>`.
-**Size:** L - one role, a script and a timer here, but every entry's copy and restore is another repository's command,
-and the round trip is measured on a rented host.
 
 **What must be true.** At `up`, the data the project keeps comes back from its store before anything that reads it
 starts; while the host runs, a timer copies it every hour; at `down`, a last copy is made before anything stops. Each

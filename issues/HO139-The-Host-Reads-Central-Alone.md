@@ -1,7 +1,20 @@
 # HO139 — The Host Reads Central Alone
 
-**Status:** Review.
-**Size:** XS - one helper's reading of the verified project file, its unit tests and the documentation.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO139",
+  "title": "The Host Reads Central Alone",
+  "state": "Review",
+  "size": "XS",
+  "priority": "Medium",
+  "rank": 14,
+  "blockedBy": [],
+  "covers": "Bug: the host reads a repository of the project file by its name and `central` alone; the project file names no host."
+}
+```
+
+**Why this size.** one helper's reading of the verified project file, its unit tests and the documentation.
 
 **What must be true.** The host reads a repository of the project file by its name and its `central` address alone. A
 host's address never stands in the project file: the host derives its own forge for what it carries, and what it does

@@ -1,7 +1,20 @@
 # HO85 — The Push Judge Armed Only Where It Holds
 
-**Status:** Review.
-**Size:** S - checks in the arming script, the removal's arrivals, one lock, the verdict's fields, handler order and
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO85",
+  "title": "The Push Judge Armed Only Where It Holds",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 38,
+  "blockedBy": [],
+  "covers": "A repository is armed only where the judge's hook holds, a removal takes the arrivals along, and each verdict is recorded only whole."
+}
+```
+
+**Why this size.** checks in the arming script, the removal's arrivals, one lock, the verdict's fields, handler order and
 tests.
 
 **What must be true.** A repository is recorded as armed only when its hook link names the mounted hook, which is

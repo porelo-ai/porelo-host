@@ -1,6 +1,18 @@
 # HO91 — SSH's Edges Left From Its Readings
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO91",
+  "title": "SSH's Edges Left From Its Readings",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 11,
+  "blockedBy": [],
+  "covers": "The KRL validated before sshd reads it, a root key with an options prefix refused, and a lock ordered against a concurrent follow."
+}
+```
 
 **What must be true.** The host's SSH holds at the edges its readings left open: the KRL is validated before sshd
 reads it, a root key with an options prefix is refused or kept with its options as given, and a lock is ordered against

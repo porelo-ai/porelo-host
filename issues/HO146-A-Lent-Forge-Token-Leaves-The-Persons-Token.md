@@ -1,7 +1,20 @@
 # HO146 — A Lent Forge Token Leaves The Person's Token
 
-**Status:** Review.
-**Size:** S - one verb's option in `porelo-host-person`, its sudoers line and its unit tests; Porelo's switch is its own.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO146",
+  "title": "A Lent Forge Token Leaves The Person's Token",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 8,
+  "blockedBy": [],
+  "covers": "Porelo's git commands on the host's forge take a lent token of their own, so the person's `<forge>.person` token in the vault, which a task's builds read, stays valid."
+}
+```
+
+**Why this size.** one verb's option in `porelo-host-person`, its sudoers line and its unit tests; Porelo's switch is its own.
 
 **What must be true.** A task's builds keep reading the host's forge while Porelo starts tasks, refreshes a gate's
 mirror and forwards a push: the person's `<forge>.person` token in their Porelo-Vault stays valid until the person's

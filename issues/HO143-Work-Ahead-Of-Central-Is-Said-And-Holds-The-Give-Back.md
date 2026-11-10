@@ -1,12 +1,24 @@
 # HO143 — Work Ahead Of Central Is Said And Holds The Give-Back
 
-**Status:** Review.
-**Kind:** Bug.
-**Size:** S - `org status` adds each repository's central state, and `down` refuses while work is not at central,
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO143",
+  "title": "Work Ahead Of Central Is Said And Holds The Give-Back",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 13,
+  "blockedBy": [],
+  "covers": "Bug: `org status` says each taken repository's state against central, and `down` refuses while work is not at central, unless given back anyway."
+}
+```
+
+**Why this size.** `org status` adds each repository's central state, and `down` refuses while work is not at central,
 with unit and Molecule checks.
 
 **What must be true.** A person sees in `org status` which repository's `main` on the host is ahead of its central
-forge, and the host is not given back while one is, unless the person gives it back anyway.
+forge, and the host is not given back while one is, unless the person gives it back anyway. It is a bug.
 
 ## Why
 

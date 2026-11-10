@@ -1,6 +1,18 @@
 # HO86 — The Push Judge's Smaller Edges
 
-**Status:** Idea; blocked by [HO85](README.md#ho85).
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO86",
+  "title": "The Push Judge's Smaller Edges",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 18,
+  "blockedBy": ["HO85"],
+  "covers": "The push judge's smaller edges from its reading, gathered: links in the arming, the removal's checks, a first-push race, the null object, the answer's field and record checks pinned by tests."
+}
+```
 
 **What must be true.** The smaller edges a reading of the push judge found are closed, each with a test seen red then
 green:

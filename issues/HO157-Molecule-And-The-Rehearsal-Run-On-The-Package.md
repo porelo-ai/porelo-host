@@ -1,7 +1,20 @@
 # HO157 — Molecule And The Rehearsal Run On The Package
 
-**Status:** Implementing.
-**Size:** M - `build/molecule.sh`, `build/rehearse-move.sh` and Molecule's acts change to install and call the
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO157",
+  "title": "Molecule And The Rehearsal Run On The Package",
+  "state": "Implementing",
+  "size": "M",
+  "priority": "Medium",
+  "rank": 2,
+  "blockedBy": [],
+  "covers": "Molecule and the move rehearsal install the local `porelo-host` package and check its version; `porelo-vm` moves to `build/`."
+}
+```
+
+**Why this size.** `build/molecule.sh`, `build/rehearse-move.sh` and Molecule's acts change to install and call the
 package; `porelo-vm` moves to `build/`.
 
 **What must be true.** Molecule's scenarios and the move rehearsal set a VM up with the `porelo-host` package built

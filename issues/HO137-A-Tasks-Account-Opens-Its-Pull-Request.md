@@ -1,7 +1,20 @@
 # HO137 — A Task's Account Opens Its Pull Request
 
-**Status:** Review.
-**Size:** S - mostly a measurement in the Molecule scenario's follow act; a host change only where it fails.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO137",
+  "title": "A Task's Account Opens Its Pull Request",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 17,
+  "blockedBy": [],
+  "covers": "The task's token opens its pull request `porelo/<task>` → `main` on the host's forge, and the person's approval counts, measured in the follow act."
+}
+```
+
+**Why this size.** mostly a measurement in the Molecule scenario's follow act; a host change only where it fails.
 
 **What must be true.** On the host's forge, the token a task start makes for the person's task account
 `porelo-<login>` opens a pull request from `porelo/<task>` to `main`. The person `<login>` may approve it, and that

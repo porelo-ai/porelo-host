@@ -1,7 +1,20 @@
 # HO132 — A Move Rehearsed On A Local VM
 
-**Status:** Review.
-**Size:** S - one shell script beside `build/molecule.sh`, on the same VM code, and its trial on this kind of machine up to
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO132",
+  "title": "A Move Rehearsed On A Local VM",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 21,
+  "blockedBy": [],
+  "covers": "`build/rehearse-move.sh` makes a throwaway VM, runs `up` with the forge and no pool, opens the room tunnel and takes it all down again, so a move is rehearsed before a host is rented."
+}
+```
+
+**Why this size.** one shell script beside `build/molecule.sh`, on the same VM code, and its trial on this kind of machine up to
 an empty `up` and a clean `down`.
 
 **What must be true.** Before a host is rented, an agent's move can be rehearsed on a throwaway VM on a development

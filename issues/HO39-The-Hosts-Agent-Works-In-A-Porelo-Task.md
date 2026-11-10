@@ -1,7 +1,21 @@
 # HO39 — The Host's Agent Works In A Porelo Task
 
-**Status:** Analyzed; blocked by [HO40](README.md#ho40).
-**Size:** S - no code of its own: the move's steps for this repository, this issue worked to Review inside the task,
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO39",
+  "title": "The Host's Agent Works In A Porelo Task",
+  "state": "Analyzed",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 2,
+  "blockedBy": ["HO40"],
+  "covers": "porelo-host's agent, `Agent Host`, in a Porelo task on the move's host, with a way back: the image from `porelo.yml`.",
+  "openQuestions": 1
+}
+```
+
+**Why this size.** no code of its own: the move's steps for this repository, this issue worked to Review inside the task,
 and the way back once.
 
 **What must be true.** porelo-host's own agent, `Agent Host` in the project's room, works in a Porelo task on the

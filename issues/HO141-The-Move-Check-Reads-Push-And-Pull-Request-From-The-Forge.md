@@ -1,12 +1,24 @@
 # HO141 — The Move Check Reads Push And Pull Request From The Forge
 
-**Status:** Review.
-**Kind:** Bug.
-**Size:** S - `build/move-check.sh` reads two lines anew, with their unit tests in `tests/unit/test_move_tools.py`.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO141",
+  "title": "The Move Check Reads Push And Pull Request From The Forge",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 12,
+  "blockedBy": [],
+  "covers": "Bug: the move check reads the push and the pull request from the host's forge, and names the Build not configured without `builds:`."
+}
+```
+
+**Why this size.** `build/move-check.sh` reads two lines anew, with their unit tests in `tests/unit/test_move_tools.py`.
 
 **What must be true.** On a guarded project without a `builds:` block, the move check is green for a task whose push
 reached the host's forge and whose pull request is open there, and it names the Build as not configured instead of
-failing it.
+failing it. It is a bug.
 
 ## Why
 

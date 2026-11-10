@@ -1,6 +1,18 @@
 # HO164 — A Project's Review Setting Reaches The Branch Protection
 
-**Status:** Backlog.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO164",
+  "title": "A Project's Review Setting Reaches The Branch Protection",
+  "state": "Backlog",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 5,
+  "blockedBy": [],
+  "covers": "A project's `review: optional` or `required` reaches the host forge's protection of `main` on the next follow pass, so a single admin can merge."
+}
+```
 
 **What must be true.** When a project's file says a repository's review is `optional`, the next follow pass sets the
 host forge's protection of `main` to need no approval, and back to one when it says `required`; a project with one

@@ -1,6 +1,18 @@
 # HO161 — A Local Rehearsal Pins The Host Admin's Key For Root
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO161",
+  "title": "A Local Rehearsal Pins The Host Admin's Key For Root",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 2,
+  "blockedBy": [],
+  "covers": "Bug: a local rehearsal with a real organization's machine file leaves root's login to the host admin's key, so `org host refresh` reaches it."
+}
+```
 
 **What must be true.** A local rehearsal with a real organization's machine file leaves root's login to the host
 admin's key, as a person's window does on a rented server, so `org host refresh` reaches the host with the admin's

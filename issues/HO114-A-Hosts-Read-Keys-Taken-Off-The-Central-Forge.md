@@ -1,6 +1,18 @@
 # HO114 — A Host's Read Keys Taken Off The Central Forge
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO114",
+  "title": "A Host's Read Keys Taken Off The Central Forge",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 10,
+  "blockedBy": [],
+  "covers": "Taking a project off and `down` delete the host's read-only keys at the central forge, the token asked once and kept nowhere; if impossible, each is named with a link."
+}
+```
 
 **What must be true.** Taking a project off a host, and `down`, delete the host's read-only deploy keys at the central
 forge, with a token asked once and kept nowhere. Where that is impossible, each key is named with a link to where its

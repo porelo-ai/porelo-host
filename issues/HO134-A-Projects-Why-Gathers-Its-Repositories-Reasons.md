@@ -1,13 +1,25 @@
 # HO134 — A Project's Why Gathers Its Repositories' Reasons
 
-**Status:** Review.
-**Kind:** Bug.
-**Size:** XS - one function of the root helper and its unit tests.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO134",
+  "title": "A Project's Why Gathers Its Repositories' Reasons",
+  "state": "Review",
+  "size": "XS",
+  "priority": "Medium",
+  "rank": 20,
+  "blockedBy": [],
+  "covers": "Bug: a project's `why` gathers like reasons of its repositories in one line, none for repositories without a central address; the detail stays in `repositories[]`."
+}
+```
+
+**Why this size.** one function of the root helper and its unit tests.
 
 **What must be true.** A project's `why` in `org status` and `org refresh` is one short line. Like reasons of its
 repositories are gathered with the repositories' names, and the detail of each stays in that project's
 `repositories[]`. A project that is carried with some of its repositories taken and the rest only without a central
-address has no `why` at all.
+address has no `why` at all. It is a bug.
 
 ## Why
 

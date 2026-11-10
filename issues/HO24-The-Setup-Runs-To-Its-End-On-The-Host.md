@@ -1,6 +1,18 @@
 # HO24 — The Setup Runs To Its End On The Host
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO24",
+  "title": "The Setup Runs To Its End On The Host",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 27,
+  "blockedBy": [],
+  "covers": "`up`'s playbook runs on the host to its end whoever watches, and `porelo-host` attaches to it again when started again."
+}
+```
 
 **What must be true.** `up`'s playbook runs on the host to its end even when the person's computer, the interface or
 the ssh connection goes away midway, and `porelo-host` attaches to that run again, from its first line, when it is

@@ -1,6 +1,20 @@
 # HO116 — The Firewall Left By Down
 
-**Status:** Review.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO116",
+  "title": "The Firewall Left By Down",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 25,
+  "blockedBy": [],
+  "covers": "`down` leaves the firewall's file and, by reading, its unit: taken off, or said why it stays"
+}
+```
+
+**Why this size.** `down` leaves the firewall and says so with its command, and Molecule's `down` asserts the unit, the rules and the note.
 
 **What must be true.** After `down` a host holds no firewall of the collection's, or a host admin can read why it stays.
 

@@ -1,6 +1,20 @@
 # HO119 — Which Server For What
 
-**Status:** Review.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO119",
+  "title": "Which Server For What",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 27,
+  "blockedBy": [],
+  "covers": "One page: which server for what, with and without Forgejo, each number measured or marked not, and the rule for parallel jobs."
+}
+```
+
+**Why this size.** one page in `doc/` and its nav, its tables made from the measuring run's files.
 
 **What must be true.** A person reads one page and knows which server to take for what they will run: system, CPUs, memory,
 disk, KVM yes or no. Each number on it is measured, or marked "not measured". What `up` can tell early it refuses early.

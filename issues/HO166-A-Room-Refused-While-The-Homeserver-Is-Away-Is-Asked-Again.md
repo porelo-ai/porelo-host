@@ -1,6 +1,18 @@
 # HO166 — A Room Refused While The Homeserver Is Away Is Asked Again
 
-**Status:** Idea.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO166",
+  "title": "A Room Refused While The Homeserver Is Away Is Asked Again",
+  "state": "Idea",
+  "size": "-",
+  "priority": "Medium",
+  "rank": 3,
+  "blockedBy": [],
+  "covers": "Bug: a room the gate refused while the homeserver was away is asked again on a later follow pass, and `up` fails when its homeserver does not answer."
+}
+```
 
 **What must be true.** A project's room that the gate refused because the homeserver did not answer is asked for again
 on a later follow pass, and `up` fails when the homeserver it started does not answer. Today the follow records any

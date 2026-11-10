@@ -1,7 +1,20 @@
 # HO52 — Snapshots Resolved With A Read-Only Token
 
-**Status:** Review.
-**Size:** M - one contract other repositories read (a secret's name and scope, a variable), in one helper with its
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO52",
+  "title": "Snapshots Resolved With A Read-Only Token",
+  "state": "Review",
+  "size": "M",
+  "priority": "Medium",
+  "rank": 33,
+  "blockedBy": [],
+  "covers": "Each project organization holds a `read:package` token as `PORELO_PACKAGES_READ_TOKEN` and its own `MAVEN_SNAPSHOTS_URL`, so builds resolve snapshots without the publisher's token."
+}
+```
+
+**Why this size.** one contract other repositories read (a secret's name and scope, a variable), in one helper with its
 tests and a Molecule act.
 
 **What must be true.** A build on the host's forge resolves its project's snapshots with a token that can only read

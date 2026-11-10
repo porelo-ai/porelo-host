@@ -1,6 +1,20 @@
 # HO106 — A Refused Root Key File Says Why
 
-**Status:** Review.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO106",
+  "title": "A Refused Root Key File Says Why",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 26,
+  "blockedBy": [],
+  "covers": "`up` refusing root's key file says how many keys it found and what to do, not only `non-zero return code`"
+}
+```
+
+**Why this size.** two tasks of `base` that count root's keys and say what the file holds, with a unit test on each case.
 
 **What must be true.** When `up` refuses root's key file because it does not hold exactly one ed25519 key, the person is
 told that, how many keys it found and what to do, before anything of SSH has changed. Today a server with two root keys,

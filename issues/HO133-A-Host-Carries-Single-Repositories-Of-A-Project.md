@@ -1,7 +1,20 @@
 # HO133 — A Host Carries Single Repositories Of A Project
 
-**Status:** Review.
-**Size:** M - the follow's taking narrowed to the repositories the host's card names, one repository taken off the
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO133",
+  "title": "A Host Carries Single Repositories Of A Project",
+  "state": "Review",
+  "size": "M",
+  "priority": "Medium",
+  "rank": 15,
+  "blockedBy": [],
+  "covers": "Single repositories of a project carried: the follow takes only those the host's card names, one taken off the forge with its read key at the central forge given the token, status per repository."
+}
+```
+
+**Why this size.** the follow's taking narrowed to the repositories the host's card names, one repository taken off the
 host's forge on its own with its read key, and the project's status per repository; unit tests and the Molecule
 scenario's follow act.
 

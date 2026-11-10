@@ -1,7 +1,20 @@
 # HO154 — A Task Account Pushes Only Its Own Task Branches
 
-**Status:** Review.
-**Size:** S - one rule in the push judge, one field in the forge's hook, their tests and a paragraph of the doc.
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO154",
+  "title": "A Task Account Pushes Only Its Own Task Branches",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 2,
+  "blockedBy": [],
+  "covers": "A task's token pushes and force-pushes only `porelo/<task>` of its own person's tasks; the host refuses any other ref from that account."
+}
+```
+
+**Why this size.** one rule in the push judge, one field in the forge's hook, their tests and a paragraph of the doc.
 
 **What must be true.** A task's token may push and force-push `porelo/<task>` of its own person's tasks on the host's
 forge, as an amend pushed with a lease does, and no other ref: not another person's task branch, not `main`, not a tag

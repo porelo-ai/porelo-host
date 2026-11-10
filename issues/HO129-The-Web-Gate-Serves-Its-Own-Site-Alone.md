@@ -1,7 +1,20 @@
 # HO129 — The Web Gate Serves Its Own Site Alone
 
-**Status:** Review.
-**Size:** S - one check in `porelo-forge-gate`'s web mode, its unit tests, a Molecule step on the real forge and the
+```json
+{
+  "$schema": "issue-1.json",
+  "id": "HO129",
+  "title": "The Web Gate Serves Its Own Site Alone",
+  "state": "Review",
+  "size": "S",
+  "priority": "Medium",
+  "rank": 23,
+  "blockedBy": [],
+  "covers": "The web gate refuses a `Host` other than the forge's own site, and on a request that changes something a foreign `Origin` or a cross-site `Sec-Fetch-Site`, so another page in the browser cannot act as the person."
+}
+```
+
+**Why this size.** one check in `porelo-forge-gate`'s web mode, its unit tests, a Molecule step on the real forge and the
 document.
 
 **What must be true.** The web gate signs a request in only when it was made for the forge's own site. Another page open
