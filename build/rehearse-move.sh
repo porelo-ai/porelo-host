@@ -780,8 +780,9 @@ done
 if grep -rlE "/usr/local/(s?bin|libexec)/porelo-(host|forge)" /etc/systemd/system /etc/sudoers.d 2>/dev/null; then
     echo "a unit or sudo rule above still runs an old host program"; found=1
 fi
-porelo-host --version || found=1
-exit "$found"'
+exit "$found"' || return 1
+    # As root without the session's variables, which the host program refuses through sudo as well.
+    on_root porelo-host --version
 }
 
 rented_hook() {
