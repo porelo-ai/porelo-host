@@ -1,0 +1,105 @@
+#!/bin/sh
+# The judge step (ST291, pushes through the gate): as the test person, a commit made inside rehearsal-a's container is
+# pushed by the task through its gate to its own branch and accepted; the same commit pushed to another task's ref, to
+# that task's forge branch and to main is refused by the gate; the forge's build of the accepted commit is followed to
+# a final verdict, which is named. It uses rehearsal-a, which the tasks step leaves running, rather than a task of its
+# own: it is the task the story speaks of, it waits at its prompt with nothing to do, and a start of its own would
+# cost an image build and a stop. The judge is the last step, so the extra commit on porelo/<task> troubles no other.
+set -u
+task=rehearsal-a
+other=rehearsal-b
+report=$REHEARSAL_REPORT
+# A refusal by the gate, in git's protocol (porelo gate/GitHttpServer.java, rejection()).
+refusal="this task's work goes to"
+
+left() { echo $((REHEARSAL_DEADLINE - $(date +%s))); }
+on_person() { # <command> <argument>...: on the host as the person, ended at the hard stop
+    [ "$(left)" -gt 0 ] || { echo "the hard stop passed" >&2; return 124; }
+    timeout "$(left)" "$REHEARSAL_PERSON_SSH" "$@" < /dev/null
+}
+in_task() { on_person podman exec "$container" sh -c "cd /workspace && $1"; }
+field() { # <field> of the JSON object on standard input; absent or null prints nothing
+    python3 -Ic 'import json,sys
+try:
+    value = json.load(sys.stdin).get(sys.argv[1])
+except (ValueError, AttributeError):
+    value = None
+print("" if value is None else str(value).lower() if isinstance(value, bool) else value)' "$1"
+}
+forge_branch() { awk '$1 == "forge" { print $2; exit }'; }
+
+# The task, its container and its branch at the forge, from `porelo task status` (doc/commands.md, task status).
+status=$(on_person porelo task status "$task" --json) || { echo "porelo task status $task failed"; exit 1; }
+printf '%s\n' "$status" > "$report/judge.status.json"
+[ "$(printf '%s' "$status" | field running)" = true ] || { echo "$task does not run"; exit 1; }
+container=$(printf '%s' "$status" | field container)
+page=$(on_person porelo task status "$task") || { echo "porelo task status $task failed"; exit 1; }
+class=$(printf '%s\n' "$page" | awk '$1 == "class" { print $2; exit }')
+branch=$(printf '%s\n' "$page" | forge_branch)
+others=$(on_person porelo task status "$other" | forge_branch)
+echo "$task runs in $container, class ${class:-unnamed}, its forge branch ${branch:-unnamed}"
+# Only an online gate passes the task's branch on to the forge, and only an online project has builds.
+[ "$class" = online ] || {
+    echo "$task is ${class:-of no class}, not online: its gate passes nothing to the forge"
+    exit 77
+}
+[ -n "$container" ] && [ -n "$branch" ] && [ -n "$others" ] \
+    || { echo "task status names no container or forge branch for $task or $other"; exit 1; }
+
+# The commit, made in the task's workspace by podman exec as the person; the container's git signs it at the gate.
+commit=$(in_task 'git commit -q --allow-empty -m "rehearsal judge: pushes through the gate" && git rev-parse HEAD') \
+    || { echo "no commit could be made in $container"; exit 1; }
+printf '%s\n' "$commit" | grep -Eqx '[0-9a-f]{40}|[0-9a-f]{64}' || { echo "the commit is not named: $commit"; exit 1; }
+echo "committed $commit in $container"
+
+# Its own push: a bare `git push porelo` goes to $PORELO_TASK_REF, which an online gate passes on to its branch and
+# answers only once the forge took it (doc/running.md, Porelo in this task; doc/way-of-working.md, online).
+if ! in_task 'git push porelo 2>&1' > "$report/judge.push.log"; then
+    echo "the task's own push of $commit was refused:"
+    tail -n 3 "$report/judge.push.log"
+    exit 1
+fi
+echo "the task's push of $commit through the gate was accepted for $branch"
+
+# Pushes elsewhere: another task's gate ref, its forge branch and main, each refused by the gate.
+for ref in "refs/porelo/incoming/$other" "refs/heads/$others" refs/heads/main; do
+    if in_task "git push porelo HEAD:$ref 2>&1" > "$report/judge.refused.log"; then
+        echo "the gate let $commit onto $ref"
+        exit 1
+    fi
+    grep -qF "$refusal" "$report/judge.refused.log" || {
+        echo "the push to $ref failed, but not by the gate's refusal:"
+        tail -n 3 "$report/judge.refused.log"
+        exit 1
+    }
+    echo "the gate refused $commit on $ref"
+done
+
+# The build, read by `porelo build status --commit` (doc/commands.md, build): exit 0 or 1 is an answer, the verdict
+# final at success, failure or cancelled; queued, running, unknown or no answer yet is asked again until the hard stop.
+verdict=
+asked=
+while :; do
+    build=$(on_person porelo build status -p "$REHEARSAL_PROJECT" -r "$REHEARSAL_REPOSITORY" "--commit=$commit" \
+        --logs=none --json 2> "$report/judge.build.err")
+    asked=$?
+    printf '%s\n' "$build" > "$report/judge.build.json"
+    case $asked in
+        0 | 1)
+            [ "$(printf '%s' "$build" | field commit)" = "$commit" ] \
+                || { echo "the build read is not of $commit"; exit 1; }
+            verdict=$(printf '%s' "$build" | field verdict)
+            case $verdict in success | failure | cancelled) break ;; esac
+            ;;
+        77 | 78)
+            echo "porelo build status cannot read builds (exit $asked): $(tail -n 1 "$report/judge.build.err")"
+            exit 1
+            ;;
+    esac
+    [ "$(left)" -gt 20 ] || {
+        echo "no final build verdict of $commit by the hard stop: ${verdict:-none} (exit $asked)"
+        exit 1
+    }
+    sleep 15
+done
+echo "the forge's build of $commit on $branch: $verdict"
