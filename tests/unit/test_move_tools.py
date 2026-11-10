@@ -2055,7 +2055,12 @@ def test_rented_phase_two_holds_the_host_up_after_a_failed_step_until_the_hold_f
     assert seen == {"held": True, "down_before": 0}
     steps = server.report()[1]
     marks = [line.split(" ", 2)[0] + " " + line.split(" ", 2)[1] for line in steps]
-    assert marks[marks.index("FAIL project") :][:4] == ["FAIL project", "HOLD failure", "OK org-follow", "OK org-off"], steps
+    assert marks[marks.index("FAIL project") :][:4] == [
+        "FAIL project",
+        "HOLD failure",
+        "OK org-follow",
+        "OK org-off",
+    ], steps
     assert len(server.down_calls()) == 1
 
 
