@@ -1656,8 +1656,8 @@ PHASE_TWO_STEPS = [
     "SKIP window",
     "OK push-pull",
     "OK refused-token",
-    "OK org-off",
     "OK org-follow",
+    "OK org-off",
     "OK down",
     "SKIP read-keys",
     "delete the server",
@@ -1924,8 +1924,8 @@ def test_rented_phase_two_holds_the_host_up_until_the_hold_file_goes(rented):
         "refused-token",
         "hold",
         "hold",
-        "org-off",
         "org-follow",
+        "org-off",
         "down",
     ], steps
 
@@ -2055,7 +2055,7 @@ def test_rented_phase_two_holds_the_host_up_after_a_failed_step_until_the_hold_f
     assert seen == {"held": True, "down_before": 0}
     steps = server.report()[1]
     marks = [line.split(" ", 2)[0] + " " + line.split(" ", 2)[1] for line in steps]
-    assert marks[marks.index("FAIL project") :][:4] == ["FAIL project", "HOLD failure", "OK org-off", "OK org-follow"], steps
+    assert marks[marks.index("FAIL project") :][:4] == ["FAIL project", "HOLD failure", "OK org-follow", "OK org-off"], steps
     assert len(server.down_calls()) == 1
 
 
@@ -2095,8 +2095,8 @@ def test_rented_phase_two_resumes_a_held_run_from_up_and_its_failed_step(rented)
         "OK refused-token",
         "HOLD hold",
         "OK hold",
-        "OK org-off",
         "OK org-follow",
+        "OK org-off",
         "OK down",
     ], steps
     assert [row["args"][2] for row in server.events("org")] == [

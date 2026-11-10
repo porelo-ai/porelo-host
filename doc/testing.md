@@ -110,9 +110,9 @@ Without the phase 2 options it stops after `up`. With them it also:
   `PORELO_HOST_DEB=<absolute path>` line and, beside it only, one `PORELO_HOST_PACKAGES=<absolute path>` line; any
   other line, or a script that is not executable, is refused with `FAIL resume`, the host staying held. The hard stop
   ends a failure hold as any other;
-- before `down`, takes `rented` off the project and out of the organization, names it if that fails, and has the host
-  follow the organization it left as root (`org-follow`), which takes the persons' memberships off: `down` refuses a
-  host where any are left.
+- before `down`, takes the project off `rented` and has the host follow that as root while the organization still
+  lists it (`org-follow`), so the persons' project memberships are gone, since `down` refuses a host where any are left;
+  then takes `rented` out of the organization, and names it if that fails.
 
 A step under `build/rehearse-steps/<name>` runs once, in its own process, with standard input at `/dev/null`, the
 checkout root as its directory and umask 077. It is given, in the environment alone and nothing secret:
