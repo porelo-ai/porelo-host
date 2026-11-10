@@ -36,6 +36,11 @@ and push nothing. After $answer_minutes minutes, stop."
 # Each start goes from the person's side, as the product wants: the test identity's porelo here (REHEARSAL_ORG) starts
 # the task on the host with --host, its key certified by the person's agent here, never forwarded. A start with --host
 # is detached, so the pair's runs go on, each for its --minutes; Porelo ends a run after that time.
+# A resumed run repeats this step: tasks an earlier try left are stopped first, so each start below starts its own.
+for name in a b c; do
+    bounded 300 "$REHEARSAL_PERSON_SSH" porelo task stop "rehearsal-$name" < /dev/null > /dev/null 2>&1 || true
+done
+
 # The client starts a task with --host only on a host key it holds: the one the run pinned at its first connection, which
 # trust-host records only where the host offers that very key.
 pinned=$(printf '%s %s\n' "$REHEARSAL_HOST" "$REHEARSAL_HOST_KEY" | ssh-keygen -lf - | awk '{print $2}')
@@ -53,8 +58,13 @@ host_start() { # <task> [<start option>...]
         "$@" "rehearsal-$task" < /dev/null > "$REHEARSAL_REPORT/tasks-$task.start" 2>&1 \
         || { echo "rehearsal-$task did not start; its start said:"; cat "$REHEARSAL_REPORT/tasks-$task.start"; exit 1; }
 }
+# A start with a prompt stays with its run until the run ends, --host or not, so the pair's starts go on in the
+# background here, each bound to its run's minutes, and the status below tells when each runs.
 for name in a b; do
-    host_start "$name" --minutes=$((answer_minutes + 5)) -P "$prompt"
+    timeout --kill-after=10 $(((answer_minutes + 10) * 60)) "$REHEARSAL_ORG" task start \
+        --host "$REHEARSAL_PERSON@$REHEARSAL_HOST" --no-input --agent=pi --provider=openrouter --model="$model" \
+        --clearance=deny -p "$REHEARSAL_PROJECT" -r "$REHEARSAL_REPOSITORY" --minutes=$((answer_minutes + 5)) \
+        -P "$prompt" "rehearsal-$name" < /dev/null > "$REHEARSAL_REPORT/tasks-$name.start" 2>&1 &
 done
 # The third needs no run of its own: it is started and stopped.
 host_start c
