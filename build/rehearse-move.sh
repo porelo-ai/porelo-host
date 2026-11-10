@@ -753,7 +753,7 @@ rented_host_program() {
 found=0
 for old in /usr/local/sbin/porelo-host-person /usr/local/sbin/porelo-host-project /usr/local/sbin/porelo-host-push \
     /usr/local/libexec/porelo-forge-gate /usr/local/bin/porelo-host-forge-token /usr/local/bin/porelo-host-stop \
-    /usr/local/sbin/porelo-host-forge-password; do
+    /usr/local/sbin/porelo-host-forge-password /usr/local/sbin/porelo-host /usr/local/bin/porelo-host; do
     if [ -e "$old" ] || [ -L "$old" ]; then echo "an old host program is still there: $old"; found=1; fi
 done
 if grep -rlE "/usr/local/(s?bin|libexec)/porelo-(host|forge)" /etc/systemd/system /etc/sudoers.d 2>/dev/null; then
@@ -778,6 +778,53 @@ rented_push_pull() {
     on_person porelo host push "$project"
     on_person porelo host central-state --json "$project" > "$report/central-state.json.tmp"
     mv "$report/central-state.json.tmp" "$report/central-state.json"
+}
+
+# HO165's measurement: the answers go into the report as they come, the token itself never.
+rented_refused_token() {
+    forge=$(on_rented sed -n 's/^host=//p' /etc/porelo-host/forge.conf)
+    case $forge in ''|*[!a-z0-9-]*) echo "no forge name in forge.conf: $forge"; return 1 ;; esac
+    out=$report/refused-token.answers
+    : > "$out"
+    measured=0
+    answer() {
+        expected=$1 label=$2
+        shift 2
+        code=0
+        on_person porelo host push "$project" "$@" > "$report/refused-token.out" 2>&1 || code=$?
+        { printf '== %s: porelo host push %s %s -> exit %s\n' "$label" "$project" "$*" "$code"
+          cat "$report/refused-token.out"; } >> "$out"
+        if [ "$code" != "$expected" ]; then echo "$label: exit $code, expected $expected"; measured=1; fi
+    }
+    answer 0 'by the project file name' "$repository"
+    central=$(python3 -I -c 'import json, sys
+def names(o):
+    if isinstance(o, dict):
+        for k, v in o.items():
+            if k == "central" and isinstance(v, str) and "/" in v:
+                yield v.rstrip("/").rsplit("/", 1)[-1].removesuffix(".git")
+            yield from names(v)
+    elif isinstance(o, list):
+        for v in o:
+            yield from names(v)
+print(next(iter(names(json.load(open(sys.argv[1])))), ""))' "$report/central-state.json" 2>/dev/null || true)
+    if [ -n "$central" ] && [ "$central" != "$repository" ]; then
+        answer 0 'by the central name' "$central"
+    else
+        echo "the central name is the same as the project file's, or central-state names none: ${central:-none}" >> "$out"
+    fi
+    answer 64 'by an unknown name' no-such-repository
+    # A token the central forge refuses, then the run's own again; a printf of a fixed text, no secret.
+    printf 'porelo-rehearsal-refused-token\n' | on_person porelo vault put --json "$forge.central" > /dev/null
+    answer 1 'with a refused token' "$repository"
+    grep -q 'refused authentication (HTTP 401)' "$report/refused-token.out" \
+        || { echo 'the refused push does not name the 401'; measured=1; }
+    token=$("$central_token") || { echo 'the central token program failed'; return 1; }
+    [ -n "$token" ] || { echo 'the central token program gave nothing'; return 1; }
+    printf '%s\n' "$token" | on_person porelo vault put --json "$forge.central" > /dev/null
+    token=''
+    sed -n 's/^== //p' "$out"
+    return "$measured"
 }
 
 rented_org_off() {
@@ -956,7 +1003,7 @@ rented_steps() {
     fi
     # The steps other agents build: one executable each under build/rehearse-steps, called by the contract in
     # doc/testing.md; 0 is OK, 77 SKIP with its last line, anything else FAIL.
-    for hook in tasks busy-room window refused-token judge; do
+    for hook in tasks busy-room window judge; do
         rented_due "$hook" || continue
         if [ ! -f "$root/build/rehearse-steps/$hook" ] || [ ! -x "$root/build/rehearse-steps/$hook" ]; then
             rented_abort_pending
@@ -970,6 +1017,10 @@ rented_steps() {
     rented_abort_pending
     if rented_due push-pull; then
         rented_step push-pull "pull and push $project with central and read its central state" rented_push_pull
+    fi
+    if rented_due refused-token; then
+        rented_step refused-token "push $project by its names, by an unknown one and with a refused token" \
+            rented_refused_token
     fi
     if [ -n "${PORELO_REHEARSAL_HOLD_FILE:-}" ]; then
         # Another agent's live run on this host goes on until it removes the file; the hard stop still ends it.
@@ -988,7 +1039,7 @@ rented_hold() {
 rented_due() {
     if [ "$resume_from" = up ] || [ "$resume_from" = "$1" ]; then resume_reached=yes; fi
     # The rerun up may change what the follow made, so a resume after the project step follows again first.
-    if [ "$1" = project ] && { [ "$resume_from" = stop ] || [ "$resume_from" = push-pull ]; }; then return 0; fi
+    if [ "$1" = project ]; then case $resume_from in up | org | project) ;; *) return 0 ;; esac; fi
     [ "$resume_reached" = yes ]
 }
 

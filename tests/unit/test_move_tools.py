@@ -904,11 +904,21 @@ elif name == 'porelo':
     for line in given.splitlines():
         if line.startswith('vault-new '):
             (base / 'given-passphrase').write_text(line.split(' ', 1)[1])
+    if args[:2] == ['vault', 'put']:
+        if 'porelo-rehearsal-refused-token' in given:
+            (base / 'refused-token').touch()
+        else:
+            (base / 'refused-token').unlink(missing_ok=True)
     secret = settings.get('central_token', 'synthetic-central-token')
     event(name, args=args, stdin_lines=[line.split(' ', 1)[0] if ' ' in line else '<value>' for line in given.splitlines()],
           stdin_has_token=secret in given)
     if args[:2] == ['host', 'central-state']:
         print(json.dumps(dict(project=args[-1], state='even')))
+    if args[:2] == ['host', 'push'] and 'no-such-repository' in args:
+        sys.exit(64)
+    if args[:2] == ['host', 'push'] and (base / 'refused-token').exists():
+        print(args[-1] + ': central forge github.com refused authentication (HTTP 401)')
+        sys.exit(1)
     sys.exit(settings.get('porelo_rc', {}).get(args[1] if len(args) > 1 else '', 0))
 else:
     raise SystemExit('unexpected stand-in ' + name)
@@ -1637,9 +1647,9 @@ PHASE_TWO_STEPS = [
     "SKIP tasks",
     "SKIP busy-room",
     "SKIP window",
-    "SKIP refused-token",
     "SKIP judge",
     "OK push-pull",
+    "OK refused-token",
     "OK down",
     "OK org-off",
     "SKIP read-keys",
@@ -1710,7 +1720,7 @@ def test_rented_phase_two_hands_secrets_on_standard_input_alone(rented):
     assert stop["args"] == ["host", "stop-secrets", "--stdin", "vault-new"] and stop["stdin_lines"] == ["vault-new"]
     put = next(row for row in porelo if row["args"][:2] == ["vault", "put"])
     assert put["args"][-1] == "rented.central" and put["stdin_has_token"]
-    assert not any(row["stdin_has_token"] for row in porelo if row is not put)
+    assert all(row["args"][:2] == ["vault", "put"] for row in porelo if row["stdin_has_token"])
     events = (server.base / "events").read_text()
     report = server.report()[0]
     written = events + done.stdout + done.stderr + "".join(f.read_text() for f in report.iterdir() if f.is_file())
@@ -1902,8 +1912,9 @@ def test_rented_phase_two_holds_the_host_up_until_the_hold_file_goes(rented):
     assert done.returncode == 0, done.stderr
     assert seen == {"held": True, "down_before": 0}
     steps = server.report()[1]
-    assert [line.split(" ", 2)[1] for line in steps if line.startswith(("OK ", "HOLD "))][-5:] == [
+    assert [line.split(" ", 2)[1] for line in steps if line.startswith(("OK ", "HOLD "))][-6:] == [
         "push-pull",
+        "refused-token",
         "hold",
         "hold",
         "down",
@@ -2071,9 +2082,9 @@ def test_rented_phase_two_resumes_a_held_run_from_up_and_its_failed_step(rented)
         "SKIP tasks",
         "SKIP busy-room",
         "SKIP window",
-        "SKIP refused-token",
         "SKIP judge",
         "OK push-pull",
+        "OK refused-token",
         "HOLD hold",
         "OK hold",
         "OK down",
