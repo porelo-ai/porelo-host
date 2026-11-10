@@ -28,9 +28,8 @@ For the pool scenario, also export `PORELO_HOST_MACHINES` as the checked runtime
 The pool run needs KVM and the forge enabled. Package version and legacy-program absence verification are active.
 Organization follow and pool/gate acceptance use the package. The organization CLI fixture temporarily diverts the
 installed CLI at its checked system path, then restores it even if the follow act fails. Manual purge and desktop
-interaction checks remain skipped because the package supplies no corresponding commands. Forge setup still refuses
-its missing socket push judge; a stopped converge is not successful acceptance.
-The scenarios have not been run against a real host for this change.
+interaction checks remain skipped because the package supplies no corresponding commands. A local run takes the
+package from `PORELO_HOST_DEB`, a hand-over or `build/fetch-host-deb.sh`; GitHub's runner fetches the pinned one.
 
 **What a run makes and leaves.** One domain and two volumes, its disk and its cloud-init seed, all named
 `porelo-host-molecule-<run>`. It deletes them at its end, after a failure and on an interrupt too, and believes that
