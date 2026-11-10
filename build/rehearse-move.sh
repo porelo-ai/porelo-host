@@ -712,8 +712,8 @@ rented_org() {
 rented_project() {
     # Again here: a resumed run's up rewrites root's keys before it reruns the project step.
     rented_root_key
+    # The refresh has the host follow the organization; the follow itself is root's alone and never runs through sudo.
     on_org refresh --json rented
-    on_rented porelo-host org follow
     tries=${PORELO_REHEARSAL_FOLLOW_TRIES:-90}
     pause=${PORELO_REHEARSAL_FOLLOW_PAUSE:-10}
     while :; do
