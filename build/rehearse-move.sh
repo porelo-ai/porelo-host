@@ -435,6 +435,7 @@ rented_step() {
     current=''
     last_step=$completed
     if [ "$result" = 77 ] && [ "${hook_step:-no}" = yes ]; then
+        [ "$completed" != tasks ] || : > "$state/tasks-skipped"
         rented_line "SKIP $completed $(tail -n 1 "$report/$completed.log")"
         rented_abort_pending
         return 0
@@ -814,15 +815,28 @@ print(next(iter(names(json.load(open(sys.argv[1])))), ""))' "$report/central-sta
         echo "the central name is the same as the project file's, or central-state names none: ${central:-none}" >> "$out"
     fi
     answer 64 'by an unknown name' no-such-repository
-    # A token the central forge refuses, then the run's own again; a printf of a fixed text, no secret.
-    printf 'porelo-rehearsal-refused-token\n' | on_person porelo vault put --json "$forge.central" > /dev/null
-    answer 1 'with a refused token' "$repository"
-    grep -q 'refused authentication (HTTP 401)' "$report/refused-token.out" \
-        || { echo 'the refused push does not name the 401'; measured=1; }
+    # The run's own token is read first, so that it can be put back whatever the refused push does.
     token=$("$central_token") || { echo 'the central token program failed'; return 1; }
     [ -n "$token" ] || { echo 'the central token program gave nothing'; return 1; }
-    printf '%s\n' "$token" | on_person porelo vault put --json "$forge.central" > /dev/null
+    # A token the central forge refuses, then the run's own again; a printf of a fixed text, no secret.
+    if printf 'porelo-rehearsal-refused-token\n' | on_person porelo vault put --json "$forge.central" > /dev/null; then
+        answer 1 'with a refused token' "$repository"
+        grep -q 'refused authentication (HTTP 401)' "$report/refused-token.out" \
+            || { echo 'the refused push does not name the 401'; measured=1; }
+    else
+        echo 'the refused token could not be put'; measured=1
+    fi
+    restored=no
+    for attempt in 1 2 3; do
+        if printf '%s\n' "$token" | on_person porelo vault put --json "$forge.central" > /dev/null; then
+            restored=yes
+            break
+        fi
+        echo "putting the central token back failed, attempt $attempt"
+        sleep 5
+    done
     token=''
+    [ "$restored" = yes ] || { echo "the person's vault keeps the refused central token"; return 1; }
     sed -n 's/^== //p' "$out"
     return "$measured"
 }
@@ -1003,8 +1017,15 @@ rented_steps() {
     fi
     # The steps other agents build: one executable each under build/rehearse-steps, called by the contract in
     # doc/testing.md; 0 is OK, 77 SKIP with its last line, anything else FAIL.
-    for hook in tasks busy-room window judge; do
+    # judge comes before window, which takes all the time left, while the tasks of the tasks step still run.
+    for hook in tasks busy-room judge window; do
         rented_due "$hook" || continue
+        [ "$hook" != tasks ] || rm -f "$state/tasks-skipped"
+        if [ "$hook" != window ] && [ "$hook" != tasks ] && [ -f "$state/tasks-skipped" ]; then
+            rented_abort_pending
+            rented_line "SKIP $hook the tasks step was skipped"
+            continue
+        fi
         if [ ! -f "$root/build/rehearse-steps/$hook" ] || [ ! -x "$root/build/rehearse-steps/$hook" ]; then
             rented_abort_pending
             rented_line "SKIP $hook not built yet"

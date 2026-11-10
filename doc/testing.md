@@ -94,7 +94,8 @@ Without the phase 2 options it stops after `up`. With them it also:
 - checks as root that the host runs the packaged `porelo-host` and that no old host program is installed, nor named
   by a unit or a sudo rule (`host-program`);
 - runs the steps others build, each one executable under `build/rehearse-steps/`, in the order `tasks`, `busy-room`,
-  `window`, `judge`; a step not on the branch is `SKIP <name> not built yet`;
+  `judge`, `window`; a step not on the branch is `SKIP <name> not built yet`, and `busy-room` and `judge`, which use
+  the tasks `tasks` starts, are skipped when `tasks` is;
 - pulls and pushes the project with central, and keeps `porelo host central-state --json` in the report;
 - has the person push by the project file's name, by the central name and by an unknown name (64), then with a wrong
   central token in the vault, which must end in `refused authentication (HTTP 401)`, and puts the real token back
