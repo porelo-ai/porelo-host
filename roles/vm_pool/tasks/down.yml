@@ -37,13 +37,22 @@
     file_type: directory
   register: __vm_pool_dirs
 
+# A host with no forge names an empty account, and one whose forge is gone has no file: neither has a key to take.
+- name: down | Read whether the host has a forge
+  ansible.builtin.slurp:
+    src: /etc/porelo-host/forge.conf
+  register: __vm_pool_forge_conf
+  failed_when: false
+
 # Before the forge's own down, while it answers; a forge already gone took the secrets with it.
 - name: down | Take the run key from every project's organization on the forge
   ansible.builtin.command:
     argv: [env, -i, 'PATH=/usr/sbin:/usr/bin:/sbin:/bin', "{{ __vm_pool_project_helper }}", project, pool-key, withdraw]
-    removes: "{{ __vm_pool_project_helper }}"
   register: __vm_pool_secret_deleted
   changed_when: __vm_pool_secret_deleted.stdout is match('\\{"changed":\\["')
+  when:
+    - __vm_pool_forge_conf.content is defined
+    - __vm_pool_forge_conf.content | b64decode is search('(?m)^account=\\S')
 
 - name: down | Remove the pool's keys and file
   ansible.builtin.file:

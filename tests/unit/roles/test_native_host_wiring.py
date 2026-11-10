@@ -1,8 +1,10 @@
 """Prevent service execution of removed programs and disabled native acceptance."""
 
+import base64
 import re
 from pathlib import Path
 
+import jinja2
 import pytest
 import yaml
 
@@ -140,3 +142,24 @@ def test_every_task_calls_the_host_program_with_an_empty_environment():
     assert len(calls) >= 8, calls
     for path, words in calls:
         assert words[:3] == ["env", "-i", "PATH=/usr/sbin:/usr/bin:/sbin:/bin"], f"{path}: {words}"
+
+
+def test_the_pool_down_asks_the_forge_only_on_a_host_with_one():
+    """forge.conf names an empty account on a host with no forge, and the host program then refuses: down must not ask."""
+    tasks = yaml.safe_load((ROOT / "roles/vm_pool/tasks/down.yml").read_text())
+    withdraw = next(t for t in tasks if "pool-key" in t.get("ansible.builtin.command", {}).get("argv", []))
+    assert "removes" not in withdraw["ansible.builtin.command"], "the package's program is always there"
+    env = jinja2.Environment(undefined=jinja2.StrictUndefined)
+    env.filters["b64decode"] = lambda text: base64.b64decode(text).decode()
+    env.tests["search"] = lambda text, pattern: re.search(pattern, text) is not None
+    when = withdraw["when"] if isinstance(withdraw["when"], list) else [withdraw["when"]]
+    reader = next(t for t in tasks if t.get("register") == "__vm_pool_forge_conf")
+    assert reader["ansible.builtin.slurp"]["src"] == "/etc/porelo-host/forge.conf"
+
+    def asks(text):
+        conf = {"content": base64.b64encode(text.encode()).decode()} if text is not None else {"failed": True}
+        return all(env.compile_expression(w)(__vm_pool_forge_conf=conf) for w in when)
+
+    assert asks("host=a\nname=f\nport=3000\ngit_port=3001\naccount=porelo-forge\n")
+    assert not asks("host=a\naccount=\n")
+    assert not asks(None)

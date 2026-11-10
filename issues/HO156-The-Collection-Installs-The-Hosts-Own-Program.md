@@ -116,3 +116,7 @@ installation, the measuring run and a pool VM's give-back.
   takes only a person seven days gone, and an organization cannot leave its host admin, so down refused on every
   followed host. The operator chose (2026-11-10) that down does not count the host-admin membership; any other
   membership still stops it. The down test that held the old rule was turned round, seen red first.
+- With the forge off, the pool's down asked the host program to withdraw the run key from the forge, which refuses on
+  a host whose forge.conf names no account: the task's `removes:` held while the old helper came with the forge alone,
+  and the package's program is always there. It now asks only when forge.conf names an account; a unit test, seen red
+  first, holds it.
