@@ -675,6 +675,8 @@ if name == 'ssh':
         Path(known).write_text('192.0.2.10 ssh-ed25519 AAAAHOST\n')
     if (base / 'connection-lost').exists():
         sys.exit(255)
+    if remote[:3] == ['exec', 'env', '-i']:
+        remote = remote[4:]
     if remote[:2] == ['sudo', '-n']:
         if settings.get('sudo_denied'):
             sys.exit(1)

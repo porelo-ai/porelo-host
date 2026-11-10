@@ -669,6 +669,22 @@ on_person() {
         -- "$person@$server" "$remote"
 }
 
+# Root through the person's agent, whose key --org-key put among root's keys: the host's own org verbs are root's
+# alone and never run through sudo. env -i drops the SSH session's variables, which the host program refuses.
+on_root() {
+    # The remote shell expands its own PATH.
+    # shellcheck disable=SC2016
+    remote='exec env -i PATH="$PATH"'
+    for argument do
+        quoted=$(printf '%s' "$argument" | sed "s/'/'\\\\''/g")
+        remote="$remote '$quoted'"
+    done
+    timeout --kill-after=2 "$ssh_limit" ssh -F /dev/null -o BatchMode=yes -o IdentitiesOnly=no -o ConnectTimeout=5 \
+        -o IdentityAgent="$person_agent" -o IdentityFile=none -o UserKnownHostsFile="$state/known_hosts" -o GlobalKnownHostsFile=/dev/null \
+        -o StrictHostKeyChecking=yes -o ControlMaster=no -o ControlPath=none -o ClearAllForwardings=yes \
+        -- "root@$server" "$remote"
+}
+
 # Root's keys are the file up made; a follow later writes the host admins' keys there, so a key it holds already stays.
 rented_root_key() {
     # These positional arguments expand in the remote shell.
@@ -718,7 +734,7 @@ rented_project() {
     pause=${PORELO_REHEARSAL_FOLLOW_PAUSE:-10}
     while :; do
         # One lost connection while the follow runs is waited out like a person not yet admitted.
-        if on_rented porelo-host org status --json > "$report/org-status.json.tmp"; then
+        if on_root porelo-host org status --json > "$report/org-status.json.tmp"; then
             mv "$report/org-status.json.tmp" "$report/org-status.json"
         fi
         if [ -f "$report/org-status.json" ] && python3 -I -c 'import json,sys
