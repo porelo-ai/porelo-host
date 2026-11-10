@@ -1051,7 +1051,11 @@ class RentedServer:
     def events(self, tool):
         path = self.base / "events"
         return (
-            [row for row in map(json.loads, path.read_text().splitlines()) if row["tool"] == tool]
+            [
+                row
+                for row in map(json.loads, path.read_text().splitlines())
+                if row["tool"] == tool and row.get("args") != ["--version"]
+            ]
             if path.exists()
             else []
         )

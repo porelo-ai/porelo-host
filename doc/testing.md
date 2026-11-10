@@ -82,7 +82,7 @@ Without the phase 2 options it stops after `up`. With them it also:
   keys in `/etc/ssh/authorized_keys/root`, the file `up` made, unless root takes it already: `org host refresh` logs
   in as root, and a follow later writes the host admins' keys there;
 - puts the host into the test organization as `rented`, through `<program> org host ...` run here (a wrapper that
-  runs `porelo` as the test identity): it takes `--retire-host` off first, then adds `rented` with the person as its
+  runs `porelo` as the test identity, whose `--version` the report keeps in `org-client.version`): it takes `--retire-host` off first, then adds `rented` with the person as its
   admin, files its card (the address, ssh port 22, the host key pinned at the first connection, forge ports 3000 and
   3001), and carries the project;
 - has `org host refresh` hand the organization's token to the host, and waits for the follow to admit the person to

@@ -689,6 +689,10 @@ mv -fT "$work" "$keys"'
 
 rented_org() {
     change=rehearsal-$stamp
+    # The report names the client the organization was changed with.
+    timeout --kill-after=5 60 "$org_program" --version > "$report/org-client.version" 2>&1 \
+        || { echo 'the organization program does not answer --version'; return 1; }
+    sed 's/^/org client: /' "$report/org-client.version"
     rented_root_key
     if [ -n "$retire_host" ]; then
         on_org uncarry --id "$change-uncarry-$retire_host" "$retire_host" "$project"
