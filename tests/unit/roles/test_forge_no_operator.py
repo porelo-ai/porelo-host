@@ -43,7 +43,7 @@ def test_no_task_or_role_setting_names_forge_person():
     assert keys == ["host", "name", "port", "git_port", "account"]
 
 
-def test_up_deletes_only_an_unrecorded_operator_forge_user_and_installs_helpers():
+def test_up_deletes_only_an_unrecorded_operator_forge_user():
     """Prevent an upgraded host from keeping an unrecorded operator account or deleting an admitted operator."""
     main_tasks = yaml.safe_load((ROOT / "roles/forge/tasks/main.yml").read_text())
     included_files = []
@@ -56,17 +56,6 @@ def test_up_deletes_only_an_unrecorded_operator_forge_user_and_installs_helpers(
             tasks.extend(yaml.safe_load((ROOT / "roles/forge" / rel).read_text()))
 
     assert "tasks/admin.yml" in included_files
-
-    installed = {
-        task["ansible.builtin.copy"]["dest"]: task["ansible.builtin.copy"]
-        for task in tasks
-        if "ansible.builtin.copy" in task and "dest" in task["ansible.builtin.copy"]
-    }
-    for helper in ("/usr/local/sbin/porelo-host-project",):
-        assert helper in installed
-        assert installed[helper]["owner"] == "root"
-        assert installed[helper]["group"] == "root"
-        assert installed[helper]["mode"] == "0700"
 
     stat_index, stat_task = next(
         (

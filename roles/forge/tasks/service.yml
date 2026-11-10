@@ -38,7 +38,7 @@
 
 - name: service | Make the directory of the gate and of the push hook
   ansible.builtin.file:
-    path: /usr/local/libexec
+    path: /usr/local/libexec/porelo
     state: directory
     owner: root
     group: root
@@ -48,7 +48,7 @@
 - name: service | Install the hook that has the host judge each push
   ansible.builtin.copy:
     src: "{{ role_path }}/files/porelo-forge-pre-receive"
-    dest: /usr/local/libexec/porelo-forge-pre-receive
+    dest: /usr/local/libexec/porelo/pre-receive
     owner: root
     group: root
     mode: "0755"
@@ -109,14 +109,6 @@
     name: porelo-people
     state: present
 
-
-- name: service | Install the forge gate
-  ansible.builtin.copy:
-    src: "{{ role_path }}/files/porelo-forge-gate"
-    dest: /usr/local/libexec/porelo-forge-gate
-    owner: root
-    group: root
-    mode: "0755"
 
 - name: service | Write the system socket and gate units
   ansible.builtin.template:

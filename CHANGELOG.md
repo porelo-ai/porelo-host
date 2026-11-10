@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Follow, forge gate and pool units use the pinned native host package. The collection installs the forge hook at
+  the native follow's link target; each push to the host's forge is judged by `porelo-host judge-push`.
+
+- Molecule and the move rehearsal require a selected local host package beside Porelo's packages, install them before
+  the first up and pin their Debian versions. Verification rejects a different host build and retained legacy programs;
+  organization follow, gate measurement and pool acceptance use native commands.
+
+- Pin the `porelo` and `porelo-host` packages from the same signed source, compare the installed host version,
+  and restrict person sudo access to five packaged token and task rules with a reset environment.
+  Remove host program sources.
+- Move the development VM tool to `build/`, outside the installed collection, and retain only the pre-receive hook,
+  pre-installation check, measuring program and pool VM give-back as collection script exceptions.
+
 ### Added
 
 - **The half of the host for jobs and the VM pool is a setting.** `porelo_host_work_share`, the percent of the

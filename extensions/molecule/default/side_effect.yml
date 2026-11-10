@@ -46,14 +46,6 @@
         path: /etc/porelo-host/people/hostadmin.conf
       register: side_effect_host_admin
 
-    - name: Purge the host admin, as down asks
-      ansible.builtin.command:
-        argv: [/usr/local/sbin/porelo-host-person, purge, hostadmin]
-      environment:
-        SUDO_USER: ""
-      when: side_effect_host_admin.stat.exists
-      changed_when: true
-
     # Check that up placed what down is expected to remove, so teardown cannot pass vacuously.
     - name: Read every account on the host before down
       ansible.builtin.getent:
@@ -73,8 +65,7 @@
         + (['/var/lib/systemd/linger/porelo-forge', '/var/lib/systemd/linger/porelo-runner',
             '/etc/systemd/system/porelo-forge-web.socket', '/etc/systemd/system/porelo-forge-git.socket',
             '/etc/systemd/system/porelo-forge-runner.socket', '/etc/systemd/system/porelo-forge-web@.service',
-            '/etc/systemd/system/porelo-forge-git@.service', '/etc/systemd/system/porelo-forge-runner@.service',
-            '/usr/local/libexec/porelo-forge-gate']
+            '/etc/systemd/system/porelo-forge-git@.service', '/etc/systemd/system/porelo-forge-runner@.service']
            if side_effect_forge == 'on' else []) }}
       register: side_effect_before_paths
 

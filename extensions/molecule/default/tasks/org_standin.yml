@@ -9,10 +9,16 @@
     group: root
     mode: "0755"
 
+- name: Preserve the installed CLI while the transport fixture runs
+  ansible.builtin.command:
+    argv: [dpkg-divert, --local, --rename, --add, --divert, /usr/bin/porelo-molecule-real, /usr/bin/porelo]
+    creates: /usr/bin/porelo-molecule-real
+  changed_when: true
+
 - name: Install the stand-in for porelo org
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/files/porelo-org-standin.py"
-    dest: /usr/local/bin/porelo
+    dest: /usr/bin/porelo
     owner: root
     group: root
     mode: "0755"

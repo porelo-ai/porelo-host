@@ -554,21 +554,24 @@ and the UTC time that text last changed; change it in the channel first, never i
   `build/room-tunnel.sh` and `build/move-check.sh`, shell, since they only start `ssh` and read Porelo's and the forge's
   answers during an agent's move, on a development machine and a host that need no Java for them;
   `build/rehearse-move.sh`, shell like `build/molecule.sh`, since it drives libvirt and ssh to rehearse a move on a VM;
-  `roles/vm_pool/files/porelo-vm`, `roles/vm_pool/files/porelo-pool-give-back` and
-  `roles/vm_pool/files/porelo-pool-revert`, shell, since they drive virsh on the host and run inside a pool VM, where
-  there is no Java; `roles/porelo/files/porelo-host-forge-token` and
-  `roles/porelo/files/porelo-host-forge-token.sh`, shell, since they prepare the person's forge credential on the host,
-  where there is no Java; `roles/porelo/files/porelo-host-stop` and `roles/forge/files/porelo-host-push`, shell, since they
-  run on the host, where there is no Java, in the person's terminal or, for the stop's `--stdin`, as root on the
-  desktop's pipeline; `roles/forge/files/porelo-forge-pre-receive`, shell, since it is the pre-receive hook inside
-  Forgejo's container, where there is no Java; `roles/forge/files/porelo-host-forge-password` and `roles/forge/files/porelo-host-project`,
-  Python like the collection's plugins, since they run as root on the host, where there is no Java, and hold
-  passwords and forge credentials in one process;
+  `build/stage-packages.sh`, shell, since it stages and checks local Debian inputs before the test container runs;
+  `build/porelo-vm`, shell, since it drives virsh on a development machine for Molecule and the rehearsal and is
+  never installed on a host; `roles/vm_pool/files/porelo-pool-give-back`, shell, since it runs inside a pool VM;
+  `roles/forge/files/porelo-forge-pre-receive`, shell, since it is the pre-receive hook inside Forgejo's container;
   `roles/check/files/porelo-host-check`, Python's standard library, since it runs on a machine before anything is installed;
   `roles/measure/files/porelo-host-measure`, Python's standard library, since it measures a host without Java;
   `build/measure-tables.py`, Python, since it reads the result files without running the measured machine;
   `doc/images/local-forge-svg.py`, Python like the collection's plugins, since it draws the document's picture; and the
   collection itself is YAML.
+- **Only four collection programs may reach a host:** the forge's pre-receive hook, `porelo-host-check`,
+  `porelo-host-measure` and a pool VM's `porelo-pool-give-back`. Host administration belongs to the pinned
+  `porelo-host` package; systemd units and sudo rules remain collection configuration.
+- **Host program units set no extra environment variables or environment files.** Its sudo rules name only task
+  start, end and show and the two forge token verbs, with `env_reset`, `!setenv` and `!env_keep` command defaults.
+- **The collection installs the pre-receive hook at `/usr/local/libexec/porelo/pre-receive`**, also mounted at that
+  path in Forgejo; the host program links repository hooks there. Follow, forge gates and pool work use the package.
+  The package has no socket push judge, so forge setup refuses before service changes and the judge unit fails closed.
+  Runtime restoration belongs to `org follow`; it purges removed people after seven days, with no manual purge verb.
 - **Before Push ready, every step of `.github/workflows/build.yml` runs by its own command:** `build/sanity.sh`
   runs no yamllint, so its green says nothing of the YAML step's line length (2026-11-08, b0afa4f red).
 

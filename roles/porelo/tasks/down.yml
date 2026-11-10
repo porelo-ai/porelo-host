@@ -1,4 +1,8 @@
 ---
+
+- name: down | Remove the collection's former host programs
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/legacy_programs.yml"
+
 # What the follow holds, taken off the host before it is given back.
 - name: down | Stop the host's follow of its organization
   ansible.builtin.systemd_service:

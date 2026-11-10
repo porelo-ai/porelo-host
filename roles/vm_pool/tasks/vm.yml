@@ -1,5 +1,5 @@
 ---
-# One pool VM: made by porelo-vm as the collection's test VM is, its run account's state 'ready', then its base
+# One pool VM: its run account ready before its base
 # snapshot taken live, which every revert goes back to. A second up finds the VM and its snapshot and makes neither.
 - name: vm | Name the VM and its directory
   ansible.builtin.set_fact:
@@ -41,28 +41,44 @@
 # Anything of the VM without its base snapshot is from an earlier up that stopped midway; it is replaced whole.
 - name: vm | Delete a half-made VM that has no base snapshot
   ansible.builtin.command:
-    argv: ["{{ __vm_pool_vm }}", delete, "{{ __vm_pool_name }}"]
+    argv: [env, -i, 'PATH=/usr/sbin:/usr/bin:/sbin:/bin', /usr/sbin/porelo-host, pool, delete, "{{ __vm_pool_name }}"]
   when: __vm_pool_snapshot.rc != 0
   changed_when: true
 
 - name: vm | Make its seed, the host key going in by the shell
-  ansible.builtin.command:
-    argv:
-      - "{{ __vm_pool_vm }}"
-      - seed
-      - "{{ __vm_pool_here }}/seed"
-      - "{{ __vm_pool_name }}"
-      - "{{ __vm_pool_account }}"
-      - "{{ __vm_pool_dir }}/run-key.pub"
-      - "{{ __vm_pool_here }}/host"
-      - "{{ __vm_pool_dir }}/cloud-config"
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      umask 077
+      dir={{ (__vm_pool_here ~ '/seed') | quote }}
+      host={{ (__vm_pool_here ~ '/host') | quote }}
+      key={{ (__vm_pool_dir ~ '/run-key.pub') | quote }}
+      {
+          echo '#cloud-config'
+          echo 'users:'
+          echo '  - name: {{ __vm_pool_account }}'
+          echo '    sudo: "ALL=(ALL) NOPASSWD:ALL"'
+          echo '    shell: /bin/bash'
+          echo "    ssh_authorized_keys: [\"$(cat "$key")\"]"
+          echo 'ssh_pwauth: false'
+          echo 'ssh_deletekeys: true'
+          echo 'ssh_genkeytypes: [ed25519]'
+          echo 'ssh_keys:'
+          echo '  ed25519_private: |'
+          sed 's/^/    /' "$host"
+          echo "  ed25519_public: \"$(cat "$host.pub")\""
+          cat {{ (__vm_pool_dir ~ '/cloud-config') | quote }}
+      } > "$dir/user-data"
+      printf 'instance-id: %s\nlocal-hostname: %s\n' \
+          {{ __vm_pool_name | quote }} {{ __vm_pool_name | quote }} > "$dir/meta-data"
+    executable: /bin/bash
   when: __vm_pool_snapshot.rc != 0
   register: __vm_pool_seed_made
   changed_when: true
   failed_when: false
   no_log: true
 
-- name: vm | Stop when the seed could not be made, with porelo-vm's answer
+- name: vm | Stop when the seed could not be made, with the VM command's answer
   ansible.builtin.assert:
     that: __vm_pool_seed_made.rc | default(0) == 0
     fail_msg: "{{ __vm_pool_seed_made.stderr | default('') }}"
@@ -73,7 +89,11 @@
     __vm_pool_base_digest: "{{ __vm_pool_images[__vm_pool_each[0]].sha256 }}"
   ansible.builtin.command:
     argv:
-      - "{{ __vm_pool_vm }}"
+      - env
+      - -i
+      - PATH=/usr/sbin:/usr/bin:/sbin:/bin
+      - /usr/sbin/porelo-host
+      - pool
       - make
       - "{{ __vm_pool_name }}"
       - "{{ __vm_pool_prefix }}-base-{{ __vm_pool_each[0] }}-{{ __vm_pool_base_digest[:12] }}.qcow2"
@@ -86,6 +106,7 @@
 
 # Written before the snapshot once the agent has set the clock; virt-install adds the channel to any VM, so only this
 # says the snapshot's memory holds an agent. Without one the first run to give the VM back would lose it.
+
 - name: vm | Ask whether an existing VM's snapshot holds a guest agent
   ansible.builtin.stat:
     path: "{{ __vm_pool_here }}/guest-agent"
@@ -100,14 +121,30 @@
 
 - name: vm | Revert a stopped pool VM to its base snapshot and set its clock before reading its address
   ansible.builtin.command:
-    argv: ["{{ __vm_pool_tools }}/porelo-pool-revert", --one, "{{ __vm_pool_name }}"]
+    argv:
+      - env
+      - -i
+      - PATH=/usr/sbin:/usr/bin:/sbin:/bin
+      - /usr/sbin/porelo-host
+      - pool
+      - revert
+      - --one
+      - "{{ __vm_pool_name }}"
   when: __vm_pool_snapshot.rc == 0
   register: __vm_pool_settled
   changed_when: __vm_pool_settled.stdout is search('reverted')
 
 - name: vm | Wait for the VM's address
   ansible.builtin.command:
-    argv: ["{{ __vm_pool_vm }}", address, "{{ __vm_pool_name }}", "300"]
+    argv:
+      - env
+      - -i
+      - PATH=/usr/sbin:/usr/bin:/sbin:/bin
+      - /usr/sbin/porelo-host
+      - pool
+      - address
+      - "{{ __vm_pool_name }}"
+      - "300"
   register: __vm_pool_address
   changed_when: false
 

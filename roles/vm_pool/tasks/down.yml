@@ -1,7 +1,5 @@
 ---
-# Down takes the pool off the host and keeps nothing: the revert stopped first, so it starts no VM again, then each VM
-# with its snapshot, disk and seed by name, and the keys. The images and their base volumes stay as a cache, named by
-# their digest, as the collection's test keeps its own.
+
 - name: down | Stop the revert, at every boot too
   ansible.builtin.systemd_service:
     name: porelo-pool-revert.service
@@ -25,12 +23,12 @@
 
 - name: down | Delete each pool VM, its snapshot, disk and seed
   ansible.builtin.command:
-    argv: ["{{ __vm_pool_vm }}", delete, "{{ item }}"]
+    argv: [env, -i, 'PATH=/usr/sbin:/usr/bin:/sbin:/bin', /usr/sbin/porelo-host, pool, delete, "{{ item }}"]
+  changed_when: true
   loop: "{{ __vm_pool_listed.stdout_lines | select('match', __vm_pool_named) | list }}"
   vars:
     __vm_pool_named: "^{{ __vm_pool_prefix }}-(ubuntu|fedora)-[0-9]+$"
   when: __vm_pool_listed.rc == 0
-  changed_when: true
 
 - name: down | Find each pool VM's directory of keys and seed
   ansible.builtin.find:
@@ -42,7 +40,7 @@
 # Before the forge's own down, while it answers; a forge already gone took the secrets with it.
 - name: down | Take the run key from every project's organization on the forge
   ansible.builtin.command:
-    argv: ["{{ __vm_pool_project_helper }}", pool-key, withdraw]
+    argv: [env, -i, 'PATH=/usr/sbin:/usr/bin:/sbin:/bin', "{{ __vm_pool_project_helper }}", project, pool-key, withdraw]
     removes: "{{ __vm_pool_project_helper }}"
   register: __vm_pool_secret_deleted
   changed_when: __vm_pool_secret_deleted.stdout is match('\\{"changed":\\["')

@@ -8,14 +8,6 @@
     fail_msg: "asked for one absolute path without blanks as the central forge's CA, got {{ forge_central_ca }}"
     quiet: true
 
-- name: push | Install the gathered push for every developer and root's removal check
-  ansible.builtin.copy:
-    src: "{{ role_path }}/files/porelo-host-push"
-    dest: /usr/local/sbin/porelo-host-push
-    owner: root
-    group: root
-    mode: "0755"
-
 - name: push | Write which authority root's removal check trusts for the central forge
   ansible.builtin.copy:
     dest: "{{ __forge_state_dir }}/central-ca.conf"

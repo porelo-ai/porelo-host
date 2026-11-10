@@ -10,3 +10,10 @@ collection, in an image `sanity/Containerfile` builds on the tools image with th
 takes by hash. `ansible-lint.yml` is ansible-lint's settings; `yamllint-ansible.yml`
 holds the collection's Ansible YAML to two spaces and `yamllint.yml` every other YAML file to four, as `.editorconfig`
 splits them.
+
+`porelo-vm` is the development VM tool shared by `molecule.sh` and `rehearse-move.sh`. It stays in `build/`, outside
+the collection tarball, and no host role installs it. The pool VM's give-back script remains in its role.
+
+`stage-packages.sh` requires `PORELO_HOST_DEB`, stages it with `PORELO_HOST_PACKAGES`, rejects conflicting package
+identities and records exact versions and checksums. Molecule and the move rehearsal copy this set before the first
+up; remote package directories are keyed by its manifest to prevent old artifacts from being reused.

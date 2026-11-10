@@ -3,7 +3,8 @@
 Description=The host's judgement of one push to its forge
 
 [Service]
-ExecStart=/usr/local/sbin/porelo-host-person verify-push
+# The host program reads the forge hook's one request and answers it on the same connection.
+ExecStart=/usr/sbin/porelo-host judge-push
 StandardInput=socket
 StandardOutput=socket
 StandardError=journal

@@ -19,9 +19,18 @@ dir=$root/target/molecule/$run
 cache=$HOME/.porelo/cache
 limit=300
 
-vm=$root/roles/vm_pool/files/porelo-vm
+vm=$root/build/porelo-vm
 say() { printf '%s\n' "$*" >&2; }
 fail() { say "FAILED: $*"; exit 1; }
+
+# Refuse missing local artifacts before libvirt, downloads or a rented resource can be touched.
+packages_stage=$(mktemp -d)
+if ! sh "$root/build/stage-packages.sh" "$packages_stage/packages"; then
+    rm -rf "$packages_stage"
+    exit 1
+fi
+host_package_version=$(cat "$packages_stage/packages/porelo-host.version")
+trap 'rm -rf "$packages_stage"' EXIT
 
 # --- the acceptance tooling, handed over from a checked build -------------------------------------------------------
 # The measuring scenario makes no pool, so it needs none handed over.
@@ -74,6 +83,7 @@ made=
 cleanup() {
     status=$?
     trap - EXIT INT TERM
+    rm -rf "$packages_stage"
     # Kept only when asked and only on a failure: one failing scenario can be run again on the same VM.
     if [ "${PORELO_HOST_MOLECULE_KEEP:-off}" = on ] && [ "$status" != 0 ] && [ -n "$made" ]; then
         say "kept for the failure: $name, its files in $dir; porelo-vm delete $name removes it, then $dir by hand"
@@ -162,21 +172,13 @@ all:
       ansible_ssh_common_args: >-
         -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$work/target/molecule/$run/known_hosts
 EOF
-# Porelo's packages handed over from a build not yet published, in PORELO_HOST_PACKAGES: copied into the run, where
-# converge installs them over the published ones after the first up.
-packages=
-if [ -n "${PORELO_HOST_PACKAGES:-}" ]; then
-    set -- "$PORELO_HOST_PACKAGES"/*.deb
-    [ -f "$1" ] || fail "PORELO_HOST_PACKAGES=$PORELO_HOST_PACKAGES holds no .deb"
-    mkdir "$dir/packages"
-    cp "$@" "$dir/packages/"
-    say "Porelo's packages from $PORELO_HOST_PACKAGES, not the published ones:"
-    (cd "$dir/packages" && sha256sum ./*.deb) >&2
-    packages=$work/target/molecule/$run/packages
-fi
+# The selected host program travels beside Porelo through the existing package directory.
+cp -R "$packages_stage/packages" "$dir/packages"
+packages=$work/target/molecule/$run/packages
 PORELO_HOST_INVENTORY=$work/target/molecule/$run/inventory.yml \
 PORELO_HOST_TARBALL=$work/target/molecule/$run/porelo-host-$version.tar.gz \
 PORELO_HOST_VERSION=$version \
+PORELO_HOST_PACKAGE_VERSION=$host_package_version \
 PORELO_HOST_PACKAGES=$packages \
 PORELO_HOST_MACHINES=$machines \
 PORELO_HOST_MOLECULE_POOL=$pool_check \

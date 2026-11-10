@@ -16,7 +16,7 @@ Volume=forgejo-data:/var/lib/gitea
 Volume=forgejo-config:/etc/gitea
 Volume=%t/porelo-forge:/run/forgejo
 # The host judges each push: the hook each repository links, and the socket it asks through.
-Volume=/usr/local/libexec/porelo-forge-pre-receive:{{ __forge_push_hook }}:ro
+Volume=/usr/local/libexec/porelo/pre-receive:{{ __forge_push_hook }}:ro
 Volume=/run/porelo-host/verify:/run/porelo-verify:ro
 Environment=FORGEJO__security__INSTALL_LOCK=true
 Environment=FORGEJO__database__DB_TYPE=sqlite3

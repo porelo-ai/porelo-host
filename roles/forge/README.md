@@ -1,5 +1,13 @@
 # Role `forge`
 
+The only script this role installs is `/usr/local/libexec/porelo/pre-receive`, mounted inside Forgejo.
+Root's project operations belong to `/usr/sbin/porelo-host project`, and token issuance uses `forge issue-token`
+and `forge lend-token`. Socket units call `porelo-host forge gate --web|--git|--runner --upstream <socket>`.
+The push judge's socket unit runs `porelo-host judge-push` for each connection. The follow links repository hooks to
+the installed pre-receive path.
+Gate measurement uses `porelo-host forge measure --socket <socket> --host <host:port>` with optional `--requests`,
+`--concurrency`, `--per-connection` and `--path`. Run it with a clean environment as an admitted person.
+
 Project removal also deletes `/etc/porelo-host/matrix/<project>.admins` after checking its ownership and path, so
 a removed project retains no Matrix room administration. See [Matrix access](../../doc/matrix.md).
 
@@ -10,11 +18,11 @@ The role runs when `porelo_host_forge` is true; `down` stops its gates and remov
 account, `porelo-runner`, apart from the forge and every task.
 
 Each push is judged when it arrives: Forgejo's container mounts the pre-receive hook
-`/usr/local/libexec/porelo-forge-pre-receive` and the directory `/run/porelo-host/verify` read-only. Its socket
+`/usr/local/libexec/porelo/pre-receive` and the directory `/run/porelo-host/verify` read-only. Its socket
 `verify.sock` is the forge account's alone (`0600`) and listens before Forgejo starts; root's helper answers behind it. See [each push judged](../../doc/local-forge.md#each-push-judged-when-it-arrives).
 
 The system sockets `/run/porelo-forge/web.sock` and `git.sock` are owned by the forge account and group
-`porelo-people`, mode `0660`, inside a `0755` directory. Each connection starts the Python standard-library gate as
+`porelo-people`, mode `0660`, inside a `0755` directory. Each connection needs the packaged gate as
 the forge account through an `Accept=yes` socket unit. The gate reads the connected socket on fd 3 and removes all
 caller-supplied `X-WEBAUTH-*` headers. It handles one request per connection, closes both sides, streams Git bodies,
 and logs no requests. Unsupported transfer encodings, chunk extensions and trailers fail closed.
@@ -39,26 +47,23 @@ Root's administration helpers reach the private upstream socket; a person's forg
 at admission. Browser access needs no password. The role removes the password helper, old HTTPS units and forge TLS
 files; the person's sudoers configuration provides no password-setting command.
 
-`up` prepares the forge without repositories and installs
-`/usr/local/sbin/porelo-host-push` (`0755`, push, `--pull` and `--migrate` in a project developer's own account,
-reading `porelo-host/push/<project>.conf` from the caller's config folder, and as root with `--check` by
-`porelo-host-project remove` against Forgejo's `original_url`) together with `/etc/porelo-host/forge/central-ca.conf`
-(`0644`, holding `forge_central_ca`). The host's follow writes each member's
-`porelo-host/push/<project>.conf` in their config folder, as that member, from the project's repositories on the forge.
-The helper gets the caller's local token through `sudo -n porelo-host-person forge-token`.
+`up` retains `/etc/porelo-host/forge/central-ca.conf` (`0644`, holding `forge_central_ca`) as configuration for
+`porelo-host project check-central <project> <repository>...`. The collection installs no gathered-push wrapper.
+The packaged central check requires explicit repository names and is separate from the complete-project
+`porelo-host project give-back-check` used before down.
 APIs use `git.sock`; local Git uses `127.0.0.1:<git_port>`, a second listener of `porelo-forge-git.socket` with the
 same token-only gate, since Git has no Unix-socket transport. Forgejo itself never listens on TCP, and the browser's
 and the runner's gates serve their Unix sockets alone. Central transfers retain HTTPS and their CA. `up` removes the
 sudoers drop-in an older host had for the push.
 
-`/usr/local/sbin/porelo-host-project`, root's alone, registers an organization with an unlocked member in
+`porelo-host project add`, root's alone, registers an organization with an unlocked member in
 `/etc/porelo-host/people/` (recording `member=<project> project-admin`) whom the applied organization in
 `/etc/porelo-host/organization/applied.json` names as the project's admin, a signing key in Porelo's canonical
 `ssh-ed25519 <base64>` signer format and a package-only publisher, or checks its commits against the central forge
 before removing the project, dropping its memberships from `/etc/porelo-host/people/` and locking each person left with
-none through `/usr/local/sbin/porelo-host-person lock`. Its credentials stay in memory and Forgejo;
+none through the host program's person lifecycle. Its credentials stay in memory and Forgejo;
 [project registration](../../doc/local-forge.md#registering-a-project)
-describes the records, refusal checks and failure behavior. Down removes the helper and project records.
+describes the records, refusal checks and failure behavior. Down removes project records and legacy helpers.
 
 The [resource bounds](../../doc/index.md) are set by `forge_cpus`, `forge_memory`, `forge_pids_limit`,
 `forge_runner_cpus`, `forge_runner_memory` and `forge_runner_pids_limit`; job bounds use `forge_job_cpus`,

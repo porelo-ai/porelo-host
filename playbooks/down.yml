@@ -42,30 +42,17 @@
           got {{ porelo_host_network | to_json if porelo_host_network is defined else 'undefined' }}
         quiet: true
 
-    - name: Read the follow's installed units before pausing it
+    - name: Read whether the host has projects to check
       ansible.builtin.stat:
-        path: "/etc/systemd/system/{{ item }}"
-      loop: [porelo-host-follow.timer, porelo-host-follow.service]
-      register: __porelo_follow_units
-
-    - name: Stop the follow timer and wait for an active follow to finish
-      ansible.builtin.systemd_service:
-        name: "{{ item.item }}"
-        state: stopped
-      loop: "{{ __porelo_follow_units.results }}"
-      when: item.stat.exists
-
-    - name: Read whether the forge's project helper is installed
-      ansible.builtin.stat:
-        path: /usr/local/sbin/porelo-host-project
+        path: /etc/porelo-host/projects
       register: __porelo_project_helper
 
-    - name: Check work and memberships with the follow paused
-      block:
+    - name: Check central work and people before changing the host
+      block: &host_teardown_checks
         # Asked afresh, since the follow's last answer may predate a merge; giving the host back anyway skips this.
         - name: Stop while any project's work on the host's forge is not at its central forge
           ansible.builtin.command:
-            argv: [/usr/local/sbin/porelo-host-project, give-back-check]
+            argv: [env, -i, 'PATH=/usr/sbin:/usr/bin:/sbin:/bin', /usr/sbin/porelo-host, project, give-back-check]
           changed_when: false
           when: __porelo_project_helper.stat.exists
           vars:
@@ -81,6 +68,27 @@
             porelo_host_step:
               text: Checking admitted people
               seconds: 5
+      rescue:
+        - name: Keep the refusal without changing the host
+          ansible.builtin.fail:
+            msg: "{{ ansible_failed_result.stderr | default('', true) or ansible_failed_result.msg }}"
+
+    - name: Read the follow's installed units before pausing it
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/{{ item }}"
+      loop: [porelo-host-follow.timer, porelo-host-follow.service]
+      register: __porelo_follow_units
+
+    - name: Stop the follow timer and wait for an active follow to finish
+      ansible.builtin.systemd_service:
+        name: "{{ item.item }}"
+        state: stopped
+      loop: "{{ __porelo_follow_units.results }}"
+      when: item.stat.exists
+
+    # A follow finishing after the first read can change both work and memberships.
+    - name: Check work and memberships again with the follow paused
+      block: *host_teardown_checks
       rescue:
         - name: Resume following on a host that cannot be taken down
           ansible.builtin.systemd_service:

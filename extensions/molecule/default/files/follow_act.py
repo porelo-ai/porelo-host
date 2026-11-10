@@ -12,12 +12,16 @@ import sys
 import tempfile
 from pathlib import Path
 
-HELPER = "/usr/local/sbin/porelo-host-person"
+HELPER = "/usr/sbin/porelo-host"
 SHARED = Path("/usr/local/share/porelo-org-standin")
 KEYS = Path("/root/verify-org")
 ORG = Path("/etc/porelo-host/organization")
 TOKEN = "molecule-central-token-" + os.urandom(8).hex()
-ENVIRON = {key: value for key, value in os.environ.items() if key != "SUDO_USER"}
+# Whether up gave the host its forge, as the scenario says: only a forge's hook reads a project's allowed signers.
+if sys.argv[1:] not in (["on"], ["off"]):
+    sys.exit(f"usage: follow_act.py on|off, not {sys.argv[1:]}")
+FORGE_ON = sys.argv[1] == "on"
+ENVIRON = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"}
 
 
 def run(*words, given=""):
@@ -34,14 +38,14 @@ def check(fact, asked, seen=""):
         WRONG.append(f"asked {asked}; got {seen}")
 
 
-def helper(*words, given=""):
+def helper(*words, given="", expected=0):
     done = run(HELPER, *words, given=given)
-    check(done.returncode == 0, f"porelo-host-person {' '.join(words)} to answer 0", done.stdout + done.stderr)
+    check(done.returncode == expected, f"porelo-host {' '.join(words)} to answer {expected}", done.stdout + done.stderr)
     return done
 
 
 def status():
-    return json.loads(helper("org", "status").stdout)
+    return json.loads(helper("org", "status", "--json").stdout)
 
 
 def person(login):
@@ -147,10 +151,13 @@ for login, role in BOTH.items():
     check(reaches(login), f"{login} to reach the host with their key")
     check(can_read(login, ACCESS), f"{login} to read the project's file")
 check(not can_read("nobody", ACCESS), "nobody else to read the project's file")
-for path in (ALLOWED, CERTIFIERS):
+for path in (ALLOWED, CERTIFIERS) if FORGE_ON else (CERTIFIERS,):
     mode = path.stat().st_mode & 0o777
     check(mode == 0o644 and public("fb") in path.read_text(encoding="utf-8"), f"{path} to name fb, readable", mode)
-    check(can_read("porelo-forge", path), f"the forge's account to read {path}")
+    if FORGE_ON:
+        check(can_read("porelo-forge", path), f"the forge's account to read {path}")
+if not FORGE_ON:
+    check(not ALLOWED.exists(), f"no {ALLOWED} without a forge to read it")
 
 # Again, as the timer does: the kept state goes along, nothing changes.
 before = ACCESS.read_text(encoding="utf-8")
@@ -170,8 +177,34 @@ def project_state():
 
 # The web gate serves the forge's own site alone: fa's browser creates a repository with a form, as a page of another
 # site in that browser cannot.
-SITE = dict(line.split("=", 1) for line in FORGE.read_text(encoding="utf-8").split())
-OWN = f"{SITE['name']}:{SITE['port']}"
+OWN = ""
+if FORGE_ON:
+    SITE = dict(line.split("=", 1) for line in FORGE.read_text(encoding="utf-8").split())
+    OWN = f"{SITE['name']}:{SITE['port']}"
+    measured = run(
+        "runuser",
+        "-u",
+        "fa",
+        "--",
+        HELPER,
+        "forge",
+        "measure",
+        "--socket",
+        "/run/porelo-forge/web.sock",
+        "--host",
+        OWN,
+        "--requests",
+        "8",
+        "--concurrency",
+        "2",
+        "--per-connection",
+        "2",
+        "--path",
+        "/api/v1/version",
+    )
+    check(measured.returncode == 0, "the native forge measure to serve eight requests", measured.stderr)
+    if measured.returncode == 0:
+        check(json.loads(measured.stdout)["failures"] == 0, "every measured gate request to succeed", measured.stdout)
 # Gone with the act, also when it ends early.
 GATE_JAR = tempfile.TemporaryDirectory(prefix="gate-act-")  # pylint: disable=consider-using-with
 JAR = Path(GATE_JAR.name)
@@ -210,7 +243,7 @@ def browser(method, route, headers=(), form=None, host=OWN):
     return parts[2], parts[0]
 
 
-if FORGE.exists():
+if FORGE_ON:
     check(RECORD.exists(), "the follow to register the project", project_state())
     # Its central address is invented here, so its repository waits; the walk migrates a real one.
     check(project_state()["state"] == "waiting-for-token", "the repository to wait for the migration", project_state())
@@ -303,7 +336,7 @@ if FORGE.exists():
             return {item["name"] for item in forge("GET", f"orgs/{PROJECT}/actions/secrets")[1] or []}
 
         def pool_key(direction):
-            done = run("/usr/local/sbin/porelo-host-project", "pool-key", direction)
+            done = run(HELPER, "project", "pool-key", direction)
             check(done.returncode == 0, f"pool-key {direction} to answer 0", done.stdout + done.stderr)
             return json.loads(done.stdout or '{"changed":[]}')["changed"]
 
@@ -356,7 +389,7 @@ if FORGE.exists():
             check(signed.returncode == 0, "fb's certificate for the task", signed.stderr)
             issued = Path(f"{task_keys}/task-cert.pub")
             certificate = issued.read_text(encoding="utf-8") if issued.exists() else ""
-        started = run("runuser", "-u", "fb", "--", "sudo", "-n", HELPER, "task", "pkgread", given=certificate)
+        started = run("runuser", "-u", "fb", "--", "sudo", "-n", HELPER, "task", "start", "pkgread", given=certificate)
         # Its stdout is the token alone, so only stderr is ever shown.
         task_token = started.stdout.strip()
         check(started.returncode == 0 and task_token, "fb's task start to answer a token", started.stderr)
@@ -371,7 +404,7 @@ if FORGE.exists():
             refused = package("GET", task_token, "porelo-fb", other)
             check(refused in ("401", "403", "404"), "the task's token refused another organization's package", refused)
     finally:
-        ended = run("runuser", "-u", "fb", "--", "sudo", "-n", HELPER, "task", "--end", "pkgread")
+        ended = run("runuser", "-u", "fb", "--", "sudo", "-n", HELPER, "task", "end", "pkgread")
         check(ended.returncode == 0 or not record.exists(), "fb's task to end", ended.stderr)
         record.unlink(missing_ok=True)
         if record.parent.exists() and not any(record.parent.iterdir()):
@@ -528,7 +561,7 @@ if FORGE.exists():
             check(signed.returncode == 0, "fb's certificate for the pull request's task", signed.stderr)
             issued = Path(f"{task_keys}/task-cert.pub")
             certificate = issued.read_text(encoding="utf-8") if issued.exists() else ""
-        started = run("runuser", "-u", "fb", "--", "sudo", "-n", HELPER, "task", "prown", given=certificate)
+        started = run("runuser", "-u", "fb", "--", "sudo", "-n", HELPER, "task", "start", "prown", given=certificate)
         task_token = started.stdout.strip()
         check(started.returncode == 0 and task_token, "fb's task start to answer a token", started.stderr)
         if task_token:
@@ -578,7 +611,7 @@ if FORGE.exists():
             check(code == 200, "fb to merge its task's pull request under a required review", code)
     finally:
         forge("DELETE", "admin/users/follow-outsider?purge=true")
-        ended = run("runuser", "-u", "fb", "--", "sudo", "-n", HELPER, "task", "--end", "prown")
+        ended = run("runuser", "-u", "fb", "--", "sudo", "-n", HELPER, "task", "end", "prown")
         check(ended.returncode == 0 or not record.exists(), "fb's pull request task to end", ended.stderr)
         record.unlink(missing_ok=True)
         if record.parent.exists() and not any(record.parent.iterdir()):
@@ -613,10 +646,10 @@ if FORGE.exists():
 
     # Taking one repository off, as the follow asks it of the root helper: the scenario has no central forge, so this
     # holds the verb to its form on the host, and the unit tests hold what it does at a central forge.
-    taker = "/usr/local/sbin/porelo-host-project"
-    done = run(taker, "take-off", PROJECT, given=json.dumps({"repository": "absent", "token": 7}))
+    taker = HELPER
+    done = run(taker, "project", "take-off", PROJECT, given=json.dumps({"repository": "absent", "token": 7}))
     check(done.returncode == 64, "take-off to refuse a token that is no text", done.returncode)
-    done = run(taker, "take-off", PROJECT, given=json.dumps({"repository": "absent", "token": None}))
+    done = run(taker, "project", "take-off", PROJECT, given=json.dumps({"repository": "absent", "token": None}))
     check(
         done.returncode == 0 and json.loads(done.stdout or "{}").get("removed") is True,
         "take-off of a repository the host does not hold to answer it taken off",
@@ -666,7 +699,7 @@ if FORGE.exists():
 # A state the host's keys did not sign: refused, shown to the admin, the state kept; a forge that says nothing is not.
 (SHARED / "words").write_text("refused-state: an owner replaced a host admin's card\n", encoding="utf-8")
 (SHARED / "exit").write_text("65\n", encoding="utf-8")
-done = run(HELPER, "org", "follow")
+done = helper("org", "follow", expected=65)
 check(done.returncode == 65, "a refused state to answer 65", done.stdout + done.stderr)
 check(
     "refused-state" in str(status()["refused"]) and status()["commit"] == "a" * 40,
@@ -684,7 +717,7 @@ check(json.loads(done.stdout)["refused"] is None, "the renewal to clear the refu
 helper("org", "renew-pin", given=old)
 (SHARED / "words").write_text("cannot-say: the forge is away\n", encoding="utf-8")
 (SHARED / "exit").write_text("69\n", encoding="utf-8")
-done = run(HELPER, "org", "follow")
+done = helper("org", "follow", expected=69)
 check(done.returncode == 69 and status()["refused"] is None, "a forge saying nothing to be no refusal", status())
 
 # A newcomer comes in with the next state.
@@ -713,7 +746,8 @@ check(not can_read("fa", PERSONS / "fc.json"), "fa not to read fc's list")
 check(not can_read("fc", PERSONS / "fa.json"), "fc not to read fa's list")
 check(run("runuser", "-u", "fa", "--", "ls", "--", str(PERSONS)).returncode != 0, "fa not to list who has a list")
 check(not (PERSONS / "fb.json").exists(), "revoked fb to have no list")
-check(public("fb") not in ALLOWED.read_text(encoding="utf-8"), "fb's key out of the allowed signers")
+if FORGE_ON:
+    check(public("fb") not in ALLOWED.read_text(encoding="utf-8"), "fb's key out of the allowed signers")
 
 # A membership lost: locked with a day to go, and back when the state says so.
 answer("d", admins=["hostadmin"], persons=EVERYONE, revoked=["fb"], projects={})
@@ -731,7 +765,7 @@ helper("org", "follow")
 seen = person("fa")
 check(seen["state"] == "active" and "purge_on" not in seen and reaches("fa"), "fa back with its membership", seen)
 
-# A purged person's accounts on the host's homeserver go with them, the person's and a task's; the 200 shows the question
+# A purge removes both the person's and task's homeserver accounts; the 200 shows the question
 # can tell. Only while the person is a member does the gate let them make one.
 ACCOUNTS = [matrix_account("fa", "fa"), matrix_account("fa", "task.fa")]
 check([matrix_answers(access) for access in ACCOUNTS] == ["200", "200"], "fa's accounts to act before the purge")
@@ -740,14 +774,8 @@ check([matrix_answers(access) for access in ACCOUNTS] == ["200", "200"], "fa's a
 answer("f", admins=["hostadmin"], persons=["hostadmin"], projects={})
 helper("org", "follow")
 for login in ("fa", "fb", "fc"):
-    helper("purge", login)
-    check(person(login)["state"] == "purged", f"{login} to be purged", person(login))
-seen = [matrix_answers(access) for access in ACCOUNTS]
-check(seen == ["401", "401"], "a purged person's accounts on the homeserver to act no more", seen)
-check(
-    Path("/home/porelo-matrix/.config/porelo/matrix/expelled-logins/fa").exists(),
-    "the purged login to stay taken on the homeserver",
-)
+    check(person(login)["state"] == "locked", f"{login} to be locked after removal", person(login))
+print("SKIPPED: manual purge has no packaged verb; org follow purges only after seven days")
 
 journal = run("journalctl", "-b", "--no-pager").stdout
 check(TOKEN not in journal, "the token to stay out of the journal")

@@ -1,5 +1,7 @@
 # measure
 
+`files/porelo-host-measure` is one of the four collection script exceptions, using Python before Java is available.
+
 Measure a fresh disposable local Ubuntu 26.04 machine as root, using Python's standard library and an installed
 `porelo.host` collection with Ansible-core 2.19 or later. This role changes the machine: repeated `up` and `down`
 leave packages, firewall settings and caches. It is not idempotent and refuses to replace a result file.

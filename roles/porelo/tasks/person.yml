@@ -1,37 +1,30 @@
 ---
-- name: person | Install the host's person helper
-  ansible.builtin.copy:
-    src: "{{ role_path }}/files/porelo-host-person"
-    dest: /usr/local/sbin/porelo-host-person
-    owner: root
-    group: root
-    mode: "0700"
-
 - name: person | Configure the organization and its follow timer
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/organization.yml"
 
 - name: person | Allow people their own commands
-  ansible.builtin.copy:
-    src: "{{ role_path }}/files/porelo-host-person.sudoers"
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/porelo-host-person.sudoers.j2"
     dest: /etc/sudoers.d/porelo-host-person
     owner: root
     group: root
     mode: "0440"
     validate: /usr/sbin/visudo -cf %s
+    backup: true
 
 - name: person | Restore private runtime directories and boot rules for recorded people
   ansible.builtin.command:
-    argv: [/usr/local/sbin/porelo-host-person, restore-runtime]
-  register: __porelo_restored_runtime
-  changed_when: (__porelo_restored_runtime.stdout | from_json).changed > 0
+    argv: [env, -i, 'PATH=/usr/sbin:/usr/bin:/sbin:/bin', /usr/sbin/porelo-host, org, follow]
+  changed_when: false
 
 - name: person | Install the daily task token sweep
-  ansible.builtin.copy:
-    src: "{{ role_path }}/files/{{ item }}"
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/{{ item }}.j2"
     dest: "/etc/systemd/system/{{ item }}"
     owner: root
     group: root
     mode: "0644"
+    backup: true
   loop:
     - porelo-host-task-sweep.service
     - porelo-host-task-sweep.timer

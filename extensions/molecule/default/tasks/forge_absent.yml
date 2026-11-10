@@ -31,6 +31,8 @@
     - /etc/systemd/system/sockets.target.wants/porelo-forge-https.socket
     - /usr/local/sbin/porelo-host-push
     - /usr/local/sbin/porelo-host-forge-password
+    - /usr/local/sbin/porelo-host-project
+    - /usr/local/libexec/porelo-forge-gate
   register: forge_absent_paths
 
 - name: Read /etc/hosts to check that no forge name block was written

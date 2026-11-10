@@ -129,6 +129,7 @@
   loop:
     - /usr/local/libexec/porelo-forge-gate
     - /usr/local/libexec/porelo-forge-pre-receive
+    - /usr/local/libexec/porelo/pre-receive
     - /var/lib/porelo-host/arrivals
     - /etc/sudoers.d/porelo-host-push
     - /usr/local/sbin/porelo-host-push

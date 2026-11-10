@@ -1,5 +1,23 @@
 # The local forge
 
+The collection installs `porelo-host` beside `porelo`, from the same signed source at its pinned Debian version.
+Only the pre-receive hook, `porelo-host-check`, `porelo-host-measure` and a pool VM's `porelo-pool-give-back`
+remain collection scripts. `build/porelo-vm` belongs to development and is excluded from the installed collection.
+Both up and down include removal of the former host programs.
+
+The native package supplies organization follow, refresh and pin renewal, forge gates and measurement, and pool
+make, address, delete, revert and give-back. Runtime restoration runs through `org follow`. The pre-receive hook is
+installed and mounted at `/usr/local/libexec/porelo/pre-receive`, where the follow links each repository.
+The push judge is the package's `porelo-host judge-push`, run by the judge's socket unit for each push.
+The person sudo rules name exactly `forge issue-token`, `forge lend-token`, `task start *`, `task end *` and
+`task show *` on separate lines; there is no arrivals rule. They reset the environment, disable kept variables and
+forbid `setenv`. Host program units set no extra environment variables or environment files.
+Down checks central work and people before stopping services. After pausing the follow it checks work
+and people again before removing anything. Pool teardown stops the revert, deletes its VMs through the package,
+and removes keys only after successful deletion.
+Its central guard uses `porelo-host project give-back-check`, which enumerates all projects; `project check-central`
+requires explicit project and repository arguments and is not a zero-argument replacement.
+
 ## Socket gates
 
 Forgejo serves HTTP over `/run/user/<forge uid>/porelo-forge/http.sock`, mode `0600` in a `0700` directory of its
@@ -159,7 +177,7 @@ both forges let workflows select their destinations without editing the workflow
 ## Registering a project
 
 Root's organization follow registers projects named in the taken state and removes projects no longer named.
-On a forge host it calls `porelo-host-project add <project> <admin> --signed-by 'ssh-ed25519 <base64>'` with an
+On a forge host it calls `porelo-host project add <project> <admin> --signed-by 'ssh-ed25519 <base64>'` with an
 unlocked project admin and that admin's current signing key from the state. The root helper remains available for
 manual registration. Follow lends the helper its existing configuration lock through a validated inherited file
 descriptor, so registration and removal stay inside the follow's exclusive lock.
@@ -187,7 +205,7 @@ line, in this field order:
 `{"project":"<project>","admin":"<admin>","organization":"<project>","publisher":"porelo-publisher-<project>"}`.
 The helper accepts no environment overrides for its paths or authority.
 
-`porelo-host-project remove <project>` first lists every repository and package version. A project migrated by
+`porelo-host project remove <project>` first lists every repository and package version. A project migrated by
 refresh has a separate read-only deploy key for each migrated repository, under root's private
 `/etc/porelo-host/organization/read/projects/<project>/`. Removal fetches every central ref with those keys and the
 organization's pinned SSH host keys, then compares all commits reachable from local refs, including task branches
@@ -223,9 +241,8 @@ Every refusal goes to stderr as `porelo-host-project: <words>`, with no success 
 
 ## Keeping a project's persons in step
 
-`/usr/local/sbin/porelo-host-person` manages host people under the exclusive flock on `/etc/porelo-host/forge.conf`,
-with the same refusal prefix (`porelo-host-person: <words>` on stderr) and exit codes (`64`, `65`, `69`, `73`). Root
-calls `purge <user>`; who is on the host and who is locked changes only in the organization, and the host follows.
+The person lifecycle runs through `porelo-host org follow`. It requires the exclusive flock on
+`/etc/porelo-host/forge.conf`; who is on the host and who is locked changes only in the organization.
 
 The follow takes each person's one current key from the applied organization. The account's GECOS field names `umask=0022`, which `pam_umask` reads ahead of `USERGROUPS_ENAB`'s `002`, so the
 person's directories carry no group write; an account admitted before gets it on its next `add`. Once admitted, root
@@ -269,12 +286,12 @@ certificate names the one principal `task:<project>:<task>`, which the host and 
 
 ## The host's state taken from the organization
 
-Root's `porelo-host-person org follow` fetches the signed organization from the central forge every five minutes;
-`org refresh` follows immediately with empty stdin, and takes the host admin's central token on standard input to
+The required organization follow fetches the signed organization from the central forge every five minutes;
+its immediate refresh needs empty stdin, and takes the host admin's central token on standard input to
 add the organization's read key after setup or migrate projects waiting for that token. Setup supplies the initial
 admin pin and organization deploy key; a taken state advances the pin. Project files are readable through
 per-member ACLs, and membership loss locks an account for seven days before automatic purge. See the porelo role's README for the machine
-file handover and host summary. `org pin` is unavailable.
+file handover and host summary. `org renew-pin` takes replacement login/key lines on standard input.
 
 The host's read key on the organization's repository is taken off by nobody. Porelo titles it by its fingerprint, so a
 host set up anew adds its new key beside the old one, and a host set up anew or given up leaves its old key able to read
@@ -298,11 +315,11 @@ a new admin.
 
 When an owner has replaced a host admin's card, no key the host holds signed that change, so every fetch is refused.
 The way out is on the machine: root gives the host admins' keys, one `login key` line each, on standard input of
-`porelo-host-person org renew-pin`, root's alone, which replaces the pin and the keys in the state taken, and answers as
+the required root-only pin renewal, which replaces the pin and the keys in the state taken, and answers as
 `org status`. A host's own record refuses a rolled-back tip as well; to start over after a real rollback, root empties the
 state directory of the unit `porelo-host-org-fetch`.
 
-`porelo-host-person org status`, root's alone and read-only, answers the interface over root's SSH without it
+`porelo-host org status`, root's alone and read-only, answers the interface over root's SSH without it
 reading root's files: `{"host":"<host>","refused":"<words>"|null,"commit":"<commit>"|null,"pinned":"SHA256:..."|null,"persons":[...]}`.
 `refused` is what the last fetch refused, for the host admin to judge: the host keeps the state it took and does not read
 this as being taken out of the organization, since a removal looks the same as a commit nobody allowed. Each
@@ -322,20 +339,20 @@ to `/run/porelo-verify/verify.sock` in the container, whose directory is the hos
 read-only, and shows the answer to the pusher; no answer, or any answer but 200, refuses the push. A push that only
 deletes refs brings no commit and passes unjudged.
 
-Behind the socket, which only the forge account may connect to, root's `porelo-host-person verify-push` answers only
-that account's peer. It maps the paths into the forge volume, refuses one outside the pushed repository, of an
+Behind the socket, which only the forge account may connect to, `porelo-host judge-push` answers only that account's
+peer. It maps the paths into the forge volume, refuses one outside the pushed repository, of an
 organization no project registered or through a link on the way, and runs
 `porelo commit verify --json` in a throwaway unit as the forge account, with no network and no home but that
 repository read-only. Porelo gets the project's keys, each with its validity period (`--signers`), their
 `cert-authority` lines for the project's own tasks (`--certifiers`), the KRL and each task certificate the host
-recorded for the project and valid now, as `task --show` answers it (`--certificates`). Pushes are judged side by
+recorded for the project and valid now, as `porelo-host task show` answers it (`--certificates`). Pushes are judged side by
 side, each with its own staging directory; a follow waits for them and they for it. Every new commit, merges too, must be signed so that it holds now: by a person's key, by a task
 certificate valid now, or by a task key whose recorded certificate holds now. Porelo's 65 refuses the push with its
 lines; any other failure refuses it too.
 
 Each accepted commit's verdict, with the arrival time Porelo read and the signer's fingerprint, is appended to root's
-`/var/lib/porelo-host/arrivals/<project>/<repository>.jsonl` (0600). A person of the project reads it with
-`sudo -n porelo-host-person arrivals <project> <repository>`. A verdict records what Porelo accepted when the push
+`/var/lib/porelo-host/arrivals/<project>/<repository>.jsonl`. The follow must publish a file with a read ACL for
+the project's members; no privileged arrivals command is granted. A verdict records what Porelo accepted when the push
 arrived, not that the forge kept it: a push the forge refuses after both hooks leaves its verdict there, and the same
 commit pushed again is judged again.
 
@@ -372,24 +389,21 @@ lifecycle steps are not built:
 - End the task after the person merges its pull request: not built yet.
 
 **Second, start a gathered push of accepted local `main` to the central forge.** This is a separate decision about
-sending the merged work outward. Any developer or admin of the project runs it in their own account on the host over
-SSH, naming the project and optionally the repositories in their order; a root call is refused with `77`:
-
-    /usr/local/sbin/porelo-host-push porelo
-    /usr/local/sbin/porelo-host-push porelo porelo-message-sluice
+sending the merged work outward. Its packaged replacement is unavailable; the collection installs no gathered-push
+wrapper. The required behavior uses the developer or admin's own account and names the project and repositories.
 
 Without repository names it pushes every repository `porelo-host/push/<project>.conf` in the config folder names, in the config's
 order; with names, those, refusing an unknown or duplicate name before asking for credentials. The config is read only
 from the caller's `getent passwd` home (never `$HOME`): a plain file of theirs, not a link, mode `0600`, in a `0700`
 directory of theirs, written by the host's follow, as that person, from the project's repositories on
 the forge and their `original_url`; anything else is refused naming what was found. It reads local `main` with the
-person's own local forge token from `sudo -n porelo-host-person forge-token`, which refuses a locked person or one
+person's own local forge token from `sudo -n /usr/sbin/porelo-host forge issue-token`, which refuses a locked person or one
 no project holds (a failed token request refuses with `69`), asks once on the terminal for their central forge write token without
 showing it (`Token for the central forge (not shown): `) and keeps it only for the run, and pushes local `main` to each
 repository's central address with a plain `git push` without force, the next only once the one before was taken. The
 config's `central-ca` names the authority the central forge is trusted by (`porelo_host_forge_central_ca`, the system's
-CA bundle by default). The local forge uses no TLS or CA. `up` installs `/usr/local/sbin/porelo-host-push`
-(`0755`) and `/etc/porelo-host/forge/central-ca.conf` (`0644`); `down` removes them.
+CA bundle by default). The local forge uses no TLS or CA. `up` retains `/etc/porelo-host/forge/central-ca.conf`
+(`0644`) for the packaged central check; `down` removes it.
 
 Every API request goes through `/run/porelo-forge/git.sock` to `http://localhost/api/v1/`, with the token header on a
 pipe. Git has no HTTP Unix-socket transport, so local Git reaches the forge on `127.0.0.1:<git_port>`, a second
@@ -427,14 +441,14 @@ The registry publisher is a separate account. Its package token stays with Forge
 credentials have their own routes, described in [Porelo's credential
 documentation](https://github.com/porelo-ai/porelo/blob/main/doc/credentials.md).
 
-`/usr/local/sbin/porelo-host-push --central <project>`, in a member's own account with no token, prints how each
+`porelo-host project measure-central <project>`, run by root with no central token, publishes how each
 repository's approved `main` stands against the central forge, as one JSON object with `project`, `read_at` and
 `repositories`. Each repository's `state` is `ahead` with `commits`, `up-to-date`, `moved-on` (the central forge moved on
 or the two went apart, so a push would be refused), or `cannot-say` with `why`: `no-read-key`, `unreachable`,
 `no-central-main` or `local`. No repositories at all means the host could not say. The follow reads it with the
 repository's read key by `git ls-remote`, clones nothing, and writes `/etc/porelo-host/organization/central/<project>.json`
-with a read ACL for each unlocked member, so the answer can be five minutes old, and longer when a follow fails. With no
-answer the account may read it refuses with 69. The push itself still decides.
+with a read ACL for each unlocked member. A member reads that file directly; its timestamp says when it was measured.
+The push itself still decides.
 
 The gathered push asks for the central token with hidden input in the SSH terminal and stores it nowhere; git
 receives it only as a header in its environment, never on a command line, and the command's output names no token. The
@@ -459,7 +473,7 @@ with its own read key. One named later waits for a token and says so; one refuse
 one taken out of the file stays with its work. Where the host's card in the organization's state names some of the
 file's repositories (`repositories: [...]` on its project; absent, null or empty carries all), only those are taken; the
 project's own repository is taken in any case, as its file lives there. A name the file does not list stands in the
-project's `why`. One taken before and named no longer is taken off by `porelo-host-project take-off <project>`, which
+project's `why`. One taken before and named no longer is taken off by `porelo-host project take-off <project>`, which
 reads `{"repository", "token"}` on standard input: work on the host's copy that its central repository has not keeps
 it there, as `held`, and each follow tries again. Its deploy key at the central forge goes first, deleted with the token
 at hand, which reaches the organization's forge alone, and believed by its absence after, or else named in
@@ -481,8 +495,8 @@ the output of the run that changed the rule, the journal for a timer's follow, a
 Removing a project deletes its local
 private read keys; the recorded address retains an explicit SSH port for the removal comparison. The repository name
 `repositories.json` is reserved for the read-key manifest. Public deploy-key registrations on the central forge require separate removal with central
-administrative authority. `/usr/local/sbin/porelo-host-push --pull <project> [repositories...]` brings central `main` locally as
-`central/main`, in the person's own account with the central token on stdin. Local `main` reaches it by a pull
+administrative authority. The pending pull integration must bring central `main` locally as `central/main`, in the
+person's own account with the central token on stdin. Local `main` reaches it by a pull
 request. The project's own repository is the exception, as tasks read `project.yml` there: once Porelo's `project verify`
 has accepted central's file, the follow brings local `main` forward to it, past the branch rule and the push judge, as
 `main` stays closed to every push. It goes to the commit Porelo judges the file by: the newer of the file's last change
@@ -505,15 +519,13 @@ A repository's address on the host is `http://127.0.0.1:<git_port>/<project>/<na
 card and `<name>` the repository's name at the central forge, which the project file's `central` names; the host
 derives the address, and no project file holds it. Beside it the host's file for the project names the Builds a task
 here reads: `builds`, `{"forge": "forgejo", "api": "http://127.0.0.1:<git_port>/api/v1", "credential":
-"<forge>.person", "logs": "failure"}`, the credential being the vault entry `porelo-host-forge-token` makes; a guarded
+"<forge>.person", "logs": "failure"}`, with the credential held in Porelo-Vault; a guarded
 project's `project.yml` names nothing of the host. Without `fetch_from` there is no `builds`, and a forge.conf whose
 `name` does not read leaves it out with a line saying so. After admission and with Porelo-Vault open, the person or their tool
-runs `/usr/local/bin/porelo-host-forge-token` before reading the forge over git. It calls
-`sudo -n porelo-host-person forge-token` and pipes the local token into `<forge>.person`; Porelo's own commands on the
-forge take `forge-token --lend`, which leaves that token valid. Success prints nothing;
-a token request failure exits with `69`, and a refused vault write with `65`, each with a reason on stderr.
-`--if-forge` does nothing when the host runs no forge. Push and pull refresh the same entry through the shared helper,
-since the new token replaces the one there; a refused vault write warns while their transfer continues.
+needs the packaged client integration before reading the forge over git. Root's token endpoint is
+`sudo -n /usr/sbin/porelo-host forge issue-token`; a command's independent lend uses
+`sudo -n /usr/sbin/porelo-host forge lend-token`, preserving concurrent lends. Tokens leave on stdout alone.
+The collection installs no vault token wrapper or shared shell helper.
 No token for the central forge lies on the host.
 
 ## If the host is lost

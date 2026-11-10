@@ -12,7 +12,7 @@
     fail_msg: "Unexpected TCP service listeners: {{ verify_ssh_listeners.stdout_lines }}"
 
 # The host's own Git reaches the forge's Git gate on loopback alone; nothing else on the host binds its port.
-- name: ssh | Assert the Git gate listens on 127.0.0.1:3001 alone
+- name: ssh | Verify the packaged Git gate listener
   ansible.builtin.assert:
     that: verify_ssh_git_locals == (['127.0.0.1:3001'] if verify_forge == 'on' else [])
     fail_msg: "asked for the Git gate on 127.0.0.1:3001 alone, got {{ verify_ssh_listeners.stdout_lines }}"

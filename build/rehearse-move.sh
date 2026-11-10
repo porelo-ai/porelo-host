@@ -25,7 +25,7 @@ state=$root/target/rehearsal
 cache=$HOME/.porelo/cache
 account=rehearsal
 limit=300
-vm=$root/roles/vm_pool/files/porelo-vm
+vm=$root/build/porelo-vm
 
 say() { printf '%s\n' "$*" >&2; }
 fail() { say "FAILED: $*"; exit 1; }
@@ -137,6 +137,7 @@ start() {
     if [ -z "$bare" ]; then
         "$root/build/tools.sh" ansible-galaxy collection build --force --output-path target/rehearsal >/dev/null
         tarball=$(ls "$state"/porelo-host-*.tar.gz)
+        stage_packages
     fi
 
     # Marked before it is made, so a half-made VM is deleted too.
@@ -173,6 +174,17 @@ EOF
     say "up ran on $name; its lines are in /root/rehearsal-up.lines there"
 }
 
+# With PORELO_HOST_DEB set, the host program and the packages beside it come from this checkout's staged set, as in
+# Molecule; without it, up installs from the signed repository.
+stage_packages() {
+    packages_digest=
+    [ -n "${PORELO_HOST_DEB:-}" ] || return 0
+    rm -rf "$state/packages" "$state/packages.tar"
+    sh "$root/build/stage-packages.sh" "$state/packages" 2>/dev/null || fail "the local packages could not be staged"
+    tar -C "$state/packages" -cf "$state/packages.tar" .
+    packages_digest=$(sha256sum "$state/packages/SHA256SUMS" | cut -d' ' -f1)
+}
+
 host_root() {
     if [ "${rented_mode:-}" = yes ]; then on_rented "$@"; else on_vm sudo "$@"; fi
 }
@@ -183,9 +195,9 @@ setup_host() {
     if [ "${rented_mode:-}" = yes ]; then
         # systemd owns the remote processes even when an interrupted ssh connection has already gone away.
         host_root systemd-run --quiet --wait --pipe --collect --unit="$unit" -p KillMode=control-group \
-            bash -s "$account" "$given" rented "$kvm" "$staging" "$unit"
+            bash -s "$account" "$given" rented "$kvm" "$staging" "$unit" "${packages_digest:-}"
     else
-        host_root bash -s "$account" "$given" rehearsal false /tmp
+        host_root bash -s "$account" "$given" rehearsal false /tmp - "${packages_digest:-}"
     fi
 }
 
@@ -201,6 +213,15 @@ EOF
     else
         on_vm 'cat > /tmp/porelo-host.tar.gz' < "$tarball"
     fi
+    if [ -n "${packages_digest:-}" ]; then
+        if [ "${rented_mode:-}" = yes ]; then
+            # shellcheck disable=SC2016
+            host_root sh -c '[ "$(cat "$1/owner")" = "$2" ] && cat > "$1/porelo-packages.tar"' sh "$staging" "$unit" \
+                < "$state/packages.tar"
+        else
+            on_vm 'cat > /tmp/porelo-packages.tar' < "$state/packages.tar"
+        fi
+    fi
     if [ -n "$machine_file" ]; then
         if [ "${rented_mode:-}" = yes ]; then
             # shellcheck disable=SC2016
@@ -214,7 +235,7 @@ EOF
     # root and kept for this login, the inventory, the stand-in's machine file unless one was given, then up.
     setup_host <<'EOF'
 set -euo pipefail
-account=$1 given=${2:-} host_name=$3 kvm=$4 staging=$5
+account=$1 given=${2:-} host_name=$3 kvm=$4 staging=$5 digest=${7:-}
 if [ "$host_name" = rented ]; then [ "$(cat "$staging/owner")" = "$6" ]; fi
 # ssh passes this machine's LC_ALL=C on, and Ansible refuses any locale but UTF-8.
 export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8
@@ -250,6 +271,24 @@ all:
     porelo_host_forge: true
     porelo_host_kvm: $kvm
 INVENTORY
+if [ -n "$digest" ]; then
+    # Each package set in a directory of its own, so a package left out of a later set is never installed from an older.
+    printf '%s\n' "$digest" | grep -Eqx '[0-9a-f]{64}'
+    packages=/root/porelo-packages-$digest
+    rm -rf "$packages"
+    install -d -m 0700 "$packages"
+    tar -xf "$staging/porelo-packages.tar" -C "$packages"
+    rm -f "$staging/porelo-packages.tar"
+    (cd "$packages" && sha256sum --check --strict --quiet SHA256SUMS)
+    [ "$(sha256sum "$packages/SHA256SUMS" | cut -d' ' -f1)" = "$digest" ]
+    printf '    porelo_local_packages: %s\n' "$packages" >> /root/porelo-host-inventory.yml.tmp
+    for package in porelo-host porelo; do
+        [ -f "$packages/$package.version" ] || continue
+        version=$(cat "$packages/$package.version")
+        printf '%s\n' "$version" | grep -Eqx '[0-9][A-Za-z0-9.+:~_-]*'
+        printf '    %s_version: "%s"\n' "$(printf '%s' "$package" | tr - _)" "$version" >> /root/porelo-host-inventory.yml.tmp
+    done
+fi
 if [ "$given" != given ]; then
     # The stand-in's central organization is the host's own forge, as in Molecule.
     printf '    forge_migrations_allow_local: true\n' >> /root/porelo-host-inventory.yml.tmp
@@ -441,6 +480,7 @@ rented_up() {
     : > "$state/up-started"
     "$root/build/tools.sh" ansible-galaxy collection build --force --output-path target/rented
     tarball=$(ls "$state"/porelo-host-*.tar.gz)
+    stage_packages
     prepare_host
     on_rented cat /root/rehearsal-up.lines > "$report/up.lines.tmp"
     mv "$report/up.lines.tmp" "$report/up.lines"

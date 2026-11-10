@@ -122,7 +122,7 @@ def test_the_transport_is_called_where_its_package_installs_it():
     shipped = "/usr/libexec/porelo/transports/porelo-message-transport-matrix"
     defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())
     assert defaults["matrix_transport_command"] == shipped
-    for path in [ROOT / "roles/porelo/files/porelo-host-person", *ROLE.glob("templates/*.j2")]:
+    for path in ROLE.glob("templates/*.j2"):
         assert "/usr/bin/porelo-message-transport-matrix" not in path.read_text(), path
 
 

@@ -16,6 +16,7 @@ CHECK = ROOT / "build/move-check.sh"
 TUNNEL = ROOT / "build/room-tunnel.sh"
 
 GOOD = {
+    "host_version": "porelo-host 0.5.1~snapshot.fixture\n",
     "status": json.dumps({"name": "t1", "running": True, "project": "porelo", "repository": "sluice"}),
     "status_text": (
         "task       t1\nbranch     refs/porelo/incoming/t1\nforge      porelo/t1\n"
@@ -63,6 +64,7 @@ def porelo(tmp_path):
         for key, value in values.items():
             (tmp_path / key).write_text(value)
         (tmp_path / "forge.conf").write_text("host=forge.example\nname=forge.example\nport=3000\ngit_port=3022\n")
+        fake(tmp_path, "porelo-host", f'echo "host $*" >> {log}\ncat {tmp_path}/host_version\n')
         fake(
             tmp_path,
             "porelo",
@@ -147,6 +149,7 @@ def check(tmp_path, *arguments):
         **os.environ,
         "PATH": f"{tmp_path}:{os.environ['PATH']}",
         "PORELO_HOST_FORGE_CONF": str(tmp_path / "forge.conf"),
+        "PORELO_HOST_PACKAGE_VERSION": GOOD["host_version"].removeprefix("porelo-host ").strip(),
         "MOVE_CHECK_TOKEN": "synthetic-person-token",
         "GIT_CONFIG_GLOBAL": "/dev/null",
         "GIT_CONFIG_SYSTEM": "/dev/null",
@@ -162,11 +165,19 @@ def test_every_line_holds_once_the_agent_has_moved(tmp_path, porelo):
     calls = porelo()
     done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
     assert done.returncode == 0, done.stdout + done.stderr
-    assert done.stdout.count("ok:") == 6 and "FAILED" not in done.stdout
+    assert done.stdout.count("ok:") == 7 and "FAILED" not in done.stdout
     assert all(
-        line.split()[0] in ("task", "build", "talk", "git", "vault", "curl") for line in calls.read_text().splitlines()
+        line.split()[0] in ("host", "task", "build", "talk", "git", "vault", "curl")
+        for line in calls.read_text().splitlines()
     )
     assert "--logs=none" in calls.read_text() and "--branch=porelo/t1" in calls.read_text()
+
+
+def test_the_move_refuses_a_different_host_program_build(tmp_path, porelo):
+    """Prevent accepting a move whose privileged executable is not the pinned local build."""
+    porelo(host_version="porelo-host stale\n")
+    done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
+    assert done.returncode != 0 and "FAILED: the host program" in done.stdout
 
 
 def test_the_push_is_found_on_the_branch_the_gate_forwarded_it_to(tmp_path, porelo):
@@ -222,7 +233,7 @@ def test_a_reader_without_builds_fails_the_build_line_on_a_host_with_a_forge(tmp
     done = check(tmp_path, "t1", "Agent Sluice", "--wake-answered")
     assert done.returncode == 1, done.stdout + done.stderr
     lines = done.stdout.splitlines()
-    assert len(lines) == 6 and done.stdout.count("FAILED") == 1, done.stdout
+    assert len(lines) == 7 and done.stdout.count("FAILED") == 1, done.stdout
     assert any(line.startswith("FAILED") and "Build" in line and "not configured" in line for line in lines), lines
     assert any(line.startswith("ok:") and "a" * 40 in line and "last push" in line for line in lines)
     assert any(line.startswith("ok:") and "pull request" in line for line in lines)
@@ -511,7 +522,6 @@ def rehearsal(tmp_path, *, listed="", running=False):
     """The rehearsal script in a checkout of its own, with virsh and porelo-vm stood in for, each call recorded."""
     root = tmp_path / "checkout"
     (root / "build").mkdir(parents=True)
-    (root / "roles/vm_pool/files").mkdir(parents=True)
     script = root / "build/rehearse-move.sh"
     script.write_bytes(REHEARSE.read_bytes())
     script.chmod(0o755)
@@ -534,7 +544,7 @@ case "$1" in
 esac
 """,
     )
-    fake(root / "roles/vm_pool/files", "porelo-vm", f'echo "porelo-vm $*" >> {log}\n')
+    fake(root / "build", "porelo-vm", f'echo "porelo-vm $*" >> {log}\n')
     fake(bin_dir, "ssh", f'echo "ssh $*" >> {log}\n')
     fake(bin_dir, "curl", f'echo "curl $*" >> {log}\nexit 22\n')
 

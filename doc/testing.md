@@ -3,11 +3,34 @@
 The collection's roles are tested on a VM made for the run, never in a container and never on a machine another run
 uses: a role installs packages, KVM and system services, and only a fresh machine shows what it did.
 
-    build/molecule.sh
+    PORELO_HOST_MOLECULE_POOL=off build/molecule.sh default
 
 runs the Molecule scenario `extensions/molecule/default` against such a VM, through libvirt on the machine it is
 started on (`qemu:///system`, pool `images`, network `default`). It needs libvirt, `qemu-img`, `virt-install`,
 `xorriso`, ssh and podman there; Molecule itself runs from the image `build/tools-image` pins.
+The development machine also needs `dpkg-deb` to inspect the local packages.
+
+Export `PORELO_HOST_PACKAGES` as the absolute directory holding Porelo's local Debian packages and `PORELO_HOST_DEB`
+as the path to the selected local `porelo-host` Debian package. The latter is required: a missing or unreadable value
+stops before a VM is made. Identical duplicate artifacts are accepted once; different artifacts with the same package
+identity are refused. Both program pins come from Debian metadata, independently of the collection version.
+The staged package manifest selects a separate root-owned directory on the VM, and up installs from there.
+
+The default scenario without pool acceptance is:
+
+    PORELO_HOST_MOLECULE_POOL=off build/molecule.sh default
+
+For the pool scenario, also export `PORELO_HOST_MACHINES` as the checked runtime JAR directory and
+`PORELO_HOST_MACHINES_SHA256` as its independently supplied `SHA256SUMS` digest, then run:
+
+    PORELO_HOST_MOLECULE_POOL=on build/molecule.sh default
+
+The pool run needs KVM and the forge enabled. Package version and legacy-program absence verification are active.
+Organization follow and pool/gate acceptance use the package. The organization CLI fixture temporarily diverts the
+installed CLI at its checked system path, then restores it even if the follow act fails. Manual purge and desktop
+interaction checks remain skipped because the package supplies no corresponding commands. Forge setup still refuses
+its missing socket push judge; a stopped converge is not successful acceptance.
+The scenarios have not been run against a real host for this change.
 
 **What a run makes and leaves.** One domain and two volumes, its disk and its cloud-init seed, all named
 `porelo-host-molecule-<run>`. It deletes them at its end, after a failure and on an interrupt too, and believes that
@@ -29,8 +52,8 @@ only one accepted.
 
 **What the scenario does** is what `host up` does on a host: Ubuntu's own `ansible-core`, the collection installed from
 its tarball, and `porelo.host.up` run on the machine itself with `-c local`. A second converge must change nothing,
-and `verify` reads on the machine what `up` promises. The run's own files stand in for what the person keeps on the
-desktop: the secrets file's values under `/root`, given to the stop on standard input, and the machine file, uploaded into the host's setup directory as the interface does.
+and `verify` reads on the machine what `up` promises. Local packages arrive before the first up. The run's machine
+file is uploaded into the host's setup directory as the interface does; no removed stop wrapper is invoked.
 
 **In the Build** the same script runs on GitHub's runner, after the linters and the tarball, on `main` and on the
 project's own pull requests: about three minutes, the runner adding libvirt by pinned versions first.
@@ -47,6 +70,12 @@ An agent's move can be rehearsed before a host is rented, on a VM made the same 
     build/rehearse-move.sh ssh [<command>...]
     build/rehearse-move.sh tunnel <login> <homeserver port>
     build/rehearse-move.sh down
+    build/rehearse-move.sh rented <login@host> <known_hosts> [--machine-file <file>]
+
+Non-bare start and rented preparation use the same exported package inputs as Molecule. For rented preparation,
+also set `PORELO_HOST_ADMIN_KEY` to the intended public Ed25519 admin key. It prepares an already leased host using
+the supplied known_hosts file and noninteractive sudo, preserving existing SSH keys; it neither rents nor deletes
+that machine. The SSH identity comes from the normal SSH configuration. Real rented preparation has not been run.
 
 `start` makes one domain `porelo-host-rehearsal-<time>`, by default with 8 vCPUs, 16 GiB and an 80 GiB disk. It installs the collection
 built from the checkout and runs `porelo.host.up` on the VM with the forge on, no VM pool and no KVM asked; `up`'s lines stay
@@ -56,6 +85,8 @@ writes for a real organization, and the follow puts the host's read keys on that
 they stay until the repositories' owner removes them, as for any host. `start` refuses while any rehearsal's domain or
 volume is still there. A failed or interrupted `start` deletes what it made and exits 1 naming anything libvirt still lists.
 `up` is believed only by its lines: none failed, none waiting, and its summary of the host written.
+The move check requires `PORELO_HOST_PACKAGE_VERSION` to name the pinned Debian host version and reads
+`porelo-host --version` with a clean environment. A different version fails the check; source-script text is not evidence.
 
 `--bare` stops once the VM answers ssh, as a provider hands a server over, and prints its host key's fingerprint. Its own account's key is also pinned where the host's sshd reads keys after `up`, so `ssh` keeps its way in. A
 person then prepares it in the interface's *Prepare a server* on its address. The bootstrap line the dialog shows runs

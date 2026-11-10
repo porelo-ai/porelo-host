@@ -2,6 +2,7 @@
 
 `up`'s first task, and what the interface sends by ssh before it installs anything: `files/porelo-host-check`, Python's standard
 library alone, as Ansible itself is the first change. It reads and writes no file, and reports every finding at once.
+This pre-installation check is one of the four collection script exceptions; it does not need the host package.
 
 ## Running it
 

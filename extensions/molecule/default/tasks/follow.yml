@@ -9,9 +9,9 @@
     group: root
     mode: "0700"
 
-- name: Follow the organization through its states and through what can go wrong
+- name: Run the native organization follow act
   ansible.builtin.command:
-    argv: [/usr/bin/python3, -I, /root/follow_act.py]
+    argv: [/usr/bin/python3, -I, /root/follow_act.py, "{{ verify_forge }}"]
   register: verify_follow
   changed_when: true
   failed_when: false

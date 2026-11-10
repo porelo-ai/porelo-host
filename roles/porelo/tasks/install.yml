@@ -1,6 +1,5 @@
 ---
-# Run as root: Porelo's repository by its pinned key, Porelo's packages from it, the stop command, and the forge token
-# command with the helper it shares with porelo-host-push.
+# Both programs come from the same signed repository, at the collection's pinned package versions.
 - name: install | Make the directory the key is kept in
   ansible.builtin.file:
     path: /var/cache/porelo-host
@@ -46,20 +45,88 @@
     owner: root
     group: root
     mode: "0644"
+  register: __porelo_repository
 
 # What porelo-setup.sh always installs: Porelo, its message filter and rootless networking. The people's accounts
-# are made by porelo-host-person, each with its own subordinate ID range, which the script would give them alike.
+# are made by the host program, each with its own subordinate ID range, which the script would give them alike.
 - name: install | Install Porelo from it, with its filter and rootless networking
   ansible.builtin.apt:
     name:
-      - porelo
+      - "porelo={{ porelo_version }}"
+      - "porelo-host={{ porelo_host_version }}"
       - porelo-message-sluice-filter
       - uidmap
       - slirp4netns
       - passt
+      - catatonit
       - acl
     state: present
     update_cache: true
+  when: porelo_local_packages | length == 0
+
+- name: install | Require an absolute directory for local packages
+  ansible.builtin.assert:
+    that: porelo_local_packages is string and porelo_local_packages is match('^/')
+    fail_msg: "porelo_local_packages must name an absolute directory on the host"
+    quiet: true
+  when: porelo_local_packages | length > 0
+
+- name: install | Refresh the repository before resolving local package dependencies
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: "{{ 0 if __porelo_repository is changed else 3600 }}"
+  when: porelo_local_packages | length > 0
+
+- name: install | Find the handed-over packages on the host
+  ansible.builtin.find:
+    paths: "{{ porelo_local_packages }}"
+    patterns: '*.deb'
+    file_type: file
+  register: __porelo_local_packages
+  when: porelo_local_packages | length > 0
+
+- name: install | Require the local package directory to contain packages
+  ansible.builtin.assert:
+    that: __porelo_local_packages.matched > 0
+    fail_msg: "no Debian packages in {{ porelo_local_packages }}"
+    quiet: true
+  when: porelo_local_packages | length > 0
+
+# The apt module accepts one local archive, but their dependencies must be resolved in one transaction.
+- name: install | Install local Porelo packages together with their dependencies
+  ansible.builtin.command:  # noqa: command-instead-of-module
+    argv: >-
+      {{ ['apt-get', 'install', '-y', '-qq', '--allow-downgrades', '--no-remove']
+         + (__porelo_local_packages.files | map(attribute='path') | sort | list)
+         + ['porelo=' ~ porelo_version, 'porelo-host=' ~ porelo_host_version,
+            'porelo-message-sluice-filter', 'uidmap', 'slirp4netns', 'passt', 'catatonit', 'acl'] }}
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  register: __porelo_local_installed
+  changed_when: __porelo_local_installed.stdout | trim | length > 0
+  when: porelo_local_packages | length > 0
+
+- name: install | Read the installed host package version
+  ansible.builtin.command:
+    argv: [dpkg-query, --show, '--showformat=${Version}', porelo-host]
+  register: __porelo_host_package
+  changed_when: false
+  check_mode: false
+
+- name: install | Compare the installed host package with the pinned version
+  ansible.builtin.command:
+    argv: [dpkg, --compare-versions, "{{ __porelo_host_package.stdout }}", ge, "{{ porelo_host_version }}"]
+  register: __porelo_host_version_comparison
+  changed_when: false
+  failed_when: __porelo_host_version_comparison.rc not in [0, 1]
+  check_mode: false
+
+- name: install | Refuse an older host package version
+  ansible.builtin.assert:
+    that: __porelo_host_version_comparison.rc == 0
+    fail_msg: >-
+      installed porelo-host {{ __porelo_host_package.stdout }} is older than the required {{ porelo_host_version }}
+    quiet: true
 
 # Every published agent is installed (operator's decision, 2026-10-29): a person's project chooses among them without
 # root. The repository is the catalogue, read as Porelo's setup script and daemon read it: each agent package
@@ -102,26 +169,5 @@
     group: root
     mode: "0755"
 
-- name: install | Install the shared person forge token helper
-  ansible.builtin.copy:
-    src: "{{ role_path }}/files/porelo-host-forge-token.sh"
-    dest: /usr/local/share/porelo-host-forge-token.sh
-    owner: root
-    group: root
-    mode: "0644"
-
-- name: install | Install the person's forge token command
-  ansible.builtin.copy:
-    src: "{{ role_path }}/files/porelo-host-forge-token"
-    dest: /usr/local/bin/porelo-host-forge-token
-    owner: root
-    group: root
-    mode: "0755"
-
-- name: install | Install the person's stop command
-  ansible.builtin.copy:
-    src: "{{ role_path }}/files/porelo-host-stop"
-    dest: /usr/local/bin/porelo-host-stop
-    owner: root
-    group: root
-    mode: "0755"
+- name: install | Remove the collection's former host programs
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/legacy_programs.yml"

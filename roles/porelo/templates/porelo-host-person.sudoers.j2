@@ -1,0 +1,8 @@
+{{ ansible_managed | comment }}
+# Each command checks the calling person against root's records.
+Defaults!/usr/sbin/porelo-host env_reset, !setenv, !env_keep
+%porelo-people ALL=(root) NOPASSWD: /usr/sbin/porelo-host forge issue-token
+%porelo-people ALL=(root) NOPASSWD: /usr/sbin/porelo-host forge lend-token
+%porelo-people ALL=(root) NOPASSWD: /usr/sbin/porelo-host task start *
+%porelo-people ALL=(root) NOPASSWD: /usr/sbin/porelo-host task end *
+%porelo-people ALL=(root) NOPASSWD: /usr/sbin/porelo-host task show *

@@ -57,7 +57,7 @@
           text: Installing the host's packages
           seconds: 90
 
-    - name: Install Porelo's repository, packages and stop command
+    - name: Install Porelo's repository and pinned programs
       ansible.builtin.include_role:
         name: porelo.host.porelo
         tasks_from: install
@@ -109,13 +109,13 @@
           seconds: 20
       when: porelo_host_room | default(true) | bool
 
-    - name: Install the helper by which the host admin admits, locks and purges people
+    - name: Configure the host program's person commands and timers
       ansible.builtin.include_role:
         name: porelo.host.porelo
         tasks_from: person
       vars:
         porelo_host_step:
-          text: Installing the people's helper
+          text: Configuring the people's commands
           seconds: 5
 
     - name: Write and print what the host's card needs of the host

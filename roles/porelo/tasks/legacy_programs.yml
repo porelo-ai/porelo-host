@@ -1,0 +1,17 @@
+---
+- name: legacy_programs | Remove unpackaged host programs
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /usr/local/sbin/porelo-host-person
+    - /usr/local/sbin/porelo-host-project
+    - /usr/local/libexec/porelo-forge-gate
+    - /usr/local/sbin/porelo-host-push
+    - /usr/local/bin/porelo-host-forge-token
+    - /usr/local/share/porelo-host-forge-token.sh
+    - /usr/local/bin/porelo-host-stop
+    - /usr/local/libexec/porelo-host/porelo-pool-revert
+    - /usr/local/libexec/porelo-host/porelo-vm
+    - /usr/local/sbin/porelo-host-forge-password
+    - /etc/sudoers.d/porelo-host-push

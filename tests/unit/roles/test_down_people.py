@@ -127,17 +127,19 @@ def test_a_person_locked_with_a_day_still_stops_down_by_name(tmp_path):
     assert "alice (alpha developer)" in text and "malformed" not in text
 
 
-def test_down_waits_for_the_follow_before_checking_people_and_resumes_on_refusal():
-    """Prevent a first follow admitting people after down checked an empty membership directory."""
+def test_down_checks_people_before_stopping_and_rechecks_after_the_follow():
+    """Keep refused hosts intact and prevent an active follow from invalidating the first checks."""
     from pathlib import Path
 
     import yaml
 
     tasks = yaml.safe_load((Path(__file__).resolve().parents[3] / "playbooks/down.yml").read_text())[0]["tasks"]
     pause = next(task for task in tasks if "ansible.builtin.systemd_service" in task)
-    check = next(task for task in tasks if "block" in task)
-    facts = next(task for task in tasks if "ansible.builtin.stat" in task)
-    assert tasks.index(facts) < tasks.index(pause) < tasks.index(check)
+    first, check = [task for task in tasks if "block" in task]
+    facts = next(task for task in tasks if task.get("register") == "__porelo_follow_units")
+    assert tasks.index(first) < tasks.index(facts) < tasks.index(pause) < tasks.index(check)
+    assert first["block"] == check["block"]
+    assert len(first["rescue"]) == 1 and "ansible.builtin.fail" in first["rescue"][0]
     assert facts["ansible.builtin.stat"]["path"] == "/etc/systemd/system/{{ item }}"
     assert facts["loop"] == ["porelo-host-follow.timer", "porelo-host-follow.service"]
     assert facts["register"] == "__porelo_follow_units"
@@ -145,7 +147,16 @@ def test_down_waits_for_the_follow_before_checking_people_and_resumes_on_refusal
     assert pause["ansible.builtin.systemd_service"] == {"name": "{{ item.item }}", "state": "stopped"}
     assert pause["when"] == "item.stat.exists", "absent units must be harmless"
     work, people = check["block"]
-    assert work["ansible.builtin.command"]["argv"] == ["/usr/local/sbin/porelo-host-project", "give-back-check"]
+    assert work["ansible.builtin.command"]["argv"] == [
+        "env",
+        "-i",
+        "PATH=/usr/sbin:/usr/bin:/sbin:/bin",
+        "/usr/sbin/porelo-host",
+        "project",
+        "give-back-check",
+    ]
+    project_state = next(task for task in tasks if task.get("register") == "__porelo_project_helper")
+    assert project_state["ansible.builtin.stat"]["path"] == "/etc/porelo-host/projects"
     assert people["ansible.builtin.include_role"]["tasks_from"] == "people"
     restart, refuse = check["rescue"]
     assert restart["ansible.builtin.systemd_service"] == {"name": "porelo-host-follow.timer", "state": "started"}

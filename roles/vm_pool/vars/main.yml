@@ -22,8 +22,7 @@ __vm_pool_prefix: porelo-pool
 # The one run account each pool VM holds.
 __vm_pool_account: run
 __vm_pool_tools: /usr/local/libexec/porelo-host
-__vm_pool_vm: "{{ __vm_pool_tools }}/porelo-vm"
 
 # What reaches the forge behind its gate, on the account's own socket: each project's organization gets the run key as
 # its Actions secret PORELO_POOL_SSH, never as a mounted file.
-__vm_pool_project_helper: /usr/local/sbin/porelo-host-project
+__vm_pool_project_helper: /usr/sbin/porelo-host

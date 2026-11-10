@@ -4,14 +4,6 @@
     path: /usr/local/sbin/porelo-host-forge-password
     state: absent
 
-- name: helpers | Install the project registration helper, root's alone
-  ansible.builtin.copy:
-    src: "{{ role_path }}/files/porelo-host-project"
-    dest: /usr/local/sbin/porelo-host-project
-    owner: root
-    group: root
-    mode: "0700"
-
 # An admitted person named operator has /etc/porelo-host/people/operator.conf and keeps their forge login; only an
 # unrecorded operator account left from an earlier setup is removed.
 - name: helpers | Read whether operator is recorded as a person on this host

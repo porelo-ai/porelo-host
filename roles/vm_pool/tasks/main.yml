@@ -15,7 +15,7 @@
 - name: Check the pool's memory before changing libvirt or making VMs
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/memory.yml"
 
-# libvirt's own storage pool and NAT network, which porelo-vm makes every VM in, as the collection's test VM is.
+# The VM pool uses libvirt's own storage pool and NAT network.
 - name: Ask libvirt for its storage pool and its network
   ansible.builtin.command:
     argv: [virsh, -c, "qemu:///system", "{{ item }}-info", "{{ 'images' if item == 'pool' else 'default' }}"]
@@ -61,7 +61,7 @@
   register: __vm_pool_started
   changed_when: __vm_pool_started.stdout == 'yes'
 
-- name: Install what porelo-vm makes VMs with
+- name: Install the pool's VM prerequisites
   ansible.builtin.apt:
     name: [jq, virtinst, xorriso]
     state: present
@@ -82,16 +82,6 @@
     - {path: "{{ __vm_pool_etc }}", mode: "0755"}
   loop_control:
     label: "{{ item.path }}"
-
-- name: Install the pool's tools, the one code the pool and the collection's test make VMs with
-  ansible.builtin.copy:
-    src: "{{ role_path }}/files/{{ item }}"
-    dest: "{{ __vm_pool_tools }}/{{ item }}"
-    owner: root
-    group: root
-    mode: "0755"
-  loop: [porelo-vm, porelo-pool-revert]
-  notify: Restart the pool's revert
 
 # The pin is the digest the distribution published; a pin no published list names any more is said, not used.
 - name: Read the digests each distribution publishes beside its image
@@ -125,13 +115,21 @@
   loop: "{{ vm_pool_systems }}"
 
 - name: Make each image a base volume of libvirt
-  ansible.builtin.command:
-    argv:
-      - "{{ __vm_pool_vm }}"
-      - base
-      - "{{ __vm_pool_dir }}/{{ __vm_pool_images[item].url | basename }}"
-      - "{{ __vm_pool_images[item].sha256 }}"
-      - "{{ __vm_pool_prefix }}-base-{{ item }}-{{ __vm_pool_images[item].sha256[:12] }}.qcow2"
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      image={{ (__vm_pool_dir ~ '/' ~ (__vm_pool_images[item].url | basename)) | quote }}
+      volume={{ (__vm_pool_prefix ~ '-base-' ~ item ~ '-' ~ __vm_pool_images[item].sha256[:12] ~ '.qcow2') | quote }}
+      printf '%s  %s\n' {{ __vm_pool_images[item].sha256 | quote }} "$image" | sha256sum --check --strict >/dev/null
+      if ! virsh -c qemu:///system vol-info "$volume" --pool images >/dev/null 2>&1; then
+          virsh -c qemu:///system vol-create-as images "$volume" "$(stat -c %s "$image")" --format qcow2 >/dev/null
+          if ! virsh -c qemu:///system vol-upload "$volume" "$image" --pool images; then
+              virsh -c qemu:///system vol-delete "$volume" --pool images >/dev/null
+              exit 1
+          fi
+          echo made
+      fi
+    executable: /bin/bash
   loop: "{{ vm_pool_systems }}"
   register: __vm_pool_base
   changed_when: __vm_pool_base.stdout == 'made'
@@ -151,7 +149,7 @@
 # A project added later gets the key from its own add.
 - name: Send the run key to every project's organization on the forge
   ansible.builtin.command:
-    argv: ["{{ __vm_pool_project_helper }}", pool-key, send]
+    argv: [env, -i, 'PATH=/usr/sbin:/usr/bin:/sbin:/bin', "{{ __vm_pool_project_helper }}", project, pool-key, send]
   register: __vm_pool_secret_sent
   changed_when: (__vm_pool_secret_sent.stdout | from_json).changed | length > 0
 
@@ -200,13 +198,13 @@
 
 - name: Delete each pool VM the host setting no longer asks for
   ansible.builtin.command:
-    argv: ["{{ __vm_pool_vm }}", delete, "{{ item }}"]
+    argv: [env, -i, 'PATH=/usr/sbin:/usr/bin:/sbin:/bin', /usr/sbin/porelo-host, pool, delete, "{{ item }}"]
+  changed_when: true
   loop: >-
     {{ __vm_pool_listed.stdout_lines | select('match', __vm_pool_named)
     | reject('in', __vm_pool_made | map(attribute='entry.name') | list) | list }}
   vars:
     __vm_pool_named: "^{{ __vm_pool_prefix }}-(ubuntu|fedora)-[0-9]+$"
-  changed_when: true
 
 - name: Find the pool VMs' directories on the host
   ansible.builtin.find:

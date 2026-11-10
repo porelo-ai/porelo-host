@@ -6,6 +6,7 @@
   become: true
   vars:
     verify_version: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_VERSION') }}"
+    verify_host_version: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_PACKAGE_VERSION') }}"
     verify_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
     verify_forge: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_FORGE', default='on') }}"
     verify_kvm_asked: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_KVM', default='on') }}"
@@ -13,6 +14,50 @@
       - {account: porelo-forge, container: forgejo, pids: 1024, memory: 2G, bytes: 2147483648, cpus: 2}
       - {account: porelo-runner, container: forgejo-runner, pids: 256, memory: 512M, bytes: 536870912, cpus: 1}
   tasks:
+    - name: Require the pinned local host package version
+      ansible.builtin.assert:
+        that: verify_host_version | length > 0
+        fail_msg: PORELO_HOST_PACKAGE_VERSION must name the staged host package version
+
+    - name: Read the installed host program version
+      ansible.builtin.command:
+        argv: [env, -i, 'PATH=/usr/sbin:/usr/bin:/sbin:/bin', /usr/sbin/porelo-host, --version]
+      register: verify_host_program_version
+      changed_when: false
+
+    - name: Assert the pinned host program version
+      ansible.builtin.assert:
+        that: verify_host_program_version.stdout == 'porelo-host ' ~ verify_host_version
+        fail_msg: >-
+          expected porelo-host {{ verify_host_version }}, got {{ verify_host_program_version.stdout }}
+
+    - name: Inspect every former host program without following links
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - /usr/local/sbin/porelo-host-person
+        - /usr/local/sbin/porelo-host-project
+        - /usr/local/libexec/porelo-forge-gate
+        - /usr/local/sbin/porelo-host-push
+        - /usr/local/bin/porelo-host-forge-token
+        - /usr/local/share/porelo-host-forge-token.sh
+        - /usr/local/bin/porelo-host-stop
+        - /usr/local/libexec/porelo-host/porelo-pool-revert
+        - /usr/local/libexec/porelo-host/porelo-vm
+        - /usr/local/sbin/porelo-host-forge-password
+      register: verify_legacy_programs
+
+    - name: Assert no legacy host program remains
+      ansible.builtin.assert:
+        that:
+          - not item.stat.exists
+          - not (item.stat.islnk | default(false))
+        fail_msg: "removed host program still exists at {{ item.item }}"
+      loop: "{{ verify_legacy_programs.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
     - name: Read every account on the host from getent passwd
       ansible.builtin.getent:
         database: passwd
@@ -137,35 +182,6 @@
 
     - name: Verify the containers' resource bounds and the host's refusals
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/resources.yml"
-
-    - name: Read the stop command and its permissions
-      ansible.builtin.stat:
-        path: /usr/local/bin/porelo-host-stop
-      register: verify_host_stop
-
-    # A malformed call must refuse before it can ask for credentials.
-    - name: Ask the stop command to refuse an unknown need as an unprivileged user
-      ansible.builtin.command:
-        argv: [/usr/local/bin/porelo-host-stop, nonsense]
-      become: true
-      become_user: "{{ ansible_user }}"
-      register: verify_host_stop_refusal
-      changed_when: false
-      failed_when: false
-
-    - name: Assert the stop command is root's executable and refuses the unknown need
-      ansible.builtin.assert:
-        that:
-          - verify_host_stop.stat.exists
-          - verify_host_stop.stat.isreg | default(false)
-          - verify_host_stop.stat.uid | default(-1) == 0
-          - verify_host_stop.stat.mode | default('') == '0755'
-          - verify_host_stop_refusal.rc == 64
-          - "'nonsense' in verify_host_stop_refusal.stderr"
-        fail_msg: >-
-          asked for /usr/local/bin/porelo-host-stop as root's regular file with mode 0755 and nonsense refused with 64;
-          got stat {{ verify_host_stop.stat }}, rc {{ verify_host_stop_refusal.rc }}:
-          {{ verify_host_stop_refusal.stdout }} {{ verify_host_stop_refusal.stderr }}
 
     - name: Read which collections the host has
       ansible.builtin.command:
@@ -540,25 +556,30 @@
 
     # The VM pool: one VM per run account, its file for porelo-machines holding no key, its run key root's alone on the
     # host, and a give-back that leaves nothing of the run on the VM, what the run wrote as root included.
-    - name: Read the pool file porelo-machines reads
+    - name: >-
+        Read the pool file porelo-machines reads
       ansible.builtin.slurp:
         src: /etc/porelo-host/pool/pool.json
       register: verify_pool_file
       when: verify_vm_pool == 'on'
 
-    - name: Read the pool file's owner and mode
+    - name: >-
+        Read the pool file's owner and mode
       ansible.builtin.stat:
         path: /etc/porelo-host/pool/pool.json
       register: verify_pool_file_stat
       when: verify_vm_pool == 'on'
 
-    - name: Read the pool's run key's owner and mode
+    - name: >-
+        Read the pool's run key's owner and mode
       ansible.builtin.stat:
         path: /var/lib/porelo-host/pool/run-key
       register: verify_pool_key
       when: verify_vm_pool == 'on'
 
-    - name: Assert the pool file names one VM with one account and no key, mode 0644, and the run key stays root's 0600
+    - name: >-
+        Assert the pool file names one VM with one account and no key, mode 0644, and the run key
+        stays root's 0600
       ansible.builtin.assert:
         that:
           - verify_pool.format == 'porelo-machines-pool/1'
@@ -581,7 +602,8 @@
         verify_pool: "{{ verify_pool_file.content | b64decode | from_json }}"
       when: verify_vm_pool == 'on'
 
-    - name: Ask libvirt for the pool's seed volumes and the pool VM's cdrom media
+    - name: >-
+        Ask libvirt for the pool's seed volumes and the pool VM's cdrom media
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
@@ -591,35 +613,40 @@
       environment:
         LC_ALL: C
       register: verify_pool_seed
-      changed_when: false
+      changed_when: verify_vm_pool == 'on'
       when: verify_vm_pool == 'on'
 
-    - name: Assert no seed volume stays in libvirt's pool and the pool VM has no cdrom media
+    - name: >-
+        Assert no seed volume stays in libvirt's pool and the pool VM has no cdrom media
       ansible.builtin.assert:
         that: verify_pool_seed.stdout | trim == ''
         fail_msg: "asked for no seed ISO or attached cdrom in libvirt, found {{ verify_pool_seed.stdout_lines }}"
       when: verify_vm_pool == 'on'
 
-    - name: Verify the pool through porelo-machines, including a forcibly killed renter
+    - name: >-
+        Verify the pool through porelo-machines, including a forcibly killed renter
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/pool.yml"
       when: verify_vm_pool == 'on'
 
     # The revert must have watched for the VM's stop, not been started again and again: a service that exits at once
     # and restarts every few seconds still reverts, by its first loop, and would hide a watch that never ran.
-    - name: Ask systemd how often the revert was started again
+    - name: >-
+        Ask systemd how often the revert was started again
       ansible.builtin.systemd_service:
         name: porelo-pool-revert.service
       register: verify_pool_restarts
       when: verify_vm_pool == 'on'
 
-    - name: Assert the revert ran once, watching
+    - name: >-
+        Assert the revert ran once, watching
       ansible.builtin.assert:
         that: verify_pool_restarts.status.NRestarts == '0'
         fail_msg: "porelo-pool-revert.service was started again {{ verify_pool_restarts.status.NRestarts }} times"
       when: verify_vm_pool == 'on'
 
     # A VM made before its guest agent was added has no file saying its snapshot holds one.
-    - name: Run up over a pool VM as one made before its guest agent, and put its file back
+    - name: >-
+        Run up over a pool VM as one made before its guest agent, and put its file back
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
@@ -635,10 +662,11 @@
       environment:
         LC_ALL: C.UTF-8
       register: verify_pool_old
-      changed_when: false
+      changed_when: verify_vm_pool == 'on'
       when: verify_vm_pool == 'on'
 
-    - name: Assert up refused that VM, naming down and up
+    - name: >-
+        Assert up refused that VM, naming down and up
       ansible.builtin.assert:
         that:
           - verify_pool_old.stdout is not search('up rc=0')
@@ -646,19 +674,23 @@
         fail_msg: "asked for a refused up naming down and up, got {{ verify_pool_old.stdout }}"
       when: verify_vm_pool == 'on'
 
-    - name: Read the revert's journal, to say why the VM did not come back
+    - name: >-
+        Read the revert's journal, to say why the VM did not come back
       ansible.builtin.command:
         cmd: journalctl --no-pager -n 20 -u porelo-pool-revert.service
       register: verify_pool_revert_log
-      changed_when: false
-      when: verify_vm_pool == 'on' and verify_pool_given_back.rc != 0
+      changed_when: verify_vm_pool == 'on'
+      when: verify_vm_pool == 'on'
 
-    - name: Say the pool VM's clock at each rental, beside the host's
+    - name: >-
+        Say the pool VM's clock at each rental, beside the host's
       ansible.builtin.debug:
         msg: "{{ verify_pool_given_back.stdout_lines | default([]) | select('match', '^clock: ') | list }}"
       when: verify_vm_pool == 'on'
 
-    - name: Assert normal and killed renters leave nothing, and the real acceptance leg passes and is removed
+    - name: >-
+        Assert normal and killed renters leave nothing, and the real acceptance leg passes and is
+        removed
       ansible.builtin.assert:
         that:
           - verify_pool_given_back.rc == 0
@@ -754,12 +786,30 @@
     - name: Verify that the host comes back from a reboot with its firewall, homeserver and forge
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/reboot.yml"
 
-    - name: Install the stand-in for what no published Porelo answers yet
-      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/org_standin.yml"
+    - name: Verify organization follow and restore its transport fixture
+      block:
+        - name: Install the organization transport fixture
+          ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/org_standin.yml"
 
-    - name: Verify the host following its organization, on a real machine and through its failures
-      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/follow.yml"
-      when: verify_forge == 'on'
+        - name: Verify organization follow through the host program
+          ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/follow.yml"
+      always:
+        - name: Read whether the CLI was diverted
+          ansible.builtin.stat:
+            path: /usr/bin/porelo-molecule-real
+          register: verify_cli_diverted
+
+        - name: Remove the temporary organization transport fixture
+          ansible.builtin.file:
+            path: /usr/bin/porelo
+            state: absent
+          when: verify_cli_diverted.stat.exists
+
+        - name: Restore the installed CLI
+          ansible.builtin.command:
+            argv: [dpkg-divert, --local, --rename, --remove, --divert, /usr/bin/porelo-molecule-real, /usr/bin/porelo]
+          changed_when: true
+          when: verify_cli_diverted.stat.exists
 
     - name: Verify the host's TCP listeners and person socket forwarding over SSH
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/ssh.yml"

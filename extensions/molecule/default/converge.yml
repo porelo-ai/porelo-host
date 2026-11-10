@@ -8,6 +8,9 @@
   vars:
     converge_tarball: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_TARBALL') }}"
     converge_packages: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_PACKAGES') }}"
+    converge_host_version: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_PACKAGE_VERSION') }}"
+    converge_remote_packages: >-
+      /root/porelo-packages-{{ lookup('ansible.builtin.file', converge_packages ~ '/SHA256SUMS') | hash('sha256') }}
     converge_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
     converge_forge: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_FORGE', default='on') }}"
     converge_kvm_asked: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_KVM', default='on') }}"
@@ -57,6 +60,33 @@
     - name: Install the collection before up runs
       ansible.builtin.meta: flush_handlers
 
+    - name: Require local packages before the first up
+      ansible.builtin.assert:
+        that:
+          - converge_packages | length > 0
+          - converge_host_version | length > 0
+        fail_msg: PORELO_HOST_PACKAGES and PORELO_HOST_PACKAGE_VERSION must come from the staged local packages
+
+    - name: Copy the local packages before up installs anything
+      ansible.builtin.copy:
+        src: "{{ converge_packages }}/"
+        dest: "{{ converge_remote_packages }}/"
+        owner: root
+        group: root
+        mode: "0600"
+        directory_mode: "0700"
+
+    - name: Read the local Porelo version when supplied
+      ansible.builtin.set_fact:
+        converge_porelo_version: >-
+          {{ lookup('ansible.builtin.file', converge_packages ~ '/porelo.version', errors='ignore')
+             | default('', true) | trim }}
+
+    - name: Check the package set again on the host before up
+      ansible.builtin.command:
+        argv: [sha256sum, --check, --strict, SHA256SUMS]
+        chdir: "{{ converge_remote_packages }}"
+      changed_when: false
 
     - name: Write the v2 inventory host up writes for host alpha on network 7
       ansible.builtin.copy:
@@ -73,6 +103,11 @@
               porelo_host_name: alpha
               porelo_host_network: 7
               porelo_host_distribution: snapshots
+              porelo_local_packages: {{ converge_remote_packages | to_json }}
+              porelo_host_version: {{ converge_host_version | to_json }}
+          {% if converge_porelo_version | length > 0 %}
+              porelo_version: {{ converge_porelo_version | to_json }}
+          {% endif %}
               porelo_host_forge: {{ (converge_forge == 'on') | lower }}
               porelo_host_kvm: {{ (converge_kvm_asked == 'on') | lower }}
           {% if converge_forge == 'on' %}
@@ -265,49 +300,6 @@
         mode: "0600"
       when: not converge_first_seen.stat.exists
 
-    # Porelo's packages from a build not yet published, when build/molecule.sh was given them: installed over the
-    # published ones once the first up has configured apt, before the second up starts the homeserver.
-    - name: Copy Porelo's handed-over packages onto the host
-      ansible.builtin.copy:
-        src: "{{ converge_packages }}/"
-        dest: /root/porelo-packages/
-        owner: root
-        group: root
-        mode: "0600"
-      when: converge_packages | length > 0
-      notify: Install Porelo's handed-over packages
-
-    - name: Install the handed-over packages before the next up
-      ansible.builtin.meta: flush_handlers
-
-    - name: Ask porelo-host-stop --stdin as root to refuse every need
-      ansible.builtin.shell:
-        cmd: |
-          set -uo pipefail
-          rc=0
-          porelo-host-stop --stdin {{ item | quote }} < /dev/null || rc=$?
-          written=none
-          for f in /etc/porelo-host/forge/ca.pem /etc/porelo-host/forge/forge.pem /etc/porelo-host/forge/matrix.pem; do
-              if [ -e "$f" ] || [ -L "$f" ]; then written=$f; break; fi
-          done
-          printf 'rc=%s written=%s\n' "$rc" "$written"
-        executable: /bin/bash
-      loop: [vault-new, vault, keys, matrix-token, forge-central-token, wireguard, forge-certificate]
-      register: converge_need_refusals
-      changed_when: false
-
-    - name: Assert porelo-host-stop --stdin as root refused each need with rc 64 and wrote nothing
-      ansible.builtin.assert:
-        that:
-          - item.stdout_lines == ['rc=64 written=none']
-          - item.stderr is search("takes no secret as root any more")
-        fail_msg: >-
-          asked porelo-host-stop --stdin {{ item.item }} for rc 64, "takes no secret as root any more" and nothing
-          written to /etc/porelo-host/forge/{ca,forge,matrix}.pem; got {{ item.stdout_lines }} and '{{ item.stderr }}'
-      loop: "{{ converge_need_refusals.results }}"
-      loop_control:
-        label: "{{ item.item }}"
-
     - name: Run up on the host itself again, its steps as JSON lines
       # Each line stamped with when it came, beside the output, so the steps' usual durations can be read.
       ansible.builtin.shell:
@@ -339,12 +331,6 @@
       changed_when: false
 
   handlers:
-    # apt's module takes one .deb at a time, and these must go in together, since they depend on each other.
-    - name: Install Porelo's handed-over packages
-      ansible.builtin.shell:  # noqa: command-instead-of-module
-        cmd: apt-get install -y -qq --allow-downgrades /root/porelo-packages/*.deb
-      changed_when: true
-
     - name: Install the collection from that tarball
       ansible.builtin.command:
         cmd: ansible-galaxy collection install --force /root/porelo-host.tar.gz

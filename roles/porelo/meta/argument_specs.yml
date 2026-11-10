@@ -8,8 +8,19 @@ argument_specs:
         required: true
         description: The account Porelo's tasks run as.
   install:
-    short_description: Porelo's repository by its pinned key, Porelo's packages from it, and the stop command.
+    short_description: Porelo's repository by its pinned key and both pinned programs from it.
     options:
+      porelo_version:
+        type: str
+        default: "0.5.0"
+        description: Exact Debian version of the porelo package.
+      porelo_host_version:
+        type: str
+        description: Exact Debian version of the porelo-host package, from the same repository and distribution.
+      porelo_local_packages:
+        type: path
+        default: ""
+        description: Root's directory of explicitly handed-over Debian packages; empty installs from the repository.
       porelo_distribution:
         type: str
         default: releases
@@ -36,8 +47,7 @@ argument_specs:
         description: The machine file, whose directory down removes.
   person:
     short_description: >-
-      The root helper /usr/local/sbin/porelo-host-person, its password and sync sudoers drop-in and SSH authorized_keys
-      drop-in.
+      The host program's five person sudo rules, organization configuration and maintenance timers.
     options:
       porelo_machine_file:
         type: path

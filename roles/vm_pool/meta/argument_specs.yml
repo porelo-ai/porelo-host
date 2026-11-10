@@ -50,3 +50,5 @@ argument_specs:
           100; unset 50, half the host. Above 50 up says so, as Forgejo, the runner and the tasks keep the rest.
   down:
     short_description: The pool's VMs, their snapshots and keys taken off the host.
+  can_down:
+    short_description: Refuse a remaining pool VM before any teardown while packaged deletion is unavailable.

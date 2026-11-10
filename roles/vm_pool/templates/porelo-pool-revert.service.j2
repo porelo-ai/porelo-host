@@ -5,7 +5,7 @@ After=libvirtd.service
 Requires=libvirtd.service
 
 [Service]
-ExecStart={{ __vm_pool_tools }}/porelo-pool-revert {{ __vm_pool_etc }}/vms
+ExecStart=/usr/sbin/porelo-host pool revert {{ __vm_pool_etc }}/vms
 RuntimeDirectory=porelo-pool-revert
 RuntimeDirectoryPreserve=yes
 Restart=always

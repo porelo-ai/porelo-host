@@ -1,12 +1,22 @@
 # porelo
 
-Porelo's packages and person records on the host: `tasks_from: install` adds Porelo's apt repository by its pinned key,
-installs `porelo` (and `porelo-adapter-forgejo`, providing `/usr/libexec/porelo/builds/forgejo`, when
-`porelo_host_forge` is true), makes `/etc/porelo-host`, and installs `/usr/local/bin/porelo-host-stop` and `/usr/local/bin/porelo-host-forge-token`
-with its helper `/usr/local/share/porelo-host-forge-token.sh`, which `porelo-host-push` shares, running no setup
-script for an account. `tasks_from: person` installs `/usr/local/sbin/porelo-host-person` (`purge`, `org follow`,
-`org refresh` and `org status`), private return-socket directories with the daemon link
-and the `porelo-people` group; the verified organization state lands in
+`tasks_from: install` installs the exact Debian versions `porelo_version` and `porelo_host_version` of `porelo` and
+`porelo-host` from the same signed apt repository and distribution. A dpkg version comparison refuses an older host
+program and names both versions. Snapshot pins must name the complete Debian build version.
+With `porelo_local_packages` set to a root-owned package directory on the host, up refreshes the repository for
+dependencies and installs that local batch before comparing versions. The version variables still pin both programs.
+
+The follow service and runtime restoration call `porelo-host org follow`. Immediate refresh and pin renewal use
+`org refresh` and `org renew-pin`, with their input on standard input. No person helper, stop helper or token wrapper
+is installed.
+The packaged `forge issue-token`, `forge lend-token`, `task start *`, `task end *` and `task show *` commands have
+five separate sudo rules. Command defaults reset the environment, disable `env_keep` and forbid `setenv`;
+`task sweep` runs from the daily timer. Arrivals use a published file's read ACL, with no sudo rule.
+Both install and down remove the former programs, including the development VM tool. This role has no script exception.
+Units calling the host program set no extra environment variables, environment files or inherited environment names.
+
+The organization's integration uses private return-socket directories with the daemon link
+and the `porelo-people` group; the verified organization state belongs in
 `/etc/porelo-host/organization/applied.json`, see
 [the host's state taken from the organization](../../doc/local-forge.md#the-hosts-state-taken-from-the-organization);
 `/etc/porelo-host/people/<user>.conf` records each person's `member=host-admin` and `member=<project> project-admin|developer`
@@ -49,7 +59,7 @@ At `up`, the root-owned `0600` machine file's `organization` mapping supplies `s
 `organization.yml`), `known_hosts` (the central forge's SSH host key lines) and `pin` (one `login key` line per admin
 key, including backups). They become root-only files under `/etc/porelo-host/organization/`; repeated setup preserves
 the pin advanced by a successful follow. Setup generates `read/organization` once as an Ed25519 key and returns its
-public half as `organization_read_key` in `host.json`. `org pin` is unavailable. The directory and its `projects` and `persons`
+public half as `organization_read_key` in `host.json`. `org renew-pin` takes replacement login/key lines on standard input. The directory and its `projects` and `persons`
 subdirectories permit traversal so member ACLs work; credentials and applied state remain root-only.
 
 Where the host has its Matrix gate installed, follow runs `keep-room --project <project> --persons <logins>` as
@@ -64,12 +74,12 @@ as `porelo-matrix`, including after a prior lock, with the homeserver administra
 `porelo/matrix/gate/admin-token` in the `porelo-matrix` account's config folder on stdin alone. Every command run as another account
 starts in `/` with that account's own `HOME`. See [Matrix access](../../doc/matrix.md) for the gate boundary.
 
-The helper also provides `forge-token` and `forge-token --lend`, `task <task>`, `task --end <task>`, `task --show <fingerprint>` and root's
-`sweep`. The person role installs their sudo rules and the daily persistent `porelo-host-task-sweep.timer`.
+The program provides `forge issue-token`, `forge lend-token`, `task start <task>`, `task end <task>`,
+`task show <fingerprint>` and root's `task sweep`. The person role configures their sudo rules and the daily persistent
+`porelo-host-task-sweep.timer` once its runtime and follow commands are available.
 Certificates stay in root's private task records; token answers leave through stdout alone. See the
 [task certificate contract](../../doc/task-certificates.md) for validation, Porelo's own check and token scopes.
-`verify-push` answers the forge's pre-receive hook through its socket unit alone, and `arrivals <project>
-<repository>`, through sudo for a person of the project, reads the verdicts in `/var/lib/porelo-host/arrivals`; see
+The push judge's replacement is unavailable. Arrivals are published with a project member read ACL; see
 [each push judged](../../doc/local-forge.md#each-push-judged-when-it-arrives).
 
 The account-bound entry points (`main`, `project`, `down`) remain on disk for an explicit `porelo_account`
@@ -84,6 +94,9 @@ Ubuntu 26.04, run as root on the host itself (`-c local`).
 | Variable | Default | What it is |
 |---|---|---|
 | `porelo_distribution` | `{{ porelo_host_distribution \| default('releases') }}` | Which of Porelo's published distributions (`releases` or `snapshots`) the host installs from. |
+| `porelo_version` | `0.5.0` | Exact Debian version of Porelo; package availability is not verified. |
+| `porelo_host_version` | `{{ porelo_version }}` | Exact Debian version of the host program, from the same source. |
+| `porelo_local_packages` | empty | Root's directory of local Debian packages; empty selects the signed repository. |
 | `porelo_key_url` | in `defaults/main.yml` | Where Porelo's package key is fetched from. |
 | `porelo_key_fingerprint` | in `defaults/main.yml` | The fingerprint the package key must have. |
 | `porelo_repository_url` | in `defaults/main.yml` | Porelo's apt repository. |
@@ -92,7 +105,7 @@ Ubuntu 26.04, run as root on the host itself (`-c local`).
 
 ## Example
 
-    - name: Install Porelo's packages and stop command
+    - name: Install Porelo's pinned programs
       hosts: localhost
       connection: local
       tasks:

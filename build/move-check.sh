@@ -50,6 +50,17 @@ except ValueError:
 print("" if value is None else str(value).lower() if isinstance(value, bool) else value)' "$1"
 }
 
+host_version=$(env -i PATH="$PATH" porelo-host --version 2>&1)
+host_version_status=$?
+expected_host_version=${PORELO_HOST_PACKAGE_VERSION:-}
+if [ -z "$expected_host_version" ]; then
+    line 1 'the host program: set PORELO_HOST_PACKAGE_VERSION to the pinned local package version'
+elif [ "$host_version_status" = 0 ] && [ "$host_version" = "porelo-host $expected_host_version" ]; then
+    line 0 "the host program is the pinned build: $host_version"
+else
+    line 1 "the host program: expected porelo-host $expected_host_version, got $host_version (exit $host_version_status)"
+fi
+
 status=$(porelo task status "$task" --json 2>/dev/null)
 project=$(printf '%s' "$status" | field project)
 repository=$(printf '%s' "$status" | field repository)

@@ -13,7 +13,7 @@ from pathlib import Path
 SHARED = Path("/usr/local/share/porelo-org-standin")
 words = sys.argv[1:]
 if words[:1] != ["org"]:
-    os.execv("/usr/bin/porelo", ["/usr/bin/porelo", *words])
+    os.execv("/usr/bin/porelo-molecule-real", ["/usr/bin/porelo-molecule-real", *words])
 
 
 def value(flag):

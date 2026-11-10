@@ -75,14 +75,11 @@ def test_a_host_that_does_not_answer_refuses_the_push(tmp_path):
 
 def test_the_forge_mounts_the_hook_and_the_judge_s_socket_read_only():
     container = (FORGE / "templates/forgejo.container.j2").read_text()
-    assert "Volume=/usr/local/libexec/porelo-forge-pre-receive:{{ __forge_push_hook }}:ro" in container
+    assert "Volume=/usr/local/libexec/porelo/pre-receive:{{ __forge_push_hook }}:ro" in container
     assert "Volume=/run/porelo-host/verify:/run/porelo-verify:ro" in container
-    hook = yaml.safe_load((FORGE / "vars/main.yml").read_text())["__forge_push_hook"]
-    helper = (ROOT / "roles/porelo/files/porelo-host-person").read_text()
-    assert f'PUSH_HOOK = "{hook}"' in helper
 
 
-def test_the_judge_listens_before_forgejo_starts_and_answers_through_the_helper():
+def test_the_host_program_judges_each_push_behind_its_socket_before_forgejo_starts():
     tasks = yaml.safe_load((FORGE / "tasks/service.yml").read_text())
     names = [task["name"] for task in tasks]
     assert names.index("service | Listen for the forge's pushes before Forgejo starts") < names.index(
@@ -91,7 +88,11 @@ def test_the_judge_listens_before_forgejo_starts_and_answers_through_the_helper(
     socket = (FORGE / "templates/porelo-host-verify.socket.j2").read_text()
     assert "ListenStream=/run/porelo-host/verify/verify.sock\n" in socket and "Accept=yes\n" in socket
     service = (FORGE / "templates/porelo-host-verify@.service.j2").read_text()
-    assert "ExecStart=/usr/local/sbin/porelo-host-person verify-push\n" in service
+    assert "ExecStart=/usr/sbin/porelo-host judge-push\n" in service, "a push must be judged by the host program"
+    main = yaml.safe_load((FORGE / "tasks/main.yml").read_text())
+    assert not any("ansible.builtin.fail" in task for task in main), "a host with the judge sets its forge up"
+    install = yaml.safe_load((ROOT / "roles/porelo/tasks/install.yml").read_text())
+    assert not any("ansible.builtin.fail" in task for task in install), "an upgrade with the judge migrates the forge"
     assert "StandardInput=socket\n" in service and "StandardOutput=socket\n" in service
     assert "User=" not in service, "the helper runs as root and answers only the forge account's peer"
     assert "RuntimeMaxSec=310\n" in service, "a judge that hangs holds its connection for ever"
@@ -106,7 +107,7 @@ def test_a_new_hook_reaches_forgejo_and_its_directory_is_made_first():
     install = by_name["service | Install the hook that has the host judge each push"]
     assert install["notify"] == "Restart Forgejo", "Forgejo's container keeps the hook it mounted at its start"
     directory = by_name["service | Make the directory of the gate and of the push hook"]
-    assert directory["ansible.builtin.file"]["path"] == "/usr/local/libexec"
+    assert directory["ansible.builtin.file"]["path"] == "/usr/local/libexec/porelo"
     assert names.index(directory["name"]) < names.index(install["name"])
 
 
@@ -122,15 +123,9 @@ def test_down_takes_the_judge_its_hook_and_its_records_away():
         assert name in down, name
 
 
-def test_a_project_s_persons_read_its_arrivals_through_sudo():
-    sudoers = (ROOT / "roles/porelo/files/porelo-host-person.sudoers").read_text()
-    assert "%porelo-people ALL=(root) NOPASSWD: /usr/local/sbin/porelo-host-person arrivals *\n" in sudoers
-    assert "verify-push" not in sudoers
-
-
 def test_the_judge_s_socket_restarts_before_forgejo_and_its_directory_is_made_once():
     handlers = [handler["name"] for handler in yaml.safe_load((FORGE / "handlers/main.yml").read_text())]
     assert handlers.index("Restart the push judge's socket") < handlers.index("Restart Forgejo")
     tasks = yaml.safe_load((FORGE / "tasks/service.yml").read_text())
-    made = [task for task in tasks if task.get("ansible.builtin.file", {}).get("path") == "/usr/local/libexec"]
+    made = [task for task in tasks if task.get("ansible.builtin.file", {}).get("path") == "/usr/local/libexec/porelo"]
     assert len(made) == 1

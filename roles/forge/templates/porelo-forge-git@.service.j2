@@ -5,7 +5,7 @@ Description=The host's forge git connection
 [Service]
 User={{ forge_account }}
 Group={{ forge_account }}
-ExecStart=/usr/local/libexec/porelo-forge-gate --git --upstream {{ __forge_socket }}
+ExecStart=/usr/sbin/porelo-host forge gate --git --upstream {{ __forge_socket }}
 PrivateTmp=true
 ProtectSystem=strict
 NoNewPrivileges=true
