@@ -120,3 +120,11 @@ installation, the measuring run and a pool VM's give-back.
   a host whose forge.conf names no account: the task's `removes:` held while the old helper came with the forge alone,
   and the package's program is always there. It now asks only when forge.conf names an account; a unit test, seen red
   first, holds it.
+- The host's part of the acceptance, on a VM after `up` (rented-mode run with phase 2 from main af4704c, snapshot
+  474, 2026-11-10 22:49-22:56Z), read at the run's hold:
+  - `porelo-host --version` answers `porelo-host 0.5.1~snapshot.474`, the staged package's own version;
+  - `/usr/local/sbin` and `/usr/local/bin` are empty; `/usr/local/libexec/porelo` holds only `pre-receive`, a stated
+    exception; `/etc/sudoers.d` holds `porelo-host-person` beside cloud-init's own;
+  - `sudo -n -l` as the test person lists exactly the five rules, each `(root) NOPASSWD:` on
+    `/usr/sbin/porelo-host`: `forge issue-token`, `forge lend-token`, `task start *`, `task end *`, `task show *`;
+  - the run then went down cleanly after taking the project off and the host out of the organization.
