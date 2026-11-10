@@ -36,6 +36,15 @@ and push nothing. After $answer_minutes minutes, stop."
 # Each start goes from the person's side, as the product wants: the test identity's porelo here (REHEARSAL_ORG) starts
 # the task on the host with --host, its key certified by the person's agent here, never forwarded. A start with --host
 # is detached, so the pair's runs go on, each for its --minutes; Porelo ends a run after that time.
+# The client starts a task with --host only on a host key it holds: the one the run pinned at its first connection, which
+# trust-host records only where the host offers that very key.
+pinned=$(printf '%s %s\n' "$REHEARSAL_HOST" "$REHEARSAL_HOST_KEY" | ssh-keygen -lf - | awk '{print $2}')
+case $pinned in SHA256:*) ;; *) echo "no fingerprint for the pinned host key"; exit 1 ;; esac
+bounded 60 "$REHEARSAL_ORG" credentials trust-host --fingerprint="$pinned" "$REHEARSAL_HOST" < /dev/null \
+    > "$REHEARSAL_REPORT/tasks-trust-host.out" 2>&1 \
+    || { echo "the person's porelo did not take the host's key:"; cat "$REHEARSAL_REPORT/tasks-trust-host.out"; exit 1; }
+echo "the person's porelo holds the host key $pinned"
+
 host_start() { # <task> [<start option>...]
     task=$1
     shift
