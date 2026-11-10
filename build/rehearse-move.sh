@@ -29,7 +29,7 @@ vm=$root/build/porelo-vm
 
 say() { printf '%s\n' "$*" >&2; }
 fail() { say "FAILED: $*"; exit 1; }
-usage() { fail "usage: $0 start [--machine-file <file> | --bare] [--cpus <n>] [--memory <GiB>] [--disk <GiB>] | ssh [<command>...] | tunnel <login> <port> | down | rented <address> --key <file> [--login <user>] [--machine-file <file>] [--order-time <UTC>] [--zone <name>] [--org <program> --org-key <public key file> --person <login> --person-agent <socket> --central-token <program> --project <name> [--retire-host <host>]] | rented-resume"; }
+usage() { fail "usage: $0 start [--machine-file <file> | --bare] [--cpus <n>] [--memory <GiB>] [--disk <GiB>] | ssh [<command>...] | tunnel <login> <port> | down | rented <address> --key <file> [--login <user>] [--machine-file <file>] [--order-time <UTC>] [--zone <name>] [--org <program> --org-key <public key file> --person <login> --person-agent <socket> --central-token <program> --project <name> [--repository <name>] [--retire-host <host>] [--provider-keys <directory>]] | rented-resume"; }
 
 # What libvirt lists of any rehearsal: its domains and volumes, one name a line.
 listed() {
@@ -434,6 +434,11 @@ rented_step() {
     completed=$current
     current=''
     last_step=$completed
+    if [ "$result" = 77 ] && [ "${hook_step:-no}" = yes ]; then
+        rented_line "SKIP $completed $(tail -n 1 "$report/$completed.log")"
+        rented_abort_pending
+        return 0
+    fi
     if [ "$result" != 0 ]; then
         details=$report/$completed.log
         if [ "$completed" = check ] && [ -s "$report/check.out" ]; then details=$report/check.out; fi
@@ -624,7 +629,8 @@ rented_phase_two_options() {
     [ -n "$org_program" ] && [ -n "$org_key" ] && [ -n "$person" ] && [ -n "$person_agent" ] && [ -n "$central_token" ] \
         && [ -n "$project" ] \
         || fail 'phase 2 needs --org, --org-key, --person, --person-agent, --central-token and --project together'
-    for name in "$person" "$project" ${retire_host:+"$retire_host"}; do
+    repository=${repository:-$project}
+    for name in "$person" "$project" "$repository" ${retire_host:+"$retire_host"}; do
         case $name in -*|*[!a-z0-9-]*) fail "not a plain name: $name" ;; esac
     done
     [ "$retire_host" != rented ] || fail 'the host to retire cannot be this run'"'"'s own'
@@ -632,6 +638,7 @@ rented_phase_two_options() {
         [ -f "$program" ] && [ -x "$program" ] || fail "no executable program at $program"
     done
     [ -S "$person_agent" ] || fail "no agent socket at $person_agent"
+    if [ -n "$provider_keys" ]; then [ -d "$provider_keys" ] || fail "no provider key directory at $provider_keys"; fi
     # The refresh logs in as root (Core, 2026-11-10); the operator's public key alone goes to root, without its comment.
     [ -f "$org_key" ] && [ -r "$org_key" ] || fail "no readable operator key at $org_key"
     [ "$(awk 'END { print NR }' "$org_key")" = 1 ] || fail 'the operator key must be one line'
@@ -739,6 +746,33 @@ rented_stop() {
     token=''
 }
 
+# ST291: what root and the people's sudo rules run is the packaged porelo-host, and the collection left no old program.
+rented_host_program() {
+    # shellcheck disable=SC2016
+    on_rented sh -c 'set -u
+found=0
+for old in /usr/local/sbin/porelo-host-person /usr/local/sbin/porelo-host-project /usr/local/sbin/porelo-host-push \
+    /usr/local/libexec/porelo-forge-gate /usr/local/bin/porelo-host-forge-token /usr/local/bin/porelo-host-stop \
+    /usr/local/sbin/porelo-host-forge-password; do
+    if [ -e "$old" ] || [ -L "$old" ]; then echo "an old host program is still there: $old"; found=1; fi
+done
+if grep -rlE "/usr/local/(s?bin|libexec)/porelo-(host|forge)" /etc/systemd/system /etc/sudoers.d 2>/dev/null; then
+    echo "a unit or sudo rule above still runs an old host program"; found=1
+fi
+porelo-host --version || found=1
+exit "$found"'
+}
+
+rented_hook() {
+    known=$(cat "$state/known_hosts")
+    REHEARSAL_STEP=$1 REHEARSAL_HOST=$server REHEARSAL_HOST_NAME=rented REHEARSAL_HOST_KEY=${known#* } \
+        REHEARSAL_KNOWN_HOSTS=$state/known_hosts REHEARSAL_PERSON=$person REHEARSAL_PERSON_AGENT=$person_agent \
+        REHEARSAL_ORG=$org_program REHEARSAL_PROJECT=$project REHEARSAL_REPOSITORY=$repository \
+        REHEARSAL_PROVIDER_KEYS=$provider_keys REHEARSAL_REPORT=$report REHEARSAL_DEADLINE=$deadline \
+        REHEARSAL_PERSON_SSH=$root/build/rehearse-person-ssh.sh \
+        "$root/build/rehearse-steps/$1"
+}
+
 rented_push_pull() {
     on_person porelo host pull "$project"
     on_person porelo host push "$project"
@@ -774,7 +808,8 @@ rented() {
     server=$1
     shift
     key_file='' machine_file='' order_time='' account=root zone='' zone_given=no
-    org_program='' org_key='' person='' person_agent='' central_token='' project='' retire_host=''
+    org_program='' org_key='' person='' person_agent='' central_token='' project='' retire_host='' repository=''
+    provider_keys=''
     while [ $# -gt 0 ]; do
         [ $# -ge 2 ] || usage
         case $1 in
@@ -790,6 +825,8 @@ rented() {
             --central-token) central_token=$2 ;;
             --project) project=$2 ;;
             --retire-host) retire_host=$2 ;;
+            --repository) repository=$2 ;;
+            --provider-keys) provider_keys=$2 ;;
             *) usage ;;
         esac
         shift 2
@@ -914,8 +951,23 @@ rented_steps() {
     if rented_due stop; then
         rented_step stop "give $person's stop a new vault, a forge token and the central token" rented_stop
     fi
+    if rented_due host-program; then
+        rented_step host-program 'the host runs porelo-host and no old host program' rented_host_program
+    fi
+    # The steps other agents build: one executable each under build/rehearse-steps, called by the contract in
+    # doc/testing.md; 0 is OK, 77 SKIP with its last line, anything else FAIL.
+    for hook in tasks busy-room window refused-token judge; do
+        rented_due "$hook" || continue
+        if [ ! -f "$root/build/rehearse-steps/$hook" ] || [ ! -x "$root/build/rehearse-steps/$hook" ]; then
+            rented_abort_pending
+            rented_line "SKIP $hook not built yet"
+            continue
+        fi
+        hook_step=yes
+        rented_step "$hook" "run build/rehearse-steps/$hook" rented_hook "$hook"
+        hook_step=no
+    done
     rented_abort_pending
-    rented_line 'SKIP judge needs a task and its commit inside it (podman exec, Core 2026-11-10); built next'
     if rented_due push-pull; then
         rented_step push-pull "pull and push $project with central and read its central state" rented_push_pull
     fi
@@ -1008,6 +1060,7 @@ rented_resume_request() {
         keep phase_two "$phase_two"; keep org_program "$org_program"; keep org_public "$org_public"
         keep person "$person"; keep person_agent "$person_agent"; keep central_token "$central_token"
         keep project "$project"; keep retire_host "$retire_host"; keep deadline "$deadline"
+        keep repository "$repository"; keep provider_keys "$provider_keys"
         keep check_started "$check_started"; keep check_passed "$check_passed"; keep resume_from "$resume_step"
     } > "$state/resume.env"
     if [ -n "$timer" ]; then stop_tree "$timer"; wait "$timer" 2>/dev/null || true; timer=''; fi

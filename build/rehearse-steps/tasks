@@ -1,0 +1,20 @@
+#!/bin/sh
+# The tasks step (ST290, MX99's precondition): as the test person, three pi tasks on the project, the third stopped.
+# A first draft for Agent Smith to finish: Matrix's needs (joined, a display pair, the third gone from the room) are
+# not checked yet.
+set -eu
+key=$REHEARSAL_PROVIDER_KEYS/openrouter-api.txt
+if [ -z "$REHEARSAL_PROVIDER_KEYS" ] || [ ! -r "$key" ]; then echo 'no openrouter test key given'; exit 77; fi
+on_person() { "$REHEARSAL_PERSON_SSH" "$@"; }
+# The key travels on standard input alone.
+on_person porelo vault put openrouter < "$key"
+for name in a b c; do
+    on_person porelo task start --detach --no-input --agent=pi --clearance=deny \
+        -p "$REHEARSAL_PROJECT" -r "$REHEARSAL_REPOSITORY" "rehearsal-$name" < /dev/null
+done
+on_person porelo task stop rehearsal-c < /dev/null
+on_person porelo task list < /dev/null > "$REHEARSAL_REPORT/tasks.list"
+for name in a b; do
+    grep -q "rehearsal-$name" "$REHEARSAL_REPORT/tasks.list" || { echo "rehearsal-$name is not listed"; exit 1; }
+done
+echo 'rehearsal-a and rehearsal-b run; rehearsal-c is stopped'

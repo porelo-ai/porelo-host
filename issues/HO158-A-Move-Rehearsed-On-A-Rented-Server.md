@@ -126,3 +126,6 @@ spends a test on it.
   beside the new one, a resume after the project step not following again, and packages named without their host
   program; each fixed, the last four with a red test first. A signal in the instant of the restart itself ends the run
   without down, and the server's hard stop is not kept then either.
+- The run's further steps, shared out (Agent Coordinator 2026-11-10): `host-program` built in, and a hook for the
+  steps others build, one executable each under `build/rehearse-steps/` (contract in the testing page). `tasks` starts
+  as a first draft. As a test script, no new tests; proven by the VM run, then the rental.

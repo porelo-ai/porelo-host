@@ -1633,6 +1633,11 @@ PHASE_TWO_STEPS = [
     "OK org",
     "OK project",
     "OK stop",
+    "OK host-program",
+    "SKIP tasks",
+    "SKIP busy-room",
+    "SKIP window",
+    "SKIP refused-token",
     "SKIP judge",
     "OK push-pull",
     "OK down",
@@ -2055,13 +2060,18 @@ def test_rented_phase_two_resumes_a_held_run_from_up_and_its_failed_step(rented)
     steps = server.report()[1]
     marks = [line.split(" ", 2)[0] + " " + line.split(" ", 2)[1] for line in steps]
     after = marks[marks.index("FAIL project") :]
-    assert after[:11] == [
+    assert after[:16] == [
         "FAIL project",
         "HOLD failure",
         "RESUME the",
         "OK up",
         "OK project",
         "OK stop",
+        "OK host-program",
+        "SKIP tasks",
+        "SKIP busy-room",
+        "SKIP window",
+        "SKIP refused-token",
         "SKIP judge",
         "OK push-pull",
         "HOLD hold",
@@ -2201,5 +2211,5 @@ def test_rented_phase_two_resume_after_the_stop_reruns_the_project_step_but_not_
     steps = server.report()[1]
     marks = [line.split(" ", 2)[0] + " " + line.split(" ", 2)[1] for line in steps]
     after = marks[marks.index("RESUME the") :]
-    assert after[:5] == ["RESUME the", "OK up", "OK project", "SKIP judge", "OK push-pull"], steps
+    assert after[:3] == ["RESUME the", "OK up", "OK project"] and after[3] == "OK push-pull", steps
     assert len([row for row in server.events("porelo") if row["args"][:2] == ["host", "stop-secrets"]]) == 1

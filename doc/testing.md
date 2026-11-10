@@ -71,7 +71,8 @@ An agent's move can be rehearsed before a host is rented, on a VM made the same 
     build/rehearse-move.sh down
     build/rehearse-move.sh rented <address> --key <file> [--login <user>] [--machine-file <file>] [--order-time <UTC>]
         [--zone <name>] [--org <program> --org-key <public key file> --person <login> --person-agent <socket>
-        --central-token <program> --project <name> [--retire-host <host>]]
+        --central-token <program> --project <name> [--repository <name>] [--retire-host <host>]
+        [--provider-keys <directory>]]
 
 `rented` runs a move on a server the operator rented: it claims the server, checks it, runs `up`
 and, on every exit, the host's `down`, and writes one line per step to a report directory outside the checkout, one per run.
@@ -90,6 +91,10 @@ Without the phase 2 options it stops after `up`. With them it also:
   standard input from a passphrase made for the run, mints the person's forge token, and stores the central token
   that `--central-token` prints in the vault as `<forge>.central`; neither secret is on a command line or in the
   report;
+- checks as root that the host runs the packaged `porelo-host` and that no old host program is installed, nor named
+  by a unit or a sudo rule (`host-program`);
+- runs the steps others build, each one executable under `build/rehearse-steps/`, in the order `tasks`, `busy-room`,
+  `window`, `refused-token`, `judge`; a step not on the branch is `SKIP <name> not built yet`;
 - pulls and pushes the project with central, and keeps `porelo host central-state --json` in the report;
 - with `PORELO_REHEARSAL_HOLD_FILE` set, makes that file after push-pull and keeps the host up until it is removed, so
   another run on the same host goes on first; the hard stop still ends the hold and runs `down`;
@@ -103,8 +108,19 @@ Without the phase 2 options it stops after `up`. With them it also:
   ends a failure hold as any other;
 - after `down`, takes `rented` off the project and out of the organization, and names it if that fails.
 
-The judge step, a commit made inside a task and pushed to its own branch and to another, is not built yet; the report
-says `SKIP judge`. The read keys at central are taken off by the operator's own script.
+A step under `build/rehearse-steps/<name>` runs once, in its own process, with standard input at `/dev/null`, the
+checkout root as its directory and umask 077. It is given, in the environment alone and nothing secret:
+`REHEARSAL_STEP`, `REHEARSAL_HOST` (the address), `REHEARSAL_HOST_NAME` (`rented`), `REHEARSAL_HOST_KEY` and
+`REHEARSAL_KNOWN_HOSTS` (the host key pinned at the first connection), `REHEARSAL_PERSON`, `REHEARSAL_PERSON_AGENT`
+(the person's agent socket, the only identity), `REHEARSAL_ORG` (the program running `porelo` here as the test
+identity), `REHEARSAL_PROJECT`, `REHEARSAL_REPOSITORY`, `REHEARSAL_PROVIDER_KEYS` (the directory of the providers'
+test keys, read into a pipe only), `REHEARSAL_REPORT` (where it writes only `<name>.*`), `REHEARSAL_DEADLINE` (the
+hard stop in Unix seconds) and `REHEARSAL_PERSON_SSH` (`build/rehearse-person-ssh.sh`, which runs one command on the
+host as the person, each argument quoted, standard input forwarded); the run's own environment, such as the window
+step's `REHEARSAL_WINDOW_VM`, `REHEARSAL_WINDOW_VM_KEY` and `REHEARSAL_WINDOW_CHECKOUT`, reaches it too. Its exit is
+its answer: 0 is `OK`, 77 is `SKIP` with its last printed line as the reason, anything else `FAIL`, held like any
+failed step; both its streams go to `<report>/<name>.log`. The read keys at central are taken off by the operator's
+own script.
 
 `start` makes one domain `porelo-host-rehearsal-<time>`, by default with 8 vCPUs, 16 GiB and an 80 GiB disk. It installs the collection
 built from the checkout and runs `porelo.host.up` on the VM with the forge on, no VM pool and no KVM asked; `up`'s lines stay
