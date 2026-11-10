@@ -1,20 +1,92 @@
 #!/bin/sh
-# The tasks step (ST290, MX99's precondition): as the test person, three pi tasks on the project, the third stopped.
-# A first draft for Agent Smith to finish: Matrix's needs (joined, a display pair, the third gone from the room) are
-# not checked yet.
+# The tasks step: as the test person, three pi tasks on the project's repository with the openrouter test key. Two run
+# on, so the room shows displays that share a start (`Agent <Name>` and `Agent <Name> (<task>)`), and answer what is
+# meant for them; the third is stopped, so its account has left the room before the busy-room step.
 set -eu
-key=$REHEARSAL_PROVIDER_KEYS/openrouter-api.txt
-if [ -z "$REHEARSAL_PROVIDER_KEYS" ] || [ ! -r "$key" ]; then echo 'no openrouter test key given'; exit 77; fi
-on_person() { "$REHEARSAL_PERSON_SSH" "$@"; }
-# The key travels on standard input alone.
-on_person porelo vault put openrouter < "$key"
-for name in a b c; do
-    on_person porelo task start --detach --no-input --agent=pi --clearance=deny \
-        -p "$REHEARSAL_PROJECT" -r "$REHEARSAL_REPOSITORY" "rehearsal-$name" < /dev/null
-done
-on_person porelo task stop rehearsal-c < /dev/null
-on_person porelo task list < /dev/null > "$REHEARSAL_REPORT/tasks.list"
+key=${REHEARSAL_PROVIDER_KEYS:-}/openrouter-api.txt
+if [ -z "${REHEARSAL_PROVIDER_KEYS:-}" ] || [ ! -r "$key" ]; then echo 'no openrouter test key given'; exit 77; fi
+# The model the adapters' own builds run pi with on openrouter: cheap, and known to drive pi's tools.
+model=${REHEARSAL_TASK_MODEL:-z-ai/glm-5.3-flash}
+# Pi is never woken by Porelo for a message, so a running pair answers only by looking itself, for this long.
+answer_minutes=60
+left() { echo $((REHEARSAL_DEADLINE - $(date +%s))); }
+bounded() { # <seconds at most> <command>...: the bound cut back to what is left before the hard stop
+    limit=$1
+    shift
+    [ "$(left)" -gt 10 ] || { echo "the hard stop is too near for: $*" >&2; exit 1; }
+    [ "$limit" -le "$(left)" ] || limit=$(left)
+    timeout --kill-after=5 "$limit" "$@"
+}
+
+# The key travels on standard input alone; the answer names the entry, never the value.
+bounded 120 "$REHEARSAL_PERSON_SSH" porelo vault put openrouter < "$key"
+echo "openrouter's test key is in $REHEARSAL_PERSON's vault"
+
+
+# The image is built once, for pi, before three starts would each build it.
+bounded 1800 "$REHEARSAL_PERSON_SSH" porelo task prepare --agent=pi -p "$REHEARSAL_PROJECT" -r "$REHEARSAL_REPOSITORY" \
+    < /dev/null
+echo "the pi task image of $REHEARSAL_PROJECT/$REHEARSAL_REPOSITORY is prepared"
+
+prompt="For the next $answer_minutes minutes, do only this: read your messages as your Porelo guide says, then run \
+'sleep 20' and read them again. To every line meant for you - one that names you, one to All agents or @room, and one \
+that names nobody - answer once, in the room it came from, with one line holding the word it asks you to answer \
+with; a person's direct chat with you counts too. Never answer a line that names only another agent. Change no file \
+and push nothing. After $answer_minutes minutes, stop."
+# A start with a prompt returns only when its run ends, so the pair's runs go on in the background on the host, each
+# writing its start's words to a log of its own there. Porelo ends a run after its --minutes, 30 unless given.
 for name in a b; do
-    grep -q "rehearsal-$name" "$REHEARSAL_REPORT/tasks.list" || { echo "rehearsal-$name is not listed"; exit 1; }
+    # shellcheck disable=SC2016 # expanded by the host's shell, from its own arguments
+    bounded 60 "$REHEARSAL_PERSON_SSH" sh -c 'mkdir -p "$HOME/.cache/porelo-rehearsal" && cd "$HOME" &&
+        nohup porelo task start --no-input --agent=pi --provider=openrouter --model="$1" --clearance=deny \
+            --minutes="$6" -p "$2" -r "$3" "rehearsal-$4" -P "$5" \
+            > "$HOME/.cache/porelo-rehearsal/tasks-$4.log" 2>&1 < /dev/null &' \
+        sh "$model" "$REHEARSAL_PROJECT" "$REHEARSAL_REPOSITORY" "$name" "$prompt" $((answer_minutes + 5)) < /dev/null
 done
-echo 'rehearsal-a and rehearsal-b run; rehearsal-c is stopped'
+# The third needs no run of its own: it is started and stopped.
+bounded 600 "$REHEARSAL_PERSON_SSH" porelo task start --detach --no-input --agent=pi --provider=openrouter --model="$model" \
+    --clearance=deny -p "$REHEARSAL_PROJECT" -r "$REHEARSAL_REPOSITORY" rehearsal-c < /dev/null
+
+state() { # <task>: true or false as porelo's status says it runs; anything else is no answer and fails the step
+    bounded 60 "$REHEARSAL_PERSON_SSH" porelo task status "rehearsal-$1" --json < /dev/null > "$REHEARSAL_REPORT/tasks.$1.json" \
+        || { echo "porelo task status rehearsal-$1 failed" >&2; exit 1; }
+    python3 -I -c 'import json, sys
+running = json.load(open(sys.argv[1])).get("running")
+if not isinstance(running, bool): sys.exit("no running field in " + sys.argv[1])
+print(str(running).lower())' "$REHEARSAL_REPORT/tasks.$1.json" || exit 1
+}
+start_log() { # <task>: what its background start said, for a failure
+    echo "its start said:"
+    bounded 30 "$REHEARSAL_PERSON_SSH" cat ".cache/porelo-rehearsal/tasks-$1.log" < /dev/null || true
+}
+for name in a b c; do
+    since=$(date +%s)
+    while :; do
+        now=$(state "$name") || exit 1
+        [ "$now" != true ] || break
+        [ "$name" != c ] || { echo 'rehearsal-c does not run after its detached start'; exit 1; }
+        if [ $(($(date +%s) - since)) -ge 600 ] || [ "$(left)" -le 20 ]; then
+            echo "rehearsal-$name does not run after $(($(date +%s) - since)) s; its status is in $REHEARSAL_REPORT/tasks.$name.json"
+            start_log "$name"
+            exit 1
+        fi
+        sleep 5
+    done
+    echo "rehearsal-$name runs"
+done
+
+bounded 300 "$REHEARSAL_PERSON_SSH" porelo task stop rehearsal-c < /dev/null
+now=$(state c) || exit 1
+[ "$now" = false ] || { echo 'rehearsal-c still runs after its stop'; exit 1; }
+echo 'rehearsal-c is stopped'
+
+bounded 60 "$REHEARSAL_PERSON_SSH" porelo task list < /dev/null > "$REHEARSAL_REPORT/tasks.list"
+cat "$REHEARSAL_REPORT/tasks.list"
+for name in a b c; do
+    grep -q "rehearsal-$name" "$REHEARSAL_REPORT/tasks.list" || { echo "task list does not name rehearsal-$name"; exit 1; }
+done
+for name in a b; do
+    now=$(state "$name") || exit 1
+    [ "$now" = true ] || { echo "rehearsal-$name stopped on its own"; start_log "$name"; exit 1; }
+done
+echo "rehearsal-a and rehearsal-b run and read their messages for $answer_minutes minutes; rehearsal-c is stopped"
