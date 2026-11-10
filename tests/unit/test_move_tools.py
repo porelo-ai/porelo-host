@@ -1658,7 +1658,7 @@ def test_rented_phase_two_runs_every_step_in_order_and_leaves_the_organization(r
     server = rented()
     done = phase_two(server, "--retire-host", "machines-foo")
     assert done.returncode == 0, done.stderr
-    _, steps = server.report()
+    steps = server.report()[1]
     assert [next(p for p in PHASE_TWO_STEPS if line.startswith(p + " ")) for line in steps] == PHASE_TWO_STEPS, steps
     org = [row["args"][2:] for row in server.events("org")]
     verbs = [arguments[0] for arguments in org]
@@ -1683,7 +1683,7 @@ def test_rented_phase_two_hands_secrets_on_standard_input_alone(rented):
     assert put["args"][-1] == "rented.central" and put["stdin_has_token"]
     assert not any(row["stdin_has_token"] for row in porelo if row is not put)
     events = (server.base / "events").read_text()
-    report, _ = server.report()
+    report = server.report()[0]
     written = events + done.stdout + done.stderr + "".join(f.read_text() for f in report.iterdir() if f.is_file())
     assert "synthetic-central-token" not in written
     ssh = [row for row in server.events("ssh") if row["args"][row["args"].index("--") + 1].startswith("test-person@")]
@@ -1707,7 +1707,7 @@ def test_rented_phase_two_fails_when_the_follow_never_admits_and_still_leaves_th
     server = rented(admitted_after=99)
     done = phase_two(server)
     assert done.returncode != 0
-    _, steps = server.report()
+    steps = server.report()[1]
     assert any(line.startswith("FAIL project ") for line in steps), steps
     assert not server.events("porelo"), "nothing is asked as the person before the follow admits them"
     assert any(line.startswith("OK org-off ") for line in steps), steps
@@ -1719,7 +1719,7 @@ def test_rented_phase_two_names_the_host_left_in_the_organization(rented):
     server = rented(org_rc={"remove": 65})
     done = phase_two(server)
     assert done.returncode == 65
-    _, steps = server.report()
+    steps = server.report()[1]
     assert any(line.startswith("FAIL org-off ") for line in steps), steps
     assert any(line.startswith("LEFT in the organization") for line in steps), steps
 
@@ -1730,7 +1730,7 @@ def test_rented_phase_two_takes_off_only_what_it_put_on(rented):
     done = phase_two(server)
     assert done.returncode == 65
     assert [row["args"][2] for row in server.events("org")] == ["add", "change", "carry", "uncarry", "remove"]
-    _, steps = server.report()
+    steps = server.report()[1]
     assert any(line.startswith("FAIL org ") for line in steps) and any(line.startswith("OK org-off ") for line in steps)
 
 
@@ -1747,7 +1747,7 @@ def test_rented_phase_two_keeps_the_first_failure_as_the_exit(rented):
     server = rented(admitted_after=99, org_rc={"remove": 65})
     done = phase_two(server)
     assert done.returncode == 1
-    _, steps = server.report()
+    steps = server.report()[1]
     assert any(line.startswith("FAIL project ") for line in steps) and any(
         line.startswith("FAIL org-off ") for line in steps
     )
@@ -1758,7 +1758,7 @@ def test_rented_phase_two_refuses_a_failed_central_token_program(rented):
     server = rented(central_token_rc=3)
     done = phase_two(server)
     assert done.returncode != 0
-    _, steps = server.report()
+    steps = server.report()[1]
     assert any(line.startswith("FAIL stop ") for line in steps), steps
     assert not [row for row in server.events("porelo") if row["args"][:2] == ["vault", "put"]]
 
@@ -1769,7 +1769,7 @@ def test_rented_phase_two_leaves_the_organization_after_a_failed_down(rented):
     done = phase_two(server)
     assert done.returncode == 2
     assert (server.state / "known_hosts").exists() and not (server.state / "vault-passphrase").exists()
-    _, steps = server.report()
+    steps = server.report()[1]
     assert any(line.startswith("FAIL down ") for line in steps) and any(
         line.startswith("OK org-off ") for line in steps
     )
