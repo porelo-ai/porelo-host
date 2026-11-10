@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO156",
   "title": "The Collection Installs The Host's Own Program",
-  "state": "Implementing",
+  "state": "Review",
   "size": "L",
   "priority": "Medium",
   "rank": 3,
@@ -128,3 +128,8 @@ installation, the measuring run and a pool VM's give-back.
   - `sudo -n -l` as the test person lists exactly the five rules, each `(root) NOPASSWD:` on
     `/usr/sbin/porelo-host`: `forge issue-token`, `forge lend-token`, `task start *`, `task end *`, `task show *`;
   - the run then went down cleanly after taking the project off and the host out of the organization.
+- Molecule's default scenario with the pool on, on snapshot 474 (main c50ab3f with this record, 2026-11-10
+  23:18-23:46Z): syntax, converge, idempotence, verify and side_effect pass; the pool's revert ran, normal and killed
+  renters left nothing, and the real acceptance leg passed and was removed; the run removed its VM. With main's build
+  of c50ab3f, whose Molecule job runs the default scenario with the pool off on snapshot 462, both scenarios pass on
+  the package.
