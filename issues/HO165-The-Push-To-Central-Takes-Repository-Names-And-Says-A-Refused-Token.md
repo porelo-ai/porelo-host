@@ -6,17 +6,31 @@
   "id": "HO165",
   "title": "The Push To Central Takes Repository Names And Says A Refused Token",
   "state": "Backlog",
-  "size": "-",
+  "size": "XS",
   "priority": "Medium",
   "rank": 6,
-  "blockedBy": [],
+  "blockedBy": ["HO158"],
   "covers": "`porelo-host-push` takes the project's repository names as well as the forge's, and says plainly when the central forge refuses the token."
 }
 ```
 
+**Why this size.** the push moved to porelo's `porelo host push` with the host's own program; what is left here is
+measuring it on a host. Building it, where it still lacks, is Agent Core's in porelo.
+
 **What must be true.** `porelo-host-push` takes a repository by the name the project's file gives it as well as by its
 name on the host's forge, and when the central forge refuses the token it says that plainly, with the forge's answer,
 instead of git's "could not read Username".
+
+## Plan
+
+- **What is there**, per Agent Core on porelo main (2026-11-10): `porelo host push <project> [<name>...]` takes a
+  repository by the project's own name for it or by its central name, case-insensitively; an unknown name exits 64
+  listing the pairs, a shared one exits 64 as ambiguous. A 401, at the preflight or from git, ends with
+  `<name>: central forge <host[:port]> refused authentication (HTTP 401)`, exit 1; a 403 is not read as a refused
+  token.
+- **Measure** on [HO158](README.md#ho158) phase 2's rented run: one push with a token the central forge refuses, and one push by each
+  name; the answers go into this issue's record.
+- What the measurement finds lacking is filed in porelo for Agent Core.
 
 ## Acceptance
 

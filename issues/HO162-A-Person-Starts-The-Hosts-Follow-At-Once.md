@@ -6,7 +6,7 @@
   "id": "HO162",
   "title": "A Person Starts The Host's Follow At Once",
   "state": "Backlog",
-  "size": "-",
+  "size": "S",
   "priority": "Medium",
   "rank": 3,
   "blockedBy": [],
@@ -14,9 +14,26 @@
 }
 ```
 
+**Why this size.** one sudo rule, the guard that names the rules, one assertion in Molecule's follow act and the
+docs; the verb itself is the host program's and is there.
+
 **What must be true.** A person admitted to the host can have it read the organization now, from the window or a
 command, instead of waiting up to five minutes for the follow's timer; a change made in the organization reaches the
 host within one follow pass of asking. Today only root can start `porelo-host-follow.service`.
+
+## Plan
+
+- **What is there.** porelo 0.5.1~snapshot.462 has `porelo host follow`, which runs `sudo -n porelo-host org
+  follow-now` and waits for one pass; porelo-host 462 has `org follow-now`. The collection gives no person the rule.
+- **The rule.** `porelo-host-person.sudoers` gets a sixth line, `porelo-host org follow-now`, with no arguments, as the
+  forge verbs; its defaults stay. The guard, `tests/unit/roles/test_host_program_boundary.py`'s exactly-the-rules
+  test, names six, renamed so, red first.
+- **Molecule.** The follow act runs it as the admitted person `fb`, which exits 0 with `org status --json` answering
+  after it without a refusal, and as the task account `porelo-fb`, which sudo refuses with nothing started. A second
+  request waiting for the first is the host program's, held by its tests in porelo; the act checks it only if it
+  can without timing.
+- **Docs.** Six rules wherever five are named: `doc/local-forge.md` (its verb list gains `org follow-now`), the
+  porelo role's README and `meta/argument_specs.yml`. [HO156](README.md#ho156)'s text stays as the record of what it built.
 
 ## Acceptance
 

@@ -6,7 +6,7 @@
   "id": "HO163",
   "title": "A Task's Signing Key Is Known Where It Pushes",
   "state": "Backlog",
-  "size": "-",
+  "size": "S",
   "priority": "Medium",
   "rank": 4,
   "blockedBy": [],
@@ -14,9 +14,20 @@
 }
 ```
 
+**Why this size.** a measurement on both forges and its record here; registering a task's key at its start is the
+host program's and is filed in porelo for Agent Core after the measurement.
+
 **What must be true.** A task's signed commits show as verified on the host's forge, since the key a task signs with is
 registered with the forge account that receives its push, and the same commits brought to the central forge do not
 read as signed by an unknown key there.
+
+## Plan
+
+- **Measure first.** On a host with a forge: register a task's public signing key, and its certificate, with the
+  forge account that receives the push, and read what Forgejo's API says of the task's commit. At the central forge
+  (GitHub, porelo-ai-test), read what it takes as a signing key: a plain SSH key does, a certificate perhaps not.
+- **Write it down** in this issue, then file the host program's part (the key registered when a task starts, taken
+  off when it ends) in porelo for Agent Core; this issue then waits on it.
 
 ## Acceptance
 

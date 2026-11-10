@@ -6,7 +6,7 @@
   "id": "HO164",
   "title": "A Project's Review Setting Reaches The Branch Protection",
   "state": "Backlog",
-  "size": "-",
+  "size": "XS",
   "priority": "Medium",
   "rank": 5,
   "blockedBy": [],
@@ -14,9 +14,18 @@
 }
 ```
 
+**Why this size.** the finding did not reproduce; what is left is reading the move's log for its real cause.
+
 **What must be true.** When a project's file says a repository's review is `optional`, the next follow pass sets the
 host forge's protection of `main` to need no approval, and back to one when it says `required`; a project with one
 admin can merge its own task's pull request without changing the forge by hand.
+
+## Plan
+
+- Read the log of the move whose admin met this, for the follow pass after the review change and the forge's answer.
+  The operator holds that log; until the operator gives it, this issue waits on the operator.
+- If the log shows the follow set the protection, or nothing of it, this issue is proposed Rejected to the operator.
+  If it shows another cause, that cause is filed and this issue is Rejected in its favour.
 
 ## Acceptance
 

@@ -72,10 +72,10 @@ it is left out.
 |---|---|---|---|
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
-| <a id="ho162"></a>[HO162](HO162-A-Person-Starts-The-Hosts-Follow-At-Once.md) | - | - | A person has the host read the organization now, from the window or a command, instead of waiting for the five-minute timer. |
-| <a id="ho163"></a>[HO163](HO163-A-Tasks-Signing-Key-Is-Known-Where-It-Pushes.md) | - | - | A task's signing key is registered with the forge account that receives its push, so its commits verify on the host's forge; what the central forge can take is measured first. |
-| <a id="ho164"></a>[HO164](HO164-A-Projects-Review-Setting-Reaches-The-Branch-Protection.md) | - | - | A project's `review: optional` or `required` reaches the host forge's protection of `main` on the next follow pass, so a single admin can merge. |
-| <a id="ho165"></a>[HO165](HO165-The-Push-To-Central-Takes-Repository-Names-And-Says-A-Refused-Token.md) | - | - | `porelo-host-push` takes the project's repository names as well as the forge's, and says plainly when the central forge refuses the token. |
+| <a id="ho162"></a>[HO162](HO162-A-Person-Starts-The-Hosts-Follow-At-Once.md) | S | - | A person has the host read the organization now, from the window or a command, instead of waiting for the five-minute timer. |
+| <a id="ho163"></a>[HO163](HO163-A-Tasks-Signing-Key-Is-Known-Where-It-Pushes.md) | S | - | A task's signing key is registered with the forge account that receives its push, so its commits verify on the host's forge; what the central forge can take is measured first. |
+| <a id="ho164"></a>[HO164](HO164-A-Projects-Review-Setting-Reaches-The-Branch-Protection.md) | XS | - | A project's `review: optional` or `required` reaches the host forge's protection of `main` on the next follow pass, so a single admin can merge. |
+| <a id="ho165"></a>[HO165](HO165-The-Push-To-Central-Takes-Repository-Names-And-Says-A-Refused-Token.md) | XS | [HO158](README.md#ho158) | `porelo-host-push` takes the project's repository names as well as the forge's, and says plainly when the central forge refuses the token. |
 
 ## Implementing
 
