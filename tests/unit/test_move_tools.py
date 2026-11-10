@@ -848,6 +848,13 @@ elif name == 'ansible-playbook':
         host.mkdir(parents=True, exist_ok=True)
         (host / 'forge.conf').write_text('host=rented\naccount=rehearsal\n')
         (host / 'firewall.nft').write_text('retained firewall\n')
+        # Up owns root's keys: the base role seeds them, and a follow later writes the host admins' keys there.
+        root_keys = guest / 'etc/ssh/authorized_keys/root'
+        root_keys.parent.mkdir(parents=True, exist_ok=True)
+        if settings.get('no_root_keys'):
+            root_keys.unlink(missing_ok=True)
+        else:
+            root_keys.write_text(settings.get('root_keys', 'ssh-ed25519 AAAATEST\n'))
         policy = guest / 'etc/ssh/sshd_config.d/10-porelo-host.conf'
         policy.write_text('role-owned SSH policy\n')
         if settings.get('steal_owner'):
@@ -868,6 +875,11 @@ elif name == 'sshd':
 elif name == 'org-program':
     event('org', args=args)
     verb = args[2] if len(args) > 2 else ''
+    root_keys = guest / 'etc/ssh/authorized_keys/root'
+    taken = [' '.join(line.split()[:2]) for line in (root_keys.read_text().splitlines() if root_keys.exists() else [])]
+    if verb == 'refresh' and settings.get('org_key', 'ssh-ed25519 AAAAORG') not in taken:
+        print('rented: root@192.0.2.10: Permission denied (publickey).', file=sys.stderr)
+        sys.exit(69)
     if settings.get('org_rc', {}).get(verb):
         sys.exit(settings['org_rc'][verb])
 elif name == 'central-token':
@@ -1628,6 +1640,13 @@ PHASE_TWO_STEPS = [
 ]
 
 
+def org_key(server, text="ssh-ed25519 AAAAORG test-operator\n"):
+    path = server.base / "org.pub"
+    if not path.exists():
+        path.write_text(text)
+    return path
+
+
 def phase_two(server, *extra, **call):
     import socket
 
@@ -1641,6 +1660,8 @@ def phase_two(server, *extra, **call):
     return server.call(
         "--org",
         str(server.bin / "org-program"),
+        "--org-key",
+        str(org_key(server)),
         "--person",
         "test-person",
         "--person-agent",
@@ -1776,12 +1797,15 @@ def test_rented_phase_two_leaves_the_organization_after_a_failed_down(rented):
     )
 
 
-@pytest.mark.parametrize("missing", ["--org", "--person", "--person-agent", "--central-token", "--project"])
+@pytest.mark.parametrize(
+    "missing", ["--org", "--org-key", "--person", "--person-agent", "--central-token", "--project"]
+)
 def test_rented_phase_two_refuses_a_partial_set_before_any_ssh(rented, missing):
     """Prevent half a phase 2 run against a real server."""
     server = rented()
     given = {
         "--org": str(server.bin / "org-program"),
+        "--org-key": str(org_key(server)),
         "--person": "test-person",
         "--person-agent": str(server.base / "agent.sock"),
         "--central-token": str(server.bin / "central-token"),
@@ -1802,6 +1826,8 @@ def test_rented_phase_two_refuses_a_name_that_is_not_plain(rented, option, value
     done = server.call(
         "--org",
         str(server.bin / "org-program"),
+        "--org-key",
+        str(org_key(server)),
         "--person-agent",
         str(server.base),
         "--central-token",
@@ -1828,6 +1854,8 @@ def test_rented_phase_two_refuses_its_own_host_to_retire_and_an_agent_that_is_no
     done = server.call(
         "--org",
         str(server.bin / "org-program"),
+        "--org-key",
+        str(org_key(server)),
         "--person",
         "test-person",
         "--person-agent",
@@ -1897,3 +1925,67 @@ def test_rented_phase_two_refuses_a_hold_file_that_is_already_there(rented):
     done = phase_two(server)
     assert done.returncode != 0 and "hold file" in done.stderr and not server.events("ssh")
     assert hold.read_text() == "another run's\n"
+
+
+def test_rented_phase_two_lets_the_operator_in_as_root_before_the_refresh(rented):
+    """Prevent the refresh, which logs in as root, being refused for want of the operator's key (195.154.103.114)."""
+    server = rented()
+    done = phase_two(server)
+    assert done.returncode == 0, done.stderr
+    keys = (server.guest / "etc/ssh/authorized_keys/root").read_text().splitlines()
+    assert keys == ["ssh-ed25519 AAAATEST", "ssh-ed25519 AAAAORG"], keys
+
+
+def test_rented_phase_two_adds_the_operators_key_once(rented):
+    """Prevent a second line for a key root already takes, as after a follow wrote the host admins' keys."""
+    server = rented(root_keys="ssh-ed25519 AAAAORG somebody\n")
+    done = phase_two(server)
+    assert done.returncode == 0, done.stderr
+    assert (server.guest / "etc/ssh/authorized_keys/root").read_text() == "ssh-ed25519 AAAAORG somebody\n"
+
+
+def test_rented_phase_two_fails_org_when_up_left_no_root_key_file(rented):
+    """Prevent the rehearsal making the file up owns, or carrying on to a refresh that cannot log in."""
+    server = rented(no_root_keys=True)
+    done = phase_two(server)
+    assert done.returncode != 0
+    steps = server.report()[1]
+    assert any(line.startswith("FAIL org ") for line in steps), steps
+    assert not (server.guest / "etc/ssh/authorized_keys/root").exists()
+    assert not server.events("org"), "nothing is put into the organization for a host root cannot be reached on"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        "ssh-rsa AAAAB3Nza test\n",
+        "ssh-ed25519 AAAAORG\nssh-ed25519 AAAAOTHER\n",
+        "ssh-ed25519 AAAA;rm\n",
+        "ssh-ed25519\n",
+        "-----BEGIN OPENSSH PRIVATE KEY-----\n",
+    ],
+)
+def test_rented_phase_two_refuses_an_operator_key_that_is_not_one_ed25519_public_key(rented, text):
+    """Prevent a private key, a second key or shell text reaching root's keys on the host."""
+    server = rented()
+    org_key(server, text)
+    done = phase_two(server)
+    assert done.returncode != 0 and "operator key" in done.stderr and not server.events("ssh")
+
+
+def test_rented_phase_two_keeps_roots_last_key_whole_when_its_file_has_no_newline_at_the_end(rented):
+    """Prevent the operator's key glued to root's last line, which would spoil both keys."""
+    server = rented(root_keys="ssh-ed25519 AAAATEST")
+    done = phase_two(server)
+    assert done.returncode == 0, done.stderr
+    assert (server.guest / "etc/ssh/authorized_keys/root").read_text() == "ssh-ed25519 AAAATEST\nssh-ed25519 AAAAORG\n"
+
+
+def test_rented_phase_two_takes_an_operator_key_file_without_a_newline_at_the_end(rented):
+    """Prevent a one-line public key refused as if it were several lines."""
+    server = rented()
+    org_key(server, "ssh-ed25519 AAAAORG test-operator")
+    done = phase_two(server)
+    assert done.returncode == 0, done.stderr
+    assert "ssh-ed25519 AAAAORG" in (server.guest / "etc/ssh/authorized_keys/root").read_text().splitlines()

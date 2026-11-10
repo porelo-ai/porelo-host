@@ -70,13 +70,16 @@ An agent's move can be rehearsed before a host is rented, on a VM made the same 
     build/rehearse-move.sh tunnel <login> <homeserver port>
     build/rehearse-move.sh down
     build/rehearse-move.sh rented <address> --key <file> [--login <user>] [--machine-file <file>] [--order-time <UTC>]
-        [--zone <name>] [--org <program> --person <login> --person-agent <socket> --central-token <program>
-        --project <name> [--retire-host <host>]]
+        [--zone <name>] [--org <program> --org-key <public key file> --person <login> --person-agent <socket>
+        --central-token <program> --project <name> [--retire-host <host>]]
 
 `rented` runs a move on a server the operator rented: it claims the server, checks it, runs `up`
 and, on every exit, the host's `down`, and writes one line per step to a report directory outside the checkout, one per run.
 Without the phase 2 options it stops after `up`. With them it also:
 
+- adds the organization operator's public key (`--org-key`, one ssh-ed25519 key; its comment is dropped) to root's
+  keys in `/etc/ssh/authorized_keys/root`, the file `up` made, unless root takes it already: `org host refresh` logs
+  in as root, and a follow later writes the host admins' keys there;
 - puts the host into the test organization as `rented`, through `<program> org host ...` run here (a wrapper that
   runs `porelo` as the test identity): it takes `--retire-host` off first, then adds `rented` with the person as its
   admin, files its card (the address, ssh port 22, the host key pinned at the first connection, forge ports 3000 and

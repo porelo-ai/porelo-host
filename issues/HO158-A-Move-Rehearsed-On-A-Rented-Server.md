@@ -108,3 +108,13 @@ spends a test on it.
   The judge step stays `SKIP` until a task's commit is made inside it (`podman exec`, Agent Core 2026-11-10).
 - A hold for another run on the same rental (MX99): `PORELO_REHEARSAL_HOLD_FILE` keeps the host up after push-pull
   until the file is removed, and the hard stop still ends it with down; both seen red first against the stand-in.
+- (b) phase 2 on one rented server (Scaleway Elastic Metal, fr-par-1, 195.154.103.114, ordered 2026-11-10 16:15Z,
+  deleted by the operator the same day): from main 9df8f82 with the 462 packages and `--retire-host machines-foo`, ran
+  16:24:34Z to 16:30:23Z. `OK` refuse-existing, check (KVM true), up and org (machines-foo taken off, `rented` added,
+  its card filed, foo-project carried); `FAIL` project with exit 69: `org host refresh` logs in as root, and the
+  operator's key was not among root's keys (`Permission denied (publickey)`). `OK` down and org-off; no hold, so
+  neither MX99 nor [HO165](README.md#ho165)'s measurement ran. Agent Core 2026-11-10: root is refresh's login by design, and the
+  operator's key reaching root is part of bringing a host in. The rehearsal now takes `--org-key` and adds that key to
+  root's keys at the start of org; seen red first against the stand-in, whose refresh is refused as on the rental
+  until the key is there. Refresh also ran `porelo-host-person`, which 462 no longer ships; Agent Core fixes that in
+  porelo.

@@ -29,7 +29,7 @@ vm=$root/build/porelo-vm
 
 say() { printf '%s\n' "$*" >&2; }
 fail() { say "FAILED: $*"; exit 1; }
-usage() { fail "usage: $0 start [--machine-file <file> | --bare] [--cpus <n>] [--memory <GiB>] [--disk <GiB>] | ssh [<command>...] | tunnel <login> <port> | down | rented <address> --key <file> [--login <user>] [--machine-file <file>] [--order-time <UTC>] [--zone <name>] [--org <program> --person <login> --person-agent <socket> --central-token <program> --project <name> [--retire-host <host>]]"; }
+usage() { fail "usage: $0 start [--machine-file <file> | --bare] [--cpus <n>] [--memory <GiB>] [--disk <GiB>] | ssh [<command>...] | tunnel <login> <port> | down | rented <address> --key <file> [--login <user>] [--machine-file <file>] [--order-time <UTC>] [--zone <name>] [--org <program> --org-key <public key file> --person <login> --person-agent <socket> --central-token <program> --project <name> [--retire-host <host>]]"; }
 
 # What libvirt lists of any rehearsal: its domains and volumes, one name a line.
 listed() {
@@ -617,9 +617,10 @@ rented_finish() {
 
 rented_phase_two_options() {
     phase_two=no
-    if [ -z "$org_program$person$person_agent$central_token$project$retire_host" ]; then return 0; fi
-    [ -n "$org_program" ] && [ -n "$person" ] && [ -n "$person_agent" ] && [ -n "$central_token" ] && [ -n "$project" ] \
-        || fail 'phase 2 needs --org, --person, --person-agent, --central-token and --project together'
+    if [ -z "$org_program$org_key$person$person_agent$central_token$project$retire_host" ]; then return 0; fi
+    [ -n "$org_program" ] && [ -n "$org_key" ] && [ -n "$person" ] && [ -n "$person_agent" ] && [ -n "$central_token" ] \
+        && [ -n "$project" ] \
+        || fail 'phase 2 needs --org, --org-key, --person, --person-agent, --central-token and --project together'
     for name in "$person" "$project" ${retire_host:+"$retire_host"}; do
         case $name in -*|*[!a-z0-9-]*) fail "not a plain name: $name" ;; esac
     done
@@ -628,6 +629,11 @@ rented_phase_two_options() {
         [ -f "$program" ] && [ -x "$program" ] || fail "no executable program at $program"
     done
     [ -S "$person_agent" ] || fail "no agent socket at $person_agent"
+    # The refresh logs in as root (Core, 2026-11-10); the operator's public key alone goes to root, without its comment.
+    [ -f "$org_key" ] && [ -r "$org_key" ] || fail "no readable operator key at $org_key"
+    [ "$(awk 'END { print NR }' "$org_key")" = 1 ] || fail 'the operator key must be one line'
+    org_public=$(awk '$1 == "ssh-ed25519" && $2 ~ /^[A-Za-z0-9+\/]+=*$/ {print $1 " " $2}' "$org_key")
+    [ -n "$org_public" ] || fail 'the operator key must be one ssh-ed25519 public key'
     if [ -n "${PORELO_REHEARSAL_HOLD_FILE:-}" ]; then
         [ ! -e "$PORELO_REHEARSAL_HOLD_FILE" ] && [ ! -L "$PORELO_REHEARSAL_HOLD_FILE" ] \
             || fail "the hold file is there already: $PORELO_REHEARSAL_HOLD_FILE"
@@ -652,8 +658,27 @@ on_person() {
         -- "$person@$server" "$remote"
 }
 
+# Root's keys are the file up made; a follow later writes the host admins' keys there, so a key it holds already stays.
+rented_root_key() {
+    # These positional arguments expand in the remote shell.
+    # shellcheck disable=SC2016
+    printf '%s\n' "$org_public" | on_rented sh -c 'set -eu
+keys=/etc/ssh/authorized_keys/root
+key=$(cat)
+if [ ! -f "$keys" ] || [ -L "$keys" ]; then echo "up made no root key file at $keys"; exit 1; fi
+if awk -v key="$key" '"'"'$1 " " $2 == key { found = 1 } END { exit !found }'"'"' "$keys"; then exit 0; fi
+work=$(mktemp "$keys.XXXXXX")
+trap '"'"'rm -f -- "$work"'"'"' EXIT
+cat "$keys" > "$work"
+if [ -s "$work" ] && [ -n "$(tail -c 1 "$work")" ]; then echo >> "$work"; fi
+printf "%s\n" "$key" >> "$work"
+chmod 0644 "$work"
+mv -fT "$work" "$keys"'
+}
+
 rented_org() {
     change=rehearsal-$stamp
+    rented_root_key
     if [ -n "$retire_host" ]; then
         on_org uncarry --id "$change-uncarry-$retire_host" "$retire_host" "$project"
         on_org remove --id "$change-remove-$retire_host" "$retire_host"
@@ -744,7 +769,7 @@ rented() {
     server=$1
     shift
     key_file='' machine_file='' order_time='' account=root zone='' zone_given=no
-    org_program='' person='' person_agent='' central_token='' project='' retire_host=''
+    org_program='' org_key='' person='' person_agent='' central_token='' project='' retire_host=''
     while [ $# -gt 0 ]; do
         [ $# -ge 2 ] || usage
         case $1 in
@@ -754,6 +779,7 @@ rented() {
             --order-time) order_time=$2 ;;
             --zone) zone=$2; zone_given=yes ;;
             --org) org_program=$2 ;;
+            --org-key) org_key=$2 ;;
             --person) person=$2 ;;
             --person-agent) person_agent=$2 ;;
             --central-token) central_token=$2 ;;
