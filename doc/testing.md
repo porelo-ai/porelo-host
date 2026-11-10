@@ -93,6 +93,14 @@ Without the phase 2 options it stops after `up`. With them it also:
 - pulls and pushes the project with central, and keeps `porelo host central-state --json` in the report;
 - with `PORELO_REHEARSAL_HOLD_FILE` set, makes that file after push-pull and keeps the host up until it is removed, so
   another run on the same host goes on first; the hard stop still ends the hold and runs `down`;
+- with `PORELO_REHEARSAL_HOLD_FILE` set, also holds the host after a failed step from `up` on (`HOLD failure`), so it
+  is fixed on the same server: removing the file runs `down`; writing `<hold file>.resume` instead makes the run start
+  this checkout's script again (`RESUME`), which reruns `up` and then the failed step and the steps after it (the
+  project step too when a later one failed, since the rerun `up` is followed again), and holds again on a new failure.
+  The resume file is a plain file of the run's own account; it is empty or names new packages, one
+  `PORELO_HOST_DEB=<absolute path>` line and, beside it only, one `PORELO_HOST_PACKAGES=<absolute path>` line; any
+  other line, or a script that is not executable, is refused with `FAIL resume`, the host staying held. The hard stop
+  ends a failure hold as any other;
 - after `down`, takes `rented` off the project and out of the organization, and names it if that fails.
 
 The judge step, a commit made inside a task and pushed to its own branch and to another, is not built yet; the report

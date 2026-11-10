@@ -118,3 +118,11 @@ spends a test on it.
   root's keys at the start of org; seen red first against the stand-in, whose refresh is refused as on the rental
   until the key is there. Refresh also ran `porelo-host-person`, which 462 no longer ships; Agent Core fixes that in
   porelo.
+- A failed step held for a fix on the same rental (Agent Coordinator 2026-11-10): with the hold file set, a failure from
+  up on holds the host; removing the file runs down, and a resume file reruns up, then the failed step on, from the
+  checkout's script started anew; seen red first against the stand-in. Its resume test found that the rerun's up
+  rewrites root's keys, so the operator's key is now added again just before the refresh. A code reading by another
+  model found a signal lost before the restart, no down when the restart cannot start, an older collection tarball
+  beside the new one, a resume after the project step not following again, and packages named without their host
+  program; each fixed, the last four with a red test first. A signal in the instant of the restart itself ends the run
+  without down, and the server's hard stop is not kept then either.

@@ -29,7 +29,7 @@ vm=$root/build/porelo-vm
 
 say() { printf '%s\n' "$*" >&2; }
 fail() { say "FAILED: $*"; exit 1; }
-usage() { fail "usage: $0 start [--machine-file <file> | --bare] [--cpus <n>] [--memory <GiB>] [--disk <GiB>] | ssh [<command>...] | tunnel <login> <port> | down | rented <address> --key <file> [--login <user>] [--machine-file <file>] [--order-time <UTC>] [--zone <name>] [--org <program> --org-key <public key file> --person <login> --person-agent <socket> --central-token <program> --project <name> [--retire-host <host>]]"; }
+usage() { fail "usage: $0 start [--machine-file <file> | --bare] [--cpus <n>] [--memory <GiB>] [--disk <GiB>] | ssh [<command>...] | tunnel <login> <port> | down | rented <address> --key <file> [--login <user>] [--machine-file <file>] [--order-time <UTC>] [--zone <name>] [--org <program> --org-key <public key file> --person <login> --person-agent <socket> --central-token <program> --project <name> [--retire-host <host>]] | rented-resume"; }
 
 # What libvirt lists of any rehearsal: its domains and volumes, one name a line.
 listed() {
@@ -438,6 +438,7 @@ rented_step() {
         details=$report/$completed.log
         if [ "$completed" = check ] && [ -s "$report/check.out" ]; then details=$report/check.out; fi
         rented_line "FAIL $completed $asked -> exit $result; see $details"
+        rented_hold_failure "$completed"
         exit "$result"
     fi
     if [ "$completed" = check ]; then
@@ -478,6 +479,8 @@ print(str(bool(set(a["flags"]) & {"vmx", "svm"}) and a["device"]).lower())' "$re
 
 rented_up() {
     : > "$state/up-started"
+    # A resumed run builds again, perhaps a new version; only this build's tarball may stand.
+    rm -f "$state"/porelo-host-*.tar.gz
     "$root/build/tools.sh" ansible-galaxy collection build --force --output-path target/rented
     tarball=$(ls "$state"/porelo-host-*.tar.gz)
     stage_packages
@@ -695,6 +698,8 @@ rented_org() {
 }
 
 rented_project() {
+    # Again here: a resumed run's up rewrites root's keys before it reruns the project step.
+    rented_root_key
     on_org refresh --json rented
     on_rented porelo-host org follow
     tries=${PORELO_REHEARSAL_FOLLOW_TRIES:-90}
@@ -818,7 +823,8 @@ rented() {
     hard_stop=${PORELO_REHEARSAL_HARD_STOP_SECONDS:-19800}
     case $hard_stop in ''|*[!0-9]*) fail 'hard stop must be seconds as a whole number' ;; esac
     [ "${#hard_stop}" -le 8 ] || fail 'hard stop is too large'
-    remaining=$((ordered + hard_stop - now))
+    deadline=$((ordered + hard_stop))
+    remaining=$((deadline - now))
     [ "$remaining" -gt 0 ] || fail 'hard stop has already passed since order time'
     state=$root/target/rented
     [ ! -e "$state" ] && [ ! -L "$state" ] || fail "$state is there from an earlier run; inspect it before removing it"
@@ -886,6 +892,12 @@ EOF
     rented_line 'OK refuse-existing claim an unused host -> its staging and owner token were created'
     rented_abort_pending
     rented_step check 'run the host preflight and observe CPU flags and /dev/kvm' rented_prepare_check
+    rented_steps up
+}
+
+# The steps from up on; a resumed run reruns up, for a fixed collection or packages, then goes on from its failed step.
+rented_steps() {
+    resume_from=$1 resume_reached=no
     rented_step up 'install the collection and judge up lines' rented_up
     if [ "$phase_two" = no ]; then
         for step in stop project judge push-pull; do
@@ -895,12 +907,18 @@ EOF
         rented_abort_pending
         return 0
     fi
-    rented_step org "put the host into the organization and carry $project" rented_org
-    rented_step project "refresh the host and wait for the follow to admit $person to $project" rented_project
-    rented_step stop "give $person's stop a new vault, a forge token and the central token" rented_stop
+    if rented_due org; then rented_step org "put the host into the organization and carry $project" rented_org; fi
+    if rented_due project; then
+        rented_step project "refresh the host and wait for the follow to admit $person to $project" rented_project
+    fi
+    if rented_due stop; then
+        rented_step stop "give $person's stop a new vault, a forge token and the central token" rented_stop
+    fi
     rented_abort_pending
     rented_line 'SKIP judge needs a task and its commit inside it (podman exec, Core 2026-11-10); built next'
-    rented_step push-pull "pull and push $project with central and read its central state" rented_push_pull
+    if rented_due push-pull; then
+        rented_step push-pull "pull and push $project with central and read its central state" rented_push_pull
+    fi
     if [ -n "${PORELO_REHEARSAL_HOLD_FILE:-}" ]; then
         # Another agent's live run on this host goes on until it removes the file; the hard stop still ends it.
         : > "$PORELO_REHEARSAL_HOLD_FILE"
@@ -914,12 +932,128 @@ rented_hold() {
     while [ -e "$PORELO_REHEARSAL_HOLD_FILE" ]; do sleep 1; done
 }
 
+# A step a run resumes from, and every step after it, runs; the steps before it passed in the held run.
+rented_due() {
+    if [ "$resume_from" = up ] || [ "$resume_from" = "$1" ]; then resume_reached=yes; fi
+    # The rerun up may change what the follow made, so a resume after the project step follows again first.
+    if [ "$1" = project ] && { [ "$resume_from" = stop ] || [ "$resume_from" = push-pull ]; }; then return 0; fi
+    [ "$resume_reached" = yes ]
+}
+
+keep() {
+    printf "%s='%s'\n" "$1" "$(printf '%s' "$2" | sed "s/'/'\\\\''/g")"
+}
+
+# A failed step after check keeps the host up while the hard stop allows, so it is fixed and rerun on the same server:
+# removing the hold file lets down run; a resume file, written by the person who holds it, reruns from up.
+rented_hold_failure() {
+    failed=$1
+    [ "${phase_two:-no}" = yes ] && [ -n "${PORELO_REHEARSAL_HOLD_FILE:-}" ] || return 0
+    case $failed in refuse-existing|check|hold) return 0 ;; esac
+    hold=$PORELO_REHEARSAL_HOLD_FILE
+    : > "$hold"
+    rented_line "HOLD failure the host stays up after $failed failed: remove $hold to run down, or write $hold.resume to rerun up and $failed on"
+    while :; do
+        current=hold
+        (trap - EXIT INT TERM ALRM; while [ -e "$hold" ] && [ ! -e "$hold.resume" ]; do sleep 1; done) &
+        active=$!
+        rented_abort_pending
+        wait "$active" || true
+        active=''
+        rented_abort_pending
+        current=''
+        [ -e "$hold.resume" ] || return 0
+        rented_resume_request "$failed"
+    done
+}
+
+# The resume file may name new packages, one PORELO_HOST_DEB or PORELO_HOST_PACKAGES line each, by absolute path.
+rented_resume_request() {
+    request=$hold.resume resume_step=$1
+    set --
+    refusal=''
+    if [ ! -f "$request" ] || [ -L "$request" ] || [ "$(stat -c %u "$request")" != "$(id -u)" ]; then
+        refusal='not a plain file of this account'
+    else
+        while IFS= read -r line || [ -n "$line" ]; do
+            case $line in
+                '') ;;
+                PORELO_HOST_DEB=/*)
+                    case $line in *[[:space:]]*) refusal="a path with a space: $line" ;; esac
+                    [ -f "${line#*=}" ] || refusal="no package at ${line#*=}"
+                    set -- "$@" "$line" ;;
+                PORELO_HOST_PACKAGES=/*)
+                    case $line in *[[:space:]]*) refusal="a path with a space: $line" ;; esac
+                    [ -d "${line#*=}" ] || refusal="no package directory at ${line#*=}"
+                    set -- "$@" "$line" ;;
+                *) refusal="an unknown line: $line" ;;
+            esac
+        done < "$request"
+    fi
+    case " $* " in
+        *' PORELO_HOST_PACKAGES='*) case " $* " in *' PORELO_HOST_DEB='*) ;; *) refusal='PORELO_HOST_PACKAGES needs a PORELO_HOST_DEB line' ;; esac ;;
+    esac
+    script=$root/build/rehearse-move.sh
+    if [ -z "$refusal" ] && { [ ! -f "$script" ] || [ ! -x "$script" ]; }; then refusal="$script is not executable"; fi
+    if [ -z "$refusal" ] && ! sh -n "$script"; then refusal="$script does not parse"; fi
+    if [ -n "$refusal" ]; then
+        rm -f "$request"
+        rented_line "FAIL resume $refusal; the host stays held"
+        return 0
+    fi
+    {
+        keep server "$server"; keep account "$account"; keep key_file "$key_file"; keep zone "$zone"
+        keep machine_file "$machine_file"
+        keep report "$report"; keep stamp "$stamp"; keep unit "$unit"; keep staging "$staging"
+        keep phase_two "$phase_two"; keep org_program "$org_program"; keep org_public "$org_public"
+        keep person "$person"; keep person_agent "$person_agent"; keep central_token "$central_token"
+        keep project "$project"; keep retire_host "$retire_host"; keep deadline "$deadline"
+        keep check_started "$check_started"; keep check_passed "$check_passed"; keep resume_from "$resume_step"
+    } > "$state/resume.env"
+    if [ -n "$timer" ]; then stop_tree "$timer"; wait "$timer" 2>/dev/null || true; timer=''; fi
+    # A signal or the hard stop taken while the timer stopped ends the run here, with its down, not after the restart.
+    rented_abort_pending
+    trap - EXIT INT TERM ALRM
+    rm -f "$hold" "$request"
+    rented_line "RESUME the held run reruns up, then $resume_step and the steps after it, from $script"
+    exec env "$@" "$script" rented-resume
+}
+
+rented_resume() {
+    state=$root/target/rented
+    [ -f "$state/resume.env" ] || fail 'no held run to resume'
+    # shellcheck source=/dev/null
+    . "$state/resume.env"
+    rm -f "$state/resume.env"
+    umask 077
+    rented_mode=yes trust=yes owned=yes active='' timer='' current='' last_step=$resume_from
+    kvm=$(cat "$state/kvm")
+    pending_code=0 pending_reason='' claiming=no
+    trap rented_finish EXIT
+    trap 'rented_signal INT 130' INT
+    trap 'rented_signal TERM 143' TERM
+    trap 'rented_signal "hard stop" 124' ALRM
+    main=$$
+    now=$(date -u +%s)
+    remaining=$((deadline - now))
+    if [ "$remaining" -le 0 ]; then
+        rented_line 'FAIL resume -> hard stop'
+        exit 124
+    fi
+    ssh_limit=$((remaining + 5))
+    (sleep "$remaining"; kill -ALRM "$main") &
+    timer=$!
+    rented_steps "$resume_from"
+    rented_abort_pending
+}
+
 [ $# -ge 1 ] || usage
 verb=$1
 shift
 case "$verb" in
     start) start "$@" ;;
     rented) rented "$@" ;;
+    rented-resume) [ $# -eq 0 ] || usage; rented_resume ;;
     ssh) on_vm "$@" ;;
     tunnel)
         [ $# -eq 2 ] || usage

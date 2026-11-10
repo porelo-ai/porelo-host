@@ -808,6 +808,8 @@ elif name == 'systemd-run':
     while not response.exists():
         time.sleep(0.01)
     answer = json.loads(response.read_text())
+    # systemd collects the unit (--collect), so a later run may take the same name.
+    response.unlink()
     sys.stdout.write(answer['stdout'])
     sys.stderr.write(answer['stderr'])
     sys.exit(answer['code'])
@@ -1989,3 +1991,215 @@ def test_rented_phase_two_takes_an_operator_key_file_without_a_newline_at_the_en
     done = phase_two(server)
     assert done.returncode == 0, done.stderr
     assert "ssh-ed25519 AAAAORG" in (server.guest / "etc/ssh/authorized_keys/root").read_text().splitlines()
+
+
+def held(server, then, timeout=20, **call):
+    """Run phase 2 with a hold file and act once the failure hold has made it."""
+    import threading
+
+    hold = server.base / "hold"
+    server.environment["PORELO_REHEARSAL_HOLD_FILE"] = str(hold)
+    seen = {}
+
+    def act():
+        deadline = time.monotonic() + timeout - 5
+        while not hold.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.3)
+        seen["held"] = hold.exists()
+        seen["down_before"] = len(server.down_calls())
+        then(server, hold)
+
+    actor = threading.Thread(target=act)
+    actor.start()
+    done = phase_two(server, timeout=timeout, **call)
+    actor.join()
+    return done, seen
+
+
+def admit(server):
+    settings = json.loads((server.base / "answers.json").read_text())
+    settings.pop("admitted_after", None)
+    (server.base / "answers.json").write_text(json.dumps(settings))
+
+
+def test_rented_phase_two_holds_the_host_up_after_a_failed_step_until_the_hold_file_goes(rented):
+    """Prevent a failure in minute 5 taking the rented host down before it can be fixed on the same server."""
+    server = rented(admitted_after=99)
+    done, seen = held(server, lambda server, hold: hold.unlink())
+    assert done.returncode == 1, done.stderr
+    assert seen == {"held": True, "down_before": 0}
+    steps = server.report()[1]
+    marks = [line.split(" ", 2)[0] + " " + line.split(" ", 2)[1] for line in steps]
+    assert marks[marks.index("FAIL project") :][:4] == ["FAIL project", "HOLD failure", "OK down", "OK org-off"], steps
+    assert len(server.down_calls()) == 1
+
+
+def test_rented_phase_two_resumes_a_held_run_from_up_and_its_failed_step(rented):
+    """Prevent a fixed rerun needing a new server, or repeating steps that passed in the held run."""
+    server = rented(admitted_after=99)
+
+    def resume(server, hold):
+        admit(server)
+        request = Path(str(hold) + ".resume")
+        request.write_text("")
+        deadline = time.monotonic() + 15
+        while (request.exists() or not hold.exists()) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.3)
+        hold.unlink()
+
+    done, seen = held(server, resume)
+    assert done.returncode == 0, done.stderr
+    assert seen == {"held": True, "down_before": 0}
+    steps = server.report()[1]
+    marks = [line.split(" ", 2)[0] + " " + line.split(" ", 2)[1] for line in steps]
+    after = marks[marks.index("FAIL project") :]
+    assert after[:11] == [
+        "FAIL project",
+        "HOLD failure",
+        "RESUME the",
+        "OK up",
+        "OK project",
+        "OK stop",
+        "SKIP judge",
+        "OK push-pull",
+        "HOLD hold",
+        "OK hold",
+        "OK down",
+    ], steps
+    assert [row["args"][2] for row in server.events("org")] == [
+        "add",
+        "change",
+        "carry",
+        "refresh",
+        "refresh",
+        "uncarry",
+        "remove",
+    ]
+    assert len([row for row in server.events("ansible-playbook") if row["verb"] == "up"]) == 2
+    hold = server.base / "hold"
+    assert not hold.exists() and not Path(str(hold) + ".resume").exists()
+    assert not (server.state / "resume.env").exists()
+
+
+@pytest.mark.parametrize("request_text", ["PORELO_HOST_DEB=/nowhere/porelo-host.deb\n", "rm -rf /\n", "X=1\n"])
+def test_rented_phase_two_refuses_a_resume_file_it_cannot_take_and_stays_held(rented, request_text):
+    """Prevent a resume file running shell text, or a resume with packages that are not there."""
+    server = rented(admitted_after=99)
+
+    def refuse_then_release(server, hold):
+        request = Path(str(hold) + ".resume")
+        request.write_text(request_text)
+        deadline = time.monotonic() + 8
+        while request.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.3)
+        hold.unlink()
+
+    done, seen = held(server, refuse_then_release)
+    assert done.returncode == 1, done.stderr
+    steps = server.report()[1]
+    assert any(line.startswith("FAIL resume ") and "stays held" in line for line in steps), steps
+    assert not any(line.startswith("RESUME ") for line in steps), steps
+    assert len(server.down_calls()) == 1
+
+
+def test_rented_phase_two_hard_stop_ends_a_failure_hold_with_down(rented):
+    """Prevent a forgotten failure hold keeping a rented server past its hard stop."""
+    server = rented(admitted_after=99)
+    hold = server.base / "hold"
+    server.environment["PORELO_REHEARSAL_HOLD_FILE"] = str(hold)
+    done = phase_two(server, hard_stop=12, timeout=30)
+    assert done.returncode == 124
+    steps = server.report()[1]
+    assert any(line.startswith("HOLD failure ") for line in steps), steps
+    assert any(line.startswith("FAIL hold ") for line in steps), steps
+    assert len(server.down_calls()) == 1 and any(line.startswith("OK org-off ") for line in steps)
+
+
+def test_rented_a_failed_check_is_not_held(rented):
+    """Prevent a server unfit for the host being held: there is nothing on it to fix."""
+    server = rented(check_failure=True)
+    server.environment["PORELO_REHEARSAL_HOLD_FILE"] = str(server.base / "hold")
+    done = phase_two(server)
+    assert done.returncode != 0
+    steps = server.report()[1]
+    assert not any(line.startswith("HOLD ") for line in steps), steps
+    assert not (server.base / "hold").exists()
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["packages-alone", "script-not-executable"],
+)
+def test_rented_phase_two_refuses_a_resume_that_could_not_take_effect_and_stays_held(rented, case):
+    """Prevent a resume whose packages are ignored, or one that leaves the host without its down when it cannot start."""
+    server = rented(admitted_after=99)
+    packages = server.base / "packages"
+    packages.mkdir()
+
+    def refuse_then_release(server, hold):
+        request = Path(str(hold) + ".resume")
+        if case == "script-not-executable":
+            server.script.chmod(0o644)
+            request.write_text("")
+        else:
+            request.write_text(f"PORELO_HOST_PACKAGES={packages}\n")
+        deadline = time.monotonic() + 8
+        while request.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.3)
+        hold.unlink()
+
+    done, seen = held(server, refuse_then_release)
+    assert done.returncode == 1, done.stderr
+    steps = server.report()[1]
+    assert any(line.startswith("FAIL resume ") and "stays held" in line for line in steps), steps
+    assert not any(line.startswith("RESUME ") for line in steps), steps
+    assert len(server.down_calls()) == 1
+
+
+def test_rented_phase_two_resume_takes_the_new_collection_beside_an_old_one(rented):
+    """Prevent a fixed collection of a new version failing the rerun up as an ambiguous tarball."""
+    server = rented(admitted_after=99)
+
+    def resume(server, hold):
+        admit(server)
+        (server.state / "porelo-host-old.tar.gz").write_text("an older build\n")
+        request = Path(str(hold) + ".resume")
+        request.write_text("")
+        deadline = time.monotonic() + 15
+        while (request.exists() or not hold.exists()) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.3)
+        hold.unlink()
+
+    done, seen = held(server, resume)
+    assert done.returncode == 0, done.stderr
+    assert sum(line.startswith("OK up ") for line in server.report()[1]) == 2
+
+
+def test_rented_phase_two_resume_after_the_stop_reruns_the_project_step_but_not_the_stop(rented):
+    """Prevent a step after the follow running on a host whose rerun up was not followed again."""
+    server = rented(porelo_rc={"pull": 70})
+
+    def resume(server, hold):
+        settings = json.loads((server.base / "answers.json").read_text())
+        settings.pop("porelo_rc")
+        (server.base / "answers.json").write_text(json.dumps(settings))
+        request = Path(str(hold) + ".resume")
+        request.write_text("")
+        deadline = time.monotonic() + 15
+        while (request.exists() or not hold.exists()) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.3)
+        hold.unlink()
+
+    done, seen = held(server, resume)
+    assert done.returncode == 0, done.stderr
+    steps = server.report()[1]
+    marks = [line.split(" ", 2)[0] + " " + line.split(" ", 2)[1] for line in steps]
+    after = marks[marks.index("RESUME the") :]
+    assert after[:5] == ["RESUME the", "OK up", "OK project", "SKIP judge", "OK push-pull"], steps
+    assert len([row for row in server.events("porelo") if row["args"][:2] == ["host", "stop-secrets"]]) == 1
