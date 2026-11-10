@@ -6,10 +6,11 @@
   register: __forge_capacity_host
   check_mode: false
 
-# One budget with the VM pool: what the jobs may take at once and the pool's VMs together stay within half the host,
-# so Forgejo, the runner and Porelo's own tasks keep the other half. The pool is read as vm_pool reads it; vm_pool runs
+# One budget with the VM pool: what the jobs may take at once and the pool's VMs together stay within the host's share
+# for work, porelo_host_work_share percent and unset half the host, so Forgejo, the runner and Porelo's own tasks keep
+# the rest. The pool is read as vm_pool reads it; vm_pool runs
 # after the forge, so its VM size default, 1536 MiB, is repeated here.
-- name: capacity | Fit unset job bounds beside the VM pool within half the host
+- name: capacity | Fit unset job bounds beside the VM pool within the host's share for work
   vars:
     __forge_host_cpus: >-
       {{ __forge_capacity_host.results[0].content | b64decode | regex_findall('(?m)^processor\s*:') | length }}
@@ -17,6 +18,9 @@
       {{ (__forge_capacity_host.results[1].content | b64decode | regex_findall('(?m)^MemTotal:\s+([0-9]+) kB$')
           + ['0']) | first }}
     __forge_job_kib: "{{ (__forge_fit.stdout | from_json).job_kib if __forge_fit is defined else 0 }}"
+    __forge_share: >-
+      {{ (porelo_host_work_share ~ ' percent of the host, porelo_host_work_share') if porelo_host_work_share is defined
+         else 'half the host, porelo_host_work_share unset' }}
     __forge_pool_kib: >-
       {{ (vm_pool_systems | default((porelo_host_vm_pool | default({})).systems | default([])) | length)
          * (vm_pool_accounts | default((porelo_host_vm_pool | default({})).accounts | default(0)) | int)
@@ -44,6 +48,7 @@
           capacity: "{{ forge_runner_capacity | int if forge_runner_capacity is defined else none }}"
           job_cpus: "{{ forge_job_cpus | int if forge_job_cpus is defined else none }}"
           job_memory: "{{ forge_job_memory | string if forge_job_memory is defined else none }}"
+          share_percent: "{{ porelo_host_work_share if porelo_host_work_share is defined else none }}"
       register: __forge_fit
       changed_when: false
       failed_when: __forge_fit.rc not in [0, 1]
@@ -65,18 +70,29 @@
         forge_job_memory: "{{ (__forge_fit.stdout | from_json).job_memory }}"
       when: forge_job_memory is not defined
 
-    - name: capacity | Stop when the runner's jobs and the VM pool would take more than half the host
+    - name: capacity | Stop when the runner's jobs and the VM pool would take more than the host's share for work
       ansible.builtin.assert:
         that: (__forge_fit.stdout | from_json).ok
         fail_msg: >-
           {% if not (__forge_capacity_explicit | bool) %}
           this machine cannot carry one job of 1 CPU and 768m beside the VM pool of {{ __forge_pool_kib }} KiB:
-          {{ __forge_host_cpus }} processors and {{ __forge_host_kib }} KiB total
+          {{ __forge_host_cpus }} processors and {{ __forge_host_kib }} KiB total, of which jobs and the pool may take
+          {{ __forge_share }}; raise porelo_host_work_share or take a larger machine
           {% else %}
           asked for {{ forge_runner_capacity }} jobs of {{ forge_job_cpus }} CPUs and {{ forge_job_memory }}
-          ({{ __forge_job_kib }} KiB each) beside a VM pool of {{ __forge_pool_kib }} KiB within half the host:
-          {{ (__forge_host_cpus | int) // 2 }} of {{ __forge_host_cpus }} processors and
-          {{ (__forge_host_kib | int) // 2 }} of {{ __forge_host_kib }} KiB;
-          lower forge_runner_capacity or the job bounds
+          ({{ __forge_job_kib }} KiB each) beside a VM pool of {{ __forge_pool_kib }} KiB within {{ __forge_share }}:
+          {{ (__forge_fit.stdout | from_json).share_cpus }} of {{ __forge_host_cpus }} processors and
+          {{ (__forge_fit.stdout | from_json).share_kib }} of {{ __forge_host_kib }} KiB;
+          lower forge_runner_capacity or the job bounds, or raise porelo_host_work_share
           {% endif %}
         quiet: true
+
+    # Above the half is the operator's choice: the limit protects nothing but the host's own work, so up says it.
+    - name: capacity | Say that jobs and the VM pool may take more than half the host
+      ansible.builtin.debug:
+        msg: >-
+          porelo_host_work_share is {{ porelo_host_work_share }} percent: the forge's jobs and the VM pool may take
+          more than half this host, and Forgejo, the runner and Porelo's own tasks keep
+          {{ 100 - (porelo_host_work_share | int) }} percent
+      when: porelo_host_work_share is defined and (porelo_host_work_share | int) > 50
+      tags: [porelo_host_note]

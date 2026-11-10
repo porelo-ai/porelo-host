@@ -7,7 +7,8 @@ library alone, as Ansible itself is the first change. It reads and writes no fil
 
     ssh <machine> python3 - --limits "$(cat limits.json)" --choices '{"kvm": false, "forge": true}' < porelo-host-check
 
-Choices: `kvm`, `forge`, `jobs`, `job_cpus`, `job_memory`, `pool` (`systems`, `accounts`, `memory`), `ports`. Each is optional.
+Choices: `kvm`, `forge`, `jobs`, `job_cpus`, `job_memory`, `pool` (`systems`, `accounts`, `memory`), `ports`, `share_percent`
+(`porelo_host_work_share`, unset the limits' half). Each is optional.
 `--no-network` leaves the `reach_` findings `unknown`. `files/limits.json`, in the tarball, holds the limits, for an interface comparing an
 offer before renting too. The form of the answer is in [What a program reads](../../doc/lines.md).
 
@@ -25,6 +26,7 @@ offer before renting too. The form of the answer is in [What a program reads](..
 | `route`, `address`, `host_key` | an IPv4 default route, the address it sends from; an ed25519 host key |
 | `reach_<host>`, one for each | TCP to what the run fetches from, the machine's own package sources too; nothing is sent, and all share one clock of 10 s |
 | `disk` | reported, refusing nothing until a limit is measured |
+| `work_share` | only when asked: a whole number of percent from 1 to 100 |
 | `pool_shape`, `pool_kvm`, `pool_memory`, `jobs` | the pool and the jobs within the host's share |
 | `ports` | what binds on the host itself is free, but for what this host's own forge holds |
 

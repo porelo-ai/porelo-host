@@ -144,7 +144,7 @@
     mode: "0755"
   when: porelo_host_vm_pool is defined
 
-- name: runner | Check that the runner's jobs and the VM pool fit within half the host
+- name: runner | Check that the runner's jobs and the VM pool fit within the host's share for work
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/capacity.yml"
 
 - name: runner | Give jobs a name table of the forge that no job can change

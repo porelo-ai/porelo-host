@@ -1,6 +1,6 @@
 # HO127 — The Half For Jobs Is A Setting
 
-**Status:** Implementing.
+**Status:** Review.
 
 **Size:** S - one setting read in two roles and the check's fit, with their tests and docs; no contract another
 repository reads changes.
@@ -35,3 +35,8 @@ with its warning in the output. Set beyond the whole host, a refusal. A unit tes
 - **Docs:** `doc/machines.md`, `doc/index.md`, both roles' READMEs and argument specs say the share and its setting.
 - **Red first:** the check's fit at 75 accepts what it refuses at 50; the same request at 101 is refused; unset, today's
   answer and a refusal naming `porelo_host_work_share`; the pool's assertion and the note read from the role files.
+
+## Checked
+
+- Molecule on the test host (forge on, pool off, 2026-11-10): syntax, converge, idempotence, verify and side effect
+  pass with the setting unset; the unit tests cover the share set to 75 and 101 and the pool against it.

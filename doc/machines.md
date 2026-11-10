@@ -39,7 +39,9 @@ All came up on a VM given 4 GiB, which shows 3910 MiB, with 4 CPUs. No run tried
 ## Parallel builds
 
 **The rule today, not yet measured:** unset, 2 jobs when two of the smallest, 1 CPU and 768 MiB each, fit within half the host beside the VM pool, otherwise 1, each up to 4 CPUs and 8 GiB.
-When not even one fits, `up` refuses. So the job count stops at 2. `forge_runner_capacity`, `forge_job_cpus` and `forge_job_memory` set it otherwise, within the same half, and the half itself can't be set. Whether 2 and a
+When not even one fits, `up` refuses. So the job count stops at 2. `forge_runner_capacity`, `forge_job_cpus` and `forge_job_memory` set it otherwise, within the same half.
+**The half is a setting:** `porelo_host_work_share`, the percent of the host's processors and memory the jobs and the VM pool may take together, from 1 to 100, unset 50.
+Above 50 `up` says so, as Forgejo, the runner and the tasks then keep less than half; it protects nothing but the host's own work, so going past it is the operator's choice. Whether 2 and a
 half are right, and what happens to tasks past them, is "not measured".
 
 ## What `up` tells you early

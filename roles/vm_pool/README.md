@@ -9,7 +9,8 @@ and reaches jobs only as the Actions secret `PORELO_POOL_SSH` of each project's 
 `down`, `pool-key withdraw` takes that secret from every project, and the VMs with their snapshots and keys are deleted.
 
 Before changing libvirt or making VMs, the role checks that the total memory for every system and account fits in
-half of the host's `MemTotal`; the refusal names both amounts. The `memory` entry point runs this check alone with
+the host's share for work of its `MemTotal`, `porelo_host_work_share` percent and unset half; the refusal names both
+amounts and the share. The `memory` entry point runs this check alone with
 `vm_pool_systems`, `vm_pool_accounts` and `vm_pool_memory` (MiB per VM).
 
 A run account gives itself back with `sudo porelo-pool-give-back`, the one command that takes no argument: its VM

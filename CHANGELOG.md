@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The half of the host for jobs and the VM pool is a setting.** `porelo_host_work_share`, the percent of the
+  host's processors and memory the forge's jobs and the VM pool may take together, from 1 to 100; unset 50, as
+  before. The check refuses a value outside that before anything is installed, the forge's capacity and the pool's
+  memory refusals name it, and above 50 `up` writes a note that the host's own work keeps less than half.
+
 - **A host's builds also read the upstream snapshots.** Each new organization on the host holds
   `MAVEN_UPSTREAM_SNAPSHOTS_URL`, Sonatype's snapshots, which a repository's `forge` profile reads without a token for
   the `org.fuin.porelo` snapshots the host's registry does not hold, such as a parent pom.

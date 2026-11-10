@@ -39,20 +39,33 @@ def job_kib(size):
     return int(match[1]) * {"": 1, "k": 1024, "m": 1024**2, "g": 1024**3}[match[2]] // 1024
 
 
+def share_valid(percent):
+    """A share as porelo_host_work_share takes it: unset, or a whole number from 1 to 100."""
+    return percent is None or (type(percent) is int and 1 <= percent <= 100)
+
+
+def shared(amount, percent, limits):
+    """The part of the host's processors or memory that jobs and the VM pool may take: unset, the limits' share."""
+    if percent is None:
+        return amount // limits["host_share_divisor"]
+    return amount * percent // 100 if share_valid(percent) else 0
+
+
 def fit(request, limits):
     """The jobs a host carries beside its pool within its share: forge's capacity takes these, and refuses on not ok."""
-    share, job = limits["host_share_divisor"], limits["job"]
+    job, percent = limits["job"], request.get("share_percent")
     cpus, kib, pool = request["host_cpus"], request["host_kib"], request.get("pool_kib", 0)
-    budget = kib // share - pool
+    share_cpus, share_kib = shared(cpus, percent, limits), shared(kib, percent, limits)
+    budget = share_kib - pool
     wanted_cpus = request.get("job_cpus")
     wanted_memory = request.get("job_memory")
     smallest = job_kib(job["least_memory_mib"] * 1024**2 if wanted_memory is None else wanted_memory)
     capacity = request.get("capacity")
     if capacity is None:
-        fits = cpus // share >= job["automatic_jobs"] * (wanted_cpus or job["least_cpus"])
+        fits = share_cpus >= job["automatic_jobs"] * (wanted_cpus or job["least_cpus"])
         capacity = job["automatic_jobs"] if fits and budget >= job["automatic_jobs"] * smallest else 1
     if wanted_cpus is None:
-        wanted_cpus = max(job["least_cpus"], min(job["most_cpus"], cpus // share // max(1, capacity)))
+        wanted_cpus = max(job["least_cpus"], min(job["most_cpus"], share_cpus // max(1, capacity)))
     if wanted_memory is None:
         mib = budget // max(1, capacity) // 1024
         wanted_memory = f"{max(job['least_memory_mib'], min(job['most_memory_mib'], mib))}m"
@@ -63,17 +76,18 @@ def fit(request, limits):
         "job_memory": wanted_memory,
         "job_kib": each,
         "pool_kib": pool,
-        "share_cpus": cpus // share,
-        "share_kib": kib // share,
+        "share_cpus": share_cpus,
+        "share_kib": share_kib,
         "ok": (
-            capacity >= 1
+            share_valid(percent)
+            and capacity >= 1
             and wanted_cpus >= 1
             and each > 0
             and pool >= 0
             and cpus > 0
             and kib > 0
-            and capacity * wanted_cpus <= cpus // share
-            and capacity * each + pool <= kib // share
+            and capacity * wanted_cpus <= share_cpus
+            and capacity * each + pool <= share_kib
         ),
     }
 
@@ -391,6 +405,15 @@ def check_disk(machine, findings, limits):
 
 def check_budgets(findings, limits, choices, cpus, kib):
     """The forge's jobs and the pool, within the host's share; the same answer forge's capacity takes."""
+    percent = choices.get("share_percent")
+    if percent is not None:
+        findings.check(
+            "work_share",
+            share_valid(percent),
+            percent,
+            "a whole number of percent from 1 to 100",
+            "Set porelo_host_work_share from 1 to 100, or leave it unset for half the host.",
+        )
     pool = choices.get("pool")
     pool_kib = 0
     if pool:
@@ -413,7 +436,7 @@ def check_budgets(findings, limits, choices, cpus, kib):
             "A VM pool makes VMs: say this host needs KVM, or ask for no pool.",
         )
         pool_kib = len(systems) * accounts * memory * 1024 if shape else 0
-        share = kib // limits["host_share_divisor"]
+        share = shared(kib, percent, limits)
         findings.check(
             "pool_memory",
             pool_kib <= share,
@@ -432,6 +455,7 @@ def check_budgets(findings, limits, choices, cpus, kib):
             "capacity": choices.get("jobs"),
             "job_cpus": choices.get("job_cpus"),
             "job_memory": choices.get("job_memory"),
+            "share_percent": percent,
         },
         limits,
     )

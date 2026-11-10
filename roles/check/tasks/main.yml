@@ -16,6 +16,8 @@
       jobs: "{{ forge_runner_capacity | int if forge_runner_capacity is defined else none }}"
       job_cpus: "{{ forge_job_cpus | int if forge_job_cpus is defined else none }}"
       job_memory: "{{ forge_job_memory | string if forge_job_memory is defined else none }}"
+      # The percent of the host the jobs and the pool may take together; the check refuses one outside 1 to 100.
+      share_percent: "{{ porelo_host_work_share if porelo_host_work_share is defined else none }}"
       # Read as the forge's capacity and the pool's role read them, so all three budget the same pool.
       pool: >-
         {{ {'systems': vm_pool_systems | default(porelo_host_vm_pool.systems | default([])),

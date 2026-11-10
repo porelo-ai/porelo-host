@@ -65,7 +65,7 @@ argument_specs:
       forge_runner_capacity:
         type: int
         description: >-
-          Concurrent jobs; unset chooses 2 when two minimum jobs fit half the host beside the VM pool, else 1.
+          Concurrent jobs; unset chooses 2 when two minimum jobs fit the host's share for work beside the VM pool, else 1.
       forge_runner_cache_port:
         type: int
         default: 4000
@@ -76,10 +76,15 @@ argument_specs:
         description: The port of the runner's cache proxy, the one a job's actions/cache is given.
       forge_job_cpus:
         type: int
-        description: CPU quota per job; unset fits half the processors across the jobs, from 1 to 4 cores.
+        description: CPU quota per job; unset fits the share of the processors across the jobs, from 1 to 4 cores.
       forge_job_memory:
         type: str
-        description: Memory per job; unset fits half the host beside the VM pool, from 768 MiB to 8 GiB in whole MiB.
+        description: Memory per job; unset fits the host's share for work beside the VM pool, from 768 MiB to 8 GiB in whole MiB.
+      porelo_host_work_share:
+        type: int
+        description: >-
+          The percent of the host's processors and memory the forge's jobs and the VM pool may take together, 1 to
+          100; unset 50, half the host. Above 50 up says so, as Forgejo, the runner and the tasks keep the rest.
       forge_job_pids_limit:
         type: int
         default: 2048
@@ -119,18 +124,23 @@ argument_specs:
         default: false
         description: Lets Forgejo migrate from a private address, for a stand-in central forge on the host.
   capacity:
-    short_description: Refuse runner jobs that, with the VM pool, would take more than half the host.
+    short_description: Refuse runner jobs that, with the VM pool, would take more than the host's share for work.
     options:
       forge_runner_capacity:
         type: int
         description: >-
-          Concurrent jobs; unset chooses 2 when two minimum jobs fit half the host beside the VM pool, else 1.
+          Concurrent jobs; unset chooses 2 when two minimum jobs fit the host's share for work beside the VM pool, else 1.
       forge_job_cpus:
         type: int
-        description: CPU quota per job; unset fits half the processors across the jobs, from 1 to 4 cores.
+        description: CPU quota per job; unset fits the share of the processors across the jobs, from 1 to 4 cores.
       forge_job_memory:
         type: str
-        description: Memory per job; unset fits half the host beside the VM pool, from 768 MiB to 8 GiB in whole MiB.
+        description: Memory per job; unset fits the host's share for work beside the VM pool, from 768 MiB to 8 GiB in whole MiB.
+      porelo_host_work_share:
+        type: int
+        description: >-
+          The percent of the host's processors and memory the forge's jobs and the VM pool may take together, 1 to
+          100; unset 50, half the host. Above 50 up says so, as Forgejo, the runner and the tasks keep the rest.
   down:
     short_description: The forge taken off the host before it is given back, its secrets and units with it.
     options:

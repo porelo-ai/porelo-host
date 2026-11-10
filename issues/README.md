@@ -15,6 +15,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho127"></a>[HO127](HO127-The-Half-For-Jobs-Is-A-Setting.md) | S | - | The share of the host for jobs and the VM pool becomes a setting, today's half its default, `up`'s refusal naming it. |
 | <a id="ho154"></a>[HO154](HO154-A-Task-Account-Pushes-Only-Its-Own-Task-Branches.md) | S | - | A task's token pushes and force-pushes only `porelo/<task>` of its own person's tasks; the host refuses any other ref from that account. |
 | <a id="ho152"></a>[HO152](HO152-A-Burst-Never-Stops-A-Gate-Socket.md) | XS | - | Bug: a burst of connections never stops a gate socket for good: no trigger limit fails the forge, judge or Matrix gates, each bounds its connections, and up checks that every gate socket listens. |
 | <a id="ho151"></a>[HO151](HO151-The-Pinned-Jdk-Action-Takes-The-Shared-Rule.md) | XS | - | The CI's pinned GraalVM is fetched by the shared rule: cached by its digest, tried again by `pinned.sh`, with the job's token from github.com. |
@@ -60,7 +61,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho127"></a>[HO127](HO127-The-Half-For-Jobs-Is-A-Setting.md) | S | - | The share of the host for jobs and the VM pool becomes a setting, today's half its default, `up`'s refusal naming it. |
 | <a id="ho125"></a>[HO125](HO125-What-A-Task-And-A-Job-Take.md) | L | [HO127](#ho127) | The measuring run also reads a task, an agent's fixed start and Maven jobs, so a size can rest on what work takes: the tool for one measuring issue in Porelo. |
 | <a id="ho157"></a>[HO157](HO157-Molecule-And-The-Rehearsal-Run-On-The-Package.md) | M | - | Molecule and the move rehearsal install the local `porelo-host` package and check its version; `porelo-vm` moves to `build/`. |
 | <a id="ho156"></a>[HO156](HO156-The-Collection-Installs-The-Hosts-Own-Program.md) | L | - | The host runs its admin work, gates, judge and pool through the installed `porelo-host` at the pinned version; the collection's scripts go, but for the stated exceptions. |

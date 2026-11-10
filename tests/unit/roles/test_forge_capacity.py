@@ -89,3 +89,28 @@ def test_explicit_bounds_that_do_not_fit_are_refused(tmp_path, explicit):
     assert "asked for" in output and "lower forge_runner_capacity or the job bounds" in output
     if len(explicit) == 3:
         assert "2 jobs of 4 CPUs and 8g" in output
+
+
+def test_a_share_above_the_half_carries_more_jobs_and_says_so(tmp_path):
+    """Prevent the half refusing what an operator chose to give the jobs, or the choice passing unsaid."""
+    done = capacity(tmp_path, 4, 8192, {"porelo_host_work_share": 75, "forge_runner_capacity": 3}, [3, 1, "1962m"])
+    output = done.stdout + done.stderr
+    assert done.returncode == 0, output
+    assert "porelo_host_work_share is 75 percent" in output and "keep 25 percent" in output
+
+
+def test_unset_the_share_is_named_in_the_refusal_and_nothing_is_said_above_it(tmp_path):
+    """Prevent a person meeting the half without learning it can be set."""
+    done = capacity(tmp_path, 4, 8192, {"forge_runner_capacity": 3})
+    output = done.stdout + done.stderr
+    assert done.returncode != 0, output
+    assert "within half the host, porelo_host_work_share unset: 2 of 4 processors" in output
+    assert "or raise porelo_host_work_share" in output and "percent: the forge's jobs" not in output
+
+
+def test_a_set_share_is_named_with_its_parts_in_the_refusal(tmp_path):
+    """Prevent a refusal under a raised share still speaking of the half."""
+    done = capacity(tmp_path, 4, 8192, {"porelo_host_work_share": 75, "forge_runner_capacity": 4})
+    output = done.stdout + done.stderr
+    assert done.returncode != 0, output
+    assert "within 75 percent of the host, porelo_host_work_share: 3 of 4 processors" in output

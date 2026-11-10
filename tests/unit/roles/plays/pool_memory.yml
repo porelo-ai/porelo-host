@@ -1,0 +1,10 @@
+---
+- name: Check the pool's memory against the host's share for work
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Run the pool's real memory check against this machine
+        ansible.builtin.include_role:
+            name: porelo.host.vm_pool
+            tasks_from: memory

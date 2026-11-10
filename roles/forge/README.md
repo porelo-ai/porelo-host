@@ -65,14 +65,16 @@ The [resource bounds](../../doc/index.md) are set by `forge_cpus`, `forge_memory
 `forge_job_memory`, `forge_job_pids_limit` and `forge_job_omp_num_threads`. Their defaults and types are in
 [`defaults/main.yml`](defaults/main.yml) and [`meta/argument_specs.yml`](meta/argument_specs.yml).
 
-Unset `forge_runner_capacity`, `forge_job_cpus` and `forge_job_memory` fit half the host beside the VM pool:
+Unset `forge_runner_capacity`, `forge_job_cpus` and `forge_job_memory` fit the host's share for work beside the VM
+pool, `porelo_host_work_share` percent of it (1 to 100; unset 50, half the host):
 2 jobs when two minimum jobs fit, otherwise 1; then up to 4 CPUs and 8 GiB per job, with floors of 1 CPU and
 768 MiB. Memory rounds down to whole MiB. A host with 16 processors and 32 GiB or more gets 2 jobs of 4 CPUs and
 8 GiB when the VM pool fits the remaining budget. Explicit bounds stay unchanged; `forge_job_omp_num_threads`
 defaults to the job's CPU quota. Before its configuration is written, the role
-checks one budget with the VM pool: capacity × `forge_job_cpus` stays within half the host's processors, and capacity
-× `forge_job_memory` plus the pool's VMs within half its `MemTotal`, so Forgejo, the runner and Porelo's own tasks keep
-the other half. A refusal names both sides; the `capacity` entry point runs this check alone. A job's `actions/cache`
+checks one budget with the VM pool: capacity × `forge_job_cpus` stays within the share of the host's processors, and
+capacity × `forge_job_memory` plus the pool's VMs within the share of its `MemTotal`, so Forgejo, the runner and
+Porelo's own tasks keep the rest. Above 50 the role writes a note saying so. A refusal names both sides and the
+setting; the `capacity` entry point runs this check alone. A job's `actions/cache`
 reaches the runner's cache on `127.0.0.1`, its server on `forge_runner_cache_port` (4000) and its proxy on
 `forge_runner_cache_proxy_port` (4001), inside the shared container network namespace. No cache port is published.
 

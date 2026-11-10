@@ -22,8 +22,13 @@ argument_specs:
         type: int
         default: 1
         description: Each pool VM's virtual CPUs.
+      porelo_host_work_share:
+        type: int
+        description: >-
+          The percent of the host's processors and memory the forge's jobs and the VM pool may take together, 1 to
+          100; unset 50, half the host. Above 50 up says so, as Forgejo, the runner and the tasks keep the rest.
   memory:
-    short_description: Refuse a pool whose VMs would take more than half the host's total memory.
+    short_description: Refuse a pool whose VMs would take more than the host's share for work of its memory.
     options:
       vm_pool_systems:
         type: list
@@ -38,5 +43,10 @@ argument_specs:
         type: int
         default: 1536
         description: Each pool VM's memory in MiB.
+      porelo_host_work_share:
+        type: int
+        description: >-
+          The percent of the host's processors and memory the forge's jobs and the VM pool may take together, 1 to
+          100; unset 50, half the host. Above 50 up says so, as Forgejo, the runner and the tasks keep the rest.
   down:
     short_description: The pool's VMs, their snapshots and keys taken off the host.

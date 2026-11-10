@@ -18,15 +18,22 @@
   vars:
     __vm_pool_memtotal: "{{ __vm_pool_meminfo.content | b64decode | regex_findall('(?m)^MemTotal:\\s+([0-9]+) kB$') }}"
 
-- name: memory | Stop when the pool would take more than half the host's memory
+- name: memory | Stop when the pool would take more than the host's share for work of its memory
   ansible.builtin.assert:
-    that: __vm_pool_memory_kib | int <= (__vm_pool_host_memory_kib | int) // 2
+    that: __vm_pool_memory_kib | int <= __vm_pool_share_kib | int
     fail_msg: >-
-      pool memory {{ __vm_pool_memory_kib }} KiB exceeds half of host memory {{ __vm_pool_host_memory_kib }} KiB
-      ({{ (__vm_pool_host_memory_kib | int) // 2 }} KiB); {{ vm_pool_systems | length }} systems x
+      pool memory {{ __vm_pool_memory_kib }} KiB exceeds {{ __vm_pool_share }} of host memory
+      {{ __vm_pool_host_memory_kib }} KiB ({{ __vm_pool_share_kib }} KiB); {{ vm_pool_systems | length }} systems x
       {{ vm_pool_accounts }} accounts x {{ vm_pool_memory }} MiB
     quiet: true
   vars:
     __vm_pool_host_memory_kib: >-
       {{ (__vm_pool_meminfo.content | b64decode | regex_findall('(?m)^MemTotal:\s+([0-9]+) kB$') | first) | int }}
     __vm_pool_memory_kib: "{{ vm_pool_systems | length * (vm_pool_accounts | int) * (vm_pool_memory | int) * 1024 }}"
+    # The check refused a share outside 1 to 100 before anything changed; unset, half the host.
+    __vm_pool_share_kib: >-
+      {{ ((__vm_pool_host_memory_kib | int) * (porelo_host_work_share | int) // 100)
+         if porelo_host_work_share is defined else ((__vm_pool_host_memory_kib | int) // 2) }}
+    __vm_pool_share: >-
+      {{ (porelo_host_work_share ~ ' percent, porelo_host_work_share,') if porelo_host_work_share is defined
+         else 'half, porelo_host_work_share unset,' }}

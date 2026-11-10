@@ -28,15 +28,17 @@ The shared [Matrix homeserver](matrix.md) accepts clients through the Matrix tra
 registration token.
 
 Forgejo is bounded to 2 CPUs of time, 2 GiB of memory and 1024 processes and threads; its runner daemon to 1 CPU,
-512 MiB and 256. The runner's unset job count, CPU and memory bounds fit half the host beside the VM pool,
+512 MiB and 256. The runner's unset job count, CPU and memory bounds fit the host's share for work beside the VM pool,
+`porelo_host_work_share` percent of it, 1 to 100 and unset 50,
 as the forge role's README says. Each job gets 2048 processes and threads,
 with `OMP_NUM_THREADS` defaulting to its CPU quota.
-Before writing the runner's configuration, `up` refuses jobs that, with the VM pool, would take more than half the
-host: capacity × CPUs per job above half the processors, or capacity × memory per job plus the pool's memory above
-half of `MemTotal`, naming both sides.
+Before writing the runner's configuration, `up` refuses jobs that, with the VM pool, would take more than that share:
+capacity × CPUs per job above its part of the processors, or capacity × memory per job plus the pool's memory above
+its part of `MemTotal`, naming both sides and the setting. Set above 50, `up` writes a note that the host's own work
+keeps less than half; set outside 1 to 100, the check refuses it before anything is installed.
 `up` refuses Porelo's account, and the forge's two accounts where it runs, if their user managers lack any of
 `cpu`, `memory` and `pids`, naming the account and every missing controller. Before changing libvirt or making VMs,
-it also refuses a pool whose memory (systems × accounts per system × memory per VM) exceeds half of `MemTotal`,
+it also refuses a pool whose memory (systems × accounts per system × memory per VM) exceeds that share of `MemTotal`,
 naming the pool's memory and the host's total memory.
 
 **`porelo.host.down`, the other way round.** Pauses the follow timer and service before its checks, resuming the
