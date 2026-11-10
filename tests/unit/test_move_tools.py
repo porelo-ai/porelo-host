@@ -1049,6 +1049,7 @@ class RentedServer:
         signal_before_wait=None,
         signal_number=signal.SIGTERM,
         address="192.0.2.10",
+        timeout=10,
     ):
         environment = dict(self.environment)
         if hard_stop is not None:
@@ -1094,7 +1095,7 @@ class RentedServer:
                     time.sleep(0.01)
                 if (self.base / signal_at).exists():
                     process.send_signal(signal_number)
-            stdout, stderr = process.communicate(timeout=10)
+            stdout, stderr = process.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
             process.communicate()
@@ -1839,3 +1840,60 @@ def test_rented_phase_two_refuses_its_own_host_to_retire_and_an_agent_that_is_no
     )
     assert done.returncode != 0 and not server.events("ssh")
     assert ("own" in done.stderr) if case == "own-host" else ("no agent socket" in done.stderr)
+
+
+def test_rented_phase_two_holds_the_host_up_until_the_hold_file_goes(rented):
+    """Prevent down coming before another agent's live run on the same host has ended."""
+    import threading
+
+    server = rented()
+    hold = server.base / "hold"
+    server.environment["PORELO_REHEARSAL_HOLD_FILE"] = str(hold)
+    seen = {}
+
+    def release():
+        deadline = time.monotonic() + 8
+        while not hold.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.3)
+        seen["held"] = hold.exists()
+        seen["down_before"] = len(server.down_calls())
+        hold.unlink()
+
+    releaser = threading.Thread(target=release)
+    releaser.start()
+    done = phase_two(server)
+    releaser.join()
+    assert done.returncode == 0, done.stderr
+    assert seen == {"held": True, "down_before": 0}
+    steps = server.report()[1]
+    assert [line.split(" ", 2)[1] for line in steps if line.startswith(("OK ", "HOLD "))][-5:] == [
+        "push-pull",
+        "hold",
+        "hold",
+        "down",
+        "org-off",
+    ], steps
+
+
+def test_rented_phase_two_hard_stop_ends_a_hold_with_down(rented):
+    """Prevent a forgotten hold file keeping a rented server past its hard stop."""
+    server = rented()
+    hold = server.base / "hold"
+    server.environment["PORELO_REHEARSAL_HOLD_FILE"] = str(hold)
+    done = phase_two(server, hard_stop=12, timeout=30)
+    assert done.returncode == 124
+    steps = server.report()[1]
+    assert any(line.startswith("FAIL hold ") for line in steps), steps
+    assert len(server.down_calls()) == 1 and any(line.startswith("OK org-off ") for line in steps)
+
+
+def test_rented_phase_two_refuses_a_hold_file_that_is_already_there(rented):
+    """Prevent two runs sharing one hold, or a hold writing through another file."""
+    server = rented()
+    hold = server.base / "hold"
+    hold.write_text("another run's\n")
+    server.environment["PORELO_REHEARSAL_HOLD_FILE"] = str(hold)
+    done = phase_two(server)
+    assert done.returncode != 0 and "hold file" in done.stderr and not server.events("ssh")
+    assert hold.read_text() == "another run's\n"

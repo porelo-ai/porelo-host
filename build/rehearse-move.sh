@@ -628,6 +628,10 @@ rented_phase_two_options() {
         [ -f "$program" ] && [ -x "$program" ] || fail "no executable program at $program"
     done
     [ -S "$person_agent" ] || fail "no agent socket at $person_agent"
+    if [ -n "${PORELO_REHEARSAL_HOLD_FILE:-}" ]; then
+        [ ! -e "$PORELO_REHEARSAL_HOLD_FILE" ] && [ ! -L "$PORELO_REHEARSAL_HOLD_FILE" ] \
+            || fail "the hold file is there already: $PORELO_REHEARSAL_HOLD_FILE"
+    fi
     phase_two=yes
 }
 
@@ -871,7 +875,17 @@ EOF
     rented_abort_pending
     rented_line 'SKIP judge needs a task and its commit inside it (podman exec, Core 2026-11-10); built next'
     rented_step push-pull "pull and push $project with central and read its central state" rented_push_pull
+    if [ -n "${PORELO_REHEARSAL_HOLD_FILE:-}" ]; then
+        # Another agent's live run on this host goes on until it removes the file; the hard stop still ends it.
+        : > "$PORELO_REHEARSAL_HOLD_FILE"
+        rented_line "HOLD hold the host stays up for another run until $PORELO_REHEARSAL_HOLD_FILE is removed"
+        rented_step hold 'keep the host up until the hold file is removed' rented_hold
+    fi
     rented_abort_pending
+}
+
+rented_hold() {
+    while [ -e "$PORELO_REHEARSAL_HOLD_FILE" ]; do sleep 1; done
 }
 
 [ $# -ge 1 ] || usage

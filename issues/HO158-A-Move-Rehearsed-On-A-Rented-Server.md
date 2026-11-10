@@ -106,3 +106,5 @@ spends a test on it.
   Known limits: an add that fails having written nothing still asks for a removal, which then says the host may be
   left; a signal while the organization is cleaned up is taken only after it. Not yet run on a rented server.
   The judge step stays `SKIP` until a task's commit is made inside it (`podman exec`, Agent Core 2026-11-10).
+- A hold for another run on the same rental (MX99): `PORELO_REHEARSAL_HOLD_FILE` keeps the host up after push-pull
+  until the file is removed, and the hard stop still ends it with down; both seen red first against the stand-in.

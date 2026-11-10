@@ -88,6 +88,8 @@ Without the phase 2 options it stops after `up`. With them it also:
   that `--central-token` prints in the vault as `<forge>.central`; neither secret is on a command line or in the
   report;
 - pulls and pushes the project with central, and keeps `porelo host central-state --json` in the report;
+- with `PORELO_REHEARSAL_HOLD_FILE` set, makes that file after push-pull and keeps the host up until it is removed, so
+  another run on the same host goes on first; the hard stop still ends the hold and runs `down`;
 - after `down`, takes `rented` off the project and out of the organization, and names it if that fails.
 
 The judge step, a commit made inside a task and pushed to its own branch and to another, is not built yet; the report
