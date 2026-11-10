@@ -1064,6 +1064,7 @@ rented_steps() {
         if [ ! -f "$root/build/rehearse-steps/$hook" ] || [ ! -x "$root/build/rehearse-steps/$hook" ]; then
             rented_abort_pending
             rented_line "SKIP $hook not built yet"
+            [ "$hook" != tasks ] || : > "$state/tasks-skipped"
             continue
         fi
         hook_step=yes
