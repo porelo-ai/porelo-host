@@ -1,5 +1,6 @@
 """Guard the move's read-only check and the room's tunnel against saying more than they saw."""
 
+import base64
 import json
 import os
 import shlex
@@ -669,6 +670,9 @@ if name == 'ssh':
     remote = shlex.split(args[args.index('--') + 2])
     body = sys.stdin.read()
     event('ssh', args=args, remote=remote)
+    known = next((value.split('=', 1)[1] for value in args if value.startswith('UserKnownHostsFile=')), None)
+    if 'StrictHostKeyChecking=accept-new' in args and known and not Path(known).read_text():
+        Path(known).write_text('192.0.2.10 ssh-ed25519 AAAAHOST\n')
     if (base / 'connection-lost').exists():
         sys.exit(255)
     if remote[:2] == ['sudo', '-n']:
@@ -842,6 +846,7 @@ elif name == 'ansible-playbook':
     host = guest / 'etc/porelo-host'
     if verb == 'up':
         host.mkdir(parents=True, exist_ok=True)
+        (host / 'forge.conf').write_text('host=rented\naccount=rehearsal\n')
         (host / 'firewall.nft').write_text('retained firewall\n')
         policy = guest / 'etc/ssh/sshd_config.d/10-porelo-host.conf'
         policy.write_text('role-owned SSH policy\n')
@@ -860,6 +865,37 @@ elif name == 'ansible-playbook':
     sys.exit(settings.get('down_rc', 2 if partial else 0))
 elif name == 'sshd':
     event(name, args=args)
+elif name == 'org-program':
+    event('org', args=args)
+    verb = args[2] if len(args) > 2 else ''
+    if settings.get('org_rc', {}).get(verb):
+        sys.exit(settings['org_rc'][verb])
+elif name == 'central-token':
+    if settings.get('central_token_rc'):
+        sys.exit(settings['central_token_rc'])
+    print(settings.get('central_token', 'synthetic-central-token'))
+elif name == 'porelo-host':
+    event(name, args=args)
+    if args[:3] == ['org', 'status', '--json']:
+        calls = base / 'status-calls'
+        count = int(calls.read_text()) + 1 if calls.exists() else 1
+        calls.write_text(str(count))
+        admitted = count >= settings.get('admitted_after', 1)
+        login = settings.get('person', 'test-person')
+        persons = [dict(login=login, state='active', host_admin=True,
+                        projects=[dict(project='foo-project', role='admin')])] if admitted else []
+        print(json.dumps(dict(host='rented', refused=None, commit='a' * 40, pinned=None, persons=persons)))
+elif name == 'porelo':
+    given = sys.stdin.read()
+    for line in given.splitlines():
+        if line.startswith('vault-new '):
+            (base / 'given-passphrase').write_text(line.split(' ', 1)[1])
+    secret = settings.get('central_token', 'synthetic-central-token')
+    event(name, args=args, stdin_lines=[line.split(' ', 1)[0] if ' ' in line else '<value>' for line in given.splitlines()],
+          stdin_has_token=secret in given)
+    if args[:2] == ['host', 'central-state']:
+        print(json.dumps(dict(project=args[-1], state='even')))
+    sys.exit(settings.get('porelo_rc', {}).get(args[1] if len(args) > 1 else '', 0))
 else:
     raise SystemExit('unexpected stand-in ' + name)
 """
@@ -910,6 +946,10 @@ class RentedServer:
             "systemctl",
             "ansible-playbook",
             "sshd",
+            "org-program",
+            "central-token",
+            "porelo",
+            "porelo-host",
         ):
             path = self.bin / name
             path.write_text(f"#!{sys.executable}\n" + RENTED_COMMANDS)
@@ -1569,3 +1609,233 @@ rented_step up 'start a child only with no pending signal' sleep 30
         pytest.fail("a pending signal entered wait for a newly launched child")
     assert process.returncode == 143, stdout + stderr
     assert not waited.exists()
+
+
+PHASE_TWO_STEPS = [
+    "OK refuse-existing",
+    "OK check",
+    "OK up",
+    "OK org",
+    "OK project",
+    "OK stop",
+    "SKIP judge",
+    "OK push-pull",
+    "OK down",
+    "OK org-off",
+    "SKIP read-keys",
+    "delete the server",
+]
+
+
+def phase_two(server, *extra, **call):
+    import socket
+
+    agent = server.base / "agent.sock"
+    if not agent.exists():
+        listener = socket.socket(socket.AF_UNIX)
+        listener.bind(str(agent))
+        server.agent = listener
+    server.environment["PORELO_REHEARSAL_FOLLOW_TRIES"] = "3"
+    server.environment["PORELO_REHEARSAL_FOLLOW_PAUSE"] = "0"
+    return server.call(
+        "--org",
+        str(server.bin / "org-program"),
+        "--person",
+        "test-person",
+        "--person-agent",
+        str(agent),
+        "--central-token",
+        str(server.bin / "central-token"),
+        "--project",
+        "foo-project",
+        *extra,
+        **call,
+    )
+
+
+def test_rented_phase_two_runs_every_step_in_order_and_leaves_the_organization(rented):
+    """Prevent a phase-2 step skipped silently, or the host left in the test organization."""
+    server = rented()
+    done = phase_two(server, "--retire-host", "machines-foo")
+    assert done.returncode == 0, done.stderr
+    _, steps = server.report()
+    assert [next(p for p in PHASE_TWO_STEPS if line.startswith(p + " ")) for line in steps] == PHASE_TWO_STEPS, steps
+    org = [row["args"][2:] for row in server.events("org")]
+    verbs = [arguments[0] for arguments in org]
+    assert verbs == ["uncarry", "remove", "add", "change", "carry", "refresh", "uncarry", "remove"], org
+    assert org[0][-2:] == ["machines-foo", "foo-project"] and org[1][-1] == "machines-foo"
+    assert "--admin=test-person" in org[2] and org[2][-1] == "rented"
+    assert {"--address=192.0.2.10", "--ssh-port=22", "--forge-web-port=3000", "--forge-git-port=3001"} <= set(org[3])
+    assert "--host-key=ssh-ed25519 AAAAHOST" in org[3]
+    assert org[4][-2:] == ["rented", "foo-project"] and org[6][-2:] == ["rented", "foo-project"]
+    assert all(any(a.startswith("--id") for a in arguments) for arguments in org if arguments[0] != "refresh")
+
+
+def test_rented_phase_two_hands_secrets_on_standard_input_alone(rented):
+    """Prevent the vault passphrase or the central token reaching an argument list, the report or the output."""
+    server = rented()
+    done = phase_two(server)
+    assert done.returncode == 0, done.stderr
+    porelo = server.events("porelo")
+    stop = next(row for row in porelo if row["args"][:2] == ["host", "stop-secrets"])
+    assert stop["args"] == ["host", "stop-secrets", "--stdin", "vault-new"] and stop["stdin_lines"] == ["vault-new"]
+    put = next(row for row in porelo if row["args"][:2] == ["vault", "put"])
+    assert put["args"][-1] == "rented.central" and put["stdin_has_token"]
+    assert not any(row["stdin_has_token"] for row in porelo if row is not put)
+    events = (server.base / "events").read_text()
+    report, _ = server.report()
+    written = events + done.stdout + done.stderr + "".join(f.read_text() for f in report.iterdir() if f.is_file())
+    assert "synthetic-central-token" not in written
+    ssh = [row for row in server.events("ssh") if row["args"][row["args"].index("--") + 1].startswith("test-person@")]
+    assert ssh and all(f"IdentityAgent={server.base / 'agent.sock'}" in row["args"] for row in ssh)
+    assert all("StrictHostKeyChecking=yes" in row["args"] and "IdentityFile=none" in row["args"] for row in ssh)
+    encoded = (server.base / "given-passphrase").read_text()
+    passphrase = base64.b64decode(encoded).decode().strip()
+    assert len(passphrase) >= 40 and encoded not in written and passphrase not in written
+
+
+def test_rented_phase_two_waits_for_the_follow_to_admit_the_person(rented):
+    """Prevent the stop running before the follow made the person's account."""
+    server = rented(admitted_after=3)
+    done = phase_two(server)
+    assert done.returncode == 0, done.stderr
+    assert len([row for row in server.events("porelo-host") if row["args"][:2] == ["org", "status"]]) == 3
+
+
+def test_rented_phase_two_fails_when_the_follow_never_admits_and_still_leaves_the_organization(rented):
+    """Prevent a run that waits for ever, or ends with the host still in the organization."""
+    server = rented(admitted_after=99)
+    done = phase_two(server)
+    assert done.returncode != 0
+    _, steps = server.report()
+    assert any(line.startswith("FAIL project ") for line in steps), steps
+    assert not server.events("porelo"), "nothing is asked as the person before the follow admits them"
+    assert any(line.startswith("OK org-off ") for line in steps), steps
+    assert [row["args"][2] for row in server.events("org")][-2:] == ["uncarry", "remove"]
+
+
+def test_rented_phase_two_names_the_host_left_in_the_organization(rented):
+    """Prevent a failed removal passing unnoticed."""
+    server = rented(org_rc={"remove": 65})
+    done = phase_two(server)
+    assert done.returncode == 65
+    _, steps = server.report()
+    assert any(line.startswith("FAIL org-off ") for line in steps), steps
+    assert any(line.startswith("LEFT in the organization") for line in steps), steps
+
+
+def test_rented_phase_two_takes_off_only_what_it_put_on(rented):
+    """Prevent an uncarry of a project the run never carried when the add itself failed."""
+    server = rented(org_rc={"carry": 65})
+    done = phase_two(server)
+    assert done.returncode == 65
+    assert [row["args"][2] for row in server.events("org")] == ["add", "change", "carry", "uncarry", "remove"]
+    _, steps = server.report()
+    assert any(line.startswith("FAIL org ") for line in steps) and any(line.startswith("OK org-off ") for line in steps)
+
+
+def test_rented_phase_two_removes_a_host_whose_add_failed_half_way(rented):
+    """Prevent an add that wrote the card but answered an error leaving the host in the organization."""
+    server = rented(org_rc={"add": 65})
+    done = phase_two(server)
+    assert done.returncode == 65
+    assert [row["args"][2] for row in server.events("org")] == ["add", "remove"]
+
+
+def test_rented_phase_two_keeps_the_first_failure_as_the_exit(rented):
+    """Prevent a later org-off failure hiding the step that failed first."""
+    server = rented(admitted_after=99, org_rc={"remove": 65})
+    done = phase_two(server)
+    assert done.returncode == 1
+    _, steps = server.report()
+    assert any(line.startswith("FAIL project ") for line in steps) and any(
+        line.startswith("FAIL org-off ") for line in steps
+    )
+
+
+def test_rented_phase_two_refuses_a_failed_central_token_program(rented):
+    """Prevent an empty central token stored in the person's vault as if it were one."""
+    server = rented(central_token_rc=3)
+    done = phase_two(server)
+    assert done.returncode != 0
+    _, steps = server.report()
+    assert any(line.startswith("FAIL stop ") for line in steps), steps
+    assert not [row for row in server.events("porelo") if row["args"][:2] == ["vault", "put"]]
+
+
+def test_rented_phase_two_leaves_the_organization_after_a_failed_down(rented):
+    """Prevent a failed down skipping the organization's clean-up."""
+    server = rented(down_rc=2)
+    done = phase_two(server)
+    assert done.returncode == 2
+    assert (server.state / "known_hosts").exists() and not (server.state / "vault-passphrase").exists()
+    _, steps = server.report()
+    assert any(line.startswith("FAIL down ") for line in steps) and any(
+        line.startswith("OK org-off ") for line in steps
+    )
+
+
+@pytest.mark.parametrize("missing", ["--org", "--person", "--person-agent", "--central-token", "--project"])
+def test_rented_phase_two_refuses_a_partial_set_before_any_ssh(rented, missing):
+    """Prevent half a phase 2 run against a real server."""
+    server = rented()
+    given = {
+        "--org": str(server.bin / "org-program"),
+        "--person": "test-person",
+        "--person-agent": str(server.base / "agent.sock"),
+        "--central-token": str(server.bin / "central-token"),
+        "--project": "foo-project",
+    }
+    del given[missing]
+    done = server.call(*[part for pair in given.items() for part in pair])
+    assert done.returncode != 0 and "phase 2 needs" in done.stderr
+    assert not server.events("ssh")
+
+
+@pytest.mark.parametrize("option", ["--person", "--project", "--retire-host"])
+@pytest.mark.parametrize("value", ["-oProxyCommand=x", "Me", "a b", "rented/x"])
+def test_rented_phase_two_refuses_a_name_that_is_not_plain(rented, option, value):
+    """Prevent a login, project or host becoming an ssh or porelo option or another host's address."""
+    server = rented()
+    given = {"--person": "test-person", "--project": "foo-project", option: value}
+    done = server.call(
+        "--org",
+        str(server.bin / "org-program"),
+        "--person-agent",
+        str(server.base),
+        "--central-token",
+        str(server.bin / "central-token"),
+        *[part for pair in given.items() for part in pair],
+    )
+    assert done.returncode != 0 and "not a plain name" in done.stderr and not server.events("ssh")
+
+
+@pytest.mark.parametrize("case", ["own-host", "no-socket"])
+def test_rented_phase_two_refuses_its_own_host_to_retire_and_an_agent_that_is_no_socket(rented, case):
+    """Prevent the run removing its own card first, or ssh falling back to keys other than the person's agent."""
+    server = rented()
+    agent = server.base / "agent.sock"
+    if case == "no-socket":
+        agent.write_text("not a socket\n")
+        extra = []
+    else:
+        import socket
+
+        server.agent = socket.socket(socket.AF_UNIX)
+        server.agent.bind(str(agent))
+        extra = ["--retire-host", "rented"]
+    done = server.call(
+        "--org",
+        str(server.bin / "org-program"),
+        "--person",
+        "test-person",
+        "--person-agent",
+        str(agent),
+        "--central-token",
+        str(server.bin / "central-token"),
+        "--project",
+        "foo-project",
+        *extra,
+    )
+    assert done.returncode != 0 and not server.events("ssh")
+    assert ("own" in done.stderr) if case == "own-host" else ("no agent socket" in done.stderr)

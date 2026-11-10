@@ -29,7 +29,7 @@ vm=$root/build/porelo-vm
 
 say() { printf '%s\n' "$*" >&2; }
 fail() { say "FAILED: $*"; exit 1; }
-usage() { fail "usage: $0 start [--machine-file <file> | --bare] [--cpus <n>] [--memory <GiB>] [--disk <GiB>] | ssh [<command>...] | tunnel <login> <port> | down | rented <address> --key <file> [--login <user>] [--machine-file <file>] [--order-time <UTC>] [--zone <name>]"; }
+usage() { fail "usage: $0 start [--machine-file <file> | --bare] [--cpus <n>] [--memory <GiB>] [--disk <GiB>] | ssh [<command>...] | tunnel <login> <port> | down | rented <address> --key <file> [--login <user>] [--machine-file <file>] [--order-time <UTC>] [--zone <name>] [--org <program> --person <login> --person-agent <socket> --central-token <program> --project <name> [--retire-host <host>]]"; }
 
 # What libvirt lists of any rehearsal: its domains and volumes, one name a line.
 listed() {
@@ -595,7 +595,8 @@ rented_finish() {
                 fi
                 rented_line "SKIP down $down_message"
             fi
-            rented_line 'SKIP read-keys needs the test identity (phase 2)'
+            rented_org_off
+            rented_line 'SKIP read-keys the deploy keys at central are taken off by the operator'"'"'s own script'
             rm -rf "$state"
             deleted_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
             place=''
@@ -603,7 +604,8 @@ rented_finish() {
             rented_line "delete the server $server$place now ($deleted_at); $down_message"
         else
             rented_line "FAIL down run the host down -> exit $down_status; see $report/down.log and $report/down.lines"
-            rented_line 'SKIP read-keys needs the test identity (phase 2)'
+            rented_org_off
+            rented_line 'SKIP read-keys the deploy keys at central are taken off by the operator'"'"'s own script'
             rented_line "LEFT on server $server: host software, firewall and rehearsal files may remain at /etc/porelo-host and $staging; state in $state"
             status=$down_status
         fi
@@ -613,11 +615,132 @@ rented_finish() {
     exit "$status"
 }
 
+rented_phase_two_options() {
+    phase_two=no
+    if [ -z "$org_program$person$person_agent$central_token$project$retire_host" ]; then return 0; fi
+    [ -n "$org_program" ] && [ -n "$person" ] && [ -n "$person_agent" ] && [ -n "$central_token" ] && [ -n "$project" ] \
+        || fail 'phase 2 needs --org, --person, --person-agent, --central-token and --project together'
+    for name in "$person" "$project" ${retire_host:+"$retire_host"}; do
+        case $name in -*|*[!a-z0-9-]*) fail "not a plain name: $name" ;; esac
+    done
+    [ "$retire_host" != rented ] || fail 'the host to retire cannot be this run'"'"'s own'
+    for program in "$org_program" "$central_token"; do
+        [ -f "$program" ] && [ -x "$program" ] || fail "no executable program at $program"
+    done
+    [ -S "$person_agent" ] || fail "no agent socket at $person_agent"
+    phase_two=yes
+}
+
+# The organization's program, given by the person, run here with the test identity it carries.
+on_org() {
+    timeout --kill-after=5 300 "$org_program" org host "$@"
+}
+
+on_person() {
+    remote=
+    for argument do
+        quoted=$(printf '%s' "$argument" | sed "s/'/'\\\\''/g")
+        remote="$remote '$quoted'"
+    done
+    timeout --kill-after=2 "$ssh_limit" ssh -F /dev/null -o BatchMode=yes -o IdentitiesOnly=no -o ConnectTimeout=5 \
+        -o IdentityAgent="$person_agent" -o IdentityFile=none -o UserKnownHostsFile="$state/known_hosts" -o GlobalKnownHostsFile=/dev/null \
+        -o StrictHostKeyChecking=yes -o ControlMaster=no -o ControlPath=none -o ClearAllForwardings=yes \
+        -- "$person@$server" "$remote"
+}
+
+rented_org() {
+    change=rehearsal-$stamp
+    if [ -n "$retire_host" ]; then
+        on_org uncarry --id "$change-uncarry-$retire_host" "$retire_host" "$project"
+        on_org remove --id "$change-remove-$retire_host" "$retire_host"
+    fi
+    host_key=$(awk 'NR == 1 && $2 == "ssh-ed25519" {print $2 " " $3}' "$state/known_hosts")
+    [ -n "$host_key" ] || { echo 'no pinned ssh-ed25519 host key'; return 1; }
+    # Marked before asking: an add or carry that answers an error may still have written the change.
+    : > "$state/org-added"
+    on_org add --id "$change-add" --admin="$person" rented
+    on_org change --id "$change-change" --address="$server" --ssh-port=22 --host-key="$host_key" \
+        --forge-web-port=3000 --forge-git-port=3001 rented
+    : > "$state/org-carried"
+    on_org carry --id "$change-carry" rented "$project"
+}
+
+rented_project() {
+    on_org refresh --json rented
+    on_rented porelo-host org follow
+    tries=${PORELO_REHEARSAL_FOLLOW_TRIES:-90}
+    pause=${PORELO_REHEARSAL_FOLLOW_PAUSE:-10}
+    while :; do
+        # One lost connection while the follow runs is waited out like a person not yet admitted.
+        if on_rented porelo-host org status --json > "$report/org-status.json.tmp"; then
+            mv "$report/org-status.json.tmp" "$report/org-status.json"
+        fi
+        if [ -f "$report/org-status.json" ] && python3 -I -c 'import json,sys
+status=json.load(open(sys.argv[1]))
+person=next((row for row in status.get("persons", []) if row.get("login") == sys.argv[2]), {})
+sys.exit(0 if person.get("state") == "active" and any(row.get("project") == sys.argv[3] for row in person.get("projects", [])) else 1)' \
+            "$report/org-status.json" "$person" "$project"; then
+            return 0
+        fi
+        tries=$((tries - 1))
+        [ "$tries" -gt 0 ] || { echo "the follow did not admit $person to $project; its last answer, if any, is in $report/org-status.json"; return 1; }
+        sleep "$pause"
+    done
+}
+
+rented_stop() {
+    if [ ! -f "$state/vault-passphrase" ]; then
+        (umask 077; head -c 32 /dev/urandom | base64 > "$state/vault-passphrase")
+    fi
+    # The passphrase and the token travel on standard input alone; printf is the shell's own.
+    encoded=$(base64 -w0 < "$state/vault-passphrase")
+    printf 'vault-new %s\n' "$encoded" | on_person porelo host stop-secrets --stdin vault-new
+    encoded=''
+    on_person porelo host forge-token --if-forge
+    forge=$(on_rented sed -n 's/^host=//p' /etc/porelo-host/forge.conf)
+    case $forge in ''|*[!a-z0-9-]*) echo "no forge name in forge.conf: $forge"; return 1 ;; esac
+    token=$("$central_token") || { echo 'the central token program failed'; return 1; }
+    [ -n "$token" ] || { echo 'the central token program gave nothing'; return 1; }
+    printf '%s\n' "$token" | on_person porelo vault put --json "$forge.central"
+    token=''
+}
+
+rented_push_pull() {
+    on_person porelo host pull "$project"
+    on_person porelo host push "$project"
+    on_person porelo host central-state --json "$project" > "$report/central-state.json.tmp"
+    mv "$report/central-state.json.tmp" "$report/central-state.json"
+}
+
+rented_org_off() {
+    rm -f "$state/vault-passphrase"
+    [ "${phase_two:-no}" = yes ] && [ -f "$state/org-added" ] || return 0
+    off_status=0
+    if [ -f "$state/org-carried" ]; then
+        on_org uncarry --id "rehearsal-$stamp-uncarry" rented "$project" >> "$report/org-off.log" 2>&1 || off_status=$?
+    fi
+    if [ "$off_status" = 0 ]; then
+        on_org remove --id "rehearsal-$stamp-remove" rented >> "$report/org-off.log" 2>&1 || off_status=$?
+    fi
+    if [ "$off_status" = 0 ]; then
+        rented_line 'OK org-off take the host rented out of the organization -> exit 0'
+    else
+        rented_line "FAIL org-off take the host rented out of the organization -> exit $off_status; see $report/org-off.log"
+        if [ -f "$state/org-carried" ]; then
+            rented_line 'LEFT in the organization: the host rented, its card and what it carries'
+        else
+            rented_line 'LEFT in the organization, unless its add wrote nothing: the host rented and its card'
+        fi
+        [ "$status" != 0 ] || status=$off_status
+    fi
+}
+
 rented() {
     [ $# -ge 1 ] || usage
     server=$1
     shift
     key_file='' machine_file='' order_time='' account=root zone='' zone_given=no
+    org_program='' person='' person_agent='' central_token='' project='' retire_host=''
     while [ $# -gt 0 ]; do
         [ $# -ge 2 ] || usage
         case $1 in
@@ -626,6 +749,12 @@ rented() {
             --machine-file) machine_file=$2 ;;
             --order-time) order_time=$2 ;;
             --zone) zone=$2; zone_given=yes ;;
+            --org) org_program=$2 ;;
+            --person) person=$2 ;;
+            --person-agent) person_agent=$2 ;;
+            --central-token) central_token=$2 ;;
+            --project) project=$2 ;;
+            --retire-host) retire_host=$2 ;;
             *) usage ;;
         esac
         shift 2
@@ -645,6 +774,7 @@ rented() {
     if [ -n "$machine_file" ]; then
         [ -f "$machine_file" ] && [ -r "$machine_file" ] || fail "no readable machine file at $machine_file"
     fi
+    rented_phase_two_options
     now=$(date -u +%s)
     ordered=$now
     if [ -n "$order_time" ]; then
@@ -727,10 +857,20 @@ EOF
     rented_abort_pending
     rented_step check 'run the host preflight and observe CPU flags and /dev/kvm' rented_prepare_check
     rented_step up 'install the collection and judge up lines' rented_up
-    for step in stop project judge push-pull; do
+    if [ "$phase_two" = no ]; then
+        for step in stop project judge push-pull; do
+            rented_abort_pending
+            rented_line "SKIP $step needs the test identity (phase 2)"
+        done
         rented_abort_pending
-        rented_line "SKIP $step needs the test identity (phase 2)"
-    done
+        return 0
+    fi
+    rented_step org "put the host into the organization and carry $project" rented_org
+    rented_step project "refresh the host and wait for the follow to admit $person to $project" rented_project
+    rented_step stop "give $person's stop a new vault, a forge token and the central token" rented_stop
+    rented_abort_pending
+    rented_line 'SKIP judge needs a task and its commit inside it (podman exec, Core 2026-11-10); built next'
+    rented_step push-pull "pull and push $project with central and read its central state" rented_push_pull
     rented_abort_pending
 }
 

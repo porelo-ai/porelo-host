@@ -94,3 +94,15 @@ spends a test on it.
   `/dev/kvm` both there), `OK` up (512 lines, none failed or waiting; up did not stop for a person, since a fresh host
   has none until the follow makes one), `OK` down (no failed or waiting lines); stop, project, judge, push-pull and
   read-keys `SKIP` for phase 2. The last line named the server, its zone and the time to delete it.
+- Phase 2, built against the stand-in server in `tests/unit/test_move_tools.py`, each test seen red first: the
+  options `--org`, `--person`, `--person-agent`, `--central-token`, `--project` and `--retire-host`, all or none; the
+  steps org (retire the old host, add `rented`, its card with the pinned host key, carry), project (`org host refresh`,
+  then `org status --json` until the person is active in the project), stop (`stop-secrets --stdin vault-new` from a
+  passphrase made for the run, `forge-token`, the central token into the vault on standard input), push-pull (pull,
+  push, `central-state --json`), and org-off after down (uncarry, remove; `LEFT in the organization` when it fails).
+  Neither secret reaches an argument list, the report or the output. A code reading by another model found a token
+  program's failure passing unseen, markers written after a half-done add, the exit of the first failure overwritten
+  and ssh offering key files beside the agent; each fixed, with a red test first where the stand-in can show it.
+  Known limits: an add that fails having written nothing still asks for a removal, which then says the host may be
+  left; a signal while the organization is cleaned up is taken only after it. Not yet run on a rented server.
+  The judge step stays `SKIP` until a task's commit is made inside it (`podman exec`, Agent Core 2026-11-10).

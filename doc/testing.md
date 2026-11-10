@@ -69,12 +69,29 @@ An agent's move can be rehearsed before a host is rented, on a VM made the same 
     build/rehearse-move.sh ssh [<command>...]
     build/rehearse-move.sh tunnel <login> <homeserver port>
     build/rehearse-move.sh down
-    build/rehearse-move.sh rented <login@host> <known_hosts> [--machine-file <file>]
+    build/rehearse-move.sh rented <address> --key <file> [--login <user>] [--machine-file <file>] [--order-time <UTC>]
+        [--zone <name>] [--org <program> --person <login> --person-agent <socket> --central-token <program>
+        --project <name> [--retire-host <host>]]
 
-Non-bare start and rented preparation use the same exported package inputs as Molecule. For rented preparation,
-also set `PORELO_HOST_ADMIN_KEY` to the intended public Ed25519 admin key. It prepares an already leased host using
-the supplied known_hosts file and noninteractive sudo, preserving existing SSH keys; it neither rents nor deletes
-that machine. The SSH identity comes from the normal SSH configuration. Real rented preparation has not been run.
+`rented` runs a move on a server the operator rented: it claims the server, checks it, runs `up`
+and, on every exit, the host's `down`, and writes one line per step to a report directory outside the checkout, one per run.
+Without the phase 2 options it stops after `up`. With them it also:
+
+- puts the host into the test organization as `rented`, through `<program> org host ...` run here (a wrapper that
+  runs `porelo` as the test identity): it takes `--retire-host` off first, then adds `rented` with the person as its
+  admin, files its card (the address, ssh port 22, the host key pinned at the first connection, forge ports 3000 and
+  3001), and carries the project;
+- has `org host refresh` hand the organization's token to the host, and waits for the follow to admit the person to
+  the project, read from `porelo-host org status --json`;
+- logs in as the person through their agent alone (`--person-agent`, no key files), gives the stop a new vault on
+  standard input from a passphrase made for the run, mints the person's forge token, and stores the central token
+  that `--central-token` prints in the vault as `<forge>.central`; neither secret is on a command line or in the
+  report;
+- pulls and pushes the project with central, and keeps `porelo host central-state --json` in the report;
+- after `down`, takes `rented` off the project and out of the organization, and names it if that fails.
+
+The judge step, a commit made inside a task and pushed to its own branch and to another, is not built yet; the report
+says `SKIP judge`. The read keys at central are taken off by the operator's own script.
 
 `start` makes one domain `porelo-host-rehearsal-<time>`, by default with 8 vCPUs, 16 GiB and an 80 GiB disk. It installs the collection
 built from the checkout and runs `porelo.host.up` on the VM with the forge on, no VM pool and no KVM asked; `up`'s lines stay
