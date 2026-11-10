@@ -74,7 +74,6 @@ it is left out.
 | <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
 | <a id="ho162"></a>[HO162](HO162-A-Person-Starts-The-Hosts-Follow-At-Once.md) | S | - | A person has the host read the organization now, from the window or a command, instead of waiting for the five-minute timer. |
 | <a id="ho163"></a>[HO163](HO163-A-Tasks-Signing-Key-Is-Known-Where-It-Pushes.md) | S | - | A task's signing key is registered with the forge account that receives its push, so its commits verify on the host's forge; what the central forge can take is measured first. |
-| <a id="ho164"></a>[HO164](HO164-A-Projects-Review-Setting-Reaches-The-Branch-Protection.md) | XS | - | A project's `review: optional` or `required` reaches the host forge's protection of `main` on the next follow pass, so a single admin can merge. |
 | <a id="ho165"></a>[HO165](HO165-The-Push-To-Central-Takes-Repository-Names-And-Says-A-Refused-Token.md) | XS | [HO158](README.md#ho158) | `porelo-host-push` takes the project's repository names as well as the forge's, and says plainly when the central forge refuses the token. |
 
 ## Implementing
@@ -202,6 +201,7 @@ it is left out.
 
 | # | Title | Why |
 |---|---|---|
+| <a id="ho164"></a>[HO164](HO164-A-Projects-Review-Setting-Reaches-The-Branch-Protection.md) | A Project's Review Setting Reaches The Branch Protection | A project's `review: optional` or `required` reaches the host forge's protection of `main` on the next follow pass, so a single admin can merge. |
 | <a id="ho155"></a>HO155 | A Person Reads How Their Project's Repositories Stand Against Central | `porelo-host-push --central <project>` already gives a project's unlocked members the follow's answer, in their own account and without sudo. |
 | <a id="ho22"></a>HO22 | Ssh Reached Only Through The VPN Once It Is Up | replaced by the one-key design; there is no VPN, and SSH on port 22 is the host's only way in. |
 | <a id="ho62"></a>HO62 | The Forge's Own Reason For A Refused Password | replaced by the one-key design; the forge has no password. |

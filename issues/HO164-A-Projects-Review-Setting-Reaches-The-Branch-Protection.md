@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO164",
   "title": "A Project's Review Setting Reaches The Branch Protection",
-  "state": "Backlog",
+  "state": "Rejected",
   "size": "XS",
   "priority": "Medium",
   "rank": 5,
@@ -40,3 +40,8 @@ foo-2's `review` set to `required` in foo-project's file (22:13Z), the follow pa
 to one approval; set back to `optional` (22:29Z), the pass of 22:30Z set it to none; a protection of foo-1 set by
 hand to two approvals was put back to none by that same pass. Each read from the forge's own answer. What the move's
 admin met may have been another cause; the move's log should be read for it before anything is built.
+
+## Rejected
+
+Rejected by the operator on 2026-11-10: not reproduced on the foo-org host, and there is no single move log to read
+for another cause. If a single admin meets it again, it is filed anew with that run's log.
