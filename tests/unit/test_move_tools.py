@@ -1656,8 +1656,9 @@ PHASE_TWO_STEPS = [
     "SKIP window",
     "OK push-pull",
     "OK refused-token",
-    "OK down",
     "OK org-off",
+    "OK org-follow",
+    "OK down",
     "SKIP read-keys",
     "delete the server",
 ]
@@ -1918,13 +1919,14 @@ def test_rented_phase_two_holds_the_host_up_until_the_hold_file_goes(rented):
     assert done.returncode == 0, done.stderr
     assert seen == {"held": True, "down_before": 0}
     steps = server.report()[1]
-    assert [line.split(" ", 2)[1] for line in steps if line.startswith(("OK ", "HOLD "))][-6:] == [
+    assert [line.split(" ", 2)[1] for line in steps if line.startswith(("OK ", "HOLD "))][-7:] == [
         "push-pull",
         "refused-token",
         "hold",
         "hold",
-        "down",
         "org-off",
+        "org-follow",
+        "down",
     ], steps
 
 
@@ -2053,7 +2055,7 @@ def test_rented_phase_two_holds_the_host_up_after_a_failed_step_until_the_hold_f
     assert seen == {"held": True, "down_before": 0}
     steps = server.report()[1]
     marks = [line.split(" ", 2)[0] + " " + line.split(" ", 2)[1] for line in steps]
-    assert marks[marks.index("FAIL project") :][:4] == ["FAIL project", "HOLD failure", "OK down", "OK org-off"], steps
+    assert marks[marks.index("FAIL project") :][:4] == ["FAIL project", "HOLD failure", "OK org-off", "OK org-follow"], steps
     assert len(server.down_calls()) == 1
 
 
@@ -2077,7 +2079,7 @@ def test_rented_phase_two_resumes_a_held_run_from_up_and_its_failed_step(rented)
     steps = server.report()[1]
     marks = [line.split(" ", 2)[0] + " " + line.split(" ", 2)[1] for line in steps]
     after = marks[marks.index("FAIL project") :]
-    assert after[:16] == [
+    assert after[:18] == [
         "FAIL project",
         "HOLD failure",
         "RESUME the",
@@ -2093,6 +2095,8 @@ def test_rented_phase_two_resumes_a_held_run_from_up_and_its_failed_step(rented)
         "OK refused-token",
         "HOLD hold",
         "OK hold",
+        "OK org-off",
+        "OK org-follow",
         "OK down",
     ], steps
     assert [row["args"][2] for row in server.events("org")] == [

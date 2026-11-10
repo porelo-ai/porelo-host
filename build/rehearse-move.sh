@@ -572,6 +572,20 @@ rented_finish() {
     if [ -n "$timer" ]; then stop_tree "$timer"; wait "$timer" 2>/dev/null || true; timer=''; fi
     ssh_limit=300
     if [ "$owned" = yes ]; then
+        if [ "${phase_two:-no}" = yes ] && [ -f "$state/org-added" ]; then
+            # As a person would: the host leaves the organization and follows it, which takes the persons' memberships
+            # off, since down refuses a host where any are left.
+            off_status=0
+            rented_org_off
+            rm -f "$state/org-added" "$state/org-carried"
+            if [ "$off_status" = 0 ]; then
+                if on_root porelo-host org follow >> "$report/org-off.log" 2>&1; then
+                    rented_line 'OK org-follow the host followed the organization it left -> exit 0'
+                else
+                    rented_line "FAIL org-follow the host followed the organization it left -> exit $?; see $report/org-off.log"
+                fi
+            fi
+        fi
         down_status=0
         (trap - EXIT INT TERM ALRM; rented_down) > "$report/down.out.tmp" 2> "$report/down.log" &
         active=$!
