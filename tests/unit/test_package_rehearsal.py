@@ -278,3 +278,29 @@ def test_local_installation_refreshes_its_new_repository_before_dependencies():
     )
     install = next(i for i, t in enumerate(tasks) if t.get("register") == "__porelo_local_installed")
     assert refresh < install
+
+
+def _workflow_molecule_run(text):
+    steps = yaml.safe_load(text)["jobs"]["molecule"]["steps"]
+    return next(s for s in steps if s.get("name") == "The Molecule scenario on its VM")["run"]
+
+
+def test_the_runner_stages_the_pinned_published_packages_before_molecule():
+    """GitHub's runner has no local hand-over: Molecule refuses without PORELO_HOST_DEB, so CI fetches the pin."""
+    run = _workflow_molecule_run((ROOT / ".github/workflows/build.yml").read_text())
+    lines = [line.strip() for line in run.splitlines() if line.strip()]
+    fetch = next(i for i, line in enumerate(lines) if "build/fetch-host-deb.sh" in line)
+    assert lines[fetch].startswith("PORELO_HOST_DEB=$(build/fetch-host-deb.sh ")
+    assert "export PORELO_HOST_DEB PORELO_HOST_PACKAGES" in lines
+    assert lines.index("build/molecule.sh") > fetch
+    assert lines[0] == "set -eu"
+
+
+def test_fetch_host_deb_reads_every_pin_it_needs_from_the_role():
+    """The fetch takes version, repository, key and fingerprint from the role's defaults, never its own copy."""
+    defaults = yaml.safe_load((ROOT / "roles/porelo/defaults/main.yml").read_text())
+    script = (ROOT / "build/fetch-host-deb.sh").read_text()
+    for pin in ("porelo_host_version", "porelo_repository_url", "porelo_key_url", "porelo_key_fingerprint"):
+        assert f"pinned {pin}" in script and pin in defaults
+    assert defaults["porelo_key_fingerprint"] not in script and "jfrog" not in script
+    assert "--with-colons --show-keys" in script and "signed-by=" in script

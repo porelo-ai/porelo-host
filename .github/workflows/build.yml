@@ -156,9 +156,15 @@ jobs:
                   sudo setfacl -m "u:$USER:rw" /run/libvirt/libvirt-sock
                   virsh -c qemu:///system list --all >/dev/null
 
+            # The runner has no local hand-over: the pinned published porelo-host and porelo of its run, signed.
             - name: The Molecule scenario on its VM
               env:
                   # The pool VM got an address on GitHub's runner but never said ready; local Molecule runs the pool.
                   PORELO_HOST_MOLECULE_POOL: "off"
                   PORELO_HOST_MOLECULE_KVM: ${{ matrix.kvm }}
-              run: build/molecule.sh
+              run: |
+                  set -eu
+                  PORELO_HOST_DEB=$(build/fetch-host-deb.sh "$RUNNER_TEMP/packages")
+                  PORELO_HOST_PACKAGES=$RUNNER_TEMP/packages
+                  export PORELO_HOST_DEB PORELO_HOST_PACKAGES
+                  build/molecule.sh

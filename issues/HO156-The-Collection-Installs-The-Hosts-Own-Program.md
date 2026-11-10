@@ -95,3 +95,7 @@ installation, the measuring run and a pool VM's give-back.
   converge, idempotence and verify pass; on the VM `/etc/sudoers.d/porelo-host-person` is the only rule file, and none
   of the former scripts nor `porelo-vm` is installed. side_effect stops at down on hostadmin's membership, as above,
   until the host program has a person purge.
+- main's first build with this issue went red in both Molecule jobs: GitHub's runner has no local hand-over, and
+  Molecule refuses without `PORELO_HOST_DEB`. The job now fetches the pinned published `porelo-host` and `porelo` of
+  snapshot 462, signed by the pinned key, with `build/fetch-host-deb.sh`; a unit test over the workflow, seen red on
+  main's, holds it.
