@@ -37,9 +37,16 @@ images=${PORELO_HOST_IMAGES:-}
 if [ -n "$images" ]; then
     case "$images" in /*) ;; *) fail "PORELO_HOST_IMAGES must be an absolute directory: $images" ;; esac
     [ -d "$images" ] || fail "PORELO_HOST_IMAGES is no directory: $images"
-    other=$(find "$images" -mindepth 1 -maxdepth 1 ! \( -type f -regex '.*/[0-9a-f]\{64\}\.tar' \) -print) \
-        || fail "could not read $images"
-    [ -z "$other" ] || fail "PORELO_HOST_IMAGES holds more than regular <digest>.tar files: $other"
+    # The name is matched by grep -E, whose dialect is fixed, not by find's -regex, which differs between finds.
+    [ -r "$images" ] && [ -x "$images" ] || fail "could not read $images"
+    other=
+    for entry in "$images"/* "$images"/.[!.]* "$images"/..?*; do
+        [ -e "$entry" ] || [ -L "$entry" ] || continue
+        if [ -L "$entry" ] || [ ! -f "$entry" ] || ! printf '%s\n' "${entry##*/}" | grep -Eqx '[0-9a-f]{64}\.tar'; then
+            other="$other $entry"
+        fi
+    done
+    [ -z "$other" ] || fail "PORELO_HOST_IMAGES holds more than regular <digest>.tar files:$other"
 fi
 
 # --- the acceptance tooling, handed over from a checked build -------------------------------------------------------
