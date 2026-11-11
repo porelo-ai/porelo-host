@@ -75,8 +75,17 @@ done
 host_start c
 
 state() { # <task>: true or false as porelo's status says it runs; anything else is no answer and fails the step
-    bounded 60 "$REHEARSAL_PERSON_SSH" porelo task status "rehearsal-$1" --json < /dev/null > "$REHEARSAL_REPORT/tasks.$1.json" \
-        || { echo "porelo task status rehearsal-$1 failed" >&2; exit 1; }
+    # A start still under way has made no task yet: that is "not running", which the caller waits on.
+    if ! bounded 60 "$REHEARSAL_PERSON_SSH" porelo task status "rehearsal-$1" --json < /dev/null \
+        > "$REHEARSAL_REPORT/tasks.$1.json" 2> "$REHEARSAL_REPORT/tasks.$1.err"; then
+        if grep -q "'rehearsal-$1' is not a task of this machine" "$REHEARSAL_REPORT/tasks.$1.err"; then
+            echo false
+            return 0
+        fi
+        cat "$REHEARSAL_REPORT/tasks.$1.err" >&2
+        echo "porelo task status rehearsal-$1 failed" >&2
+        exit 1
+    fi
     python3 -I -c 'import json, sys
 running = json.load(open(sys.argv[1])).get("running")
 if not isinstance(running, bool): sys.exit("no running field in " + sys.argv[1])
