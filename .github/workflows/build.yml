@@ -134,15 +134,19 @@ jobs:
             - name: libvirt with its network, qemu-img, virt-install, xorriso and skopeo, by version
               run: |
                   set -eu
-                  sudo apt-get update -qq
-                  sudo apt-get install -y -qq --no-install-recommends \
-                      libvirt-daemon-system=12.0.0-1ubuntu5.6 \
-                      qemu-system-x86=1:10.2.1+ds-1ubuntu3.3 \
-                      qemu-utils=1:10.2.1+ds-1ubuntu3.3 \
-                      dnsmasq-base=2.92-1ubuntu0.5 \
-                      virtinst=1:5.1.0-1 \
-                      xorriso=1:1.5.6-1.1ubuntu4 \
-                      skopeo=1.21.0~pre1-2build1
+                  install() {
+                      sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends \
+                          libvirt-daemon-system=12.0.0-1ubuntu5.6 \
+                          qemu-system-x86=1:10.2.1+ds-1ubuntu3.3 \
+                          qemu-utils=1:10.2.1+ds-1ubuntu3.3 \
+                          dnsmasq-base=2.92-1ubuntu0.5 \
+                          virtinst=1:5.1.0-1 \
+                          xorriso=1:1.5.6-1.1ubuntu4 \
+                          skopeo=1.21.0~pre1-2build1
+                  }
+                  # Temporary, for Canonical's archive outage of 2026-11-11, removed once Canonical is back: after a
+                  # failed install, the same suites from a public mirror, still checked against Ubuntu's keyring.
+                  install || { sudo build/apt-fallback.sh && install; }
                   sudo virsh pool-info images >/dev/null 2>&1 || {
                       sudo mkdir -p /var/lib/libvirt/images
                       sudo virsh pool-define-as images dir --target /var/lib/libvirt/images
@@ -213,6 +217,23 @@ jobs:
                   path: ${{ runner.temp }}/images
                   key: ${{ steps.forge-images.outputs.key }}
 
+            # The VM's pinned cloud image from a cache too, keyed by its digest, so an outage of cloud-images.ubuntu.com
+            # leaves a warm run green; build/molecule.sh downloads it only on a miss and holds it to the digest.
+            - name: The test image's cache key and place
+              id: test-image
+              run: |
+                  set -eu
+                  read -r url digest < build/test-image
+                  echo "key=test-image-$digest" >> "$GITHUB_OUTPUT"
+                  echo "path=$HOME/.porelo/cache/${url##*/}.$digest" >> "$GITHUB_OUTPUT"
+                  echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+            - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              id: test-image-cache
+              with:
+                  path: ${{ steps.test-image.outputs.path }}
+                  key: ${{ steps.test-image.outputs.key }}
+
             # The runner has no local hand-over: the pinned published porelo-host and porelo of its run, signed.
             - name: The Molecule scenario on its VM
               env:
@@ -227,3 +248,22 @@ jobs:
                   PORELO_HOST_PACKAGES=$RUNNER_TEMP/packages
                   export PORELO_HOST_DEB PORELO_HOST_PACKAGES
                   build/molecule.sh
+
+            # Saved even after a red scenario, but only an image that has the pinned digest.
+            - name: The downloaded test image holds its pinned digest
+              id: test-image-checked
+              if: always() && steps.test-image-cache.outputs.cache-hit != 'true'
+              env:
+                  IMAGE: ${{ steps.test-image.outputs.path }}
+                  DIGEST: ${{ steps.test-image.outputs.digest }}
+              run: |
+                  set -eu
+                  if [ -f "$IMAGE" ] && [ "$(sha256sum "$IMAGE" | cut -d' ' -f1)" = "$DIGEST" ]; then
+                      echo "ok=true" >> "$GITHUB_OUTPUT"
+                  fi
+
+            - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              if: always() && steps.test-image-checked.outputs.ok == 'true'
+              with:
+                  path: ${{ steps.test-image.outputs.path }}
+                  key: ${{ steps.test-image.outputs.key }}

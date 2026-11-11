@@ -118,11 +118,12 @@ trap 'exit 130' INT TERM
 # --- the base image, by its pinned digest ----------------------------------------------------------------------------
 read -r url digest < "$root/build/test-image"
 printf '%s\n' "$digest" | grep -Eqx '[0-9a-f]{64}' || fail "build/test-image names no SHA-256: $digest"
-sums=$(curl -fsSL "${url%/*}/SHA256SUMS") || fail "could not read ${url%/*}/SHA256SUMS"
-printf '%s\n' "$sums" | grep -qx "$digest \*${url##*/}" \
-    || fail "Ubuntu's SHA256SUMS does not name $digest for ${url##*/}"
 image=$cache/${url##*/}.$digest
 if [ ! -f "$image" ]; then
+    # Ubuntu's sums are read only for a download: a cached image is held to its pinned digest below.
+    sums=$(curl -fsSL "${url%/*}/SHA256SUMS") || fail "could not read ${url%/*}/SHA256SUMS"
+    printf '%s\n' "$sums" | grep -qx "$digest \*${url##*/}" \
+        || fail "Ubuntu's SHA256SUMS does not name $digest for ${url##*/}"
     mkdir -p "$cache"
     say "downloading ${url##*/} once, about 865 MB"
     curl -fsSL --retry 3 -o "$image.part" "$url" || fail "could not download $url"
@@ -142,7 +143,7 @@ if [ "$pool_check" = on ]; then
 fi
 ssh-keygen -q -t ed25519 -N '' -C "$name" -f "$dir/id_ed25519"
 ssh-keygen -q -t ed25519 -N '' -C "$name" -f "$dir/host_ed25519"
-"$vm" seed "$dir" "$name" molecule "$dir/id_ed25519.pub" "$dir/host_ed25519"
+"$vm" seed "$dir" "$name" molecule "$dir/id_ed25519.pub" "$dir/host_ed25519" "$root/build/apt-fallback.cloud-config"
 
 # --- the VM -----------------------------------------------------------------------------------------------------------
 # Marked before it is made, so a half-made VM is deleted too; deleting what is not there changes nothing.

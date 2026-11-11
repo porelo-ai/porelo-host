@@ -51,6 +51,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho171"></a>[HO171](HO171-The-Fallback-Ubuntu-Mirror-Removed.md) | XS | - | Once Canonical's Ubuntu archive is back, build/apt-fallback.sh, build/apt-fallback.cloud-config and their three uses go, and apt reads Canonical's archive again on the runner and in every VM. |
 | <a id="ho159"></a>[HO159](HO159-The-Hosts-Tests-Follow-The-Pyramid.md) | L | - | The host's tests follow the pyramid (ST296): its pool and role logic unit-tested over fakes, its subprocess tests narrowed, `tests/unit` and `tests/integration` apart, and Molecule's sleeps gone. |
 | <a id="ho167"></a>[HO167](HO167-Down-And-A-Host-The-Organization-No-Longer-Lists.md) | - | - | `down` on a host the organization no longer lists, while persons still hold memberships, names them and asks y/N before it takes them off and goes down; `--force` skips the question, and without a terminal it refuses. |
 
