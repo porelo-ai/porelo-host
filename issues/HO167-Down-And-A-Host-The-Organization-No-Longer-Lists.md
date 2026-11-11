@@ -5,12 +5,12 @@
   "$schema": "issue-1.json",
   "id": "HO167",
   "title": "Down And A Host The Organization No Longer Lists",
-  "state": "Idea",
+  "state": "Accepted",
   "size": "-",
   "priority": "Medium",
   "rank": 4,
   "blockedBy": [],
-  "covers": "Question: whether `down` should refuse a host whose persons still hold project memberships, and what takes those memberships off a host the organization no longer lists, since such a host does not follow the organization any more."
+  "covers": "`down` on a host the organization no longer lists, while persons still hold memberships, names them and asks y/N before it takes them off and goes down; `--force` skips the question, and without a terminal it refuses."
 }
 ```
 
@@ -29,5 +29,12 @@ the host out). The rehearsal now takes the project off and lets the host follow 
 out, then runs `down` (run 5: all OK). A person doing the same by hand has no such order to follow, and nothing tells
 them. Raised by Agent Coordinator for the morning.
 
-**Open:** whether the follow of a host that is no longer listed should end its memberships (the organization's word
-that it is out), whether `down` should say which order works, or both.
+**Decided.** `down` on a host that the organization no longer lists, while persons still hold project memberships
+other than host-admin:
+
+- warns and names each of those memberships, person and project;
+- then asks y/N; on yes it takes them off and goes down, on anything else it changes nothing and exits non-zero;
+- with `--force` it skips the question, takes them off and goes down;
+- without a terminal and without `--force` it refuses, with words naming the memberships and `--force`.
+
+A host the organization still lists keeps today's refusal and its advice.
