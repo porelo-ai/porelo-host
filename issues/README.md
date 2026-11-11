@@ -67,6 +67,7 @@ it is left out.
 |---|---|---|---|
 | <a id="ho23"></a>[HO23](HO23-A-Machine-Rented-And-Given-Back-By-OpenTofu.md) | L | - | An administrator rents and gives back a host by one OpenTofu module per provider, its state kept encrypted with the administrator, outside the interface. |
 | <a id="ho168"></a>[HO168](HO168-Forgejo-Images-From-A-Cache-In-The-Build.md) | M | - | The Molecule job takes the forge role's three pinned images from a cache kept by their digests, so an outage of codeberg.org, code.forgejo.org or docker.io leaves it green; only the newest digests stay cached. |
+| <a id="ho169"></a>[HO169](HO169-The-Forge-Proves-The-Repository-Of-Them-All.md) | S | - | porelo-host's Molecule scenario and rehearsal prove `porelo-all` on the host's forge: a private repository the follow makes, its `main` taken only from its rebuild identity, that identity unable to write any other repository, and its rebuild workflow run by the forge's runner. |
 
 ## Backlog
 
