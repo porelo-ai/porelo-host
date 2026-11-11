@@ -151,6 +151,18 @@ def test_follow_act_uses_native_follow_and_json_status():
     assert not any(command[:1] == ("purge",) for command in commands)
 
 
+def test_follow_act_asks_follow_now_as_a_person_and_as_nobody():
+    """Prevent a person's follow-now sudo rule going unexercised, or a refusal of anyone else going unchecked."""
+    tree = ast.parse((ROOT / "extensions/molecule/default/files/follow_act.py").read_text())
+    commands = [
+        tuple(arg.value if isinstance(arg, ast.Constant) else ast.unparse(arg) for arg in node.args)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "run"
+    ]
+    for login in ("fb", "nobody"):
+        assert ("runuser", "-u", login, "--", "sudo", "-n", "HELPER", "org", "follow-now") in commands
+
+
 def test_the_scenario_holds_no_task_that_never_runs():
     """Prevent a lack of the host program hiding as a task that is skipped in every run."""
     scenario = ROOT / "extensions/molecule/default"

@@ -9,9 +9,11 @@ dependencies and installs that local batch before comparing versions. The versio
 The follow service and runtime restoration call `porelo-host org follow`. Immediate refresh and pin renewal use
 `org refresh` and `org renew-pin`, with their input on standard input. No person helper, stop helper or token wrapper
 is installed.
-The packaged `forge issue-token`, `forge lend-token`, `task start *`, `task end *` and `task show *` commands have
-five separate sudo rules. Command defaults reset the environment, disable `env_keep` and forbid `setenv`;
-`task sweep` runs from the daily timer. Arrivals use a published file's read ACL, with no sudo rule.
+The packaged `forge issue-token`, `forge lend-token`, `org follow-now`, `task start *`, `task end *` and
+`task show *` commands have six separate sudo rules; `org follow-now`, which sudo allows with no argument at all (`""`), has the host follow its
+organization at once instead of at the timer's next pass. Command defaults reset the environment, disable `env_keep`
+and forbid `setenv`; `task sweep` runs from the daily timer. Arrivals use a published file's read ACL, with no sudo
+rule.
 Both install and down remove the former programs, including the development VM tool. This role has no script exception.
 Units calling the host program set no extra environment variables, environment files or inherited environment names.
 
@@ -32,7 +34,8 @@ the host's deploy key in an isolated unit with network access, reconciles cards 
 `organization/projects/<project>.json`, naming the host, with a read ACL for each unlocked member, and `organization/persons/<login>.json`, holding that person's projects as
 `{"projects": [...]}`, with a read ACL for that person alone, gone with their last membership, so `porelo project list`
 names their projects before a first start there. Accounts with no
-membership or host admin role are locked when the host takes the change, within five minutes or at once on `org refresh`, and purged on
+membership or host admin role are locked when the host takes the change, within five minutes or at once on `org refresh`
+or a person's `sudo -n porelo-host org follow-now`, and purged on
 the first follow seven days after the recorded lock day; readmission
 before then restores the existing account, completing subordinate IDs and linger after an interrupted admission.
 Purge deletes the person's Forgejo users and their tokens, including the task gate's user.

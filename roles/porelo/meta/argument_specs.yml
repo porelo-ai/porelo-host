@@ -47,7 +47,7 @@ argument_specs:
         description: The machine file, whose directory down removes.
   person:
     short_description: >-
-      The host program's five person sudo rules, organization configuration and maintenance timers.
+      The host program's six person sudo rules, organization configuration and maintenance timers.
     options:
       porelo_machine_file:
         type: path

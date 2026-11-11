@@ -166,6 +166,28 @@ check(started.returncode == 0, "the timer's service to follow", started.stderr)
 check(kept.read_text(encoding="utf-8").splitlines()[-1] == "a" * 40, "the follow to name the state it holds", kept)
 check(ACCESS.read_text(encoding="utf-8") == before, "a follow of the same state to change nothing")
 
+# A person has the host follow at once through their one sudo rule; anyone else is refused by sudo, before the program.
+# A task's account, porelo-fb, is the forge's alone and no login here, so nobody stands for the one who is not a person.
+asked = run("runuser", "-u", "fb", "--", "sudo", "-n", HELPER, "org", "follow-now")
+check(asked.returncode == 0, "fb's org follow-now to end a pass", asked.stdout + asked.stderr)
+check(status()["refused"] is None, "org status after fb's follow to name no refusal", status())
+check(kept.read_text(encoding="utf-8").splitlines()[-1] == "a" * 40, "fb's follow to name the state it holds", kept)
+check(ACCESS.read_text(encoding="utf-8") == before, "fb's follow of the same state to change nothing")
+fetched = kept.read_text(encoding="utf-8")
+refused = run("runuser", "-u", "nobody", "--", "sudo", "-n", HELPER, "org", "follow-now")
+check(
+    refused.returncode != 0 and refused.stderr.startswith("sudo:"),
+    "sudo to refuse nobody's follow",
+    refused.stderr,
+)
+check(kept.read_text(encoding="utf-8") == fetched, "nobody's refused follow to fetch nothing", kept)
+widened = run("runuser", "-u", "fb", "--", "sudo", "-n", HELPER, "org", "follow-now", "--extra")
+check(
+    widened.returncode != 0 and widened.stderr.startswith("sudo:"),
+    "sudo to refuse follow-now with an argument",
+    widened.stderr,
+)
+
 # On the host's forge: the follow put the project there, and the members' push configs are their own.
 RECORD = Path("/etc/porelo-host/projects") / f"{PROJECT}.conf"
 FORGE = RECORD.parent.parent / "forge.conf"

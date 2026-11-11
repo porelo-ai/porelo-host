@@ -573,7 +573,8 @@ and the UTC time that text last changed; change it in the channel first, never i
   `porelo-host-measure` and a pool VM's `porelo-pool-give-back`. Host administration belongs to the pinned
   `porelo-host` package; systemd units and sudo rules remain collection configuration.
 - **Host program units set no extra environment variables or environment files.** Its sudo rules name only task
-  start, end and show and the two forge token verbs, with `env_reset`, `!setenv` and `!env_keep` command defaults.
+  start, end and show, the two forge token verbs and `org follow-now`, with `env_reset`, `!setenv` and `!env_keep`
+  command defaults.
 - **The collection installs the pre-receive hook at `/usr/local/libexec/porelo/pre-receive`**, also mounted at that
   path in Forgejo; the host program links repository hooks there. Follow, forge gates and pool work use the package.
   The package has no socket push judge, so forge setup refuses before service changes and the judge unit fails closed.

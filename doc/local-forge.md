@@ -9,9 +9,11 @@ The native package supplies organization follow, refresh and pin renewal, forge 
 make, address, delete, revert and give-back. Runtime restoration runs through `org follow`. The pre-receive hook is
 installed and mounted at `/usr/local/libexec/porelo/pre-receive`, where the follow links each repository.
 The push judge is the package's `porelo-host judge-push`, run by the judge's socket unit for each push.
-The person sudo rules name exactly `forge issue-token`, `forge lend-token`, `task start *`, `task end *` and
-`task show *` on separate lines; there is no arrivals rule. They reset the environment, disable kept variables and
-forbid `setenv`. Host program units set no extra environment variables or environment files.
+The person sudo rules name exactly `forge issue-token`, `forge lend-token`, `org follow-now`, `task start *`,
+`task end *` and `task show *` on separate lines; `org follow-now` is allowed with no argument at all (`""` in the rule) and lets a person have the host
+follow its organization at once instead of waiting for the timer. There is no arrivals rule. They reset the
+environment, disable kept variables and forbid `setenv`. Host program units set no extra environment variables or
+environment files.
 Down checks central work and people before stopping services. After pausing the follow it checks work
 and people again before removing anything. Pool teardown stops the revert, deletes its VMs through the package,
 and removes keys only after successful deletion.

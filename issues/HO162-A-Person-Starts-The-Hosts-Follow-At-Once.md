@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO162",
   "title": "A Person Starts The Host's Follow At Once",
-  "state": "Backlog",
+  "state": "Review",
   "size": "S",
   "priority": "Medium",
   "rank": 3,
@@ -48,3 +48,15 @@ start porelo-host-follow.service` answers "Access denied as the requested operat
 authentication", and the person's sudo rules name no follow; the pass waits for the timer, every five minutes. Once the
 collection installs the host's own program, the follow is the host program's `org follow`, so the request belongs to the
 host program, and the collection gives a person the one rule to call it.
+
+## Done
+
+- The sixth rule, `porelo-host org follow-now ""`, takes no arguments; the guard names six rules.
+- Molecule's default scenario with the forge on, on an earlier package (2026-11-10 16:13Z), went red in the
+  follow act: the person's `org follow-now` answered "follow completion unavailable: systemd answered no valid start
+  job". On snapshot 474 (main 44068d2 with this change, pool off, 2026-11-10 23:48Z-00:03Z) syntax, converge,
+  idempotence, verify and side_effect pass, the follow act's 213 facts among them: `fb`'s request ends a pass with no
+  refusal in `org status` and changes nothing on the same state; sudo refuses `nobody` and `fb` with an argument, and
+  the refused request fetches nothing. A task's account is the forge's alone and no login on the host, so `nobody`
+  stands for the one who is not a person.
+- A second request while one runs is the host program's, held by its tests in porelo; the act does not time it.

@@ -81,12 +81,19 @@ def sudoers_lines():
     return [line.strip() for line in path.read_text().splitlines() if line.strip() and not line.startswith(("#", "{{"))]
 
 
-def test_people_have_exactly_the_five_packaged_sudo_rules():
+def test_people_have_exactly_the_six_packaged_sudo_rules():
     """Prevent a person retaining a privileged legacy entry point or broader sudo access."""
     rules = [line for line in sudoers_lines() if not line.startswith("Defaults")]
     assert sorted(rules) == sorted(
         f"%porelo-people ALL=(root) NOPASSWD: /usr/sbin/porelo-host {verb}"
-        for verb in ("forge issue-token", "forge lend-token", "task start *", "task end *", "task show *")
+        for verb in (
+            "forge issue-token",
+            "forge lend-token",
+            'org follow-now ""',
+            "task start *",
+            "task end *",
+            "task show *",
+        )
     )
 
 

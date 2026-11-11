@@ -19,13 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   organization follow, gate measurement and pool acceptance use native commands.
 
 - Pin the `porelo` and `porelo-host` packages from the same signed source, compare the installed host version,
-  and restrict person sudo access to five packaged token and task rules with a reset environment.
+  and restrict person sudo access to six packaged token, task and follow rules with a reset environment.
   Remove host program sources.
 - Move the development VM tool to `build/`, outside the installed collection, and retain only the pre-receive hook,
   pre-installation check, measuring program and pool VM give-back as collection script exceptions.
 
 ### Added
 
+- **A person has the host follow its organization at once.** The person sudo rules add a sixth,
+  `porelo-host org follow-now` with no argument at all (`""`), so an admitted person, as `porelo host follow` does, starts one
+  follow pass and waits for it instead of for the five-minute timer; anyone else is refused by sudo.
 - **The half of the host for jobs and the VM pool is a setting.** `porelo_host_work_share`, the percent of the
   host's processors and memory the forge's jobs and the VM pool may take together, from 1 to 100; unset 50, as
   before. The check refuses a value outside that before anything is installed, the forge's capacity and the pool's
