@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO125",
   "title": "What A Task And A Job Take",
-  "state": "Implementing",
+  "state": "Backlog",
   "size": "L",
   "priority": "Medium",
   "rank": 1,

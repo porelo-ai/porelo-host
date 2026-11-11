@@ -73,6 +73,7 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
+| <a id="ho125"></a>[HO125](HO125-What-A-Task-And-A-Job-Take.md) | L | - | The measuring run also reads a task, an agent's fixed start and Maven jobs, so a size can rest on what work takes: the tool for one measuring issue in Porelo. |
 | <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
 | <a id="ho163"></a>[HO163](HO163-A-Tasks-Signing-Key-Is-Known-Where-It-Pushes.md) | S | - | A task's signing key is registered with the forge account that receives its push, so its commits verify on the host's forge; what the central forge can take is measured first. |
 | <a id="ho165"></a>[HO165](HO165-The-Push-To-Central-Takes-Repository-Names-And-Says-A-Refused-Token.md) | XS | [HO158](README.md#ho158) | `porelo-host-push` takes the project's repository names as well as the forge's, and says plainly when the central forge refuses the token. |
@@ -81,7 +82,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho125"></a>[HO125](HO125-What-A-Task-And-A-Job-Take.md) | L | - | The measuring run also reads a task, an agent's fixed start and Maven jobs, so a size can rest on what work takes: the tool for one measuring issue in Porelo. |
 | <a id="ho158"></a>[HO158](HO158-A-Move-Rehearsed-On-A-Rented-Server.md) | L | - | The agents run a whole move on a server the operator rented, against a test organization, from `build/rehearse-move.sh`: check, up, vault, follow, forge, pool where KVM is, judge, push and pull, host check, down and read keys, a report per step, and one request to delete the server. |
 | <a id="ho168"></a>[HO168](HO168-Forgejo-Images-From-A-Cache-In-The-Build.md) | M | - | The Molecule job takes the forge role's three pinned images from a cache kept by their digests, so an outage of codeberg.org, code.forgejo.org or docker.io leaves it green; only the newest digests stay cached. |
 | <a id="ho170"></a>[HO170](HO170-The-Rehearsal-Starts-A-Task-That-Reads-Every-Repository.md) | XS | - | The rented host's rehearsal starts one task with porelo's read-all start option and checks that it sees every repository of the project under /workspace, can write none of them, and leaves nothing behind after it ends. |
