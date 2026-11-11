@@ -124,9 +124,12 @@ pipe only), `REHEARSAL_PROJECT`, `REHEARSAL_REPOSITORY`, `REHEARSAL_PROVIDER_KEY
 keys, read into a pipe only), `REHEARSAL_REPORT` (where it writes only `<name>.*`), `REHEARSAL_DEADLINE` (the hard stop
 in Unix seconds) and `REHEARSAL_PERSON_SSH` (`build/rehearse-person-ssh.sh`, which runs one command on the host as the
 person, each argument quoted, standard input forwarded); the run's own environment, such as the window step's
-`REHEARSAL_WINDOW_VM`, `REHEARSAL_WINDOW_VM_KEY` and `REHEARSAL_WINDOW_CHECKOUT`, reaches it too. Its exit is its
-answer: 0 is `OK`, 77 is `SKIP` with its last printed line as the reason, anything else `FAIL`, held like any failed
-step; both its streams go to `<report>/<name>.log`. The read keys at central are taken off by the operator's own script.
+`REHEARSAL_WINDOW_VM`, `REHEARSAL_WINDOW_VM_KEY` and `REHEARSAL_WINDOW_CHECKOUT`, reaches it too. Beside it,
+`$REHEARSAL_REPORT/org-status.json` holds the host's last `porelo-host org status --json` answer, written by the
+`project` step when the follow admitted the person: who is an active person of the project, read by `busy-room` to tell
+the project's own people from strangers. Its exit is its answer: 0 is `OK`, 77 is `SKIP` with its last printed line as
+the reason, anything else `FAIL`, held like any failed step; both its streams go to `<report>/<name>.log`. The read keys
+at central are taken off by the operator's own script.
 
 `start` makes one domain `porelo-host-rehearsal-<time>`, by default with 8 vCPUs, 16 GiB and an 80 GiB disk. It installs the collection
 built from the checkout and runs `porelo.host.up` on the VM with the forge on, no VM pool and no KVM asked; `up`'s lines stay
