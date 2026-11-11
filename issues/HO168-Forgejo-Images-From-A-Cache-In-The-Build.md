@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO168",
   "title": "Forgejo Images From A Cache In The Build",
-  "state": "Implementing",
+  "state": "Review",
   "size": "M",
   "priority": "Medium",
   "rank": 5,
@@ -99,3 +99,13 @@ The steps:
   and pulls none of them.
 - A second push with unchanged pins restores the cache and fetches nothing.
 - A changed pin fetches once under a new key, and the old key ages out.
+
+## Reading
+
+- A reading by another model named three possible harms. Two do not hold, by measurement on Ubuntu 26.04 with its
+  skopeo 1.21: an archive whose index blob was changed while `index.json` still names the pinned digest is refused by
+  `skopeo copy --preserve-digests` ("Digest of source image's manifest would not match destination reference"), so
+  neither a crafted archive nor a poisoned cache entry loads another image. The third holds and is fixed: root copies
+  the archive, so the directory and the archive must belong to the account that runs `up` and be writable by it
+  alone, or `up` stops before reading them; a link to a secret cannot be put in the archive's place.
+- Its smaller findings are gathered in [HO172](README.md#ho172).

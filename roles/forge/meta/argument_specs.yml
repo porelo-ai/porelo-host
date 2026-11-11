@@ -30,8 +30,9 @@ argument_specs:
         type: str
         default: ""
         description: >-
-          An absolute directory on the host with pinned images as OCI archives, each named <digest>.tar; an image whose
-          archive is there is loaded, checked against its pin, instead of pulled. Empty pulls every image.
+          An absolute directory on the host with pinned images as OCI archives, each named <digest>.tar, both owned by
+          the account that runs up and writable by it alone; an image whose archive is there is loaded, checked against
+          its pin, instead of pulled. Empty pulls every image.
       forge_http_port:
         type: int
         default: 3000

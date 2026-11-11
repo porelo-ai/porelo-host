@@ -7,6 +7,7 @@ import subprocess
 import tarfile
 from pathlib import Path
 
+import pytest
 import yaml
 
 HERE = Path(__file__).parent
@@ -161,6 +162,20 @@ def test_an_archive_of_another_digest_is_refused_before_podman_is_asked(tmp_path
     output = done.stdout + done.stderr
     assert done.returncode != 0, output
     assert f"not the pinned sha256:{DIGEST}" in output and "2" * 64 in output
+    assert not (state / "podman").exists() and not (state / "skopeo").exists()
+
+
+@pytest.mark.parametrize("writable", ["directory", "archive"])
+def test_an_archive_another_account_can_write_is_refused_before_it_is_read(tmp_path, writable):
+    """Prevent another account swapping the archive, or a link to a secret, between its check and root's copy."""
+    archive(tmp_path / "images", [DIGEST])
+    target = tmp_path / "images" if writable == "directory" else tmp_path / "images" / f"{DIGEST}.tar"
+    target.chmod(target.stat().st_mode | 0o002)
+    bin_dir, state = fakes(tmp_path, there=False)
+    done = run(tmp_path, bin_dir)
+    output = done.stdout + done.stderr
+    assert done.returncode != 0, output
+    assert "another account can write" in output, output
     assert not (state / "podman").exists() and not (state / "skopeo").exists()
 
 

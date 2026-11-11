@@ -28,6 +28,39 @@
     quiet: true
   when: __forge_archive.stat.exists
 
+# Root copies the archive later: only an account that cannot swap it, or link a secret in its place, may write it.
+- name: image | Read the archives' directory
+  ansible.builtin.stat:
+    path: "{{ forge_image_archives }}"
+    get_checksum: false
+  register: __forge_archive_parent
+  when: __forge_archive.stat.exists
+
+- name: image | Read the account that runs this play
+  ansible.builtin.command:
+    argv: [id, -u]
+  register: __forge_archive_runner
+  changed_when: false
+  check_mode: false
+  when: __forge_archive.stat.exists
+
+- name: image | Stop on an archive another account can write
+  ansible.builtin.assert:
+    that:
+      - __forge_archive_parent.stat.isdir
+      - not __forge_archive_parent.stat.islnk
+      - item.uid | string == __forge_archive_runner.stdout
+      - not item.wgrp
+      - not item.woth
+    fail_msg: "another account can write {{ item.path }}: it must be the play's account's, writable by it alone"
+    quiet: true
+  loop:
+    - "{{ __forge_archive_parent.stat }}"
+    - "{{ __forge_archive.stat }}"
+  loop_control:
+    label: "{{ item.path }}"
+  when: __forge_archive.stat.exists
+
 # Before podman is asked anything, so a wrong archive stops every up, not only one that loads.
 - name: image | Read the archive's index
   ansible.builtin.command:

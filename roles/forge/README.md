@@ -108,8 +108,8 @@ mounts. External HTTPS uses each image's own certificate authorities.
 The role pulls Forgejo's image, the runner's and the runner's proxy image, each pinned by version and digest in
 [`vars/main.yml`](vars/main.yml). `forge_image_archives`, empty by default, names an absolute directory on the host
 that holds some of them as OCI archives, each named `<digest>.tar` by the image's sha256 digest. Where it is set, the
-role installs `skopeo`. Before the pull, an image's archive is checked: its index must name the pinned digest alone,
-or `up` stops. If the account's podman lacks the image, skopeo copies it from a root-owned copy of the archive into
+role installs `skopeo`. Before the pull, an image's archive is checked: the directory and the archive must belong to
+the account that runs `up`, writable by it alone, and the index must name the pinned digest alone, or `up` stops. If the account's podman lacks the image, skopeo copies it from a root-owned copy of the archive into
 that account's storage under its pinned name and digest, and `up` stops unless podman then finds it by that digest. An
 image whose archive is missing is pulled as before. `down` removes the accounts' storage, so each `up` loads again.
 Molecule's Build uses this to run without the three registries.

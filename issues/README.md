@@ -46,6 +46,7 @@ it is left out.
 | <a id="ho90"></a>[HO90](HO90-Each-Persons-State-Named-By-Status.md) | S | - | `org status` leaves out revoked and refused logins and names a cut-off purge or a removal's window `pending`. |
 | <a id="ho109"></a>[HO109](HO109-How-Long-The-Host-Has-Not-Read-Its-Organization.md) | - | - | `org status` says when the host last read its organization, as a follow that cannot fetch keeps a removed member's login with nothing said |
 | <a id="ho111"></a>[HO111](HO111-The-Forges-Admin-Tokens-A-Project-Helper-Leaves.md) | - | - | A run of the project helper leaves no lasting admin token on the host's forge |
+| <a id="ho172"></a>[HO172](HO172-The-Image-Archives-Smaller-Edges.md) | - | - | The forge image archives' smaller edges from their reading, gathered: what an interrupted load leaves, a named directory that is missing, check mode, the archive tests' fixtures, and build/molecule.sh's checks and clean-up. |
 
 ## Accepted
 
@@ -83,7 +84,6 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho158"></a>[HO158](HO158-A-Move-Rehearsed-On-A-Rented-Server.md) | L | - | The agents run a whole move on a server the operator rented, against a test organization, from `build/rehearse-move.sh`: check, up, vault, follow, forge, pool where KVM is, judge, push and pull, host check, down and read keys, a report per step, and one request to delete the server. |
-| <a id="ho168"></a>[HO168](HO168-Forgejo-Images-From-A-Cache-In-The-Build.md) | M | - | The Molecule job takes the forge role's three pinned images from a cache kept by their digests, so an outage of codeberg.org, code.forgejo.org or docker.io leaves it green; only the newest digests stay cached. |
 | <a id="ho170"></a>[HO170](HO170-The-Rehearsal-Starts-A-Task-That-Reads-Every-Repository.md) | XS | - | The rented host's rehearsal starts one task with porelo's read-all start option and checks that it sees every repository of the project under /workspace, can write none of them, and leaves nothing behind after it ends. |
 
 ## Review
@@ -134,6 +134,7 @@ it is left out.
 | <a id="ho124"></a>[HO124](HO124-A-Login-Closed-At-Once-On-A-Host.md) | S | - | A login closed at once on a host, by reading sshd's own per-source penalty: reproduce it on the test VM, and say so. |
 | <a id="ho121"></a>[HO121](HO121-One-Check-Before-Any-Installation.md) | L | - | One read-only check before any installation, the same code `up` runs first, every finding at once with its value, what was asked and what to do. |
 | <a id="ho122"></a>[HO122](HO122-A-Project-Says-What-The-Follow-Took.md) | S | - | `org status` names what the follow took of a project and why not, a row with no `central` included. |
+| <a id="ho168"></a>[HO168](HO168-Forgejo-Images-From-A-Cache-In-The-Build.md) | M | - | The Molecule job takes the forge role's three pinned images from a cache kept by their digests, so an outage of codeberg.org, code.forgejo.org or docker.io leaves it green; only the newest digests stay cached. |
 
 ## Finished
 
