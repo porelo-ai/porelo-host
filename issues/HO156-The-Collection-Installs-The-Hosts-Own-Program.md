@@ -36,6 +36,9 @@ installation, the measuring run and a pool VM's give-back.
   - `person.yml`'s runtime step: `porelo-host org follow`;
   - `down`'s central check: `porelo-host project check-central`.
 - **sudoers for `%porelo-people`** names exactly five rules:
+
+  [HO162](README.md#ho162) has since added a sixth, `org follow-now`; the five here and below are what this issue built.
+
   - `porelo-host forge issue-token`
   - `porelo-host forge lend-token`
   - `porelo-host task start *`
