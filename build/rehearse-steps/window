@@ -10,6 +10,7 @@
 # Exits 0 when every scenario is OK, 77 (SKIP, the last line says why) when the VM, the checkout or the time is
 # missing, and 1 for a failed rehearsal or a contract value missing. The report goes to REHEARSAL_REPORT/window.d.
 # The test person's key reaches the run only through the agent REHEARSAL_PERSON_AGENT names, for that one call.
+# The central token reaches it only as REHEARSAL_CENTRAL_TOKEN, the path of the program that prints it, never the token.
 set -euo pipefail
 
 skip() {
@@ -18,7 +19,7 @@ skip() {
 }
 
 for name in REHEARSAL_HOST REHEARSAL_HOST_NAME REHEARSAL_HOST_KEY REHEARSAL_PERSON REHEARSAL_PERSON_AGENT \
-    REHEARSAL_PROJECT REHEARSAL_REPORT REHEARSAL_DEADLINE; do
+    REHEARSAL_CENTRAL_TOKEN REHEARSAL_PROJECT REHEARSAL_REPORT REHEARSAL_DEADLINE; do
     [ -n "${!name:-}" ] || {
         echo "window: $name is not set"
         exit 1

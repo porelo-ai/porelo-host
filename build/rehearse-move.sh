@@ -805,7 +805,8 @@ rented_hook() {
     known=$(cat "$state/known_hosts")
     REHEARSAL_STEP=$1 REHEARSAL_HOST=$server REHEARSAL_HOST_NAME=rented REHEARSAL_HOST_KEY=${known#* } \
         REHEARSAL_KNOWN_HOSTS=$state/known_hosts REHEARSAL_PERSON=$person REHEARSAL_PERSON_AGENT=$person_agent \
-        REHEARSAL_ORG=$org_program REHEARSAL_PROJECT=$project REHEARSAL_REPOSITORY=$repository \
+        REHEARSAL_ORG=$org_program REHEARSAL_CENTRAL_TOKEN=$central_token REHEARSAL_PROJECT=$project \
+        REHEARSAL_REPOSITORY=$repository \
         REHEARSAL_PROVIDER_KEYS=$provider_keys REHEARSAL_REPORT=$report REHEARSAL_DEADLINE=$deadline \
         REHEARSAL_PERSON_SSH=$root/build/rehearse-person-ssh.sh \
         "$root/build/rehearse-steps/$1"

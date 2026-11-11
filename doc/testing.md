@@ -117,16 +117,16 @@ Without the phase 2 options it stops after `up`. With them it also:
 A step under `build/rehearse-steps/<name>` runs once, in its own process, with standard input at `/dev/null`, the
 checkout root as its directory and umask 077. It is given, in the environment alone and nothing secret:
 `REHEARSAL_STEP`, `REHEARSAL_HOST` (the address), `REHEARSAL_HOST_NAME` (`rented`), `REHEARSAL_HOST_KEY` and
-`REHEARSAL_KNOWN_HOSTS` (the host key pinned at the first connection), `REHEARSAL_PERSON`, `REHEARSAL_PERSON_AGENT`
-(the person's agent socket, the only identity), `REHEARSAL_ORG` (the program running `porelo` here as the test
-identity), `REHEARSAL_PROJECT`, `REHEARSAL_REPOSITORY`, `REHEARSAL_PROVIDER_KEYS` (the directory of the providers'
-test keys, read into a pipe only), `REHEARSAL_REPORT` (where it writes only `<name>.*`), `REHEARSAL_DEADLINE` (the
-hard stop in Unix seconds) and `REHEARSAL_PERSON_SSH` (`build/rehearse-person-ssh.sh`, which runs one command on the
-host as the person, each argument quoted, standard input forwarded); the run's own environment, such as the window
-step's `REHEARSAL_WINDOW_VM`, `REHEARSAL_WINDOW_VM_KEY` and `REHEARSAL_WINDOW_CHECKOUT`, reaches it too. Its exit is
-its answer: 0 is `OK`, 77 is `SKIP` with its last printed line as the reason, anything else `FAIL`, held like any
-failed step; both its streams go to `<report>/<name>.log`. The read keys at central are taken off by the operator's
-own script.
+`REHEARSAL_KNOWN_HOSTS` (the host key pinned at the first connection), `REHEARSAL_PERSON`, `REHEARSAL_PERSON_AGENT` (the
+person's agent socket, the only identity), `REHEARSAL_ORG` (the program running `porelo` here as the test identity),
+`REHEARSAL_CENTRAL_TOKEN` (the path of the program that prints the central token, never the token: a step runs it into a
+pipe only), `REHEARSAL_PROJECT`, `REHEARSAL_REPOSITORY`, `REHEARSAL_PROVIDER_KEYS` (the directory of the providers' test
+keys, read into a pipe only), `REHEARSAL_REPORT` (where it writes only `<name>.*`), `REHEARSAL_DEADLINE` (the hard stop
+in Unix seconds) and `REHEARSAL_PERSON_SSH` (`build/rehearse-person-ssh.sh`, which runs one command on the host as the
+person, each argument quoted, standard input forwarded); the run's own environment, such as the window step's
+`REHEARSAL_WINDOW_VM`, `REHEARSAL_WINDOW_VM_KEY` and `REHEARSAL_WINDOW_CHECKOUT`, reaches it too. Its exit is its
+answer: 0 is `OK`, 77 is `SKIP` with its last printed line as the reason, anything else `FAIL`, held like any failed
+step; both its streams go to `<report>/<name>.log`. The read keys at central are taken off by the operator's own script.
 
 `start` makes one domain `porelo-host-rehearsal-<time>`, by default with 8 vCPUs, 16 GiB and an 80 GiB disk. It installs the collection
 built from the checkout and runs `porelo.host.up` on the VM with the forge on, no VM pool and no KVM asked; `up`'s lines stay
