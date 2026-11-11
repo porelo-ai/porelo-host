@@ -14,9 +14,10 @@
 }
 ```
 
-**Why this size.** It is one more task in the existing `tasks` step, with a short check before and after. There is
-no new step, no new contract value and no role change. It is the porelo-host line of ST319, after porelo's B619 ("A
-Task Reads Every Repository Of Its Project"), which supplies the start option. HO169 was rejected in its favour.
+**Why this size.** It is one more task in the existing `tasks` step, with a short check before and after. There is no
+new step, no new contract value and no role change. It is the porelo-host line of ST319, after porelo's B619 ("A Task
+Reads Every Repository Of Its Project"), which supplies the start option. [HO169](README.md#ho169) was rejected in its
+favour.
 
 **What must be true.** On a rented host the rehearsal proves what B619 promises there:
 - a task started with every repository of the project, read only, sees each one as `/workspace/<repository>/` at that
@@ -41,5 +42,5 @@ Task Reads Every Repository Of Its Project"), which supplies the start option. H
    own words. The step goes on with the other tasks, so the rehearsal stays green on an older snapshot.
 6. **Docs.** `doc/testing.md`'s list of what the `tasks` step proves gets the line.
 
-The step is a rehearsal script, so a VM run of the rehearsal is its proof. It is not built until B619's code is on
-porelo's `main`. Then the next rehearsal run carries it.
+The step is a rehearsal script, so a VM run of the rehearsal is its proof. It is proven against Core's local build of
+B619, handed over with its sha256, not against porelo's `main`.
