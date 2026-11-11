@@ -5,7 +5,7 @@ porelo_distribution: "{{ porelo_host_distribution | default('releases') }}"
 
 # Exact Debian package versions; snapshot builds must name their complete ~snapshot.<build> version.
 porelo_version: "0.5.0"
-porelo_host_version: "0.5.1~snapshot.462"
+porelo_host_version: "0.5.1~snapshot.474"
 # Root's directory of explicitly supplied local Debian packages; empty uses the signed repository.
 porelo_local_packages: ""
 
