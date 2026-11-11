@@ -105,6 +105,15 @@ proxy's own `/etc/hosts`; all containers share its `/etc/resolv.conf`. A contain
 later jobs until the proxy restarts. Jobs receive no gate socket or forge CA trust
 mounts. External HTTPS uses each image's own certificate authorities.
 
+The role pulls Forgejo's image, the runner's and the runner's proxy image, each pinned by version and digest in
+[`vars/main.yml`](vars/main.yml). `forge_image_archives`, empty by default, names an absolute directory on the host
+that holds some of them as OCI archives, each named `<digest>.tar` by the image's sha256 digest. Where it is set, the
+role installs `skopeo`. Before the pull, an image's archive is checked: its index must name the pinned digest alone,
+or `up` stops. If the account's podman lacks the image, skopeo copies it from a root-owned copy of the archive into
+that account's storage under its pinned name and digest, and `up` stops unless podman then finds it by that digest. An
+image whose archive is missing is pulled as before. `down` removes the accounts' storage, so each `up` loads again.
+Molecule's Build uses this to run without the three registries.
+
 Forgejo's `ROOT_URL` is `http://<host>.localhost:<forge_http_port>/`, with browser port `3000` by default.
 `forge_git_port` defaults to `3001`. These are the person's local forwarded ports, not listeners on the host.
 Porelo forwards them over SSH to the two sockets and sets Git remotes to the Git port because Forgejo renders clone

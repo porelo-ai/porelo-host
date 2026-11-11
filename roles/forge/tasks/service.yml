@@ -16,6 +16,28 @@
     - "{{ __forge_home }}/.config/containers"
     - "{{ __forge_home }}/.config/containers/systemd"
 
+# Only where archives are named: a host without them pulls as before and gets no new package.
+- name: service | Stop on forge_image_archives that is not an absolute directory
+  ansible.builtin.assert:
+    that: forge_image_archives is match('^/')
+    fail_msg: "forge_image_archives must be an absolute directory on the host, not {{ forge_image_archives }}"
+    quiet: true
+  when: forge_image_archives | length > 0
+
+- name: service | Install skopeo, which loads an image from its archive by its digest
+  ansible.builtin.apt:
+    name: skopeo
+    state: present
+  when: forge_image_archives | length > 0
+
+- name: service | Load Forgejo's image from its archive where forge_image_archives holds it
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/image.yml"
+  vars:
+    __forge_archive_image: "{{ __forge_image }}"
+    __forge_archive_account: "{{ forge_account }}"
+    __forge_archive_environment: "{{ __forge_environment }}"
+  when: forge_image_archives | length > 0
+
 - name: service | Ask podman whether Forgejo's image is there
   ansible.builtin.command:
     argv: [podman, image, exists, "{{ __forge_image }}"]

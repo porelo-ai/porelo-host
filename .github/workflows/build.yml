@@ -131,7 +131,7 @@ jobs:
                   ls -l /dev/kvm
 
             # Pinned by version; a version the archive no longer carries stops here, and the pins are moved by hand.
-            - name: libvirt with its network, qemu-img, virt-install and xorriso, by version
+            - name: libvirt with its network, qemu-img, virt-install, xorriso and skopeo, by version
               run: |
                   set -eu
                   sudo apt-get update -qq
@@ -141,7 +141,8 @@ jobs:
                       qemu-utils=1:10.2.1+ds-1ubuntu3.3 \
                       dnsmasq-base=2.92-1ubuntu0.5 \
                       virtinst=1:5.1.0-1 \
-                      xorriso=1:1.5.6-1.1ubuntu4
+                      xorriso=1:1.5.6-1.1ubuntu4 \
+                      skopeo=1.21.0~pre1-2build1
                   sudo virsh pool-info images >/dev/null 2>&1 || {
                       sudo mkdir -p /var/lib/libvirt/images
                       sudo virsh pool-define-as images dir --target /var/lib/libvirt/images
@@ -156,12 +157,70 @@ jobs:
                   sudo setfacl -m "u:$USER:rw" /run/libvirt/libvirt-sock
                   virsh -c qemu:///system list --all >/dev/null
 
+            # The forge role's three pinned images from a cache, so an outage of their registries leaves the run green.
+            # The key is the hash of their digests: a new pin starts a new entry, and GitHub removes an entry no run
+            # used for 7 days, so only the newest pins stay.
+            - name: The forge's pinned images and their cache key
+              id: forge-images
+              run: |
+                  set -eu
+                  python3 - > "$RUNNER_TEMP/forge-images.txt" <<'PY'
+                  import re, sys, yaml
+                  pins = yaml.safe_load(open("roles/forge/vars/main.yml"))
+                  for key in ("__forge_image", "__forge_runner_image", "__forge_runner_proxy_image"):
+                      reference = str(pins.get(key, "")).strip()
+                      if not re.fullmatch(r"[a-z0-9./-]+(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}", reference):
+                          sys.exit(f"{key} names no image pinned by its digest: {reference}")
+                      print(reference)
+                  PY
+                  digests=$(sed 's/.*@sha256://' "$RUNNER_TEMP/forge-images.txt" | sort | sha256sum | cut -d' ' -f1)
+                  echo "key=forge-images-$digests" >> "$GITHUB_OUTPUT"
+
+            - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              id: forge-images-cache
+              with:
+                  path: ${{ runner.temp }}/images
+                  key: ${{ steps.forge-images.outputs.key }}
+
+            # --all keeps each image's index, whose digest is the pin; a single platform would carry another digest.
+            - name: Each pinned image the cache lacks, fetched once as an OCI archive that keeps its digest
+              run: |
+                  set -eu
+                  mkdir -p "$RUNNER_TEMP/images"
+                  digests='import json, sys; print(*(m["digest"] for m in json.load(sys.stdin)["manifests"]))'
+                  while read -r reference; do
+                      digest=${reference##*@sha256:}
+                      # skopeo takes no tag beside a digest.
+                      name=$(printf '%s\n' "${reference%@*}" | sed -E 's/:[^:/]+$//')
+                      archive=$RUNNER_TEMP/images/$digest.tar
+                      if [ ! -f "$archive" ]; then
+                          rm -f "$archive.part"
+                          skopeo copy --quiet --all --preserve-digests --retry-times 3 \
+                              "docker://$name@sha256:$digest" "oci-archive:$archive.part" < /dev/null
+                          mv "$archive.part" "$archive"
+                      fi
+                      index=$(tar --extract --to-stdout --wildcards --no-anchored --file "$archive" index.json)
+                      indexed=$(printf '%s' "$index" | python3 -c "$digests")
+                      [ "$indexed" = "sha256:$digest" ] \
+                          || { echo "::error::$archive holds $indexed, not the pinned sha256:$digest"; exit 1; }
+                      echo "$name@sha256:$digest in $(du -h "$archive" | cut -f1)"
+                  done < "$RUNNER_TEMP/forge-images.txt"
+
+            # Saved at once, so a red scenario still leaves the images for the next run.
+            - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              if: steps.forge-images-cache.outputs.cache-hit != 'true'
+              with:
+                  path: ${{ runner.temp }}/images
+                  key: ${{ steps.forge-images.outputs.key }}
+
             # The runner has no local hand-over: the pinned published porelo-host and porelo of its run, signed.
             - name: The Molecule scenario on its VM
               env:
                   # The pool VM got an address on GitHub's runner but never said ready; local Molecule runs the pool.
                   PORELO_HOST_MOLECULE_POOL: "off"
                   PORELO_HOST_MOLECULE_KVM: ${{ matrix.kvm }}
+                  # The forge's images from the cache above, loaded in the VM instead of pulled.
+                  PORELO_HOST_IMAGES: ${{ runner.temp }}/images
               run: |
                   set -eu
                   PORELO_HOST_DEB=$(build/fetch-host-deb.sh "$RUNNER_TEMP/packages")

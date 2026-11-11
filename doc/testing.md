@@ -45,6 +45,11 @@ needs `PORELO_HOST_MOLECULE_POOL=off`.
 `PORELO_HOST_MOLECULE_TRANSPORT` names a transport executable inside the checkout, as the run sees it, to install in
 place of the published one.
 
+`PORELO_HOST_IMAGES` names an absolute directory of the forge's pinned images as OCI archives, each named
+`<digest>.tar` by the image's sha256 digest; it may hold nothing else. The run copies them into the VM, and `up` loads
+each one through the forge role's `forge_image_archives` instead of pulling it from its registry. Unset, every image is
+pulled.
+
 **The VM** is Ubuntu 26.04 from the cloud image `build/test-image` pins by URL and SHA-256, 4 vCPUs and 4 GB, with the
 host's CPU passed through so KVM runs inside it, as on a rented host. Its ssh host key is made for the run and is the
 only one accepted.
@@ -56,6 +61,16 @@ file is uploaded into the host's setup directory as the interface does; no remov
 
 **In the Build** the same script runs on GitHub's runner, after the linters and the tarball, on `main` and on the
 project's own pull requests: about three minutes, the runner adding libvirt by pinned versions first.
+
+**The forge's images in the Build** come from a cache, so the `molecule` job stays green while codeberg.org,
+code.forgejo.org or docker.io does not answer. A step reads the three pinned references from
+`roles/forge/vars/main.yml`. `actions/cache` restores `$RUNNER_TEMP/images` under the key `forge-images-` and the hash
+of their digests. An image the cache lacks is fetched once with `skopeo copy --all --preserve-digests` as an OCI
+archive, whose index keeps the pinned digest, and the cache is saved right after, before the scenario runs. Each
+archive's digest is checked against its pin before Molecule gets it as `PORELO_HOST_IMAGES`.
+
+Only the newest pins stay cached. A new pin makes a new key, so an old key is never restored again. GitHub removes a
+cache entry that no run used for 7 days, so an old digest's entry ages out by itself. No step deletes entries.
 
 **How long it takes**, measured on this project's workstation (16 threads, AMD): about a minute from start to clean-up
 with the image cached - 52 s for a run whose `up` has no role yet, of which the VM takes about 15 s to answer ssh.

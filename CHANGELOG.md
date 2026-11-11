@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The forge's images can come from archives.** `forge_image_archives` names a directory of the forge's pinned images
+  as OCI archives, `<digest>.tar` each; `up` loads an image from its archive into the account's podman, checked
+  against its pin, instead of pulling it. The Build's `molecule` job takes the three images from a cache kept by their
+  digests, so an outage of codeberg.org, code.forgejo.org or docker.io no longer turns it red.
 - **A person has the host follow its organization at once.** The person sudo rules add a sixth,
   `porelo-host org follow-now` with no argument at all (`""`), so an admitted person, as `porelo host follow` does, starts one
   follow pass and waits for it instead of for the five-minute timer; anyone else is refused by sudo.

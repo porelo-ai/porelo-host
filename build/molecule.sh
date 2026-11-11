@@ -32,6 +32,16 @@ fi
 host_package_version=$(cat "$packages_stage/packages/porelo-host.version")
 trap 'rm -rf "$packages_stage"' EXIT
 
+# The forge's pinned images as OCI archives named <digest>.tar, where the caller has them; the role checks each digest.
+images=${PORELO_HOST_IMAGES:-}
+if [ -n "$images" ]; then
+    case "$images" in /*) ;; *) fail "PORELO_HOST_IMAGES must be an absolute directory: $images" ;; esac
+    [ -d "$images" ] || fail "PORELO_HOST_IMAGES is no directory: $images"
+    other=$(find "$images" -mindepth 1 -maxdepth 1 ! \( -type f -regex '.*/[0-9a-f]\{64\}\.tar' \) -print) \
+        || fail "could not read $images"
+    [ -z "$other" ] || fail "PORELO_HOST_IMAGES holds more than regular <digest>.tar files: $other"
+fi
+
 # --- the acceptance tooling, handed over from a checked build -------------------------------------------------------
 # The measuring scenario makes no pool, so it needs none handed over.
 if [ "$scenario" = measure ]; then pool_default=off; else pool_default=on; fi
@@ -175,11 +185,18 @@ EOF
 # The selected host program travels beside Porelo through the existing package directory.
 cp -R "$packages_stage/packages" "$dir/packages"
 packages=$work/target/molecule/$run/packages
+remote_images=
+if [ -n "$images" ]; then
+    mkdir "$dir/images"
+    find "$images" -maxdepth 1 -name '*.tar' -type f -exec cp {} "$dir/images/" \;
+    remote_images=$work/target/molecule/$run/images
+fi
 PORELO_HOST_INVENTORY=$work/target/molecule/$run/inventory.yml \
 PORELO_HOST_TARBALL=$work/target/molecule/$run/porelo-host-$version.tar.gz \
 PORELO_HOST_VERSION=$version \
 PORELO_HOST_PACKAGE_VERSION=$host_package_version \
 PORELO_HOST_PACKAGES=$packages \
+PORELO_HOST_IMAGES=$remote_images \
 PORELO_HOST_MACHINES=$machines \
 PORELO_HOST_MOLECULE_POOL=$pool_check \
 PORELO_HOST_MOLECULE_FORGE=$forge_check \

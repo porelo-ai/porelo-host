@@ -11,6 +11,9 @@
     converge_host_version: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_PACKAGE_VERSION') }}"
     converge_remote_packages: >-
       /root/porelo-packages-{{ lookup('ansible.builtin.file', converge_packages ~ '/SHA256SUMS') | hash('sha256') }}
+    # The forge's pinned images as archives, where the run has them, so their registries need not answer.
+    converge_images: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_IMAGES', default='') }}"
+    converge_remote_images: /root/porelo-images
     converge_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
     converge_forge: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_FORGE', default='on') }}"
     converge_kvm_asked: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_KVM', default='on') }}"
@@ -76,6 +79,16 @@
         mode: "0600"
         directory_mode: "0700"
 
+    - name: Copy the forge's image archives before up pulls anything
+      ansible.builtin.copy:
+        src: "{{ converge_images }}/"
+        dest: "{{ converge_remote_images }}/"
+        owner: root
+        group: root
+        mode: "0600"
+        directory_mode: "0700"
+      when: converge_images | length > 0
+
     - name: Read the local Porelo version when supplied
       ansible.builtin.set_fact:
         converge_porelo_version: >-
@@ -113,6 +126,9 @@
           {% if converge_forge == 'on' %}
               # Lets Forgejo migrate from the stand-in central organization on the host's own forge.
               forge_migrations_allow_local: true
+          {% endif %}
+          {% if converge_forge == 'on' and converge_images | length > 0 %}
+              forge_image_archives: {{ converge_remote_images | to_json }}
           {% endif %}
               # Job bounds of the test VM's size: the runner's jobs and the pool share half of its 4 vCPUs and 6 GiB.
               # One job, not the default two, so the written capacity is the variable's.

@@ -176,6 +176,14 @@
   become_user: "{{ forge_runner_account }}"
   environment: "{{ __forge_runner_environment }}"
 
+- name: runner | Load the runner's image from its archive where forge_image_archives holds it
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/image.yml"
+  vars:
+    __forge_archive_image: "{{ __forge_runner_image }}"
+    __forge_archive_account: "{{ forge_runner_account }}"
+    __forge_archive_environment: "{{ __forge_runner_environment }}"
+  when: forge_image_archives | length > 0
+
 - name: runner | Ask podman whether the runner's image is there
   ansible.builtin.command:
     argv: [podman, image, exists, "{{ __forge_runner_image }}"]
@@ -195,6 +203,14 @@
   environment: "{{ __forge_runner_environment }}"
   when: __forge_runner_image_there.rc == 1
   changed_when: true
+
+- name: runner | Load the runner's proxy image from its archive where forge_image_archives holds it
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/image.yml"
+  vars:
+    __forge_archive_image: "{{ __forge_runner_proxy_image }}"
+    __forge_archive_account: "{{ forge_runner_account }}"
+    __forge_archive_environment: "{{ __forge_runner_environment }}"
+  when: forge_image_archives | length > 0
 
 - name: runner | Ask podman whether the runner's proxy image is there
   ansible.builtin.command:

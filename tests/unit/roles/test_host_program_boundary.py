@@ -45,7 +45,8 @@ def test_roles_ship_only_the_stated_program_exceptions():
         for task in walk_tasks(yaml.safe_load(path.read_text()) or []):
             copy = task.get("ansible.builtin.copy", task.get("copy", {}))
             source = copy.get("src")
-            if source:
+            # A copy on the host itself ships nothing of the collection.
+            if source and not copy.get("remote_src"):
                 items = task.get("loop", [""])
                 if not isinstance(items, list):
                     offenders.append(f"{path.relative_to(ROOT)}: unresolved copy loop {items}")

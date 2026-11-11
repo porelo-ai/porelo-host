@@ -1,0 +1,14 @@
+---
+- name: Load one pinned image from forge_image_archives
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+      - name: Run the forge's archive tasks for the fixture image, as up includes them before its pull
+        ansible.builtin.include_role:
+            name: porelo.host.forge
+            tasks_from: image
+        vars:
+            __forge_archive_account: fixture-account
+            __forge_archive_environment:
+                XDG_RUNTIME_DIR: /run/user/4242

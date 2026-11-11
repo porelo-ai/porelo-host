@@ -9,6 +9,10 @@ forge_runner_kvm: "{{ porelo_host_kvm | default(false) }}"
 # The runner's cache address; Forgejo itself has no TCP listener.
 forge_address: "{{ (vpn_address | default('10.73.' ~ (porelo_host_network | string) ~ '.1/24')).split('/') | first }}"
 
+# A directory on the host holding pinned images as OCI archives, each named <digest>.tar by its sha256 digest; an image
+# whose archive is there is loaded instead of pulled. Empty pulls every image from its registry.
+forge_image_archives: ""
+
 # The local ports Porelo forwards over SSH to the browser and Git sockets.
 forge_host: "{{ porelo_host_name }}"
 forge_name: "{{ forge_host }}.localhost"

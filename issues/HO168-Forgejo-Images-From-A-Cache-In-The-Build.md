@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO168",
   "title": "Forgejo Images From A Cache In The Build",
-  "state": "Estimated",
+  "state": "Implementing",
   "size": "M",
   "priority": "Medium",
   "rank": 5,
@@ -18,10 +18,10 @@
 - a workflow step that fills and restores the cache;
 - a way to hand the archives into the Molecule VM;
 - a role option to load an archive before the pull;
-- a proof with the registries unreachable.
+- unit tests of the role's order and its refusal.
 
 Each part is small. Their seams are new: an archive's digest must survive the load, so that `podman image exists
-<name>@sha256:…` answers yes. That has to be seen to work, not assumed.
+<name>@sha256:…` answers yes. The role checks that after each load and stops if it does not.
 
 **What must be true.** Part of ST317. porelo-host's `molecule` job (both `kvm: on` and `off`) passes when codeberg.org,
 code.forgejo.org and docker.io do not answer, as long as the pinned digests are in the cache. On 2026-11-11 Codeberg's
@@ -60,25 +60,30 @@ Both are for porelo-host's ST317 list, as their own lines.
 The steps:
 1. **Fill and restore.** A step reads the three references from `roles/forge/vars/main.yml`.
    - `actions/cache` restores `$RUNNER_TEMP/images`, keyed by a hash of the three digests.
-   - On a miss, `skopeo copy --preserve-digests docker://<ref> oci-archive:$RUNNER_TEMP/images/<digest>.tar` fetches
-     each image once, and `actions/cache` saves them at the job's end.
-   - skopeo is on the runner image; its version is checked like the apt pins.
+   - On a miss, `skopeo copy --all --preserve-digests docker://<name>@sha256:<digest>
+     oci-archive:$RUNNER_TEMP/images/<digest>.tar` fetches each image once. All three pins are OCI indexes, so `--all`
+     is needed: a single platform's copy would carry its own digest, not the pin.
+   - `actions/cache/save` saves them right after the fetch, so a red scenario still fills the cache.
+   - Each archive's index is checked against its pin before Molecule gets it.
+   - skopeo is installed beside libvirt with a pinned version, like the other apt pins.
 2. **Into the VM.** `build/molecule.sh` passes `PORELO_HOST_IMAGES=<dir>` on to the scenario, beside the packages.
    `converge.yml` copies the archives into the VM.
 3. **The role loads before it pulls.** A new role option `forge_image_archives` names a directory on the host. For each
    pinned image whose archive is there, the role loads it into the account's podman before the existing "Ask podman
    whether … is there" task. The role refuses an archive whose digest is not the pinned one.
    - Loading must leave `podman image exists <name>@sha256:<digest>` true. An oci-archive loaded by `podman load` may
-     keep no repository digest. If it does not, the role copies with `skopeo copy --preserve-digests
-     oci-archive:… containers-storage:<name>@sha256:…` instead. Which one works is seen first.
+     keep no repository digest, so the role copies with `skopeo copy --preserve-digests oci-archive:…
+     containers-storage:<name>@sha256:…` as the account, and asks podman by the pin afterwards. The role installs
+     `skopeo` only where the option is set.
+   - The archive is checked before podman is asked anything: its index must name the pinned digest alone.
+   - The account reads a root-owned copy of the archive in a root-owned directory, removed after the load.
    - The role pulls only an image whose archive is missing, so a host without the option behaves as today.
    - The option is also what an air-gapped host would use.
 4. **Down and up again.** `down` removes the forge account's storage, and the scenario's side effect runs `up` again.
    The role therefore loads at every `up`, not once per scenario.
 5. **Tests.**
    - A unit test checks the role's order (load, exists, pull) and its refusal of a wrong digest.
-   - The proof is a CI run with the three registries blocked in the VM, by `/etc/hosts` entries to 0.0.0.0 set for that
-     run only. It is first seen red without the cache (the pull fails), then green with it.
+   - The workflow's own Build is the test of the cache and the load; there is no run with the registries blocked.
 6. **Docs.** The role's README gets `forge_image_archives`, and `doc/testing.md` gets the cache.
 
 ## Only the newest state is kept
@@ -86,13 +91,11 @@ The steps:
 - The cache key is the hash of the three digests. A new pin makes a new key, and the old key is never restored again.
 - GitHub removes a cache entry that was not used for 7 days, and the repository's total is capped. So an old digest's
   entry ages out by itself.
-- To be checked: whether the repository's Actions settings in this account let the retention be set shorter. If they
-  do not, a step after a successful save deletes every other `forge-images-` key with `gh cache delete`. That needs
-  `actions: write` for this one job; I prefer the 7-day expiry unless the operator wants the step.
+- No step deletes cache entries, so the job needs no `actions: write`.
 
 ## Acceptance
 
-- `molecule` (on and off) green with codeberg.org, code.forgejo.org and docker.io blocked in the VM, the cache warm.
-- The same run without the cache red at the pull, which shows the block works.
+- The Build's `molecule` job (on and off) is green with the cache: the role loads the three images from their archives
+  and pulls none of them.
 - A second push with unchanged pins restores the cache and fetches nothing.
 - A changed pin fetches once under a new key, and the old key ages out.

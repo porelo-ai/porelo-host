@@ -1,0 +1,132 @@
+---
+# One pinned image into an account's rootless podman from the archive forge_image_archives holds for its digest, so its
+# registry need not answer. Without that archive nothing happens here and the pull after it fetches the image.
+# Takes __forge_archive_image (the pinned reference), __forge_archive_account and __forge_archive_environment.
+- name: image | Name the pinned image's archive
+  ansible.builtin.set_fact:
+    __forge_archive_digest: "{{ __forge_archive_image.split('@sha256:') | last }}"
+    __forge_archive_name: "{{ (__forge_archive_image.split('@') | first) | regex_replace(':[^:/]+$', '') }}"
+
+- name: image | Stop on a reference that is not pinned by its digest
+  ansible.builtin.assert:
+    that:
+      - __forge_archive_image is match('^[a-z0-9./-]+(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$')
+      - __forge_archive_digest is match('^[0-9a-f]{64}$')
+    fail_msg: "{{ __forge_archive_image }} is not a reference pinned by its digest"
+    quiet: true
+
+- name: image | Read whether forge_image_archives holds the image's archive
+  ansible.builtin.stat:
+    path: "{{ forge_image_archives }}/{{ __forge_archive_digest }}.tar"
+    get_checksum: false
+  register: __forge_archive
+
+- name: image | Stop on an archive that is not a regular file
+  ansible.builtin.assert:
+    that: __forge_archive.stat.isreg
+    fail_msg: "{{ __forge_archive.stat.path }} is not a regular file"
+    quiet: true
+  when: __forge_archive.stat.exists
+
+# Before podman is asked anything, so a wrong archive stops every up, not only one that loads.
+- name: image | Read the archive's index
+  ansible.builtin.command:
+    argv:
+      - tar
+      - --extract
+      - --to-stdout
+      - --wildcards
+      - --no-anchored
+      - --file
+      - "{{ __forge_archive.stat.path }}"
+      - index.json
+  register: __forge_archive_index
+  changed_when: false
+  check_mode: false
+  when: __forge_archive.stat.exists
+
+- name: image | Stop on an archive whose image is not the pinned one
+  ansible.builtin.assert:
+    that:
+      - __forge_archive_manifests | length == 1
+      - __forge_archive_manifests[0].digest | default('') == 'sha256:' ~ __forge_archive_digest
+    fail_msg: >-
+      {{ __forge_archive.stat.path }} holds {{ __forge_archive_manifests | map(attribute='digest', default='')
+      | list }}, not the pinned sha256:{{ __forge_archive_digest }}
+    quiet: true
+  when: __forge_archive.stat.exists
+  vars:
+    __forge_archive_manifests: "{{ (__forge_archive_index.stdout | from_json).manifests | default([]) }}"
+
+- name: image | Ask podman whether the image is there already
+  ansible.builtin.command:
+    argv: [podman, image, exists, "{{ __forge_archive_image }}"]
+  become: true
+  become_user: "{{ __forge_archive_account }}"
+  environment: "{{ __forge_archive_environment }}"
+  register: __forge_archive_there
+  changed_when: false
+  failed_when: __forge_archive_there.rc not in [0, 1]
+  check_mode: false
+  when: __forge_archive.stat.exists
+
+- name: image | Load the image from its archive, checked against its pin
+  when:
+    - __forge_archive.stat.exists
+    - __forge_archive_there.rc | default(0) == 1
+    # A check run pulls nothing either.
+    - not ansible_check_mode
+  block:
+    # Root's copy in a directory of root's, made by the play's root: the account reads it and cannot change it.
+    - name: image | Make a directory of root's for the copy the account reads
+      ansible.builtin.tempfile:
+        state: directory
+        path: /var/tmp
+        prefix: porelo-forge-image.
+      register: __forge_archive_dir
+
+    - name: image | Let the account into that directory
+      ansible.builtin.file:
+        path: "{{ __forge_archive_dir.path }}"
+        state: directory
+        mode: "0755"
+
+    - name: image | Copy the archive where the account reads it
+      ansible.builtin.copy:
+        src: "{{ __forge_archive.stat.path }}"
+        dest: "{{ __forge_archive_dir.path }}/image.tar"
+        remote_src: true
+        mode: "0644"
+
+    # podman load would keep no repository digest; skopeo writes the image under its pinned name and digest, and
+    # --preserve-digests fails rather than change a manifest.
+    - name: image | Load the image into the account's podman by its pinned digest
+      ansible.builtin.command:
+        argv:
+          - skopeo
+          - copy
+          - --quiet
+          - --preserve-digests
+          - "oci-archive:{{ __forge_archive_dir.path }}/image.tar"
+          - "containers-storage:{{ __forge_archive_name }}@sha256:{{ __forge_archive_digest }}"
+      become: true
+      become_user: "{{ __forge_archive_account }}"
+      environment: "{{ __forge_archive_environment }}"
+      changed_when: true
+
+    - name: image | Ask podman whether the loaded image answers to its pin
+      ansible.builtin.command:
+        argv: [podman, image, exists, "{{ __forge_archive_image }}"]
+      become: true
+      become_user: "{{ __forge_archive_account }}"
+      environment: "{{ __forge_archive_environment }}"
+      register: __forge_archive_loaded
+      changed_when: false
+      failed_when: __forge_archive_loaded.rc != 0
+
+  always:
+    - name: image | Remove the account's copy of the archive
+      ansible.builtin.file:
+        path: "{{ __forge_archive_dir.path }}"
+        state: absent
+      when: __forge_archive_dir.path is defined
