@@ -67,7 +67,6 @@ it is left out.
 |---|---|---|---|
 | <a id="ho23"></a>[HO23](HO23-A-Machine-Rented-And-Given-Back-By-OpenTofu.md) | L | - | An administrator rents and gives back a host by one OpenTofu module per provider, its state kept encrypted with the administrator, outside the interface. |
 | <a id="ho168"></a>[HO168](HO168-Forgejo-Images-From-A-Cache-In-The-Build.md) | M | - | The Molecule job takes the forge role's three pinned images from a cache kept by their digests, so an outage of codeberg.org, code.forgejo.org or docker.io leaves it green; only the newest digests stay cached. |
-| <a id="ho169"></a>[HO169](HO169-The-Forge-Proves-The-Repository-Of-Them-All.md) | S | - | porelo-host's Molecule scenario and rehearsal prove `porelo-all` on the host's forge: a private repository the follow makes, its `main` taken only from its rebuild identity, that identity unable to write any other repository, and its rebuild workflow run by the forge's runner. |
 
 ## Backlog
 
@@ -205,6 +204,7 @@ it is left out.
 | # | Title | Why |
 |---|---|---|
 | <a id="ho164"></a>[HO164](HO164-A-Projects-Review-Setting-Reaches-The-Branch-Protection.md) | A Project's Review Setting Reaches The Branch Protection | A project's `review: optional` or `required` reaches the host forge's protection of `main` on the next follow pass, so a single admin can merge. |
+| <a id="ho169"></a>[HO169](HO169-The-Forge-Proves-The-Repository-Of-Them-All.md) | The Forge Proves The Repository Of Them All | porelo-host's Molecule scenario and rehearsal prove `porelo-all` on the host's forge: a private repository the follow makes, its `main` taken only from its rebuild identity, that identity unable to write any other repository, and its rebuild workflow run by the forge's runner. |
 | <a id="ho155"></a>HO155 | A Person Reads How Their Project's Repositories Stand Against Central | `porelo-host-push --central <project>` already gives a project's unlocked members the follow's answer, in their own account and without sudo. |
 | <a id="ho22"></a>HO22 | Ssh Reached Only Through The VPN Once It Is Up | replaced by the one-key design; there is no VPN, and SSH on port 22 is the host's only way in. |
 | <a id="ho62"></a>HO62 | The Forge's Own Reason For A Refused Password | replaced by the one-key design; the forge has no password. |

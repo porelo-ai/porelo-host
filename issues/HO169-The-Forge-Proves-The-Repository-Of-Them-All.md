@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO169",
   "title": "The Forge Proves The Repository Of Them All",
-  "state": "Estimated",
+  "state": "Rejected",
   "size": "S",
   "priority": "Medium",
   "rank": 6,
@@ -13,6 +13,10 @@
   "covers": "porelo-host's Molecule scenario and rehearsal prove `porelo-all` on the host's forge: a private repository the follow makes, its `main` taken only from its rebuild identity, that identity unable to write any other repository, and its rebuild workflow run by the forge's runner."
 }
 ```
+
+**Rejected (2026-11-11, the operator).** PJ58 needs no forge repository; the read-all checkout is made at task
+start (Core). Not every host has a forge, so nothing here is built. What remains is a check in the rehearsal's tasks
+step, filed once Core's start option has its id.
 
 **Why this size.** It is porelo-host's share of porelo-project's PJ58 (part of ST319): checks and a rehearsal step,
 not the forge code. The code that makes forge repositories, protects their `main` and makes identities moved into
