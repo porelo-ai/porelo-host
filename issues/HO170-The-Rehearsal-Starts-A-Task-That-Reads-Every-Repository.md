@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO170",
   "title": "The Rehearsal Starts A Task That Reads Every Repository",
-  "state": "Estimated",
+  "state": "Implementing",
   "size": "XS",
   "priority": "Medium",
   "rank": 7,
@@ -31,11 +31,11 @@ favour.
 1. **Start.** `build/rehearse-steps/tasks` starts a fourth task, `rehearsal-all`, with B619's start option (its CLI
    name as porelo ships it) and no `-r`. It uses the same agent, provider and model as the others and a short prompt
    with no work in it.
-2. **Read.** Through `REHEARSAL_PERSON_SSH`, the step lists `/workspace/` inside the task. There must be one directory
-   per repository the project's file names, plus the project's own. Each one's `HEAD` must be the commit the host's
-   mirror holds for that `main`.
-3. **Write.** A `touch` under `/workspace/<first repository>/` must fail. `git push` from it must have no remote to go
-   to.
+2. **Read.** On the host, the step lists `/workspace/` inside the task's container. There must be one non-empty
+   directory per repository `porelo project show` names, the project's own among them. B619 gives each one as a tree
+   without `.git`, so no `HEAD` can be compared; the check is that `.git` is absent.
+3. **Write.** A `touch` under `/workspace/<first repository>/` must fail. No directory has a git remote, and the
+   task's environment names no variable for a gate or a push.
 4. **End.** The step stops and removes `rehearsal-all`. No container, volume or workspace of it may remain, and its
    durable record stays.
 5. **Older porelo.** While the host's porelo refuses the start option as unknown, the part is SKIPPED with porelo's

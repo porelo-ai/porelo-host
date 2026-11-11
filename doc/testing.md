@@ -131,6 +131,12 @@ the project's own people from strangers. Its exit is its answer: 0 is `OK`, 77 i
 the reason, anything else `FAIL`, held like any failed step; both its streams go to `<report>/<name>.log`. The read keys
 at central are taken off by the operator's own script.
 
+Besides its three pi tasks, `tasks` starts a fourth, `rehearsal-all`, with porelo's `--all-repositories`, prompt-less
+and detached on the host. It checks that the task sees every repository `porelo project show` names as a non-empty
+`/workspace/<repository>/` without `.git`, that a write there is refused, that it has no git remote and no variable for
+a gate or a push, and that after its stop and removal no task, container, volume or workspace directory of it is left.
+A porelo that does not know the option makes that part a `SKIP` line with porelo's own words, and the step stays `OK`.
+
 `start` makes one domain `porelo-host-rehearsal-<time>`, by default with 8 vCPUs, 16 GiB and an 80 GiB disk. It installs the collection
 built from the checkout and runs `porelo.host.up` on the VM with the forge on, no VM pool and no KVM asked; `up`'s lines stay
 on the VM in `/root/rehearsal-up.lines`. Without `--machine-file`, the organization is Molecule's stand-in on the

@@ -126,3 +126,61 @@ for name in a b; do
     [ "$now" = true ] || { echo "rehearsal-$name stopped on its own"; start_log "$name"; exit 1; }
 done
 echo "rehearsal-a and rehearsal-b run and read their messages for $answer_minutes minutes; rehearsal-c is stopped"
+
+# HO170, for porelo's B619: a fourth task reads every repository of the project, read only, and leaves nothing behind.
+# Started prompt-less and detached on the host itself: B619 removes a prompt run of a reading task only from its fix on.
+all_task=rehearsal-all
+container="porelo-${REHEARSAL_PROJECT}_$all_task"
+on_host() { bounded 300 "$REHEARSAL_PERSON_SSH" "$@" < /dev/null; }
+in_task() { on_host podman exec "$container" "$@"; }
+if ! bounded 1800 "$REHEARSAL_PERSON_SSH" porelo task start --all-repositories --detach --no-input --agent=pi \
+    --provider=openrouter --model="$model" --clearance=deny -p "$REHEARSAL_PROJECT" "$all_task" < /dev/null \
+    > "$REHEARSAL_REPORT/tasks-all.start" 2>&1; then
+    if grep -qiE "unknown option.*--all-repositories" "$REHEARSAL_REPORT/tasks-all.start"; then
+        echo "SKIP $all_task: the host's porelo does not know the start option; it said:"
+        cat "$REHEARSAL_REPORT/tasks-all.start"
+        exit 0
+    fi
+    echo "$all_task did not start; its start said:"
+    cat "$REHEARSAL_REPORT/tasks-all.start"
+    exit 1
+fi
+cat "$REHEARSAL_REPORT/tasks-all.start"
+# Every repository the project names, and its own, which the start names; one it could not read fails here.
+on_host porelo project show --json "$REHEARSAL_PROJECT" > "$REHEARSAL_REPORT/tasks-all.project.json"
+own=$(sed -n 's/^repository  *\([^ ]*\) (the project.s own)$/\1/p' "$REHEARSAL_REPORT/tasks-all.start")
+[ -n "$own" ] || { echo "the start of $all_task names no own repository of $REHEARSAL_PROJECT"; exit 1; }
+expected=$(python3 -I -c 'import json, sys
+for each in json.load(open(sys.argv[1]))["repositories"]["names"]:
+    print(each["name"])
+print(sys.argv[2])' "$REHEARSAL_REPORT/tasks-all.project.json" "$own") || { echo "no repositories in porelo project show"; exit 1; }
+[ -n "$expected" ] || { echo "porelo project show names no repository of $REHEARSAL_PROJECT"; exit 1; }
+in_task ls -1 /workspace > "$REHEARSAL_REPORT/tasks-all.workspace" \
+    || { echo "/workspace of $all_task cannot be listed"; exit 1; }
+for repository in $expected; do
+    grep -qx "$repository" "$REHEARSAL_REPORT/tasks-all.workspace" \
+        || { echo "$all_task has no /workspace/$repository; it has: $(tr '\n' ' ' < "$REHEARSAL_REPORT/tasks-all.workspace")"; exit 1; }
+    [ -n "$(in_task ls -A "/workspace/$repository")" ] || { echo "/workspace/$repository is empty"; exit 1; }
+    ! in_task test -e "/workspace/$repository/.git" || { echo "/workspace/$repository holds a .git"; exit 1; }
+done
+echo "$all_task reads $(echo "$expected" | wc -l) repositories under /workspace: $(echo "$expected" | tr '\n' ' ')"
+first=$(echo "$expected" | head -n 1)
+! in_task touch "/workspace/$first/.rehearsal-write" 2> /dev/null || { echo "a write under /workspace/$first went through"; exit 1; }
+echo "a write under /workspace/$first is refused"
+# No push target and no gate token: no git remote anywhere under /workspace, no variable named for a gate or token.
+# shellcheck disable=SC2016 # expanded in the task's shell
+! in_task sh -c 'for d in /workspace/*/; do git -C "$d" remote 2>/dev/null | grep -q . && exit 0; done; exit 1' \
+    || { echo "a repository under /workspace has a git remote"; exit 1; }
+in_task env | sed 's/=.*//' > "$REHEARSAL_REPORT/tasks-all.env-names"
+! grep -qiE 'gate|push' "$REHEARSAL_REPORT/tasks-all.env-names" \
+    || { echo "$all_task holds a variable for a gate or a push: $(grep -iE 'gate|push' "$REHEARSAL_REPORT/tasks-all.env-names" | tr '\n' ' ')"; exit 1; }
+echo "$all_task has no push target and no gate variable"
+on_host porelo task stop "$all_task" > "$REHEARSAL_REPORT/tasks-all.stop" 2>&1 \
+    || { echo "$all_task did not stop:"; cat "$REHEARSAL_REPORT/tasks-all.stop"; exit 1; }
+on_host porelo task remove "$all_task" > "$REHEARSAL_REPORT/tasks-all.remove" 2>&1 || true
+on_host porelo task list > "$REHEARSAL_REPORT/tasks-all.list"
+! grep -qw "$all_task" "$REHEARSAL_REPORT/tasks-all.list" || { echo "porelo still lists $all_task"; exit 1; }
+left_over=$(on_host sh -c "podman ps -a --format '{{.Names}}'; podman volume ls --format '{{.Name}}'; \
+find ~/.local/state/porelo ~/.local/share/porelo -type d -name '*$all_task*' 2>/dev/null" | grep -F "$all_task" || true)
+[ -z "$left_over" ] || { echo "$all_task left behind: $(echo "$left_over" | tr '\n' ' ')"; exit 1; }
+echo "$all_task is gone: no task, container, volume or workspace of it is left"
