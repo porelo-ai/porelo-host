@@ -111,7 +111,10 @@ def fakes(tmp_path, there):
     if there:
         (state / "loaded").touch()
     (bin_dir / "podman").write_text(
-        f'#!/bin/sh\necho "$*" >> {state}/podman\n[ -e {state}/loaded ] && [ "$*" = "image exists {IMAGE}" ]\n'
+        # As the real one, `podman unshare <command>` runs the command inside the account's user namespace.
+        f'#!/bin/sh\necho "$*" >> {state}/podman\n'
+        f'if [ "$1" = unshare ]; then shift; exec "$@"; fi\n'
+        f'[ -e {state}/loaded ] && [ "$*" = "image exists {IMAGE}" ]\n'
     )
     (bin_dir / "skopeo").write_text(
         f'#!/bin/sh\nprintf "%s\\n" "$@" > {state}/skopeo\n'
@@ -190,7 +193,9 @@ def test_the_pinned_archive_is_loaded_under_its_name_and_digest_and_its_copy_rem
     assert argv[4] == f"containers-storage:{NAME}@sha256:{DIGEST}"
     copy = Path(argv[3].removeprefix("oci-archive:"))
     assert copy.name == "image.tar" and copy.parent.parent == Path("/var/tmp") and not copy.parent.exists()
-    assert (state / "podman").read_text().splitlines() == [f"image exists {IMAGE}"] * 2
+    # skopeo inside podman's user namespace, since Ubuntu lets podman, not skopeo, open one for the account.
+    load = "unshare skopeo " + " ".join(argv)
+    assert (state / "podman").read_text().splitlines() == [f"image exists {IMAGE}", load, f"image exists {IMAGE}"]
 
 
 def test_a_load_whose_digest_podman_does_not_find_fails(tmp_path):

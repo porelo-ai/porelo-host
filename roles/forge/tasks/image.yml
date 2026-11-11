@@ -99,10 +99,13 @@
         mode: "0644"
 
     # podman load would keep no repository digest; skopeo writes the image under its pinned name and digest, and
-    # --preserve-digests fails rather than change a manifest.
+    # --preserve-digests fails rather than change a manifest. Inside podman unshare, since Ubuntu lets podman, not
+    # skopeo, open the account's user namespace.
     - name: image | Load the image into the account's podman by its pinned digest
       ansible.builtin.command:
         argv:
+          - podman
+          - unshare
           - skopeo
           - copy
           - --quiet
