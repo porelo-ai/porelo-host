@@ -51,8 +51,8 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho167"></a>[HO167](HO167-Down-And-A-Host-The-Organization-No-Longer-Lists.md) | - | - | `down` on a host the organization no longer lists, while persons still hold memberships, names them and asks y/N before it takes them off and goes down; `--force` skips the question, and without a terminal it refuses. |
 | <a id="ho159"></a>[HO159](HO159-The-Hosts-Tests-Follow-The-Pyramid.md) | L | - | The host's tests follow the pyramid (ST296): its pool and role logic unit-tested over fakes, its subprocess tests narrowed, `tests/unit` and `tests/integration` apart, and Molecule's sleeps gone. |
+| <a id="ho167"></a>[HO167](HO167-Down-And-A-Host-The-Organization-No-Longer-Lists.md) | - | - | `down` on a host the organization no longer lists, while persons still hold memberships, names them and asks y/N before it takes them off and goes down; `--force` skips the question, and without a terminal it refuses. |
 
 ## Analyzed
 
@@ -66,6 +66,7 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho23"></a>[HO23](HO23-A-Machine-Rented-And-Given-Back-By-OpenTofu.md) | L | - | An administrator rents and gives back a host by one OpenTofu module per provider, its state kept encrypted with the administrator, outside the interface. |
+| <a id="ho168"></a>[HO168](HO168-Forgejo-Images-From-A-Cache-In-The-Build.md) | M | - | The Molecule job takes the forge role's three pinned images from a cache kept by their digests, so an outage of codeberg.org, code.forgejo.org or docker.io leaves it green; only the newest digests stay cached. |
 
 ## Backlog
 
