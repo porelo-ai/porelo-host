@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO174",
   "title": "A Rented Rehearsal Fails Early And Cleans Up",
-  "state": "Implementing",
+  "state": "Review",
   "size": "S",
   "priority": "High",
   "rank": 1,

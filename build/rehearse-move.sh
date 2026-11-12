@@ -533,6 +533,9 @@ if [ -f /root/porelo-host-inventory.yml ]; then
     python3 -I -c 'import json,sys
 rows=[json.loads(line) for line in open(sys.argv[1]) if line.strip()]
 sys.exit(1 if not rows or any(row.get("state") in ("failed", "waiting") for row in rows) else 0)' /root/rehearsal-down.lines
+    # A clean down leaves the software; the marker moves aside, so a later run passes the guard on this server.
+    mv /etc/porelo-host "/root/porelo-host-down-$unit"
+    printf '%s\n' "$unit" > "/root/porelo-host-down-$unit.owner"
 else
     printf '{"down_ran":false}\n'
 fi
@@ -621,7 +624,7 @@ rented_finish() {
                 rented_line "SKIP down $down_message"
             fi
             rented_org_off
-            rented_line 'SKIP read-keys the deploy keys at central are taken off by the operator'"'"'s own script'
+            rented_read_keys
             rm -rf "$state"
             deleted_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
             place=''
@@ -630,7 +633,7 @@ rented_finish() {
         else
             rented_line "FAIL down run the host down -> exit $down_status; see $report/down.log and $report/down.lines"
             rented_org_off
-            rented_line 'SKIP read-keys the deploy keys at central are taken off by the operator'"'"'s own script'
+            rented_read_keys
             rented_line "LEFT on server $server: host software, firewall and rehearsal files may remain at /etc/porelo-host and $staging; state in $state"
             status=$down_status
         fi
@@ -654,6 +657,11 @@ rented_phase_two_options() {
     for program in "$org_program" "$central_token"; do
         [ -f "$program" ] && [ -x "$program" ] || fail "no executable program at $program"
     done
+    # Both are asked before the server is claimed, so a wrong start touches nothing there.
+    timeout --kill-after=5 60 "$org_program" --version > /dev/null 2>&1 \
+        || fail "the organization program does not answer --version: $org_program"
+    [ "$(timeout --kill-after=5 60 "$central_token" 2> /dev/null | head -c 1 | wc -c)" = 1 ] \
+        || fail "the central token program gives no token: $central_token"
     [ -S "$person_agent" ] || fail "no agent socket at $person_agent"
     if [ -n "$provider_keys" ]; then [ -d "$provider_keys" ] || fail "no provider key directory at $provider_keys"; fi
     # The refresh logs in as root (Core, 2026-11-10); the operator's public key alone goes to root, without its comment.
@@ -881,6 +889,60 @@ print(next(iter(names(json.load(open(sys.argv[1])))), ""))' "$report/central-sta
     return "$measured"
 }
 
+# The read keys the host put at central for this run: the organization repository's key made within the run, and
+# each project repository's key titled for the host rented; taken off with the test identity's token, then listed again.
+rented_read_keys() {
+    [ "${phase_two:-no}" = yes ] && [ -f "$state/org-added" ] || { rented_line 'SKIP read-keys the host never joined the organization'; return 0; }
+    keys_status=0
+    "$central_token" 2>> "$report/read-keys.log" | python3 -I -c '
+import json, re, sys, urllib.request
+token = sys.stdin.readline().strip()
+machine, states, project, repository, since = sys.argv[1:6]
+if not token:
+    sys.exit("no central token")
+found = re.search(r"repository: *git@github\.com:([A-Za-z0-9-]+)/([A-Za-z0-9._-]+?)(?:\.git)?\\n", open(machine).read())
+if not found:
+    sys.exit("the machine file names no organization repository on github.com")
+owner, org_repo = found.groups()
+names = {project, repository}
+try:
+    names |= {row["repository"] for row in json.load(open(states)).get("repositories", [])}
+except OSError:
+    pass
+def call(method, path):
+    request = urllib.request.Request("https://api.github.com" + path, method=method, headers={
+        "Authorization": "Bearer " + token, "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(request, timeout=30) as answer:
+        body = answer.read()
+        return json.loads(body) if body else None
+def ours(repo, key):
+    if key["created_at"] < since:
+        return False
+    if repo == org_repo:
+        return key["title"].startswith("porelo host read key ")
+    return key["title"] == "porelo host rented project " + project
+left = 0
+for repo in [org_repo] + sorted(names - {org_repo}):
+    for key in [k for k in call("GET", f"/repos/{owner}/{repo}/keys") if ours(repo, k)]:
+        ident, title = key["id"], key["title"]
+        call("DELETE", f"/repos/{owner}/{repo}/keys/{ident}")
+        print(f"removed {owner}/{repo} {ident} {title}")
+    for key in [k for k in call("GET", f"/repos/{owner}/{repo}/keys") if ours(repo, k)]:
+        ident, title = key["id"], key["title"]
+        print(f"left {owner}/{repo} {ident} {title}")
+        left += 1
+sys.exit(1 if left else 0)
+' "$machine_file" "$report/central-state.json" "$project" "$repository" "$run_started" >> "$report/read-keys.log" 2>&1 \
+        || keys_status=$?
+    if [ "$keys_status" = 0 ]; then
+        rented_line "OK read-keys take the run's read keys off central and list again -> exit 0; see $report/read-keys.log"
+    else
+        rented_line "FAIL read-keys take the run's read keys off central -> exit $keys_status; see $report/read-keys.log"
+        rented_line 'LEFT at central: read keys of the host rented, as the log lists them'
+        [ "$status" != 0 ] || status=$keys_status
+    fi
+}
+
 rented_org_off() {
     rm -f "$state/vault-passphrase"
     [ "${phase_two:-no}" = yes ] && [ -f "$state/org-added" ] || return 0
@@ -970,6 +1032,7 @@ rented() {
     mkdir -p "$root/target" "$HOME/.porelo/rehearsal"
     mkdir -m 700 "$state" || fail "$state is there from an earlier run"
     stamp=$(date -u +%Y%m%dt%H%M%Sz)
+    run_started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     report=$HOME/.porelo/rehearsal/$server-$stamp
     mkdir -m 700 "$report" || fail "report already exists: $report"
     printf '%s\n' "$report" > "$state/report"
@@ -1169,7 +1232,8 @@ rented_resume_request() {
     {
         keep server "$server"; keep account "$account"; keep key_file "$key_file"; keep zone "$zone"
         keep machine_file "$machine_file"
-        keep report "$report"; keep stamp "$stamp"; keep unit "$unit"; keep staging "$staging"
+        keep report "$report"; keep stamp "$stamp"; keep run_started "$run_started"; keep unit "$unit"
+        keep staging "$staging"
         keep phase_two "$phase_two"; keep org_program "$org_program"; keep org_public "$org_public"
         keep person "$person"; keep person_agent "$person_agent"; keep central_token "$central_token"
         keep project "$project"; keep retire_host "$retire_host"; keep deadline "$deadline"

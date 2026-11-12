@@ -84,13 +84,13 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho174"></a>[HO174](HO174-A-Rented-Rehearsal-Fails-Early-And-Cleans-Up.md) | S | - | build/rehearse-move.sh's rented mode probes its organization and token programs before it claims a server, lets a second run onto a server a clean down left, and takes its read keys off central for the organization the machine file names. |
 | <a id="ho170"></a>[HO170](HO170-The-Rehearsal-Starts-A-Task-That-Reads-Every-Repository.md) | XS | - | The rented host's rehearsal starts one task with porelo's read-all start option and checks that it sees every repository of the project under /workspace, can write none of them, and leaves nothing behind after it ends. |
 
 ## Review
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho174"></a>[HO174](HO174-A-Rented-Rehearsal-Fails-Early-And-Cleans-Up.md) | S | - | build/rehearse-move.sh's rented mode probes its organization and token programs before it claims a server, lets a second run onto a server a clean down left, and takes its read keys off central for the organization the machine file names. |
 | <a id="ho127"></a>[HO127](HO127-The-Half-For-Jobs-Is-A-Setting.md) | S | - | The share of the host for jobs and the VM pool becomes a setting, today's half its default, `up`'s refusal naming it. |
 | <a id="ho154"></a>[HO154](HO154-A-Task-Account-Pushes-Only-Its-Own-Task-Branches.md) | S | - | A task's token pushes and force-pushes only `porelo/<task>` of its own person's tasks; the host refuses any other ref from that account. |
 | <a id="ho157"></a>[HO157](HO157-Molecule-And-The-Rehearsal-Run-On-The-Package.md) | M | - | Molecule and the move rehearsal install the local `porelo-host` package and check its version; `porelo-vm` moves to `build/`. |
