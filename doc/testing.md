@@ -119,7 +119,10 @@ Without the phase 2 options it stops after `up`. With them it also:
   rehearsal (`story-st31` plays a key pasted at `vault put`'s prompt through a terminal, and a provider Pi does not
   know; `story-st41` a sample Maven checkout drafted by `project init`, read again once its parent is in the local
   repository; `story-st320` fresh checkouts of porelo-buildtools, porelo-planner and porelo from `PORELO_STORY_FORGE`,
-  default `https://github.com/porelo-ai`, read for where the work tools and the native-image checks live);
+  default `https://github.com/porelo-ai`, read for where the work tools and the native-image checks live;
+  `story-st326` the packages of porelo-agy, porelo-codex, porelo-message-matrix, the window and porelo downloaded from
+  the host's own repository and unpacked, each THIRD-PARTY-NOTICES held to the package's bill, and the IntelliJ
+  plugin's zip from `PORELO_STORY_PLUGINS`, default the snapshots channel's `updatePlugins.xml`);
 - runs the steps others build, each one executable under `build/rehearse-steps/`, in the order `tasks`, `busy-room`,
   `judge`, `window`; a step not on the branch is `SKIP <name> not built yet`, and `busy-room` and `judge`, which use
   the tasks `tasks` starts, are skipped when `tasks` is;

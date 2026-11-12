@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+# The story test of ST326 (porelo-project), "Every package carries the notices of what it compiles in", played as the
+# test person on a rehearsal's host: the .deb or .rpm of porelo-agy, porelo-codex, porelo-message-matrix, the window and
+# porelo itself, fetched from the repository the host installs from and unpacked, and the IntelliJ plugin's zip from
+# its plugin repository. Each package holds a THIRD-PARTY-NOTICES that names every library its own bill names as
+# compiled in, with the full text of each license the bill gives it, LGPL-3.0 and Bouncy Castle's among them; the zip
+# bundles Porelo's own jars alone, or names the others in its notices.
+#
+# A step under build/rehearse-steps, called by the contract in doc/testing.md; it reads REHEARSAL_PERSON_SSH,
+# REHEARSAL_REPORT and REHEARSAL_DEADLINE, and PORELO_STORY_PLUGINS, the plugin repository's descriptor (default the
+# snapshots channel's updatePlugins.xml). The last line is the story's:
+#
+#   ST326 passed                                  exit 0
+#   ST326 waiting on porelo#B606                  exit 77, a step whose open issue is named failed as expected
+#   ST326 failed at <step>: <what was seen>       exit 1, a step no open issue explains
+#
+# Nothing is installed: each package is downloaded as the person and unpacked into a scratch directory, removed at the
+# end.
+set -euo pipefail
+
+for name in REHEARSAL_PERSON_SSH REHEARSAL_REPORT REHEARSAL_DEADLINE; do
+    [ -n "${!name:-}" ] || {
+        echo "ST326 failed at the contract: $name is not set"
+        exit 1
+    }
+done
+plugins=${PORELO_STORY_PLUGINS:-https://fuinorg.jfrog.io/artifactory/porelo-dist-intellij/snapshots/updatePlugins.xml}
+
+out=$REHEARSAL_REPORT/story-st326.d
+mkdir -p "$out"
+waiting=()
+failed=''
+
+on_host() {
+    local seconds=$1
+    shift
+    local left=$((REHEARSAL_DEADLINE - $(date +%s) - 60))
+    [ "$left" -gt 0 ] || return 124
+    [ "$seconds" -le "$left" ] || seconds=$left
+    timeout --signal=TERM --kill-after=10 "$seconds" "$REHEARSAL_PERSON_SSH" "$@"
+}
+
+wait_on() {
+    [[ " ${waiting[*]} " == *" $1 "* ]] || waiting+=("$1")
+    echo "expected while $1 is open: $2"
+}
+
+fail() {
+    [ -n "$failed" ] || failed="$1: $2"
+    echo "FAILED $1: $2"
+}
+
+scratch=$(on_host 60 mktemp -d -t porelo-st326.XXXXXX < /dev/null) || {
+    echo "ST326 failed at the scratch directory: the host made none"
+    exit 1
+}
+cleanup() {
+    on_host 60 rm -rf "$scratch" < /dev/null > /dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+# The notices against the package's bill, judged here: every library the bill names that is not Porelo's own is named
+# in the notices, and each license the bill gives one stands there in full, known by a line of its standard text.
+judge='import json, re, sys
+notices = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+bill = json.load(open(sys.argv[2])) if len(sys.argv) > 2 else None
+texts = {
+    "Apache-2.0": "Apache License",
+    "MIT": "Permission is hereby granted",
+    "BSD-3-Clause": "Redistribution and use in source and binary forms",
+    "BSD-2-Clause": "Redistribution and use in source and binary forms",
+    "EPL-2.0": "Eclipse Public License",
+    "EPL-1.0": "Eclipse Public License",
+    "LGPL-2.1": "GNU LESSER GENERAL PUBLIC LICENSE",
+    "LGPL-3.0": "GNU LESSER GENERAL PUBLIC LICENSE",
+    "GPL-2.0": "GNU GENERAL PUBLIC LICENSE",
+    "GPL-3.0": "GNU GENERAL PUBLIC LICENSE",
+    "MPL-2.0": "Mozilla Public License",
+}
+if "License:" not in notices and "LICENSE" not in notices.upper():
+    print("FAIL the notices hold no license text")
+if bill is None:
+    print("NOTE no bill in the package; the notices are not held to one")
+    sys.exit(0)
+def own(c):
+    return (c.get("group") or "").startswith("org.fuin.porelo") or (c.get("name") or "").startswith("porelo")
+def ids(c):
+    found = []
+    for entry in c.get("licenses", []):
+        lic = entry.get("license", {})
+        found += [lic.get("id") or lic.get("name") or ""]
+        if entry.get("expression"):
+            found += re.findall(r"[A-Za-z0-9.+-]+", entry["expression"])
+    return [i for i in found if i and i not in ("AND", "OR", "WITH")]
+named = 0
+for c in bill.get("components", []):
+    if c.get("type", "library") != "library" or own(c):
+        continue
+    named += 1
+    name = c.get("name", "")
+    if name not in notices:
+        print("FAIL the bill names " + (c.get("group", "") + ":" + name).lstrip(":") + ", the notices do not")
+        continue
+    for lid in ids(c):
+        base = re.sub(r"-(only|or-later)$|\+$", "", lid)
+        phrase = texts.get(base)
+        if phrase and phrase.upper() not in notices.upper():
+            print("FAIL " + name + " is " + lid + ", and its text is not in the notices")
+    if name.startswith("bc") and "Bouncy Castle" not in notices:
+        print("FAIL " + name + " is Bouncy Castle, and its licence is not in the notices")
+print("NOTE " + str(named) + " third-party libraries in the bill")'
+
+# Step 1: each package as the repository the host installs from serves it, unpacked as it would install.
+echo "== the packages"
+on_host 60 sh -c 'command -v apt-get >/dev/null && echo deb || { command -v dnf >/dev/null && echo rpm; }' \
+    < /dev/null > "$out/format.out" 2>&1 || true
+format=$(tail -n 1 "$out/format.out")
+case $format in
+    deb | rpm) echo "the host installs .$format" ;;
+    *)
+        echo "ST326 failed at the packages: the host has neither apt-get nor dnf"
+        exit 1
+        ;;
+esac
+
+# package, and the issue that would explain its notices missing; empty while every issue for it is done.
+for line in 'porelo-agent-agy:' 'porelo-agent-codex:' 'porelo-message-transport-matrix:' 'porelo-frontend:' \
+    'porelo:porelo#B606'; do
+    package=${line%%:*}
+    issue=${line#*:}
+    echo "== $package"
+    # shellcheck disable=SC2016
+    if ! on_host 600 sh -c 'set -e
+mkdir -p "$1/$2/root" && cd "$1/$2"
+if [ "$3" = deb ]; then
+    apt-get download -q "$2" >/dev/null
+    dpkg-deb -x ./*.deb root
+else
+    dnf download -q --destdir . "$2" >/dev/null
+    cd root && rpm2cpio ../*.rpm | cpio -idm --quiet && cd ..
+fi
+find root -name THIRD-PARTY-NOTICES -type f | sort | sed -n 1p
+find root -name "*.cdx.json" -type f | sort | sed -n 1p' sh "$scratch" "$package" "$format" < /dev/null \
+        > "$out/$package.found" 2>&1; then
+        cat "$out/$package.found"
+        fail "the package $package" "it could not be downloaded or unpacked: $(tail -n 1 "$out/$package.found")"
+        continue
+    fi
+    notices=$(grep -m 1 'THIRD-PARTY-NOTICES$' "$out/$package.found" || true)
+    bill=$(grep -m 1 '\.cdx\.json$' "$out/$package.found" || true)
+    echo "notices: ${notices:-none}; bill: ${bill:-none}"
+    if [ -z "$notices" ]; then
+        if [ -n "$issue" ]; then
+            wait_on "$issue" "the $package package carries no THIRD-PARTY-NOTICES"
+        else
+            fail "the notices of $package" "the package carries no THIRD-PARTY-NOTICES"
+        fi
+        continue
+    fi
+    on_host 60 cat "$scratch/$package/$notices" < /dev/null > "$out/$package.notices" 2> /dev/null || true
+    args=("$out/$package.notices")
+    if [ -n "$bill" ] \
+        && on_host 60 cat "$scratch/$package/$bill" < /dev/null > "$out/$package.cdx.json" 2> /dev/null; then
+        args+=("$out/$package.cdx.json")
+    fi
+    if ! python3 -I -c "$judge" "${args[@]}" > "$out/$package.judged" 2>&1; then
+        fail "the notices of $package" "they could not be judged: $(tail -n 1 "$out/$package.judged")"
+        continue
+    fi
+    cat "$out/$package.judged"
+    while IFS= read -r judged; do
+        case $judged in
+            FAIL\ *)
+                if [ -n "$issue" ]; then
+                    wait_on "$issue" "$package: ${judged#FAIL }"
+                else
+                    fail "the notices of $package" "${judged#FAIL }"
+                fi
+                ;;
+        esac
+    done < "$out/$package.judged"
+done
+
+# Step 2: the IntelliJ plugin's zip, as an IDE fetches it from the plugin repository: Porelo's own jars alone, or the
+# notices of the others in the zip.
+echo "== the IntelliJ plugin"
+# shellcheck disable=SC2016
+if on_host 300 sh -c 'set -e
+mkdir -p "$1/intellij" && cd "$1/intellij"
+curl -fsSL -o updatePlugins.xml "$2"
+url=$(sed -n "s/.* url=\"\([^\"]*\)\".*/\1/p" updatePlugins.xml | head -n 1)
+[ -n "$url" ] || { echo "updatePlugins.xml names no zip"; exit 1; }
+echo "zip: $url"
+curl -fsSL -o plugin.zip "$url"
+python3 -I -c "import sys, zipfile; print(\"\n\".join(zipfile.ZipFile(sys.argv[1]).namelist()))" plugin.zip > entries
+echo "--- entries"
+cat entries' sh "$scratch" "$plugins" < /dev/null > "$out/intellij.out" 2>&1; then
+    sed -n '/^--- entries/,$p' "$out/intellij.out" | grep -E '\.jar$|THIRD-PARTY-NOTICES' || true
+    foreign=$(sed -n '/^--- entries/,$p' "$out/intellij.out" | grep -E '\.jar$' | sed 's#.*/##' \
+        | grep -vE '^porelo-' || true)
+    if [ -n "$foreign" ] && ! grep -q 'THIRD-PARTY-NOTICES$' "$out/intellij.out"; then
+        fail "the IntelliJ plugin" "it bundles $(echo "$foreign" | paste -sd, -) without THIRD-PARTY-NOTICES"
+    fi
+else
+    cat "$out/intellij.out"
+    fail "the IntelliJ plugin" "its zip could not be fetched: $(tail -n 1 "$out/intellij.out")"
+fi
+
+if [ -n "$failed" ]; then
+    echo "ST326 failed at $failed"
+    exit 1
+fi
+if [ "${#waiting[@]}" -gt 0 ]; then
+    echo "ST326 waiting on $(printf '%s\n' "${waiting[@]}" | sort -u | paste -sd, - | sed 's/,/, /g')"
+    exit 77
+fi
+echo "ST326 passed"
