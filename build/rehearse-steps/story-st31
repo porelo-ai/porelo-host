@@ -1,0 +1,209 @@
+#!/usr/bin/env bash
+# The story test of ST31 (porelo-project), "Keys and providers without stumbling", played as the test person at the
+# command line of a rehearsal's host: a key pasted at `porelo vault put`'s prompt through a terminal is stored as
+# --from-file stores it, and a task started with a provider Pi does not know is refused by name before it starts.
+#
+# A step under build/rehearse-steps, called by the contract in doc/testing.md; it reads REHEARSAL_PERSON_SSH,
+# REHEARSAL_PROJECT, REHEARSAL_REPOSITORY, REHEARSAL_REPORT and REHEARSAL_DEADLINE. The last line is the story's:
+#
+#   ST31 passed                                   exit 0
+#   ST31 waiting on porelo#B228, ...              exit 77, a step whose open issue is named failed as expected
+#   ST31 failed at <step>: <what was seen>        exit 1, a step no open issue explains
+#
+# The key is made on the host for this run and never leaves it; the entries, the provider file and the task it makes
+# are removed at the end, whatever happened.
+set -euo pipefail
+
+for name in REHEARSAL_PERSON_SSH REHEARSAL_PROJECT REHEARSAL_REPOSITORY REHEARSAL_REPORT REHEARSAL_DEADLINE; do
+    [ -n "${!name:-}" ] || {
+        echo "ST31 failed at the contract: $name is not set"
+        exit 1
+    }
+done
+
+out=$REHEARSAL_REPORT/story-st31.d
+mkdir -p "$out"
+waiting=()
+failed=''
+
+# Every call on the host ends a minute before the rehearsal's deadline at the latest.
+on_host() {
+    local seconds=$1
+    shift
+    local left=$((REHEARSAL_DEADLINE - $(date +%s) - 60))
+    [ "$left" -gt 0 ] || return 124
+    [ "$seconds" -le "$left" ] || seconds=$left
+    timeout --signal=TERM --kill-after=10 "$seconds" "$REHEARSAL_PERSON_SSH" "$@"
+}
+
+wait_on() {
+    waiting+=("$1")
+    echo "expected while $1 is open: $2"
+}
+
+fail() {
+    [ -n "$failed" ] || failed="$1: $2"
+    echo "FAILED $1: $2"
+}
+
+# The person's own scratch directory on the host, for the key.
+scratch=$(on_host 60 mktemp -d -t porelo-st31.XXXXXX < /dev/null) || {
+    echo "ST31 failed at the scratch directory: the host made none"
+    exit 1
+}
+
+cleanup() {
+    on_host 300 porelo task stop st31-unknown-provider < /dev/null > /dev/null 2>&1 || true
+    on_host 300 porelo task remove st31-unknown-provider < /dev/null > /dev/null 2>&1 || true
+    for entry in st31-pasted st31-from-file example-unknown; do
+        on_host 60 porelo vault remove --without-revoking "$entry" < /dev/null > /dev/null 2>&1 || true
+    done
+    # shellcheck disable=SC2016
+    on_host 60 sh -c 'rm -f "${XDG_DATA_HOME:-$HOME/.local/share}/porelo/providers/example-unknown.yaml"; rm -rf "$1"' \
+        sh "$scratch" < /dev/null > /dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+# Step 1: a long key with odd characters, an Ed25519 key in OpenSSH's armour with a comment of quotes, umlauts and
+# shell characters, made by ssh-keygen as a person makes one.
+echo "== the key"
+if ! on_host 60 ssh-keygen -q -t ed25519 -N '' -C "st31 \"quoted\" äöü ß \$HOME \`tick\` \\back +/= ;&|" \
+    -f "$scratch/key" < /dev/null > "$out/keygen.out" 2>&1; then
+    cat "$out/keygen.out"
+    echo "ST31 failed at the key: ssh-keygen made none"
+    exit 1
+fi
+
+# Step 2: the same key stored from its file, the form B228 holds the pasted one to.
+echo "== vault put --from-file"
+status=0
+on_host 120 porelo vault put --from-file "$scratch/key" st31-from-file < /dev/null > "$out/put-file.out" 2>&1 \
+    || status=$?
+cat "$out/put-file.out"
+[ "$status" = 0 ] || fail "vault put --from-file" "exit $status"
+
+# Step 3: the key pasted at the prompt. A terminal on the host runs `porelo vault put`; once it asks for the value,
+# the key's lines arrive as a paste does, each ended by the Enter the terminal sends.
+echo "== vault put, pasted at the prompt"
+paste_driver='import os, pty, select, sys, time
+name, key = sys.argv[1], open(sys.argv[2], "rb").read()
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp("porelo", ["porelo", "vault", "put", name])
+seen = b""
+def read_for(seconds, until=None):
+    global seen
+    end = time.time() + seconds
+    while time.time() < end:
+        ready, _, _ = select.select([fd], [], [], 0.2)
+        if not ready:
+            continue
+        try:
+            data = os.read(fd, 4096)
+        except OSError:
+            return False
+        if not data:
+            return False
+        seen += data
+        if until is not None and until in seen:
+            return True
+    return False
+if not read_for(60, b"Value for"):
+    sys.stdout.write(seen.decode("utf-8", "replace"))
+    print("\nno prompt for the value within a minute")
+    os.kill(pid, 9)
+    sys.exit(3)
+os.write(fd, key.replace(b"\n", b"\r"))
+read_for(60)
+done, status = os.waitpid(pid, os.WNOHANG)
+if done == 0:
+    os.kill(pid, 9)
+    os.waitpid(pid, 0)
+    sys.stdout.write(seen.decode("utf-8", "replace"))
+    print("\nvault put did not end within a minute of the paste")
+    sys.exit(4)
+sys.stdout.write(seen.decode("utf-8", "replace"))
+sys.exit(os.waitstatus_to_exitcode(status))'
+status=0
+on_host 180 python3 -I -c "$paste_driver" st31-pasted "$scratch/key" < /dev/null > "$out/put-pasted.out" 2>&1 \
+    || status=$?
+cat "$out/put-pasted.out"
+case $status in
+    0) ;;
+    3 | 4 | 124) fail "vault put at the prompt" "$(tail -n 1 "$out/put-pasted.out")" ;;
+    *) wait_on porelo#B228 "the pasted key was refused, exit $status" ;;
+esac
+
+# Step 4: read back whole. The vault never shows a value; it names each entry's type and length, and the pasted key
+# holds what the key from its file holds.
+echo "== vault list"
+status=0
+on_host 60 porelo vault list < /dev/null > "$out/list.out" 2>&1 || status=$?
+cat "$out/list.out"
+if [ "$status" != 0 ]; then
+    fail "vault list" "exit $status"
+else
+    from_file=$(awk '$1 == "st31-from-file" { print $2, $3 }' "$out/list.out")
+    pasted=$(awk '$1 == "st31-pasted" { print $2, $3 }' "$out/list.out")
+    if [ -z "$from_file" ]; then
+        fail "vault list" "no entry st31-from-file"
+    elif [ "$pasted" != "$from_file" ]; then
+        case " ${waiting[*]} " in
+            *" porelo#B228 "*) ;;
+            *) wait_on porelo#B228 "the pasted key reads '${pasted:-nothing}', the key from its file '$from_file'" ;;
+        esac
+    fi
+fi
+
+# B316: a key stored under a name nothing asks for yet is no mistake, and is not warned about as one.
+if grep -h "no provider '.*' is declared" "$out/put-file.out" "$out/put-pasted.out" > /dev/null 2>&1; then
+    wait_on porelo#B316 "vault put warns that no provider is declared for a key stored ahead of its use"
+fi
+
+# Step 5: a provider Pi does not know. Its file declares a dialect Pi speaks, and its credential is there, so the only
+# thing wrong is the provider's name; the start is refused before anything is made, naming it.
+echo "== a provider Pi does not know"
+# shellcheck disable=SC2016
+if ! on_host 60 sh -c 'set -e
+dir=${XDG_DATA_HOME:-$HOME/.local/share}/porelo/providers
+mkdir -p "$dir"
+cat > "$dir/example-unknown.yaml"' > "$out/provider.out" 2>&1 <<'YAML'; then
+name: example-unknown
+label: Example Unknown
+upstream: https://models.example.invalid
+dialects:
+  openai: "/v1"
+auth_header:
+  _default: Authorization
+auth_prefix:
+  _default: "Bearer "
+token_env:
+  _default: EXAMPLE_UNKNOWN_API_KEY
+YAML
+    cat "$out/provider.out"
+    fail "the provider file" "it could not be written"
+fi
+printf 'st31-not-a-key\n' | on_host 120 porelo vault put example-unknown > "$out/put-provider.out" 2>&1 \
+    || fail "the provider's credential" "$(tail -n 1 "$out/put-provider.out")"
+
+status=0
+on_host 600 porelo task start --detach --no-input --agent=pi --provider=example-unknown --clearance=deny \
+    -p "$REHEARSAL_PROJECT" -r "$REHEARSAL_REPOSITORY" st31-unknown-provider < /dev/null > "$out/start.out" 2>&1 \
+    || status=$?
+cat "$out/start.out"
+on_host 60 porelo task list < /dev/null > "$out/tasks.out" 2>&1 || true
+if [ "$status" = 0 ] || grep -q 'st31-unknown-provider' "$out/tasks.out"; then
+    wait_on porelo#P09 "the task started with a provider Pi does not know"
+elif ! grep -q 'example-unknown' "$out/start.out"; then
+    fail "the refusal" "the start was refused (exit $status) without naming example-unknown: $(tail -n 1 "$out/start.out")"
+fi
+
+if [ -n "$failed" ]; then
+    echo "ST31 failed at $failed"
+    exit 1
+fi
+if [ "${#waiting[@]}" -gt 0 ]; then
+    echo "ST31 waiting on $(printf '%s\n' "${waiting[@]}" | sort -u | paste -sd, - | sed 's/,/, /g')"
+    exit 77
+fi
+echo "ST31 passed"

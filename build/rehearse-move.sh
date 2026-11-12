@@ -871,6 +871,15 @@ rented_hook() {
         "$root/build/rehearse-steps/$1"
 }
 
+# A story test of ST347: its outcome, passed, waiting on an issue or failed at a step, is the story's and never ends the
+# rehearsal; the step itself is OK once the script has run, and its last line goes to the steps and to stories.
+rented_story() {
+    story_status=0
+    rented_hook "$1" > "$report/$1.out" 2>&1 || story_status=$?
+    cat "$report/$1.out"
+    printf '%s %s\n' "$story_status" "$(tail -n 1 "$report/$1.out")" >> "$report/stories"
+}
+
 rented_push_pull() {
     on_person porelo host pull "$project"
     on_person porelo host push "$project"
@@ -1203,6 +1212,14 @@ rented_steps() {
     if rented_due host-program; then
         rented_step host-program 'the host runs porelo-host and no old host program' rented_host_program
     fi
+    # The story tests, one executable build/rehearse-steps/story-* each, before the tasks take the host's time.
+    for story_file in "$root"/build/rehearse-steps/story-*; do
+        [ -f "$story_file" ] && [ -x "$story_file" ] || continue
+        story=${story_file##*/}
+        rented_due "$story" || continue
+        rented_step "$story" "play $story as the test person" rented_story "$story"
+        rented_line "STORY $story $(tail -n 1 "$report/stories" | cut -d' ' -f2-)"
+    done
     # The steps other agents build: one executable each under build/rehearse-steps, called by the contract in
     # doc/testing.md; 0 is OK, 77 SKIP with its last line, anything else FAIL.
     # judge comes before window, which takes all the time left, while the tasks of the tasks step still run.
