@@ -152,6 +152,37 @@ def test_jobs_share_loopback_for_checkout_registry_and_cache():
     )
 
 
+def test_jobs_are_told_the_pool_only_where_the_host_has_one():
+    """Prevent a workflow differing between the forge and GitHub because a job cannot find the host's pool."""
+    env = Environment(undefined=StrictUndefined)
+    env.filters.update(comment=lambda s: "# " + s, to_json=json.dumps)
+    values = dict(
+        ansible_managed="managed",
+        forge_runner_capacity=2,
+        forge_runner_labels=[],
+        forge_runner_cache_port=4000,
+        forge_runner_cache_proxy_port=4001,
+        forge_job_cpus=1,
+        forge_job_memory="768m",
+        forge_job_pids_limit=2048,
+        forge_job_omp_num_threads=1,
+        __forge_runner_jdk_dir="/opt/jdk",
+        __forge_runner_jdk_job_dir="/opt/job-jdk",
+        __forge_runner_job_hosts="/opt/job-hosts",
+    )
+    told = "--env=PORELO_MACHINES_POOL=/etc/porelo-host/pool/pool.json"
+    without = yaml.safe_load(env.from_string(template("runner-config.yml")).render(**values))
+    assert told not in without["container"]["options"]
+    assert "PORELO_MACHINES_POOL" not in without["container"]["options"]
+    pooled = yaml.safe_load(
+        env.from_string(template("runner-config.yml")).render(porelo_host_vm_pool={"systems": []}, **values)
+    )
+    options = pooled["container"]["options"].split()
+    assert told in options
+    assert "--volume=/etc/porelo-host/pool:/etc/porelo-host/pool:ro" in options
+    assert "/etc/porelo-host/pool" in pooled["container"]["valid_volumes"]
+
+
 def test_a_hosts_builds_read_the_upstream_snapshots_anonymously_beside_the_forges():
     """Prevent a build on the host failing for another repository's snapshot, which the host's registry never holds."""
     defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())["forge_variables"]

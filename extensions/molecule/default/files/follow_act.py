@@ -710,6 +710,42 @@ if FORGE_ON:
     check(code == "200" and 'name="uid"' in page, "fa signed in by 127.0.0.1", [code, page[:300]])
     code = forge("DELETE", "repos/fa/gate-own-site")[0]
     check(code == 204, "the browser's repository removed", code)
+    # A job on the forge's runner is told where the host's pool is, as no job on GitHub is: one workflow then takes a
+    # pool account here and rents a server there. Where the host has no pool, the job is told nothing.
+    pooled = os.path.exists("/etc/porelo-host/pool/pool.json")
+    told = (
+        'test "${PORELO_MACHINES_POOL:-}" = /etc/porelo-host/pool/pool.json\n'
+        '          grep -q porelo-machines-pool/1 "$PORELO_MACHINES_POOL"'
+        if pooled
+        else 'test -z "${PORELO_MACHINES_POOL:-}"'
+    )
+    git("fetch", "-q", "origin", "main")
+    git("checkout", "-q", "-B", "pool-job", "origin/main")
+    workflow = Path(checkout.name, ".forgejo/workflows/pool.yml")
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        "on: push\njobs:\n  pool:\n    runs-on: porelo-host\n    steps:\n      - shell: sh\n        run: |\n"
+        f"          set -eu\n          {told}\n",
+        encoding="utf-8",
+    )
+    git("add", ".")
+    made = git("commit", "-q", "-m", "pool-job")
+    check(made.returncode == 0, "a signed commit with the pool job", made.stderr)
+    pushed = git("push", "-q", "origin", "pool-job")
+    check(pushed.returncode == 0, "the judge to take the pool job's branch", pushed.stderr)
+    job_state = None
+    for _ in range(120):
+        code, tasks = forge("GET", f"{repository}/actions/tasks")
+        runs = (tasks or {}).get("workflow_runs") or [] if code == 200 else []
+        job_state = next((r.get("status") for r in runs if r.get("head_branch") == "pool-job"), None)
+        if job_state in ("success", "failure", "cancelled", "skipped"):
+            break
+        subprocess.run(["sleep", "5"], check=False)
+    check(
+        job_state == "success",
+        "a job on the forge to be told the pool" if pooled else "a job on a forge without a pool to be told none",
+        job_state,
+    )
     checkout.cleanup()
     check(forge("DELETE", repository)[0] == 204, "the act's repository removed")
     forge("DELETE", "users/porelo-admin/tokens/follow-act")

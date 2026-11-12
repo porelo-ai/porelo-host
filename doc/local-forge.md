@@ -117,7 +117,9 @@ its own: `up` stops before it installs anything on a pool without that setting. 
 setting, no pool is made; a runner job does not need a VM unless its workflow asks for one.
 
 Where the pool exists, jobs receive its description read-only at `/etc/porelo-host/pool/pool.json` and its run key as
-the Actions secret `PORELO_POOL_SSH` of their project's organization, every project's, whenever it was added. The pool supports `porelo-machines acceptance --pool`. Giving a VM back powers it
+the Actions secret `PORELO_POOL_SSH` of their project's organization, every project's, whenever it was added. Every job
+there is told the file as `PORELO_MACHINES_POOL`, from which `porelo-machines acceptance` takes a pool account when no
+`--pool` is given; on GitHub the variable does not exist, so the same workflow rents a server. Giving a VM back powers it
 off; the host reverts its base snapshot so a run's changes do not reach the next run. See the [pool
 role](https://github.com/porelo-ai/porelo-host/blob/main/roles/vm_pool/README.md) for its contract.
 

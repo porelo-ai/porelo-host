@@ -77,7 +77,6 @@ it is left out.
 | <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
 | <a id="ho163"></a>[HO163](HO163-A-Tasks-Signing-Key-Is-Known-Where-It-Pushes.md) | S | - | A task's signing key is registered with the forge account that receives its push, so its commits verify on the host's forge; what the central forge can take is measured first. |
 | <a id="ho165"></a>[HO165](HO165-The-Push-To-Central-Takes-Repository-Names-And-Says-A-Refused-Token.md) | XS | - | `porelo-host-push` takes the project's repository names as well as the forge's, and says plainly when the central forge refuses the token. |
-| <a id="ho27"></a>[HO27](HO27-The-Forges-Jobs-Told-Where-The-Pool-Is.md) | M | - | The forge's runner tells every job where the VM pool is, so one workflow takes a pool account on the forge and rents a server on GitHub. |
 
 ## Implementing
 
@@ -119,6 +118,7 @@ it is left out.
 | <a id="ho129"></a>[HO129](HO129-The-Web-Gate-Serves-Its-Own-Site-Alone.md) | S | - | The web gate refuses a `Host` other than the forge's own site, and on a request that changes something a foreign `Origin` or a cross-site `Sec-Fetch-Site`, so another page in the browser cannot act as the person. |
 | <a id="ho126"></a>[HO126](HO126-A-Reverted-Pool-VM-Keeps-The-Snapshots-Clock.md) | M | - | A pool VM reverted to its live snapshot keeps that clock, and `apt` refuses what was published since; the host's time is set by the guest agent. |
 | <a id="ho116"></a>[HO116](HO116-The-Firewall-Left-By-Down.md) | S | - | `down` leaves the firewall's file and, by reading, its unit: taken off, or said why it stays |
+| <a id="ho27"></a>[HO27](HO27-The-Forges-Jobs-Told-Where-The-Pool-Is.md) | M | - | The forge's runner tells every job where the VM pool is, so one workflow takes a pool account on the forge and rents a server on GitHub. |
 | <a id="ho106"></a>[HO106](HO106-A-Refused-Root-Key-File-Says-Why.md) | S | - | `up` refusing root's key file says how many keys it found and what to do, not only `non-zero return code` |
 | <a id="ho119"></a>[HO119](HO119-Which-Server-For-What.md) | S | - | One page: which server for what, with and without Forgejo, each number measured or marked not, and the rule for parallel jobs. |
 | <a id="ho120"></a>[HO120](HO120-A-Measuring-Run-For-Any-Machine.md) | L | - | One command that measures a given machine, again on any hardware, and writes one result file without secrets for the page's tables. |

@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO27",
   "title": "The Forge's Jobs Told Where The Pool Is",
-  "state": "Backlog",
+  "state": "Review",
   "size": "M",
   "priority": "Medium",
   "rank": 26,
@@ -57,3 +57,19 @@ Read in porelo-host 8133028 and porelo-buildtools 1f48368:
 
 - In Molecule with forge and pool on, a job on the forge's runner sees the variable and its leg takes a pool account
   by kind; on GitHub the same workflow rents a server.
+
+## As built
+
+- **The variable.** `runner-config.yml.j2` gives every job `PORELO_MACHINES_POOL=/etc/porelo-host/pool/pool.json`
+  only where the host has a pool; the unit test renders it with and without one, seen red first.
+- **The job.** The follow's act pushes a workflow to the forge (`.forgejo/workflows/pool.yml`, `runs-on: porelo-host`)
+  whose job checks that the variable names the pool file and that the file is a `porelo-machines-pool/1` pool, or,
+  on a host without a pool, that the variable is empty; the act waits for the run and requires `success`.
+- **The leg.** `pool.yml` runs the real `acceptance --kind amd64` with the variable and without `--pool`, from
+  porelo-buildtools' BT84 tooling; it takes a pool account by kind.
+- **Measured.** Molecule `default` with the forge and the pool on, on 2026-11-12: green, 226 facts of the follow hold,
+  "a job on the forge to be told the pool" among them, and the leg passes.
+- **Not reached.** The leg runs as root on the host, not inside the job: the job sees the variable and the pool file,
+  but no `acceptance` runs from a job, so a job's network reaching a pool VM is still not measured. Running it there
+  needs the JDK and the checked tooling mounted into the job. The same workflow renting a server on GitHub is not run
+  here either; CI's Molecule has no pool.

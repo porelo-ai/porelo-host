@@ -120,7 +120,9 @@ Porelo forwards them over SSH to the two sockets and sets Git remotes to the Git
 URLs from its browser URL alone. See the [gate access contract](../../doc/local-forge.md#socket-gates).
 
 A build resolves from the registry with the organization's Actions secret `PORELO_PACKAGES_READ_TOKEN`, a `read:package`
-token that can only read, and where the host has a VM pool, reaches it with `PORELO_POOL_SSH`, the pool's run key.
+token that can only read, and where the host has a VM pool, reaches it with `PORELO_POOL_SSH`, the pool's run key;
+every job there is told the pool's file as `PORELO_MACHINES_POOL`, so `porelo-machines acceptance` takes a pool account
+without `--pool`.
 It publishes with `PORELO_PUBLISHER_TOKEN`, a `write:package`
 token of the account `porelo-publisher`, whose team may write the organization's packages and nothing else; a run's
 own token is refused there. The token is made inside Forgejo's container and never read out, so it stays with the
