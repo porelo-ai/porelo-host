@@ -5,13 +5,12 @@
   "$schema": "issue-1.json",
   "id": "HO159",
   "title": "The Host's Tests Follow The Pyramid",
-  "state": "Analyzed",
+  "state": "Estimated",
   "size": "L",
   "priority": "Medium",
   "rank": 1,
   "blockedBy": [],
-  "covers": "The host's tests follow the pyramid (ST296): its pool and role logic unit-tested over fakes, its subprocess tests narrowed, `tests/unit` and `tests/integration` apart, and Molecule's sleeps gone.",
-  "openQuestions": 1
+  "covers": "The host's tests follow the pyramid (ST296): its pool and role logic unit-tested over fakes, its subprocess tests narrowed, `tests/unit` and `tests/integration` apart, and Molecule's sleeps gone."
 }
 ```
 
@@ -136,10 +135,10 @@ Read in porelo-host 8133028 against the audit above:
 - **Files that cannot be Java.** Fix 5 turns `build/move-check.sh` into Python; this repository's list of such files
   in `AGENTS.md` changes with it.
 
-## Open questions
+## Decided by the operator (2026-11-12)
 
-- **One issue, or one per fix?** My proposal: one issue built in this order, each fix its own commit, handed over
-  after fixes 8, 1 and 2 (the split and the largest blind spots) and again at the end.
+- **One issue.** Built in the order above, each fix its own commit, handed over after fixes 8, 1 and 2 and again at the
+  end. Plan and size stay: L, about 200 min.
 
 ## Acceptance
 
