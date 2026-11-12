@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# The story test of ST320 (porelo-project), "The work tools live with their users", played as the test person on a
+# rehearsal's host, as a developer of the repositories would: in fresh checkouts, the shared rules run from the
+# planner's own tools, the native-image checks come from porelo, and porelo-buildtools holds no module or command
+# that moved away or that nobody calls.
+#
+# A step under build/rehearse-steps, called by the contract in doc/testing.md; it reads REHEARSAL_PERSON_SSH,
+# REHEARSAL_REPORT and REHEARSAL_DEADLINE, and PORELO_STORY_FORGE, the forge the repositories are cloned from
+# (default https://github.com/porelo-ai). The last line is the story's:
+#
+#   ST320 passed                                  exit 0
+#   ST320 waiting on porelo-buildtools#BT71, ...  exit 77, a step whose open issue is named failed as expected
+#   ST320 failed at <step>: <what was seen>       exit 1, a step no open issue explains
+#
+# The planner's executable is looked for on the person's PATH; once BT71 publishes it pinned, its download and the
+# commands it runs are filled in here on the first run that has it. The checkouts are removed at the end.
+set -euo pipefail
+
+for name in REHEARSAL_PERSON_SSH REHEARSAL_REPORT REHEARSAL_DEADLINE; do
+    [ -n "${!name:-}" ] || {
+        echo "ST320 failed at the contract: $name is not set"
+        exit 1
+    }
+done
+forge=${PORELO_STORY_FORGE:-https://github.com/porelo-ai}
+
+out=$REHEARSAL_REPORT/story-st320.d
+mkdir -p "$out"
+waiting=()
+failed=''
+
+on_host() {
+    local seconds=$1
+    shift
+    local left=$((REHEARSAL_DEADLINE - $(date +%s) - 60))
+    [ "$left" -gt 0 ] || return 124
+    [ "$seconds" -le "$left" ] || seconds=$left
+    timeout --signal=TERM --kill-after=10 "$seconds" "$REHEARSAL_PERSON_SSH" "$@"
+}
+
+wait_on() {
+    [[ " ${waiting[*]} " == *" $1 "* ]] || waiting+=("$1")
+    echo "expected while $1 is open: $2"
+}
+
+fail() {
+    [ -n "$failed" ] || failed="$1: $2"
+    echo "FAILED $1: $2"
+}
+
+scratch=$(on_host 60 mktemp -d -t porelo-st320.XXXXXX < /dev/null) || {
+    echo "ST320 failed at the scratch directory: the host made none"
+    exit 1
+}
+cleanup() {
+    on_host 60 rm -rf "$scratch" < /dev/null > /dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+# Step 1: fresh checkouts of the repositories the story moves tools between.
+echo "== the checkouts"
+for repository in porelo-buildtools porelo-planner porelo; do
+    if ! on_host 600 git clone -q --depth 1 "$forge/$repository.git" "$scratch/$repository" < /dev/null \
+        > "$out/clone-$repository.out" 2>&1; then
+        cat "$out/clone-$repository.out"
+        echo "ST320 failed at the checkouts: $repository could not be cloned: $(tail -n 1 "$out/clone-$repository.out")"
+        exit 1
+    fi
+done
+
+# Step 2: the shared rules, a stage line and a board move from the planner's own tools.
+echo "== the planner's tools"
+if on_host 60 sh -c 'command -v porelo-planner' < /dev/null > "$out/planner.out" 2>&1; then
+    on_host 60 porelo-planner --help < /dev/null > "$out/planner-help.out" 2>&1 || true
+    cat "$out/planner-help.out"
+    for command in check-commits check-citations stage; do
+        grep -q -- "$command" "$out/planner-help.out" \
+            || fail "the planner's tools" "porelo-planner names no $command"
+    done
+else
+    wait_on porelo-buildtools#BT71 "no porelo-planner on the person's PATH, and no pinned version published yet"
+fi
+
+# Step 3: Core's native-image checks built from porelo, not from porelo-buildtools.
+echo "== the native-image checks"
+# shellcheck disable=SC2016
+on_host 60 sh -c 'cd "$1" && grep -rl --include=pom.xml -E "<artifactId>porelo-(ffm|cpu)-check</artifactId>" . \
+    | sort' sh "$scratch/porelo" < /dev/null > "$out/porelo-checks.out" 2>&1 || true
+cat "$out/porelo-checks.out"
+[ "$(grep -c 'pom.xml' "$out/porelo-checks.out" || true)" -ge 2 ] \
+    || wait_on porelo#B630 "porelo builds no porelo-ffm-check and porelo-cpu-check of its own"
+
+# Step 4: porelo-buildtools keeps CI, machines, pins and publishing, and nothing that moved away.
+echo "== what porelo-buildtools holds"
+# shellcheck disable=SC2016
+on_host 60 sh -c 'cd "$1"
+sed -n "/<modules>/,/<\/modules>/p" pom.xml
+grep -ohE "case \"[a-z-]+\"" release/src/main/java/org/fuin/porelo/release/Main.java | sort -u
+ls -d stats 2>/dev/null || true' sh "$scratch/porelo-buildtools" < /dev/null > "$out/buildtools.out" 2>&1 || true
+cat "$out/buildtools.out"
+grep -qE '<module>(ffm-check|cpu-check)</module>' "$out/buildtools.out" \
+    && wait_on porelo-buildtools#BT72 "porelo-buildtools still builds the native-image checks"
+grep -q 'case "plan"' "$out/buildtools.out" && wait_on porelo-buildtools#BT70 "porelo-release still has a plan command"
+if grep -qE '<module>stories</module>|case "(stories|issues|stage|check-commits|check-pushes)"|^stats$' \
+    "$out/buildtools.out"; then
+    wait_on porelo-buildtools#BT71 "porelo-buildtools still holds the work format's commands, module or stats"
+fi
+grep -q '<module>' "$out/buildtools.out" || fail "what porelo-buildtools holds" "its pom names no module at all"
+
+if [ -n "$failed" ]; then
+    echo "ST320 failed at $failed"
+    exit 1
+fi
+if [ "${#waiting[@]}" -gt 0 ]; then
+    echo "ST320 waiting on $(printf '%s\n' "${waiting[@]}" | sort -u | paste -sd, - | sed 's/,/, /g')"
+    exit 77
+fi
+echo "ST320 passed"

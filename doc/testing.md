@@ -118,7 +118,8 @@ Without the phase 2 options it stops after `up`. With them it also:
   ...`, goes to `<report>/stories` with its exit and to the steps as `STORY <name> <line>`, and never ends the
   rehearsal (`story-st31` plays a key pasted at `vault put`'s prompt through a terminal, and a provider Pi does not
   know; `story-st41` a sample Maven checkout drafted by `project init`, read again once its parent is in the local
-  repository);
+  repository; `story-st320` fresh checkouts of porelo-buildtools, porelo-planner and porelo from `PORELO_STORY_FORGE`,
+  default `https://github.com/porelo-ai`, read for where the work tools and the native-image checks live);
 - runs the steps others build, each one executable under `build/rehearse-steps/`, in the order `tasks`, `busy-room`,
   `judge`, `window`; a step not on the branch is `SKIP <name> not built yet`, and `busy-room` and `judge`, which use
   the tasks `tasks` starts, are skipped when `tasks` is;
