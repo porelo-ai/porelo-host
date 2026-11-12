@@ -62,7 +62,7 @@ they run on is still made by `porelo-vm`, a development tool that is no longer i
 - The four code-review findings have red reproductions and passing fixes: SSH argument preservation, existing admin
   access, fresh repository metadata and separate remote package sets. No second reading of their fixes is needed.
 - The forge's refusal of a missing socket push judge is gone since snapshot 462 brings the judge. The real host runs
-  are recorded below; `rented` preparation runs in [HO158](README.md#ho158)'s rehearsal on a rented server.
+  are recorded below; `rented` preparation runs in the rehearsal on a rented server.
 - No host install task names `porelo-vm`: in `roles/` and Molecule's acts it stands only in the legacy-program
   removal and its absence check, and `roles/vm_pool/README.md` says it is never installed.
 - The native wiring review found upgrade cleanup before the remaining forge refusal, expected refusal statuses counted

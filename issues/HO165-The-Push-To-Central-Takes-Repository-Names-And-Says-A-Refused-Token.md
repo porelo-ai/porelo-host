@@ -9,7 +9,7 @@
   "size": "XS",
   "priority": "Medium",
   "rank": 6,
-  "blockedBy": ["HO158"],
+  "blockedBy": [],
   "covers": "`porelo-host-push` takes the project's repository names as well as the forge's, and says plainly when the central forge refuses the token."
 }
 ```
@@ -28,7 +28,7 @@ instead of git's "could not read Username".
   listing the pairs, a shared one exits 64 as ambiguous. A 401, at the preflight or from git, ends with
   `<name>: central forge <host[:port]> refused authentication (HTTP 401)`, exit 1; a 403 is not read as a refused
   token.
-- **Measure** on [HO158](README.md#ho158) phase 2's rented run: one push with a token the central forge refuses, and one push by each
+- **Measure** on the rehearsal's rented run: one push with a token the central forge refuses, and one push by each
   name; the answers go into this issue's record.
 - What the measurement finds lacking is filed in porelo for Agent Core.
 

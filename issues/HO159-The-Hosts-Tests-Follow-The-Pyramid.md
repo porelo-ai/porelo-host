@@ -52,7 +52,7 @@ tests):
 | Move rehearsal (two VMs) | 1 | - | not measured today | - |
 
 - **Molecule default** has 233 Ansible tasks, 64 of them asserts, and 108 checks in `follow_act.py`.
-- **The rented-machine suite** is [HO158](README.md#ho158), which is in work. Its phase-1 runs on 2026-11-09 took 2 to 6
+- **The rented-machine suite** is `build/rehearse-move.sh rented`. Its phase-1 runs on 2026-11-09 took 2 to 6
   min each.
 - **The shares miss the rule.** Unit is 61 % by count where the rule asks 70–80 %. Nearly all the time goes to
   integration. The VM runs stand at one scenario and one rehearsal, which is about right.

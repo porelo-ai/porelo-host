@@ -24,7 +24,7 @@ not fit together:
   and changes nothing, so its memberships stay.
 
 So a host taken out of the organization before its project comes off it cannot go down until someone purges each
-person by hand. The VM proof of [HO158](README.md#ho158) met this on 2026-11-10 (run 3 and run 4: `down` exit 2 after the run had taken
+person by hand. The rented rehearsal's VM proof met this on 2026-11-10 (run 3 and run 4: `down` exit 2 after the run had taken
 the host out). The rehearsal now takes the project off and lets the host follow while it is still listed, then takes it
 out, then runs `down` (run 5: all OK). A person doing the same by hand has no such order to follow, and nothing tells
 them. Raised by Agent Coordinator for the morning.

@@ -78,7 +78,7 @@ it is left out.
 | <a id="ho125"></a>[HO125](HO125-What-A-Task-And-A-Job-Take.md) | L | - | The measuring run also reads a task, an agent's fixed start and Maven jobs, so a size can rest on what work takes: the tool for one measuring issue in Porelo. |
 | <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
 | <a id="ho163"></a>[HO163](HO163-A-Tasks-Signing-Key-Is-Known-Where-It-Pushes.md) | S | - | A task's signing key is registered with the forge account that receives its push, so its commits verify on the host's forge; what the central forge can take is measured first. |
-| <a id="ho165"></a>[HO165](HO165-The-Push-To-Central-Takes-Repository-Names-And-Says-A-Refused-Token.md) | XS | [HO158](README.md#ho158) | `porelo-host-push` takes the project's repository names as well as the forge's, and says plainly when the central forge refuses the token. |
+| <a id="ho165"></a>[HO165](HO165-The-Push-To-Central-Takes-Repository-Names-And-Says-A-Refused-Token.md) | XS | - | `porelo-host-push` takes the project's repository names as well as the forge's, and says plainly when the central forge refuses the token. |
 
 ## Implementing
 
@@ -98,7 +98,6 @@ it is left out.
 | <a id="ho156"></a>[HO156](HO156-The-Collection-Installs-The-Hosts-Own-Program.md) | L | - | The host runs its admin work, gates, judge and pool through the installed `porelo-host` at the pinned version; the collection's scripts go, but for the stated exceptions. |
 | <a id="ho162"></a>[HO162](HO162-A-Person-Starts-The-Hosts-Follow-At-Once.md) | S | - | A person has the host read the organization now, from the window or a command, instead of waiting for the five-minute timer. |
 | <a id="ho151"></a>[HO151](HO151-The-Pinned-Jdk-Action-Takes-The-Shared-Rule.md) | XS | - | The CI's pinned GraalVM is fetched by the shared rule: cached by its digest, tried again by `pinned.sh`, with the job's token from github.com. |
-| <a id="ho158"></a>[HO158](HO158-A-Move-Rehearsed-On-A-Rented-Server.md) | L | - | The agents run a whole move on a server the operator rented, against a test organization, from `build/rehearse-move.sh`: check, up, vault, follow, forge, pool where KVM is, judge, push and pull, host check, down and read keys, a report per step, and one request to delete the server. |
 | <a id="ho150"></a>[HO150](HO150-The-Forge-Roles-JDK-Fetch-Tries-Again-By-The-Pinned-Rule.md) | XS | - | Bug: the forge role fetches the runner's JDK once, with a 10 s timeout, so one outage of GitHub's release downloads fails a host's first up; it tries again on a 5xx or no answer within 15 minutes and fails at once on anything else. |
 | <a id="ho168"></a>[HO168](HO168-Forgejo-Images-From-A-Cache-In-The-Build.md) | M | - | The Molecule job takes the forge role's three pinned images from a cache kept by their digests, so an outage of codeberg.org, code.forgejo.org or docker.io leaves it green; only the newest digests stay cached. |
 | <a id="ho148"></a>[HO148](HO148-The-Move-Check-Finds-The-Push-By-Its-Branch-And-Names-The-Answer.md) | XS | - | Bug: the move check finds the push in the forge repository that holds its branch, fails a Build nobody reads, and names what the forge, Git or the vault answered. |
@@ -142,6 +141,7 @@ it is left out.
 
 | # | Title | What was built |
 |---|---|---|
+| <a id="ho158"></a>HO158 | A Move Rehearsed On A Rented Server | The agents run a whole move on a server the operator rented, against a test organization, from `build/rehearse-move.sh`, with a report per step and one request to delete the server; tested 2026-11-12: passed. |
 | <a id="ho68"></a>HO68 | SSH The Host's Only Way In | A person reaches the host only over SSH on port 22, with the one key of their card; nothing listens on TCP for persons; tested in sprint 6m: passed. |
 | <a id="ho69"></a>HO69 | The Forge Behind Its Gate Without TLS | The forge has no TLS and no password: a person's browser is signed in through `web.sock`, Git and the API take a token through `git.sock`; tested in sprint 6m: passed. |
 | <a id="ho70"></a>HO70 | The Host's State Taken From The Registry | The host takes its project admins and projects from the signed registry state the host admin brings, verified by Porelo; tested in sprint 6m: passed. |
