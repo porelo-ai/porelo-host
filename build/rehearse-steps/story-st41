@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+# The story test of ST41 (porelo-project), "`porelo project init` proposes tools and rules", played as the test person
+# at the command line of a rehearsal's host: in a sample Maven checkout `porelo project init` drafts the project file
+# and the tools, each value naming where it came from; a value its parent sets is unknown while the parent is missing
+# from the local repository, and named once the parent is there and the checkout is read again.
+#
+# A step under build/rehearse-steps, called by the contract in doc/testing.md; it reads REHEARSAL_PERSON_SSH,
+# REHEARSAL_REPORT and REHEARSAL_DEADLINE. The last line is the story's:
+#
+#   ST41 passed                                   exit 0
+#   ST41 waiting on porelo-project#PJ52           exit 77, a step whose open issue is named failed as expected
+#   ST41 failed at <step>: <what was seen>        exit 1, a step no open issue explains
+#
+# The checkout and the parent placed in the person's local Maven repository are removed at the end.
+set -euo pipefail
+
+for name in REHEARSAL_PERSON_SSH REHEARSAL_REPORT REHEARSAL_DEADLINE; do
+    [ -n "${!name:-}" ] || {
+        echo "ST41 failed at the contract: $name is not set"
+        exit 1
+    }
+done
+
+out=$REHEARSAL_REPORT/story-st41.d
+mkdir -p "$out"
+waiting=()
+failed=''
+parent_dir=.m2/repository/org/example/st41/st41-parent/1.0
+
+on_host() {
+    local seconds=$1
+    shift
+    local left=$((REHEARSAL_DEADLINE - $(date +%s) - 60))
+    [ "$left" -gt 0 ] || return 124
+    [ "$seconds" -le "$left" ] || seconds=$left
+    timeout --signal=TERM --kill-after=10 "$seconds" "$REHEARSAL_PERSON_SSH" "$@"
+}
+
+wait_on() {
+    waiting+=("$1")
+    echo "expected while $1 is open: $2"
+}
+
+fail() {
+    [ -n "$failed" ] || failed="$1: $2"
+    echo "FAILED $1: $2"
+}
+
+scratch=$(on_host 60 mktemp -d -t porelo-st41.XXXXXX < /dev/null) || {
+    echo "ST41 failed at the scratch directory: the host made none"
+    exit 1
+}
+placed=no
+
+cleanup() {
+    # shellcheck disable=SC2016
+    on_host 60 sh -c 'rm -rf "$1"; [ "$2" != yes ] || rm -rf "$HOME/$3"' sh "$scratch" "$placed" "$parent_dir" \
+        < /dev/null > /dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+# Step 1: a sample Maven checkout as a person has one: a module whose Java release its parent sets, the parent named
+# by coordinates alone, committed.
+echo "== the sample checkout"
+# shellcheck disable=SC2016
+if ! on_host 120 sh -c 'set -e
+[ ! -e "$HOME/$2" ] || { echo "a parent st41-parent 1.0 is already in the local repository"; exit 1; }
+mkdir -p "$1/sample"
+cat > "$1/sample/pom.xml" <<POM
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>org.example.st41</groupId>
+    <artifactId>st41-parent</artifactId>
+    <version>1.0</version>
+    <relativePath/>
+  </parent>
+  <artifactId>st41-sample</artifactId>
+  <packaging>jar</packaging>
+</project>
+POM
+cd "$1/sample"
+git init -q -b main
+git add pom.xml
+git -c user.name=st41 -c user.email=st41@example.invalid -c commit.gpgsign=false commit -q -m "A sample module"' \
+    sh "$scratch" "$parent_dir" < /dev/null > "$out/checkout.out" 2>&1; then
+    cat "$out/checkout.out"
+    echo "ST41 failed at the sample checkout: $(tail -n 1 "$out/checkout.out")"
+    exit 1
+fi
+
+# The draft's values, the project file and the tools, from one answer of `project init --json`, judged here.
+judge='import json, sys
+answer = json.load(open(sys.argv[1]))
+stage = sys.argv[2]
+plugins = answer.get("plugins", [])
+if not any(p.get("outcome", p.get("state")) == "recognized" or "recognized" in json.dumps(p) for p in plugins):
+    print("FAIL no plugin recognized the checkout: " + json.dumps(plugins))
+    sys.exit(0)
+values = answer.get("values", [])
+if not answer.get("draft"):
+    print("FAIL no project.yml draft")
+for value in values:
+    if not value.get("unknown") and not value.get("file") and not value.get("note"):
+        print("FAIL a value names no source: " + json.dumps(value))
+parent = [v for v in values + answer.get("not_placed", []) if v.get("unknown") and "st41-parent" in json.dumps(v)]
+release = [v for v in values if not v.get("unknown") and str(v.get("value")) == "21"]
+if stage == "missing":
+    if not parent:
+        print("FAIL the release its missing parent sets is not named unknown with the parent")
+elif parent or not release:
+    print("FAIL with the parent in the local repository the draft does not name release 21")
+if not any("porelo.yml" in key for key in answer):
+    print("WAIT the answer holds no .porelo.yml draft for the tools")'
+
+init_and_judge() {
+    local stage=$1 status=0
+    on_host 300 porelo project init --json "$scratch/sample" < /dev/null > "$out/init-$stage.json" \
+        2> "$out/init-$stage.err" || status=$?
+    cat "$out/init-$stage.err"
+    if [ "$status" != 0 ]; then
+        fail "project init ($stage parent)" "exit $status: $(tail -n 1 "$out/init-$stage.err")"
+        return
+    fi
+    if ! python3 -I -c "$judge" "$out/init-$stage.json" "$stage" > "$out/judge-$stage.out" 2>&1; then
+        fail "project init ($stage parent)" "the answer is no JSON: $(tail -n 1 "$out/judge-$stage.out")"
+        return
+    fi
+    cat "$out/judge-$stage.out"
+    while IFS= read -r line; do
+        case $line in
+            FAIL\ *) fail "project init ($stage parent)" "${line#FAIL }" ;;
+            WAIT\ *) [[ " ${waiting[*]} " == *" porelo-project#PJ52 "* ]] || wait_on porelo-project#PJ52 "${line#WAIT }" ;;
+        esac
+    done < "$out/judge-$stage.out"
+}
+
+# Step 2: the drafts while the parent is missing from the local repository.
+echo "== project init, the parent missing"
+init_and_judge missing
+
+# Step 3: the parent placed in the local repository, as building it once would, and the checkout read again.
+echo "== the parent in the local repository"
+# shellcheck disable=SC2016
+if on_host 60 sh -c 'set -e
+mkdir -p "$HOME/$1"
+cat > "$HOME/$1/st41-parent-1.0.pom" <<POM
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.example.st41</groupId>
+  <artifactId>st41-parent</artifactId>
+  <version>1.0</version>
+  <packaging>pom</packaging>
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+  </properties>
+</project>
+POM' sh "$parent_dir" < /dev/null > "$out/parent.out" 2>&1; then
+    placed=yes
+    echo "== project init again"
+    init_and_judge present
+else
+    cat "$out/parent.out"
+    fail "the parent" "it could not be placed: $(tail -n 1 "$out/parent.out")"
+fi
+
+# Step 4: reading changed nothing in the checkout.
+echo "== the checkout unchanged"
+status=0
+on_host 60 git -C "$scratch/sample" status --porcelain --ignored < /dev/null > "$out/status.out" 2>&1 || status=$?
+cat "$out/status.out"
+if [ "$status" != 0 ]; then
+    fail "the checkout" "git status exit $status"
+elif [ -s "$out/status.out" ]; then
+    fail "the checkout" "project init left files in it"
+fi
+
+if [ -n "$failed" ]; then
+    echo "ST41 failed at $failed"
+    exit 1
+fi
+if [ "${#waiting[@]}" -gt 0 ]; then
+    echo "ST41 waiting on $(printf '%s\n' "${waiting[@]}" | sort -u | paste -sd, - | sed 's/,/, /g')"
+    exit 77
+fi
+echo "ST41 passed"

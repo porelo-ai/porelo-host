@@ -117,7 +117,8 @@ Without the phase 2 options it stops after `up`. With them it also:
   contract: a story's last line, `<story> passed`, `<story> waiting on <issue>, ...` (77) or `<story> failed at <step>:
   ...`, goes to `<report>/stories` with its exit and to the steps as `STORY <name> <line>`, and never ends the
   rehearsal (`story-st31` plays a key pasted at `vault put`'s prompt through a terminal, and a provider Pi does not
-  know);
+  know; `story-st41` a sample Maven checkout drafted by `project init`, read again once its parent is in the local
+  repository);
 - runs the steps others build, each one executable under `build/rehearse-steps/`, in the order `tasks`, `busy-room`,
   `judge`, `window`; a step not on the branch is `SKIP <name> not built yet`, and `busy-room` and `judge`, which use
   the tasks `tasks` starts, are skipped when `tasks` is;
