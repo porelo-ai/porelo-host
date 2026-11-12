@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO180",
   "title": "The Story Test Of ST41",
-  "state": "Backlog",
+  "state": "Review",
   "size": "M",
   "priority": "High",
   "rank": 4,
@@ -34,3 +34,16 @@ of 2026-11-12.
   VM, no Molecule beside it; cleaned up after.
 - A story whose issues are not all in Review yet still gets its script and one run; the run names the missing issue as
   an expected failure.
+
+## As built
+
+`build/rehearse-steps/story-st41` plays ST41 as the test person on the rented rehearsal's host: a sample Maven module
+whose Java release only its parent sets, the parent named by coordinates, committed in a scratch checkout. `porelo
+project init --json` must recognize it, give a `project.yml` draft, and name a source (a file, or a note for a value
+with none) for every value it proposes; while the parent is missing from the person's local Maven repository the
+release must be unknown and name the parent; with the parent placed there, as building it once would, the same command
+must name release 21; the checkout stays without a changed or new file. The answer holds no `.porelo.yml` draft for
+the tools yet, which PJ52 (porelo-project) asks for, so the expected line is `ST41 waiting on porelo-project#PJ52`.
+The checkout and the placed parent are removed at the end; a parent of the same coordinates already there stops the
+run before anything is written. Not yet run: its run goes with the next rented rehearsal, asked of the coordinator
+first.
