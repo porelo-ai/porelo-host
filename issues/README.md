@@ -74,6 +74,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho174"></a>[HO174](HO174-A-Rented-Rehearsal-Fails-Early-And-Cleans-Up.md) | S | - | build/rehearse-move.sh's rented mode probes its organization and token programs before it claims a server, lets a second run onto a server a clean down left, and takes its read keys off central for the organization the machine file names. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho125"></a>[HO125](HO125-What-A-Task-And-A-Job-Take.md) | L | - | The measuring run also reads a task, an agent's fixed start and Maven jobs, so a size can rest on what work takes: the tool for one measuring issue in Porelo. |
 | <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
@@ -84,7 +85,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho158"></a>[HO158](HO158-A-Move-Rehearsed-On-A-Rented-Server.md) | L | - | The agents run a whole move on a server the operator rented, against a test organization, from `build/rehearse-move.sh`: check, up, vault, follow, forge, pool where KVM is, judge, push and pull, host check, down and read keys, a report per step, and one request to delete the server. |
 | <a id="ho170"></a>[HO170](HO170-The-Rehearsal-Starts-A-Task-That-Reads-Every-Repository.md) | XS | - | The rented host's rehearsal starts one task with porelo's read-all start option and checks that it sees every repository of the project under /workspace, can write none of them, and leaves nothing behind after it ends. |
 
 ## Review
@@ -98,7 +98,9 @@ it is left out.
 | <a id="ho156"></a>[HO156](HO156-The-Collection-Installs-The-Hosts-Own-Program.md) | L | - | The host runs its admin work, gates, judge and pool through the installed `porelo-host` at the pinned version; the collection's scripts go, but for the stated exceptions. |
 | <a id="ho162"></a>[HO162](HO162-A-Person-Starts-The-Hosts-Follow-At-Once.md) | S | - | A person has the host read the organization now, from the window or a command, instead of waiting for the five-minute timer. |
 | <a id="ho151"></a>[HO151](HO151-The-Pinned-Jdk-Action-Takes-The-Shared-Rule.md) | XS | - | The CI's pinned GraalVM is fetched by the shared rule: cached by its digest, tried again by `pinned.sh`, with the job's token from github.com. |
+| <a id="ho158"></a>[HO158](HO158-A-Move-Rehearsed-On-A-Rented-Server.md) | L | - | The agents run a whole move on a server the operator rented, against a test organization, from `build/rehearse-move.sh`: check, up, vault, follow, forge, pool where KVM is, judge, push and pull, host check, down and read keys, a report per step, and one request to delete the server. |
 | <a id="ho150"></a>[HO150](HO150-The-Forge-Roles-JDK-Fetch-Tries-Again-By-The-Pinned-Rule.md) | XS | - | Bug: the forge role fetches the runner's JDK once, with a 10 s timeout, so one outage of GitHub's release downloads fails a host's first up; it tries again on a 5xx or no answer within 15 minutes and fails at once on anything else. |
+| <a id="ho168"></a>[HO168](HO168-Forgejo-Images-From-A-Cache-In-The-Build.md) | M | - | The Molecule job takes the forge role's three pinned images from a cache kept by their digests, so an outage of codeberg.org, code.forgejo.org or docker.io leaves it green; only the newest digests stay cached. |
 | <a id="ho148"></a>[HO148](HO148-The-Move-Check-Finds-The-Push-By-Its-Branch-And-Names-The-Answer.md) | XS | - | Bug: the move check finds the push in the forge repository that holds its branch, fails a Build nobody reads, and names what the forge, Git or the vault answered. |
 | <a id="ho147"></a>[HO147](HO147-A-Hosts-Builds-Also-Read-The-Upstream-Snapshots.md) | XS | - | Each organization the host registers holds `MAVEN_UPSTREAM_SNAPSHOTS_URL`, Sonatype's snapshots read anonymously, so a build resolves the snapshots the host's registry lacks. |
 | <a id="ho146"></a>[HO146](HO146-A-Lent-Forge-Token-Leaves-The-Persons-Token.md) | S | - | Porelo's git commands on the host's forge take a lent token of their own, so the person's `<forge>.person` token in the vault, which a task's builds read, stays valid. |
@@ -135,7 +137,6 @@ it is left out.
 | <a id="ho124"></a>[HO124](HO124-A-Login-Closed-At-Once-On-A-Host.md) | S | - | A login closed at once on a host, by reading sshd's own per-source penalty: reproduce it on the test VM, and say so. |
 | <a id="ho121"></a>[HO121](HO121-One-Check-Before-Any-Installation.md) | L | - | One read-only check before any installation, the same code `up` runs first, every finding at once with its value, what was asked and what to do. |
 | <a id="ho122"></a>[HO122](HO122-A-Project-Says-What-The-Follow-Took.md) | S | - | `org status` names what the follow took of a project and why not, a row with no `central` included. |
-| <a id="ho168"></a>[HO168](HO168-Forgejo-Images-From-A-Cache-In-The-Build.md) | M | - | The Molecule job takes the forge role's three pinned images from a cache kept by their digests, so an outage of codeberg.org, code.forgejo.org or docker.io leaves it green; only the newest digests stay cached. |
 
 ## Finished
 

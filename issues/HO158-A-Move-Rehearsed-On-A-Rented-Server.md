@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO158",
   "title": "A Move Rehearsed On A Rented Server",
-  "state": "Implementing",
+  "state": "Review",
   "size": "L",
   "priority": "Medium",
   "rank": 4,
