@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO183",
   "title": "The Story Test Of ST346",
-  "state": "Backlog",
+  "state": "Review",
   "size": "XS",
   "priority": "High",
   "rank": 7,
@@ -34,3 +34,17 @@ of 2026-11-12.
   VM, no Molecule beside it; cleaned up after.
 - A story whose issues are not all in Review yet still gets its script and one run; the run names the missing issue as
   an expected failure.
+
+## As built
+
+`build/rehearse-steps/story-st346` plays ST346 as the test person on the rented rehearsal's host. This repository's
+issues go into a scratch repository there and are committed, and `porelo-release` is resolved from Central by this
+repository's own `build/pom.xml` and wrapper with the host's JDK (`PORELO_STORY_JAVA_HOME`, default `/opt/graalvm`,
+else the one `java` on the PATH belongs to). Two checks run on each commit: the shared-rules step, `issues check
+issues` on the checkout, and the prepush's gate as the coordinator's prepush runs it, `issues check issues` on a `git
+archive` of the commit. The prepush itself lives on no test host, and the coordinator agreed to play its gate
+(2026-11-12). The issues as they stand pass both. A head without `size`, and then one with `"rank": null`, are each
+refused by both, naming the file and the field. The head put right passes both again. Every issue of the story is
+in Review, so the expected line is `ST346 passed`. Run here with a stand-in for the person's ssh that runs on this
+machine: passed, each refusal naming `issues/HO07-...md` and `/: required property 'size'` or `/rank: null found`.
+The rented rehearsal's run goes with the next one, asked of the coordinator first.
