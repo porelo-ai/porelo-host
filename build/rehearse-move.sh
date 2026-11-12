@@ -533,9 +533,8 @@ if [ -f /root/porelo-host-inventory.yml ]; then
     python3 -I -c 'import json,sys
 rows=[json.loads(line) for line in open(sys.argv[1]) if line.strip()]
 sys.exit(1 if not rows or any(row.get("state") in ("failed", "waiting") for row in rows) else 0)' /root/rehearsal-down.lines
-    # A clean down leaves the software; the marker moves aside, so a later run passes the guard on this server.
-    mv /etc/porelo-host "/root/porelo-host-down-$unit"
-    printf '%s\n' "$unit" > "/root/porelo-host-down-$unit.owner"
+    # A clean down leaves the software and /etc/porelo-host; this mark lets a later run past the guard on this server.
+    printf '%s\n' "$unit" > /root/porelo-rehearsal-down
 else
     printf '{"down_ran":false}\n'
 fi
@@ -660,7 +659,9 @@ rented_phase_two_options() {
     # Both are asked before the server is claimed, so a wrong start touches nothing there.
     timeout --kill-after=5 60 "$org_program" --version > /dev/null 2>&1 \
         || fail "the organization program does not answer --version: $org_program"
-    [ "$(timeout --kill-after=5 60 "$central_token" 2> /dev/null | head -c 1 | wc -c)" = 1 ] \
+    timeout --kill-after=5 60 python3 -I -c 'import subprocess, sys
+done = subprocess.run([sys.argv[1]], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+sys.exit(0 if done.returncode == 0 and done.stdout.strip() else 1)' "$central_token" \
         || fail "the central token program gives no token: $central_token"
     [ -S "$person_agent" ] || fail "no agent socket at $person_agent"
     if [ -n "$provider_keys" ]; then [ -d "$provider_keys" ] || fail "no provider key directory at $provider_keys"; fi
@@ -742,6 +743,8 @@ rented_org() {
     [ -n "$host_key" ] || { echo 'no pinned ssh-ed25519 host key'; return 1; }
     # Marked before asking: an add or carry that answers an error may still have written the change.
     : > "$state/org-added"
+    : > "$state/org-joined"
+    on_rented ssh-keygen -lf /etc/porelo-host/organization/read/organization | awk '{print $2}' > "$state/org-read-key"
     on_org add --id "$change-add" --admin="$person" rented
     on_org change --id "$change-change" --address="$server" --ssh-port=22 --host-key="$host_key" \
         --forge-web-port=3000 --forge-git-port=3001 rented
@@ -892,22 +895,32 @@ print(next(iter(names(json.load(open(sys.argv[1])))), ""))' "$report/central-sta
 # The read keys the host put at central for this run: the organization repository's key made within the run, and
 # each project repository's key titled for the host rented; taken off with the test identity's token, then listed again.
 rented_read_keys() {
-    [ "${phase_two:-no}" = yes ] && [ -f "$state/org-added" ] || { rented_line 'SKIP read-keys the host never joined the organization'; return 0; }
+    [ "${phase_two:-no}" = yes ] && [ -f "$state/org-joined" ] || { rented_line 'SKIP read-keys the host never joined the organization'; return 0; }
     keys_status=0
-    "$central_token" 2>> "$report/read-keys.log" | python3 -I -c '
-import json, re, sys, urllib.request
-token = sys.stdin.readline().strip()
-machine, states, project, repository, since = sys.argv[1:6]
-if not token:
-    sys.exit("no central token")
-found = re.search(r"repository: *git@github\.com:([A-Za-z0-9-]+)/([A-Za-z0-9._-]+?)(?:\.git)?\\n", open(machine).read())
+    if [ -n "${PORELO_REHEARSAL_READ_KEYS_PROGRAM:-}" ]; then
+        # A stand-in for the call to central, for the script's own tests.
+        "$PORELO_REHEARSAL_READ_KEYS_PROGRAM" "$central_token" "$machine_file" "$report/central-state.json" "$project" \
+            "$repository" "$run_started" >> "$report/read-keys.log" 2>&1 || keys_status=$?
+    elif [ -z "$machine_file" ]; then
+        echo 'no machine file names the organization repository' >> "$report/read-keys.log"
+        keys_status=1
+    else
+        python3 -I -c '
+import json, re, subprocess, sys, urllib.error, urllib.request
+program, machine, states, project, repository, since, fingerprint = sys.argv[1:8]
+done = subprocess.run([program], stdout=subprocess.PIPE)
+token = done.stdout.decode().strip()
+if done.returncode != 0 or not token:
+    sys.exit("the central token program gives no token")
+found = re.search(r"repository: *[\x22\x27]?git@github\.com:([A-Za-z0-9-]+)/([A-Za-z0-9._-]+?)(?:\.git)?(?=\\n|[\x22\x27\s]|$)",
+                  open(machine).read())
 if not found:
     sys.exit("the machine file names no organization repository on github.com")
 owner, org_repo = found.groups()
 names = {project, repository}
 try:
     names |= {row["repository"] for row in json.load(open(states)).get("repositories", [])}
-except OSError:
+except (OSError, ValueError):
     pass
 def call(method, path):
     request = urllib.request.Request("https://api.github.com" + path, method=method, headers={
@@ -915,25 +928,41 @@ def call(method, path):
     with urllib.request.urlopen(request, timeout=30) as answer:
         body = answer.read()
         return json.loads(body) if body else None
+def keys(repo):
+    found, page = [], 1
+    while True:
+        batch = call("GET", f"/repos/{owner}/{repo}/keys?per_page=100&page={page}")
+        found += batch
+        if len(batch) < 100:
+            return found
+        page += 1
 def ours(repo, key):
     if key["created_at"] < since:
         return False
     if repo == org_repo:
-        return key["title"].startswith("porelo host read key ")
+        return bool(fingerprint) and key["title"] == "porelo host read key " + fingerprint
     return key["title"] == "porelo host rented project " + project
-left = 0
+if not fingerprint:
+    print(f"left {owner}/{org_repo}: the host read key fingerprint was not recorded, its key is not identified")
+left = 0 if fingerprint else 1
 for repo in [org_repo] + sorted(names - {org_repo}):
-    for key in [k for k in call("GET", f"/repos/{owner}/{repo}/keys") if ours(repo, k)]:
-        ident, title = key["id"], key["title"]
-        call("DELETE", f"/repos/{owner}/{repo}/keys/{ident}")
-        print(f"removed {owner}/{repo} {ident} {title}")
-    for key in [k for k in call("GET", f"/repos/{owner}/{repo}/keys") if ours(repo, k)]:
-        ident, title = key["id"], key["title"]
-        print(f"left {owner}/{repo} {ident} {title}")
-        left += 1
+    try:
+        for key in [k for k in keys(repo) if ours(repo, k)]:
+            ident, title = key["id"], key["title"]
+            call("DELETE", f"/repos/{owner}/{repo}/keys/{ident}")
+            print(f"removed {owner}/{repo} {ident} {title}")
+        for key in [k for k in keys(repo) if ours(repo, k)]:
+            ident, title = key["id"], key["title"]
+            print(f"left {owner}/{repo} {ident} {title}")
+            left += 1
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise
+        print(f"no repository {owner}/{repo} at central")
 sys.exit(1 if left else 0)
-' "$machine_file" "$report/central-state.json" "$project" "$repository" "$run_started" >> "$report/read-keys.log" 2>&1 \
-        || keys_status=$?
+' "$central_token" "$machine_file" "$report/central-state.json" "$project" "$repository" "$run_started" \
+            "$(cat "$state/org-read-key" 2>/dev/null || true)" >> "$report/read-keys.log" 2>&1 || keys_status=$?
+    fi
     if [ "$keys_status" = 0 ]; then
         rented_line "OK read-keys take the run's read keys off central and list again -> exit 0; see $report/read-keys.log"
     else
@@ -1057,7 +1086,11 @@ rented() {
     on_rented sh -s "$staging" "$unit" > "$state/probe" <<'EOF' &
 set -eu
 staging=$1 token=$2
-if test -e /etc/porelo-host || test -L /etc/porelo-host || test -e "$staging" || test -L "$staging"; then
+# A host an earlier rehearsal took down cleanly carries its mark; any other /etc/porelo-host is someone's host.
+down_mark=no
+if [ -f /root/porelo-rehearsal-down ] && [ ! -L /root/porelo-rehearsal-down ]; then down_mark=yes; fi
+if { { test -e /etc/porelo-host || test -L /etc/porelo-host; } && [ "$down_mark" = no ]; } \
+    || test -e "$staging" || test -L "$staging"; then
     printf 'existing\n'
     exit 0
 fi
@@ -1065,6 +1098,7 @@ if ! mkdir -m 700 "$staging"; then
     printf 'existing\n'
     exit 0
 fi
+rm -f /root/porelo-rehearsal-down
 printf '%s\n' "$token" > "$staging/owner"
 printf 'claimed %s\n' "$token"
 EOF

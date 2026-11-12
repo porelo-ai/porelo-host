@@ -1008,6 +1008,7 @@ class RentedServer:
             "REHEARSAL_TEST_GUEST": str(self.guest),
             "REHEARSAL_TEST_CHECKOUT": str(self.root),
             "REHEARSAL_TEST_BIN": str(self.bin),
+            "PORELO_REHEARSAL_READ_KEYS_PROGRAM": "true",
         }
         self.environment.pop("PORELO_REHEARSAL_HARD_STOP_SECONDS", None)
         (tmp_path / "answers.json").write_text(json.dumps(settings))
@@ -1249,9 +1250,10 @@ def test_rented_down_really_runs_once_and_retains_the_hosts_firewall_and_ssh_pol
     assert report.stat().st_mode & 0o777 == 0o700
     report.rename(server.base / "first-report")
     calls_before = len(server.events("ssh"))
+    assert (server.guest / "root/porelo-rehearsal-down").exists()
     again = server.call()
-    assert again.returncode != 0 and len(server.events("ssh")) == calls_before + 1
-    assert len(server.down_calls()) == 1
+    assert "OK refuse-existing" in again.stderr, again.stderr
+    assert len(server.events("ssh")) > calls_before + 1
     assert (server.guest / "etc/porelo-host/firewall.nft").read_text() == "retained firewall\n"
 
 
@@ -1659,7 +1661,7 @@ PHASE_TWO_STEPS = [
     "OK org-follow",
     "OK org-off",
     "OK down",
-    "SKIP read-keys",
+    "OK read-keys",
     "delete the server",
 ]
 
@@ -1804,8 +1806,8 @@ def test_rented_phase_two_refuses_a_failed_central_token_program(rented):
     server = rented(central_token_rc=3)
     done = phase_two(server)
     assert done.returncode != 0
-    steps = server.report()[1]
-    assert any(line.startswith("FAIL stop ") for line in steps), steps
+    assert "the central token program gives no token" in done.stderr, done.stderr
+    assert not server.events("ssh")
     assert not [row for row in server.events("porelo") if row["args"][:2] == ["vault", "put"]]
 
 
@@ -1919,7 +1921,7 @@ def test_rented_phase_two_holds_the_host_up_until_the_hold_file_goes(rented):
     assert done.returncode == 0, done.stderr
     assert seen == {"held": True, "down_before": 0}
     steps = server.report()[1]
-    assert [line.split(" ", 2)[1] for line in steps if line.startswith(("OK ", "HOLD "))][-7:] == [
+    assert [line.split(" ", 2)[1] for line in steps if line.startswith(("OK ", "HOLD "))][-8:] == [
         "push-pull",
         "refused-token",
         "hold",
@@ -1927,6 +1929,7 @@ def test_rented_phase_two_holds_the_host_up_until_the_hold_file_goes(rented):
         "org-follow",
         "org-off",
         "down",
+        "read-keys",
     ], steps
 
 
