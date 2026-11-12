@@ -74,7 +74,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho174"></a>[HO174](HO174-A-Rented-Rehearsal-Fails-Early-And-Cleans-Up.md) | S | - | build/rehearse-move.sh's rented mode probes its organization and token programs before it claims a server, lets a second run onto a server a clean down left, and takes its read keys off central for the organization the machine file names. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho125"></a>[HO125](HO125-What-A-Task-And-A-Job-Take.md) | L | - | The measuring run also reads a task, an agent's fixed start and Maven jobs, so a size can rest on what work takes: the tool for one measuring issue in Porelo. |
 | <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
@@ -85,6 +84,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho174"></a>[HO174](HO174-A-Rented-Rehearsal-Fails-Early-And-Cleans-Up.md) | S | - | build/rehearse-move.sh's rented mode probes its organization and token programs before it claims a server, lets a second run onto a server a clean down left, and takes its read keys off central for the organization the machine file names. |
 | <a id="ho170"></a>[HO170](HO170-The-Rehearsal-Starts-A-Task-That-Reads-Every-Repository.md) | XS | - | The rented host's rehearsal starts one task with porelo's read-all start option and checks that it sees every repository of the project under /workspace, can write none of them, and leaves nothing behind after it ends. |
 
 ## Review
