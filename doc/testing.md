@@ -112,11 +112,12 @@ Without the phase 2 options it stops after `up`. With them it also:
   report;
 - checks as root that the host runs the packaged `porelo-host` and that no old host program is installed, nor named
   by a unit or a sudo rule (`host-program`);
-- plays the story tests of ST347 (porelo-project), each one executable `build/rehearse-steps/story-*`, by the same
+- plays the story tests, which play each story once as a person would, each one executable
+  `build/rehearse-steps/story-*`, by the same
   contract: a story's last line, `<story> passed`, `<story> waiting on <issue>, ...` (77) or `<story> failed at <step>:
   ...`, goes to `<report>/stories` with its exit and to the steps as `STORY <name> <line>`, and never ends the
-  rehearsal (`story-st31` plays ST31: a key pasted at `vault put`'s prompt through a terminal, and a provider Pi does
-  not know);
+  rehearsal (`story-st31` plays a key pasted at `vault put`'s prompt through a terminal, and a provider Pi does not
+  know);
 - runs the steps others build, each one executable under `build/rehearse-steps/`, in the order `tasks`, `busy-room`,
   `judge`, `window`; a step not on the branch is `SKIP <name> not built yet`, and `busy-room` and `judge`, which use
   the tasks `tasks` starts, are skipped when `tasks` is;
