@@ -47,6 +47,7 @@ it is left out.
 | <a id="ho109"></a>[HO109](HO109-How-Long-The-Host-Has-Not-Read-Its-Organization.md) | - | - | `org status` says when the host last read its organization, as a follow that cannot fetch keeps a removed member's login with nothing said |
 | <a id="ho111"></a>[HO111](HO111-The-Forges-Admin-Tokens-A-Project-Helper-Leaves.md) | - | - | A run of the project helper leaves no lasting admin token on the host's forge |
 | <a id="ho172"></a>[HO172](HO172-The-Image-Archives-Smaller-Edges.md) | - | - | The forge image archives' smaller edges from their reading, gathered: what an interrupted load leaves, a named directory that is missing, check mode, the archive tests' fixtures, and build/molecule.sh's checks and clean-up. |
+| <a id="ho173"></a>[HO173](HO173-The-Rehearsal-Gives-Its-Forge-Work-Back.md) | - | - | build/rehearse-move.sh's down step brings the host forge's work to central, or gives the host back anyway by its explicit way, so a rehearsal whose forge moved on still runs down. |
 
 ## Accepted
 
