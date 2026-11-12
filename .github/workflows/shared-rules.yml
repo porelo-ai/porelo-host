@@ -1,6 +1,7 @@
 # Checks the documents: the shared blocks of AGENTS.md and .editorconfig against their hashes, no citation of an
-# issue that goes stale, and on a pull request its commit messages, with the shared build tools from Central. Of its own
-# because a shared block or an index in another repository can change while this one stands still; it leases no machine.
+# issue that goes stale, every issue head against its schema, and on a pull request its commit messages, with the
+# shared build tools from Central. Of its own because a shared block or an index in another repository can change
+# while this one stands still; it leases no machine.
 name: Shared rules check
 
 # Once a day, not on a push: every hand-over runs the same checks locally on its exact commit first, and a run per
@@ -34,6 +35,12 @@ jobs:
 
             - name: No citation of an issue that goes stale
               run: '"$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.release.Main check-citations .'
+
+            # Every issue head held to issue-1.json and each index to its heads, on the checked-out commit, never on a
+            # working tree: a head the planner's board refuses, one without a size or with a rank of null, is named
+            # here by its file and its field.
+            - name: The issue heads
+              run: '"$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.release.Main issues check issues'
 
             # A pull request's own commits held to the shared rule on commit messages. One from outside - from another
             # repository, or opened by someone not a member - also carries its author's Signed-off-by: on each commit,

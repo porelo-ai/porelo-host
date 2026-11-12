@@ -77,7 +77,6 @@ it is left out.
 | <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
 | <a id="ho163"></a>[HO163](HO163-A-Tasks-Signing-Key-Is-Known-Where-It-Pushes.md) | S | - | A task's signing key is registered with the forge account that receives its push, so its commits verify on the host's forge; what the central forge can take is measured first. |
 | <a id="ho165"></a>[HO165](HO165-The-Push-To-Central-Takes-Repository-Names-And-Says-A-Refused-Token.md) | XS | - | `porelo-host-push` takes the project's repository names as well as the forge's, and says plainly when the central forge refuses the token. |
-| <a id="ho176"></a>[HO176](HO176-The-Issue-Heads-Are-Checked-Every-Day.md) | XS | - | porelo-host's shared-rules check runs `issues check issues` every day on the checked-out commit, from the released porelo-release, as porelo-buildtools' own does since BT81. |
 
 ## Implementing
 
@@ -136,6 +135,7 @@ it is left out.
 | <a id="ho124"></a>[HO124](HO124-A-Login-Closed-At-Once-On-A-Host.md) | S | - | A login closed at once on a host, by reading sshd's own per-source penalty: reproduce it on the test VM, and say so. |
 | <a id="ho121"></a>[HO121](HO121-One-Check-Before-Any-Installation.md) | L | - | One read-only check before any installation, the same code `up` runs first, every finding at once with its value, what was asked and what to do. |
 | <a id="ho122"></a>[HO122](HO122-A-Project-Says-What-The-Follow-Took.md) | S | - | `org status` names what the follow took of a project and why not, a row with no `central` included. |
+| <a id="ho176"></a>[HO176](HO176-The-Issue-Heads-Are-Checked-Every-Day.md) | XS | - | porelo-host's shared-rules check runs `issues check issues` every day on the checked-out commit, from the released porelo-release, as porelo-buildtools' own does since BT81. |
 
 ## Finished
 

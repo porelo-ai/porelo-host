@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO176",
   "title": "The Issue Heads Are Checked Every Day",
-  "state": "Backlog",
+  "state": "Review",
   "size": "XS",
   "priority": "Low",
   "rank": 100,
@@ -28,3 +28,10 @@ them before the push. porelo-buildtools added the step under
 
 - `shared-rules.yml` runs `porelo-release issues check issues` from the tools it already takes for `check-citations`.
 - A run on `main` is green.
+
+## As built
+
+- `shared-rules.yml` runs `issues check issues` after the citations check, from the tools the pinned-jdk action
+  already puts on its class path (porelo-buildtools' snapshot from `build/pom.xml`).
+- Run locally with those tools: this repository's issues pass, exit 0; a copy whose head has `"rank": null` is refused
+  naming the file and `/rank`, exit 1.

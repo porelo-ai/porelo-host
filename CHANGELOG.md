@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A job on the forge is told where the pool is.** Where the host has a VM pool, every job on its forge gets
   `PORELO_MACHINES_POOL=/etc/porelo-host/pool/pool.json`, so `porelo-machines acceptance` takes a pool account there
   without `--pool`, and the same workflow rents a server on GitHub.
+- **The issue heads are checked every day.** The daily shared-rules check runs `issues check issues` on the
+  checked-out commit, so a head without a size or with a rank of `null` is named by its file and field.
 - **The forge's images can come from archives.** `forge_image_archives` names a directory of the forge's pinned images
   as OCI archives, `<digest>.tar` each; `up` loads an image from its archive into the account's podman, checked
   against its pin, instead of pulling it. The Build's `molecule` job takes the three images from a cache kept by their
