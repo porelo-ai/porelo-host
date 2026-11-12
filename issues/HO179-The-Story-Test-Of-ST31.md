@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO179",
   "title": "The Story Test Of ST31",
-  "state": "Backlog",
+  "state": "Review",
   "size": "S",
   "priority": "High",
   "rank": 3,
@@ -34,3 +34,16 @@ of 2026-11-12.
   VM, no Molecule beside it; cleaned up after.
 - A story whose issues are not all in Review yet still gets its script and one run; the run names the missing issue as
   an expected failure.
+
+## As built
+
+`build/rehearse-steps/story-st31` plays ST31 as the test person on the rented rehearsal's host: an Ed25519 key with a
+comment of quotes, umlauts and shell characters, made there by `ssh-keygen`, is stored once with `--from-file` and once
+pasted at `vault put`'s prompt through a pseudo-terminal, and `vault list` must name both with the same type and
+length; neither put may warn that no provider is declared; a provider file `example-unknown` declaring `openai`, its
+credential stored, is chosen for Pi with `--provider`, and the start must be refused naming it, with no task left.
+It ends `ST31 passed`, `ST31 waiting on porelo#B228, ...` (77) or `ST31 failed at <step>: ...`, and cleans up the
+entries, the file and any task. `rehearse-move.sh` runs every `story-*` step before `tasks`; a story's outcome goes to
+`<report>/stories` and the steps as `STORY`, and never ends the rehearsal. All three porelo issues are in Backlog, so
+the expected line is `ST31 waiting on porelo#B228, porelo#B316, porelo#P09`. Not yet run: its run goes with the next
+rented rehearsal, asked of the coordinator first.
