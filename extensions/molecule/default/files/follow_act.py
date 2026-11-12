@@ -7,6 +7,7 @@ import datetime
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -308,6 +309,8 @@ if FORGE_ON:
         done = run(
             "curl",
             "-sS",
+            "--max-time",
+            "60",
             "-K",
             "-",
             "--unix-socket",
@@ -323,7 +326,13 @@ if FORGE_ON:
             given=f'header = "Authorization: token {token or forge_token}"\n',
         )
         text, unused, code = done.stdout.rpartition("\n")
-        return int(code or 0), json.loads(text) if text.strip().startswith(("{", "[")) else None
+        # A call cut off, by its bound or the forge, answered nothing: the caller asks again or fails on the code.
+        if done.returncode != 0 or not code.strip().isdigit():
+            return 0, None
+        try:
+            return int(code), json.loads(text) if text.strip().startswith(("{", "[")) else None
+        except json.JSONDecodeError:
+            return 0, None
 
     def package(method, secret, user="porelo-publisher", organization=PROJECT):
         # By default the one user name the shared settings send for every organization's publisher, not the token's
@@ -711,40 +720,78 @@ if FORGE_ON:
     code = forge("DELETE", "repos/fa/gate-own-site")[0]
     check(code == 204, "the browser's repository removed", code)
     # A job on the forge's runner is told where the host's pool is, as no job on GitHub is: one workflow then takes a
-    # pool account here and rents a server there. Where the host has no pool, the job is told nothing.
+    # pool account here and rents a server there. Where the host has no pool, the job is told nothing. Where it has
+    # one, the job runs the real leg itself, on the glibc image the repositories' workflows use, so its own network
+    # reaches a pool VM; the runner's porelo-host image is Alpine, where the mounted JDK does not run.
     pooled = os.path.exists("/etc/porelo-host/pool/pool.json")
-    told = (
-        'test "${PORELO_MACHINES_POOL:-}" = /etc/porelo-host/pool/pool.json\n'
-        '          grep -q porelo-machines-pool/1 "$PORELO_MACHINES_POOL"'
-        if pooled
-        else 'test -z "${PORELO_MACHINES_POOL:-}"'
-    )
     git("fetch", "-q", "origin", "main")
     git("checkout", "-q", "-B", "pool-job", "origin/main")
     workflow = Path(checkout.name, ".forgejo/workflows/pool.yml")
     workflow.parent.mkdir(parents=True)
-    workflow.write_text(
-        "on: push\njobs:\n  pool:\n    runs-on: porelo-host\n    steps:\n      - shell: sh\n        run: |\n"
-        f"          set -eu\n          {told}\n",
-        encoding="utf-8",
-    )
+    if pooled:
+        # The run key reaches the job as a secret only, in curl's configuration on its standard input.
+        key = Path("/var/lib/porelo-host/pool/run-key").read_text(encoding="utf-8")
+        body = json.dumps({"data": key}).replace("\\", "\\\\").replace('"', '\\"')
+        put = run(
+            "curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}", "-K", "-", "--unix-socket", socket,
+            "-X", "PUT", "-H", "Content-Type: application/json",
+            f"http://localhost/api/v1/{repository}/actions/secrets/PORELO_POOL_SSH",
+            given=f'header = "Authorization: token {forge_token}"\ndata = "{body}"\n',
+        )  # fmt: skip
+        check(put.stdout in ("201", "204"), "the run key set as the act's repository secret", put.stdout)
+        leg = Path(checkout.name, "leg")
+        (leg / "machines").mkdir(parents=True)
+        for jar in Path("/root/pool-acceptance/machines").glob("*.jar"):
+            shutil.copyfile(jar, leg / "machines" / jar.name)
+        shutil.copyfile("/root/pool-acceptance/pool-acceptance.sh", leg / "pool-acceptance.sh")
+        workflow.write_text(
+            "on: push\njobs:\n  pool:\n    runs-on: ubuntu-24.04\n    steps:\n      - shell: bash\n"
+            "        env:\n          PORELO_POOL_SSH: ${{ secrets.PORELO_POOL_SSH }}\n"
+            "          FORGE_TOKEN: ${{ github.token }}\n"
+            "        run: |\n"
+            "          set -euo pipefail\n"
+            '          test "${PORELO_MACHINES_POOL:-}" = /etc/porelo-host/pool/pool.json\n'
+            '          grep -q porelo-machines-pool/1 "$PORELO_MACHINES_POOL"\n'
+            "          mkdir -p /tmp/leg\n"
+            '          printf \'header = "Authorization: token %s"\\n\' "$FORGE_TOKEN" | curl -fsS -K - \\\n'
+            '              "$GITHUB_SERVER_URL/api/v1/repos/$GITHUB_REPOSITORY/archive/$GITHUB_SHA.tar.gz" \\\n'
+            "              | tar -xz -C /tmp/leg --strip-components=1\n"
+            '          timeout --kill-after=15s 10m "$JAVA_HOME_25_X64/bin/java" -cp "/tmp/leg/leg/machines/*" \\\n'
+            "              org.fuin.porelo.machines.Main acceptance --kind amd64 --os ubuntu --package porelo \\\n"
+            "              --script /tmp/leg/leg/pool-acceptance.sh --for 10\n",
+            encoding="utf-8",
+        )
+    else:
+        workflow.write_text(
+            "on: push\njobs:\n  pool:\n    runs-on: porelo-host\n    steps:\n      - shell: sh\n        run: |\n"
+            '          set -eu\n          test -z "${PORELO_MACHINES_POOL:-}"\n',
+            encoding="utf-8",
+        )
     git("add", ".")
     made = git("commit", "-q", "-m", "pool-job")
     check(made.returncode == 0, "a signed commit with the pool job", made.stderr)
     pushed = git("push", "-q", "origin", "pool-job")
     check(pushed.returncode == 0, "the judge to take the pool job's branch", pushed.stderr)
     job_state = None
-    for _ in range(120):
-        code, tasks = forge("GET", f"{repository}/actions/tasks")
-        runs = (tasks or {}).get("workflow_runs") or [] if code == 200 else []
-        job_state = next((r.get("status") for r in runs if r.get("head_branch") == "pool-job"), None)
-        if job_state in ("success", "failure", "cancelled", "skipped"):
-            break
-        subprocess.run(["sleep", "5"], check=False)
+    try:
+        # The glibc image is pulled on its first job, and the leg rents, runs and gives back, so the pooled run waits
+        # longer.
+        for _ in range(360 if pooled else 120):
+            code, tasks = forge("GET", f"{repository}/actions/tasks")
+            runs = (tasks or {}).get("workflow_runs") or [] if code == 200 else []
+            job_state = next((r.get("status") for r in runs if r.get("head_branch") == "pool-job"), None)
+            if job_state in ("success", "failure", "cancelled", "skipped"):
+                break
+            subprocess.run(["sleep", "5"], check=False)
+    finally:
+        # The run key leaves the forge however the wait ended.
+        if pooled:
+            forge("DELETE", f"{repository}/actions/secrets/PORELO_POOL_SSH")
+    # A forge that stalls under a rented VM's weight says so, with the host's load beside the job's state.
     check(
         job_state == "success",
-        "a job on the forge to be told the pool" if pooled else "a job on a forge without a pool to be told none",
-        job_state,
+        "a job's own leg to reach a pool VM" if pooled else "a job on a forge without a pool to be told none",
+        f"{job_state}; {run('free', '-m').stdout} {run('uptime').stdout}",
     )
     checkout.cleanup()
     check(forge("DELETE", repository)[0] == 204, "the act's repository removed")
