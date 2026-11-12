@@ -75,7 +75,8 @@
       timeout --kill-after=15s 10m "$java" -cp "$cp" PoolAcceptance "$pool" /root/pool-acceptance
       # As a job on the forge is told it: the pool from PORELO_MACHINES_POOL, a machine asked for by its kind.
       PORELO_MACHINES_POOL="$pool" timeout --kill-after=15s 10m "$java" -cp "$cp" org.fuin.porelo.machines.Main \
-          acceptance --kind amd64 --os ubuntu --package porelo --script /root/pool-acceptance/pool-acceptance.sh --for 10
+          acceptance --kind amd64 --os ubuntu --package porelo \
+          --script /root/pool-acceptance/pool-acceptance.sh --for 10
       timeout --kill-after=15s 5m "$java" -cp "$cp" PoolAcceptance "$pool" /root/pool-acceptance clean
     executable: /bin/bash
   register: verify_pool_given_back
