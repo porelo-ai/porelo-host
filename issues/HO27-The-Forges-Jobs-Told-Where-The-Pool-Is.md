@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO27",
   "title": "The Forge's Jobs Told Where The Pool Is",
-  "state": "Estimated",
+  "state": "Backlog",
   "size": "M",
   "priority": "Medium",
   "rank": 26,
