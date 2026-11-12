@@ -125,7 +125,10 @@ Without the phase 2 options it stops after `up`. With them it also:
   plugin's zip from `PORELO_STORY_PLUGINS`, default the snapshots channel's `updatePlugins.xml`; `story-st346` a
   scratch repository of this one's issues whose head loses its size and then gets a rank of null, refused by the
   shared-rules step on the checkout and by the prepush's gate on a `git archive` of the commit, each naming the file
-  and the field, with `porelo-release` resolved by `build/pom.xml` and the host's JDK, `PORELO_STORY_JAVA_HOME`);
+  and the field, with `porelo-release` resolved by `build/pom.xml` and the host's JDK, `PORELO_STORY_JAVA_HOME`;
+  `story-st40`, only on a host with the forge and a machine pool, porelo's and the four agent adapters' workflows
+  read for a provider named and a leg that asks for no kind, their newest legs on main on the host's forge, in the
+  organization `PORELO_STORY_FORGE_ORG` or the project's, and on GitHub through its public API);
 - runs the steps others build, each one executable under `build/rehearse-steps/`, in the order `tasks`, `busy-room`,
   `judge`, `window`; a step not on the branch is `SKIP <name> not built yet`, and `busy-room` and `judge`, which use
   the tasks `tasks` starts, are skipped when `tasks` is;

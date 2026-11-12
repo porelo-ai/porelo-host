@@ -1,0 +1,214 @@
+#!/usr/bin/env bash
+# The story test of ST40 (porelo-project), "Legs on pool machines, the same workflow on both forges", played on the
+# rented KVM host that runs the forge and the machine pool: porelo's and the four agent adapters' workflows name no
+# provider and ask for a machine by kind; on the host's forge each one's legs ran green on main, taking a pool account
+# by kind; on GitHub the same workflow's legs ran green, renting a server.
+#
+# Runs on the rental, not on the test VM. A step under build/rehearse-steps, called by the contract in doc/testing.md;
+# it reads REHEARSAL_SSH (root on the host), REHEARSAL_REPORT and REHEARSAL_DEADLINE, and REHEARSAL_PROJECT, the
+# organization on the host's forge the repositories were carried into (PORELO_STORY_FORGE_ORG overrides it), and
+# PORELO_STORY_FORGE, the central forge (default https://github.com/porelo-ai). The last line is the story's:
+#
+#   ST40 passed                                   exit 0
+#   ST40 waiting on porelo#B322, ...              exit 77, a step whose open issue is named failed as expected
+#   ST40 failed at <step>: <what was seen>        exit 1, a step no open issue explains
+#
+# It pushes nothing and starts no run: it reads the last runs on main, which the person's pushes started. The read
+# token it makes on the forge is removed at the end.
+set -euo pipefail
+
+for name in REHEARSAL_SSH REHEARSAL_REPORT REHEARSAL_DEADLINE; do
+    [ -n "${!name:-}" ] || {
+        echo "ST40 failed at the contract: $name is not set"
+        exit 1
+    }
+done
+forge=${PORELO_STORY_FORGE:-https://github.com/porelo-ai}
+org=${PORELO_STORY_FORGE_ORG:-${REHEARSAL_PROJECT:-}}
+[ -n "$org" ] || {
+    echo "ST40 failed at the contract: neither PORELO_STORY_FORGE_ORG nor REHEARSAL_PROJECT is set"
+    exit 1
+}
+
+out=$REHEARSAL_REPORT/story-st40.d
+mkdir -p "$out"
+waiting=()
+failed=''
+
+# Each repository, and the issue that makes its legs run on the host's forge.
+repositories=(porelo porelo-claude-code porelo-pi porelo-omp porelo-agy)
+declare -A issue=([porelo]=porelo#B322 [porelo-claude-code]=porelo-claude-code#CC40 [porelo-pi]=porelo-pi#PI40
+    [porelo-omp]=porelo-omp#OM37 [porelo-agy]=porelo-agy#AG05)
+
+on_host() {
+    local seconds=$1
+    shift
+    local left=$((REHEARSAL_DEADLINE - $(date +%s) - 60))
+    [ "$left" -gt 0 ] || return 124
+    [ "$seconds" -le "$left" ] || seconds=$left
+    timeout --signal=TERM --kill-after=10 "$seconds" "$REHEARSAL_SSH" "$@"
+}
+
+wait_on() {
+    [[ " ${waiting[*]} " == *" $1 "* ]] || waiting+=("$1")
+    echo "expected while $1 is open: $2"
+}
+
+fail() {
+    [ -n "$failed" ] || failed="$1: $2"
+    echo "FAILED $1: $2"
+}
+
+checkouts=$(mktemp -d)
+token_made=no
+cleanup() {
+    rm -rf "$checkouts"
+    if [ "$token_made" = yes ]; then
+        # shellcheck disable=SC2016
+        on_host 60 sh -c 'uid=$(id -u porelo-forge)
+runuser -u porelo-forge -- env -C / XDG_RUNTIME_DIR=/run/user/$uid podman exec forgejo \
+    forgejo admin user delete-access-token --username porelo-admin --token-name story-st40 >/dev/null 2>&1 || true' \
+            < /dev/null > /dev/null 2>&1 || true
+    fi
+}
+trap cleanup EXIT
+
+# Step 0: the host runs the forge and a pool, as the rented rehearsal sets it up.
+echo "== the forge and the pool"
+# shellcheck disable=SC2016
+if ! on_host 60 sh -c 'uid=$(id -u porelo-forge) && test -S "/run/user/$uid/porelo-forge/http.sock" \
+    && grep -q porelo-machines-pool/1 /etc/porelo-host/pool/pool.json && echo "forge and pool"' \
+    < /dev/null > "$out/host.out" 2>&1; then
+    cat "$out/host.out"
+    echo "ST40 failed at the forge and the pool: the host runs no forge with a machine pool"
+    exit 1
+fi
+
+# Step 1: the workflows on main, as the central forge holds them: no provider named, and every leg asks by kind.
+echo "== the workflows"
+# shellcheck disable=SC2016
+judge='import pathlib, re, sys
+for path in sorted(pathlib.Path(sys.argv[1]).glob(".*/workflows/*.y*ml")):
+    lines = path.read_text(encoding="utf-8").splitlines()
+    for number, line in enumerate(lines, 1):
+        named = re.search(r"hetzner|scaleway|--provider|PORELO_MACHINES_PROVIDER", line, re.I)
+        if named and not line.lstrip().startswith("#"):
+            print(f"PROVIDER {path.parent.parent.name}/{path.parent.name}/{path.name}:{number}: {line.strip()}")
+        if "legs.args=" in line and "--kind" not in line:
+            print(f"NOKIND {path.name}:{number}: the leg asks for no kind")
+        if "Main acceptance" in line:
+            call, at = line, number
+            while call.rstrip().endswith("\\") and at < len(lines):
+                call += " " + lines[at]
+                at += 1
+            if "--kind" not in call:
+                print(f"NOKIND {path.name}:{number}: the leg asks for no kind")'
+for repository in "${repositories[@]}"; do
+    if ! timeout 600 git clone -q --depth 1 "$forge/$repository.git" "$checkouts/$repository" \
+        > "$out/clone-$repository.out" 2>&1; then
+        fail "the workflows" "$repository could not be cloned: $(tail -n 1 "$out/clone-$repository.out")"
+        continue
+    fi
+    python3 -I -c "$judge" "$checkouts/$repository" > "$out/workflows-$repository.out" 2>&1 || true
+    sed "s/^/$repository: /" "$out/workflows-$repository.out"
+    if grep -q '^PROVIDER ' "$out/workflows-$repository.out"; then
+        wait_on "${issue[$repository]}" "$repository's workflows name a provider"
+    fi
+    if grep -q '^NOKIND ' "$out/workflows-$repository.out"; then
+        wait_on "${issue[$repository]}" "$repository's legs ask for no kind"
+    fi
+    grep -qE 'Main acceptance|legs\.args=' -r "$checkouts/$repository/.github/workflows" \
+        || fail "the workflows" "$repository runs no acceptance leg at all"
+done
+
+# Step 2: on the host's forge, each repository's last legs on main, read through the forge's own socket.
+echo "== the legs on the host's forge"
+# shellcheck disable=SC2016
+if on_host 120 sh -c 'set -e
+uid=$(id -u porelo-forge)
+token=$(runuser -u porelo-forge -- env -C / XDG_RUNTIME_DIR=/run/user/$uid podman exec forgejo \
+    forgejo admin user generate-access-token --username porelo-admin --token-name story-st40 \
+    --scopes read:repository --raw)
+echo made
+for repository in $2; do
+    printf "header = \"Authorization: token %s\"\n" "$token" | curl -sS --max-time 60 -K - \
+        --unix-socket "/run/user/$uid/porelo-forge/http.sock" \
+        "http://localhost/api/v1/repos/$1/$repository/actions/tasks?limit=50" > "/tmp/story-st40-$repository.json" \
+        || echo "{}" > "/tmp/story-st40-$repository.json"
+done
+cat /proc/loadavg' sh "$org" "${repositories[*]}" < /dev/null > "$out/forge.out" 2>&1; then
+    token_made=yes
+else
+    grep -q '^made$' "$out/forge.out" && token_made=yes
+    cat "$out/forge.out"
+    fail "the legs on the host's forge" "the forge could not be read: $(tail -n 1 "$out/forge.out")"
+fi
+# The legs of the newest run on main: every one there, each a success.
+legs='import json, re, sys
+tasks = (json.load(open(sys.argv[1])) or {}).get("workflow_runs") or []
+legs = [t for t in tasks if t.get("head_branch") == "main" and re.match(r"(Leg|Acceptance)\b", t.get("name", ""))]
+if not legs:
+    print("NONE no leg ran on main")
+    sys.exit(0)
+newest = max(t.get("run_number", 0) for t in legs)
+for t in legs:
+    if t.get("run_number", 0) == newest:
+        print(("OK " if t.get("status") == "success" else "BAD ") + t.get("name", "") + ": " + str(t.get("status")))'
+if [ "$token_made" = yes ]; then
+    for repository in "${repositories[@]}"; do
+        # shellcheck disable=SC2016
+        on_host 60 sh -c 'cat "$1"; rm -f "$1"' sh "/tmp/story-st40-$repository.json" < /dev/null \
+            > "$out/forge-$repository.json" 2> /dev/null || echo '{}' > "$out/forge-$repository.json"
+        python3 -I -c "$legs" "$out/forge-$repository.json" > "$out/forge-$repository.out" 2>&1 \
+            || echo "NONE the forge's answer is no JSON" > "$out/forge-$repository.out"
+        sed "s/^/$repository on the forge: /" "$out/forge-$repository.out"
+        if grep -qE '^(NONE|BAD) ' "$out/forge-$repository.out"; then
+            wait_on "${issue[$repository]}" "$repository's legs on the host's forge: $(grep -m 1 -E '^(NONE|BAD) ' \
+                "$out/forge-$repository.out" | cut -d' ' -f2-)"
+        fi
+    done
+fi
+
+# Step 3: on GitHub, the same workflow's newest legs on main, read as anyone may.
+echo "== the legs on GitHub"
+github=${forge#https://github.com/}
+for repository in "${repositories[@]}"; do
+    runs="https://api.github.com/repos/$github/$repository/actions/workflows/build.yml/runs"
+    if ! curl -fsSL --max-time 60 "$runs?branch=main&event=push&status=completed&per_page=1" \
+        > "$out/github-$repository-runs.json" 2> "$out/github-$repository.err"; then
+        fail "the legs on GitHub" "$repository's runs could not be read: $(tail -n 1 "$out/github-$repository.err")"
+        continue
+    fi
+    jobs=$(python3 -I -c 'import json, sys
+runs = json.load(open(sys.argv[1])).get("workflow_runs") or []
+print(runs[0]["jobs_url"] if runs else "")' "$out/github-$repository-runs.json")
+    if [ -z "$jobs" ] || ! curl -fsSL --max-time 60 "$jobs?per_page=100" > "$out/github-$repository-jobs.json" \
+        2> "$out/github-$repository.err"; then
+        fail "the legs on GitHub" "$repository has no completed run on main to read"
+        continue
+    fi
+    python3 -I -c 'import json, re, sys
+jobs = json.load(open(sys.argv[1])).get("jobs") or []
+legs = [j for j in jobs if re.match(r"(Leg|Acceptance)\b", j.get("name", ""))]
+if not legs:
+    print("NONE the newest run on main ran no leg")
+for j in legs:
+    good = j.get("conclusion") in ("success", "skipped")
+    print(("OK " if good else "BAD ") + j["name"] + ": " + str(j.get("conclusion")))' \
+        "$out/github-$repository-jobs.json" > "$out/github-$repository.out" 2>&1 || true
+    sed "s/^/$repository on GitHub: /" "$out/github-$repository.out"
+    if grep -qE '^(BAD|NONE) ' "$out/github-$repository.out"; then
+        fail "the legs on GitHub" \
+            "$repository: $(grep -m 1 -E '^(BAD|NONE) ' "$out/github-$repository.out" | cut -d' ' -f2-)"
+    fi
+done
+
+if [ -n "$failed" ]; then
+    echo "ST40 failed at $failed"
+    exit 1
+fi
+if [ "${#waiting[@]}" -gt 0 ]; then
+    echo "ST40 waiting on $(printf '%s\n' "${waiting[@]}" | sort -u | paste -sd, - | sed 's/,/, /g')"
+    exit 77
+fi
+echo "ST40 passed"
