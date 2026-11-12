@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO184",
   "title": "The Story Test Of ST40",
-  "state": "Backlog",
+  "state": "Review",
   "size": "L",
   "priority": "High",
   "rank": 8,
@@ -34,3 +34,23 @@ of 2026-11-12.
   VM, no Molecule beside it; cleaned up after.
 - A story whose issues are not all in Review yet still gets its script and one run; the run names the missing issue as
   an expected failure.
+
+## As built
+
+`build/rehearse-steps/story-st40` plays ST40 on the rented KVM host that runs the forge and the machine pool, as root
+through `REHEARSAL_SSH`. It pushes nothing and starts no run: it reads the newest runs on main that the person's
+pushes started. It first requires the forge's socket and a `porelo-machines-pool/1` pool, and stops on a host without
+them. Then it reads, for porelo, porelo-claude-code, porelo-pi, porelo-omp and porelo-agy:
+
+- **The workflows on main**, cloned from `PORELO_STORY_FORGE`: a provider named (`hetzner`, `scaleway`,
+  `--provider`, `PORELO_MACHINES_PROVIDER`) or a leg that asks for no `--kind` is the repository's open issue.
+- **The newest legs on main on the host's forge**, in `PORELO_STORY_FORGE_ORG` or the project's organization,
+  through the forge's own socket with a read-only token made for the run and removed after it. No leg, or one not
+  green, is the repository's open issue.
+- **The Build workflow's newest completed push run on GitHub**, through its public API. A leg not green there, or
+  none, is a failure.
+
+Read here against today's mains: the four agent adapters name no provider and ask by kind. porelo names
+`HETZNER_API` and `HETZNER_SSH` and starts its own leg tool without a kind. GitHub's newest porelo-pi Build has both
+`Acceptance` legs green. So before any forge run the expected line is `ST40 waiting on porelo#B322, ...` with the
+four adapters' issues for their forge legs. Not yet run: its run goes on the rental, asked of the coordinator first.
