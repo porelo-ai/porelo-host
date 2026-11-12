@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO182",
   "title": "The Story Test Of ST326",
-  "state": "Backlog",
+  "state": "Review",
   "size": "M",
   "priority": "High",
   "rank": 6,
@@ -34,3 +34,17 @@ of 2026-11-12.
   VM, no Molecule beside it; cleaned up after.
 - A story whose issues are not all in Review yet still gets its script and one run; the run names the missing issue as
   an expected failure.
+
+## As built
+
+`build/rehearse-steps/story-st326` plays ST326 as the test person on the rented rehearsal's host. It installs nothing:
+the .deb or .rpm of porelo-agent-agy, porelo-agent-codex, porelo-message-transport-matrix, porelo-frontend and porelo
+are fetched as the person from the repository the host installs from (`apt-get download` or `dnf download`) and
+unpacked into a scratch directory. In each, THIRD-PARTY-NOTICES is held to the bill the package ships beside it: every
+library the bill names that is not Porelo's own is named in the notices, the standard text of each license the bill
+gives it stands there (LGPL's and Bouncy Castle's among them), and a package without a bill must still carry license
+texts. The IntelliJ plugin's zip is fetched as an IDE fetches it, through `updatePlugins.xml` (`PORELO_STORY_PLUGINS`,
+default the snapshots channel's), and bundles Porelo's own jars alone or names the others in a THIRD-PARTY-NOTICES.
+Every issue of the story but porelo's B606 is in Review, so the expected line is `ST326 waiting on porelo#B606`; a
+missing or short notice in the other packages is a failure. Not yet run: its run goes with the next rented
+rehearsal, asked of the coordinator first.
