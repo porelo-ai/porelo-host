@@ -51,7 +51,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho171"></a>[HO171](HO171-The-Fallback-Ubuntu-Mirror-Removed.md) | XS | - | Once Canonical's Ubuntu archive is back, build/apt-fallback.sh, build/apt-fallback.cloud-config and their three uses go, and apt reads Canonical's archive again on the runner and in every VM. |
 | <a id="ho167"></a>[HO167](HO167-Down-And-A-Host-The-Organization-No-Longer-Lists.md) | - | - | `down` on a host the organization no longer lists, while persons still hold memberships, names them and asks y/N before it takes them off and goes down; `--force` skips the question, and without a terminal it refuses. |
 
 ## Analyzed
@@ -88,6 +87,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho171"></a>[HO171](HO171-The-Fallback-Ubuntu-Mirror-Removed.md) | XS | - | Once Canonical's Ubuntu archive is back, build/apt-fallback.sh, build/apt-fallback.cloud-config and their three uses go, and apt reads Canonical's archive again on the runner and in every VM. |
 | <a id="ho174"></a>[HO174](HO174-A-Rented-Rehearsal-Fails-Early-And-Cleans-Up.md) | S | - | build/rehearse-move.sh's rented mode probes its organization and token programs before it claims a server, lets a second run onto a server a clean down left, and takes its read keys off central for the organization the machine file names. |
 | <a id="ho127"></a>[HO127](HO127-The-Half-For-Jobs-Is-A-Setting.md) | S | - | The share of the host for jobs and the VM pool becomes a setting, today's half its default, `up`'s refusal naming it. |
 | <a id="ho154"></a>[HO154](HO154-A-Task-Account-Pushes-Only-Its-Own-Task-Branches.md) | S | - | A task's token pushes and force-pushes only `porelo/<task>` of its own person's tasks; the host refuses any other ref from that account. |

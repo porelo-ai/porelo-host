@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO171",
   "title": "The Fallback Ubuntu Mirror Removed",
-  "state": "Accepted",
+  "state": "Review",
   "size": "XS",
   "priority": "High",
   "rank": 1,
@@ -35,3 +35,13 @@ seed) are removed, and grep finds no `apt-fallback` left.
 
 Remove the files and the three uses. Prove it with a Build run green on Canonical's archive and a bare rehearsal VM
 whose `ubuntu.sources` names Canonical.
+
+## As built
+
+- `build/apt-fallback.sh` and `build/apt-fallback.cloud-config` are gone, with their three uses: the Build's molecule
+  job installs from Canonical alone, and `build/molecule.sh` and `build/rehearse-move.sh` seed their VMs without a
+  part of their own. grep finds no `apt-fallback` outside the issues.
+- Measured 2026-11-12, about 19:20Z: Canonical's archive, its security suite and cloud-images.ubuntu.com answer 200
+  from this machine. A bare rehearsal VM made without the part names `archive.ubuntu.com` and `security.ubuntu.com`
+  in its `ubuntu.sources`, and `apt-get update` there exits 0 on them; the VM is deleted again.
+- The Build run on Canonical's archive comes with the push.

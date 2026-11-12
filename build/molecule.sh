@@ -150,7 +150,7 @@ if [ "$pool_check" = on ]; then
 fi
 ssh-keygen -q -t ed25519 -N '' -C "$name" -f "$dir/id_ed25519"
 ssh-keygen -q -t ed25519 -N '' -C "$name" -f "$dir/host_ed25519"
-"$vm" seed "$dir" "$name" molecule "$dir/id_ed25519.pub" "$dir/host_ed25519" "$root/build/apt-fallback.cloud-config"
+"$vm" seed "$dir" "$name" molecule "$dir/id_ed25519.pub" "$dir/host_ed25519"
 
 # --- the VM -----------------------------------------------------------------------------------------------------------
 # Marked before it is made, so a half-made VM is deleted too; deleting what is not there changes nothing.

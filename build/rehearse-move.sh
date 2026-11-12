@@ -133,8 +133,7 @@ start() {
     echo "$name" > "$state/name"
     ssh-keygen -q -t ed25519 -N '' -C "$name" -f "$state/id_ed25519"
     ssh-keygen -q -t ed25519 -N '' -C "$name" -f "$state/host_ed25519"
-    "$vm" seed "$state" "$name" "$account" "$state/id_ed25519.pub" "$state/host_ed25519" \
-        "$root/build/apt-fallback.cloud-config"
+    "$vm" seed "$state" "$name" "$account" "$state/id_ed25519.pub" "$state/host_ed25519"
     if [ -z "$bare" ]; then
         "$root/build/tools.sh" ansible-galaxy collection build --force --output-path target/rehearsal >/dev/null
         tarball=$(ls "$state"/porelo-host-*.tar.gz)

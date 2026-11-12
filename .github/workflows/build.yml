@@ -144,9 +144,7 @@ jobs:
                           xorriso=1:1.5.6-1.1ubuntu4 \
                           skopeo=1.21.0~pre1-2build1
                   }
-                  # Temporary, for Canonical's archive outage of 2026-11-11, removed once Canonical is back: after a
-                  # failed install, the same suites from a public mirror, still checked against Ubuntu's keyring.
-                  install || { sudo build/apt-fallback.sh && install; }
+                  install
                   sudo virsh pool-info images >/dev/null 2>&1 || {
                       sudo mkdir -p /var/lib/libvirt/images
                       sudo virsh pool-define-as images dir --target /var/lib/libvirt/images

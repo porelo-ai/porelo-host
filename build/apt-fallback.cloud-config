@@ -1,7 +1,0 @@
-# Temporary, for Canonical's archive outage of 2026-11-11 (removed once Canonical is back): apt in the VM reads
-# Ubuntu's suites from a public mirror, as build/apt-fallback.sh does on a runner. apt still checks every Release file
-# against Ubuntu's keyring. cloud-init leaves the sources as edited here.
-apt:
-  preserve_sources_list: true
-bootcmd:
-  - [sed, -i, -E, "s#^URIs: .*#URIs: http://ftp.fau.de/ubuntu/#", /etc/apt/sources.list.d/ubuntu.sources]
