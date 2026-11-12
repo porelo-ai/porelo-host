@@ -60,7 +60,6 @@ it is left out.
 |---|---|---|---|---|
 | <a id="ho40"></a>[HO40](HO40-The-Build-Runs-On-The-Hosts-Forge-As-On-GitHub.md) | M | - | The move's builds on the host's forge: `build.yml` green on the host's Forgejo and on GitHub unchanged, with task branches built, the tools without `podman run`, snapshots by variable and Molecule on a machine with KVM. | 1 |
 | <a id="ho39"></a>[HO39](HO39-The-Hosts-Agent-Works-In-A-Porelo-Task.md) | S | [HO40](README.md#ho40) | porelo-host's agent, `Agent Host`, in a Porelo task on the move's host, with a way back: the image from `porelo.yml`. | 1 |
-| <a id="ho86"></a>[HO86](HO86-The-Push-Judges-Smaller-Edges.md) | - | [HO85](README.md#ho85) | The push judge's smaller edges from its reading, gathered: links in the arming, the removal's checks, a first-push race, the null object, the answer's field and record checks pinned by tests. | 1 |
 
 ## Estimated
 
@@ -210,6 +209,7 @@ it is left out.
 |---|---|---|
 | <a id="ho164"></a>[HO164](HO164-A-Projects-Review-Setting-Reaches-The-Branch-Protection.md) | A Project's Review Setting Reaches The Branch Protection | A project's `review: optional` or `required` reaches the host forge's protection of `main` on the next follow pass, so a single admin can merge. |
 | <a id="ho169"></a>[HO169](HO169-The-Forge-Proves-The-Repository-Of-Them-All.md) | The Forge Proves The Repository Of Them All | porelo-host's Molecule scenario and rehearsal prove `porelo-all` on the host's forge: a private repository the follow makes, its `main` taken only from its rebuild identity, that identity unable to write any other repository, and its rebuild workflow run by the forge's runner. |
+| <a id="ho86"></a>HO86 | The Push Judge's Smaller Edges | Moved to porelo's B666, The Push Judge's Arming Stops On A Link, by the operator's word (2026-11-12): the push judge lives in porelo's host module. |
 | <a id="ho155"></a>HO155 | A Person Reads How Their Project's Repositories Stand Against Central | `porelo-host-push --central <project>` already gives a project's unlocked members the follow's answer, in their own account and without sudo. |
 | <a id="ho22"></a>HO22 | Ssh Reached Only Through The VPN Once It Is Up | replaced by the one-key design; there is no VPN, and SSH on port 22 is the host's only way in. |
 | <a id="ho62"></a>HO62 | The Forge's Own Reason For A Refused Password | replaced by the one-key design; the forge has no password. |
