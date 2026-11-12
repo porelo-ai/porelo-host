@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO181",
   "title": "The Story Test Of ST320",
-  "state": "Backlog",
+  "state": "Review",
   "size": "M",
   "priority": "High",
   "rank": 5,
@@ -34,3 +34,16 @@ of 2026-11-12.
   VM, no Molecule beside it; cleaned up after.
 - A story whose issues are not all in Review yet still gets its script and one run; the run names the missing issue as
   an expected failure.
+
+## As built
+
+`build/rehearse-steps/story-st320` plays ST320 as the test person on the rented rehearsal's host, as a developer of
+the repositories would: fresh shallow checkouts of porelo-buildtools, porelo-planner and porelo from
+`PORELO_STORY_FORGE` (default `https://github.com/porelo-ai`). The planner's executable must be on the person's PATH
+and name `check-commits`, `check-citations` and `stage`; porelo must build `porelo-ffm-check` and `porelo-cpu-check`
+itself; porelo-buildtools must hold neither those modules, nor a `plan` command, nor the `stories` module, the
+`stories`, `issues`, `stage`, `check-commits` and `check-pushes` commands or `stats/`. BT70 and BT72 are in Review and
+their checks pass on today's main; BT71 waits for the planner's pinned executable, so the expected line is `ST320
+waiting on porelo#B630, porelo-buildtools#BT71` or less. The planner's download and the commands it runs are filled in on
+the first run after BT71 publishes it, as the story-test rules allow. Not yet run: its run goes with the next rented
+rehearsal, asked of the coordinator first; a clone the host cannot make is the first thing that run shows.
