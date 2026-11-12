@@ -54,7 +54,6 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho171"></a>[HO171](HO171-The-Fallback-Ubuntu-Mirror-Removed.md) | XS | - | Once Canonical's Ubuntu archive is back, build/apt-fallback.sh, build/apt-fallback.cloud-config and their three uses go, and apt reads Canonical's archive again on the runner and in every VM. |
-| <a id="ho159"></a>[HO159](HO159-The-Hosts-Tests-Follow-The-Pyramid.md) | L | - | The host's tests follow the pyramid (ST296): its pool and role logic unit-tested over fakes, its subprocess tests narrowed, `tests/unit` and `tests/integration` apart, and Molecule's sleeps gone. |
 | <a id="ho167"></a>[HO167](HO167-Down-And-A-Host-The-Organization-No-Longer-Lists.md) | - | - | `down` on a host the organization no longer lists, while persons still hold memberships, names them and asks y/N before it takes them off and goes down; `--force` skips the question, and without a terminal it refuses. |
 
 ## Analyzed
@@ -62,6 +61,7 @@ it is left out.
 | # | Size | Blocked by | What it covers | Open questions |
 |---|---|---|---|---|
 | <a id="ho40"></a>[HO40](HO40-The-Build-Runs-On-The-Hosts-Forge-As-On-GitHub.md) | M | - | The move's builds on the host's forge: `build.yml` green on the host's Forgejo and on GitHub unchanged, with task branches built, the tools without `podman run`, snapshots by variable and Molecule on a machine with KVM. | 1 |
+| <a id="ho159"></a>[HO159](HO159-The-Hosts-Tests-Follow-The-Pyramid.md) | L | - | The host's tests follow the pyramid (ST296): its pool and role logic unit-tested over fakes, its subprocess tests narrowed, `tests/unit` and `tests/integration` apart, and Molecule's sleeps gone. | 1 |
 | <a id="ho39"></a>[HO39](HO39-The-Hosts-Agent-Works-In-A-Porelo-Task.md) | S | [HO40](README.md#ho40) | porelo-host's agent, `Agent Host`, in a Porelo task on the move's host, with a way back: the image from `porelo.yml`. | 1 |
 
 ## Estimated

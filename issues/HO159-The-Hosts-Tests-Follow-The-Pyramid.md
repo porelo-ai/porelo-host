@@ -5,12 +5,13 @@
   "$schema": "issue-1.json",
   "id": "HO159",
   "title": "The Host's Tests Follow The Pyramid",
-  "state": "Accepted",
+  "state": "Analyzed",
   "size": "L",
   "priority": "Medium",
   "rank": 1,
   "blockedBy": [],
-  "covers": "The host's tests follow the pyramid (ST296): its pool and role logic unit-tested over fakes, its subprocess tests narrowed, `tests/unit` and `tests/integration` apart, and Molecule's sleeps gone."
+  "covers": "The host's tests follow the pyramid (ST296): its pool and role logic unit-tested over fakes, its subprocess tests narrowed, `tests/unit` and `tests/integration` apart, and Molecule's sleeps gone.",
+  "openQuestions": 1
 }
 ```
 
@@ -116,6 +117,29 @@ tests):
    - `tests/integration` holds the real `ansible-playbook`, `ssh-keygen`, `sshd -T` and `git` tests.
    - `build/tools.sh` runs them as two steps, unit first.
    - The Build refuses a subprocess or a socket in `tests/unit`, through a guard in `conftest.py`.
+
+## Plan
+
+Read in porelo-host 8133028 against the audit above:
+
+- **Today's unit run.** `tests/unit` holds 484 tests: 483 passed and 1 skipped (`test_person_ssh`, no `sshd` in the
+  tools image), in 282.6 s in the tools image (measured 2026-11-12), against 2:50 min for 322 when audited; the
+  rehearsal's tests in `test_move_tools.py` grew with the rented mode. The split of fix 8 matters more than when
+  audited.
+- **Still as audited.** `PoolAcceptance.java:42` still sleeps two minutes; `build/move-check.sh` and
+  `plugins/callback/lines.py` stand as audited; the role tests under `tests/unit/roles` still run `ansible-playbook`.
+- **Order and size.** Fixes 1 (S), 2 (S), 3 (S), 4 (XS), 5 (S), 6 (S), 7 (XS) and 8 (S), with fix 8 first, so every
+  later fix lands in the right half; about 200 min at the medians (S 27, XS 8), so L.
+- **Tests that go red first:** fix 8's `conftest.py` guard refuses a test in `tests/unit` that starts a process, seen
+  red first; for fixes 1, 2, 4 and 6 each rule's unit test is seen red with the rule removed; fixes 3, 5 and 7 move
+  existing tests and keep them green.
+- **Files that cannot be Java.** Fix 5 turns `build/move-check.sh` into Python; this repository's list of such files
+  in `AGENTS.md` changes with it.
+
+## Open questions
+
+- **One issue, or one per fix?** My proposal: one issue built in this order, each fix its own commit, handed over
+  after fixes 8, 1 and 2 (the split and the largest blind spots) and again at the end.
 
 ## Acceptance
 
