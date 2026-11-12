@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+# The story test of ST346 (porelo-project), "An issue head the board refuses never reaches main", played as the test
+# person on a rehearsal's host: in a scratch repository holding this repository's issues, a head without a size and
+# then one with a rank of null are each refused by the repository's check and by the prepush's gate, naming the file
+# and the field; the head put right, both pass.
+#
+# The repository's check is the shared-rules workflow's step, `porelo-release issues check issues` on the checkout,
+# resolved from Central by this repository's own build/pom.xml and wrapper with the host's JDK. The prepush is the
+# coordinator's and lives on no test host; its gate is played as it runs: `issues check issues` on a `git archive` of
+# the commit to be pushed, never on the working tree.
+#
+# A step under build/rehearse-steps, called by the contract in doc/testing.md; it reads REHEARSAL_PERSON_SSH,
+# REHEARSAL_REPORT and REHEARSAL_DEADLINE, and PORELO_STORY_JAVA_HOME, the host's JDK (default /opt/graalvm, else the
+# one `java` on the PATH belongs to). The last line is the story's:
+#
+#   ST346 passed                                  exit 0
+#   ST346 failed at <step>: <what was seen>       exit 1, a step no open issue explains
+#
+# The scratch repository and the resolved tools are removed at the end; the person's local Maven repository keeps
+# what was resolved.
+set -euo pipefail
+
+for name in REHEARSAL_PERSON_SSH REHEARSAL_REPORT REHEARSAL_DEADLINE; do
+    [ -n "${!name:-}" ] || {
+        echo "ST346 failed at the contract: $name is not set"
+        exit 1
+    }
+done
+root=$(cd "$(dirname "$0")/../.." && pwd)
+
+out=$REHEARSAL_REPORT/story-st346.d
+mkdir -p "$out"
+failed=''
+
+on_host() {
+    local seconds=$1
+    shift
+    local left=$((REHEARSAL_DEADLINE - $(date +%s) - 60))
+    [ "$left" -gt 0 ] || return 124
+    [ "$seconds" -le "$left" ] || seconds=$left
+    timeout --signal=TERM --kill-after=10 "$seconds" "$REHEARSAL_PERSON_SSH" "$@"
+}
+
+fail() {
+    [ -n "$failed" ] || failed="$1: $2"
+    echo "FAILED $1: $2"
+}
+
+scratch=$(on_host 60 mktemp -d -t porelo-st346.XXXXXX < /dev/null) || {
+    echo "ST346 failed at the scratch directory: the host made none"
+    exit 1
+}
+cleanup() {
+    on_host 60 rm -rf "$scratch" < /dev/null > /dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+# Step 1: the shared tools as the workflow resolves them, and a repository of this one's issues, committed.
+echo "== the tools and the repository"
+# shellcheck disable=SC2016
+if ! tar -C "$root" -c mvnw .mvn build/pom.xml issues | on_host 900 sh -c 'set -e
+java_home=${2:-}
+[ -n "$java_home" ] || { [ -x /opt/graalvm/bin/java ] && java_home=/opt/graalvm; } || true
+[ -n "$java_home" ] || { java=$(command -v java) \
+    && java_home=$(dirname "$(dirname "$(readlink -f "$java")")"); } || true
+[ -x "$java_home/bin/java" ] || { echo "the host has no JDK"; exit 1; }
+mkdir -p "$1/tools" "$1/repo"
+tar -x -C "$1/tools"
+cd "$1/tools"
+JAVA_HOME=$java_home ./mvnw -B -q -f build/pom.xml dependency:build-classpath -Dmdep.outputFile="$1/tools-cp.txt"
+printf "%s\n" "$java_home" > "$1/java-home"
+mv issues "$1/repo/issues"
+cd "$1/repo"
+git init -q -b main
+git add issues
+git -c user.name=st346 -c user.email=st346@example.invalid -c commit.gpgsign=false commit -q -m "The issues"' \
+    sh "$scratch" "${PORELO_STORY_JAVA_HOME:-}" > "$out/setup.out" 2>&1; then
+    cat "$out/setup.out"
+    echo "ST346 failed at the tools and the repository: $(tail -n 1 "$out/setup.out")"
+    exit 1
+fi
+
+# Both checks on what is committed now: the workflow's on the checkout, the prepush's gate on an archive of the commit.
+checks() {
+    local stage=$1
+    # shellcheck disable=SC2016
+    on_host 300 sh -c 'cd "$1/repo"
+java=$(cat "$1/java-home")/bin/java
+cp=$(cat "$1/tools-cp.txt")
+"$java" -cp "$cp" org.fuin.porelo.release.Main issues check issues > "$1/workflow.out" 2>&1
+echo "workflow exit $?"
+rm -rf "$1/gate" && mkdir "$1/gate" && git archive HEAD | tar -x -C "$1/gate"
+cd "$1/gate" && "$java" -cp "$cp" org.fuin.porelo.release.Main issues check issues > "$1/prepush.out" 2>&1
+echo "prepush exit $?"
+grep -v SLF4J "$1/workflow.out" | sed "s/^/workflow: /"
+grep -v SLF4J "$1/prepush.out" | sed "s/^/prepush: /"' sh "$scratch" < /dev/null > "$out/checks-$stage.out" 2>&1 || true
+    cat "$out/checks-$stage.out"
+}
+
+# The head of one real issue changed and committed, as a person would edit it.
+commit_head() {
+    local stage=$1 change=$2
+    # shellcheck disable=SC2016
+    on_host 60 sh -c 'set -e
+cd "$1/repo"
+git checkout -q "$(git rev-list --max-parents=0 HEAD)" -- issues
+file=$(grep -l "^  \"rank\": [0-9]" $(grep -l "^  \"size\":" issues/HO*.md) | head -n 1)
+[ -z "$2" ] || sed -i "$2" "$file"
+git add -A issues
+git -c user.name=st346 -c user.email=st346@example.invalid -c commit.gpgsign=false commit -q --allow-empty -m "$3"
+basename "$file"' sh "$scratch" "$change" "$stage" < /dev/null > "$out/head-$stage.out" 2>&1
+}
+
+# A refusal by both, each naming the file and the field.
+refused() {
+    local stage=$1 field=$2 file
+    file=$(tail -n 1 "$out/head-$stage.out")
+    for check in workflow prepush; do
+        if grep -q "^$check exit 0$" "$out/checks-$stage.out"; then
+            fail "$stage" "the $check check let the head through"
+        elif ! grep "^$check: " "$out/checks-$stage.out" | grep -F "$file" | grep -q -- "$field"; then
+            fail "$stage" "the $check check refused it without naming $file and $field"
+        fi
+    done
+}
+
+# Step 2: the issues as they stand pass both, so a refusal below is the head's alone.
+echo "== the issues as they stand"
+checks baseline
+for check in workflow prepush; do
+    grep -q "^$check exit 0$" "$out/checks-baseline.out" \
+        || fail "the issues as they stand" \
+            "the $check check refused them: $(grep -m 1 "^$check: " "$out/checks-baseline.out")"
+done
+if [ -n "$failed" ]; then
+    echo "ST346 failed at $failed"
+    exit 1
+fi
+
+# Step 3: a head without a size.
+echo "== a head without a size"
+if commit_head "no size" '/^  "size":/d'; then
+    checks "no size"
+    refused "no size" size
+else
+    fail "no size" "the head could not be changed: $(tail -n 1 "$out/head-no size.out")"
+fi
+
+# Step 4: a head with a rank of null.
+echo "== a head with a rank of null"
+if commit_head "rank null" 's/^  "rank": [0-9]*,/  "rank": null,/'; then
+    checks "rank null"
+    refused "rank null" rank
+else
+    fail "rank null" "the head could not be changed: $(tail -n 1 "$out/head-rank null.out")"
+fi
+
+# Step 5: the head put right, and both pass again.
+echo "== the head put right"
+if commit_head "put right" ''; then
+    checks "put right"
+    for check in workflow prepush; do
+        grep -q "^$check exit 0$" "$out/checks-put right.out" \
+            || fail "the head put right" "the $check check still refuses it"
+    done
+else
+    fail "the head put right" "it could not be committed: $(tail -n 1 "$out/head-put right.out")"
+fi
+
+if [ -n "$failed" ]; then
+    echo "ST346 failed at $failed"
+    exit 1
+fi
+echo "ST346 passed"

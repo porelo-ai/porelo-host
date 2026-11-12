@@ -122,7 +122,10 @@ Without the phase 2 options it stops after `up`. With them it also:
   default `https://github.com/porelo-ai`, read for where the work tools and the native-image checks live;
   `story-st326` the packages of porelo-agy, porelo-codex, porelo-message-matrix, the window and porelo downloaded from
   the host's own repository and unpacked, each THIRD-PARTY-NOTICES held to the package's bill, and the IntelliJ
-  plugin's zip from `PORELO_STORY_PLUGINS`, default the snapshots channel's `updatePlugins.xml`);
+  plugin's zip from `PORELO_STORY_PLUGINS`, default the snapshots channel's `updatePlugins.xml`; `story-st346` a
+  scratch repository of this one's issues whose head loses its size and then gets a rank of null, refused by the
+  shared-rules step on the checkout and by the prepush's gate on a `git archive` of the commit, each naming the file
+  and the field, with `porelo-release` resolved by `build/pom.xml` and the host's JDK, `PORELO_STORY_JAVA_HOME`);
 - runs the steps others build, each one executable under `build/rehearse-steps/`, in the order `tasks`, `busy-room`,
   `judge`, `window`; a step not on the branch is `SKIP <name> not built yet`, and `busy-room` and `judge`, which use
   the tasks `tasks` starts, are skipped when `tasks` is;
