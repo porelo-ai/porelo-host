@@ -85,12 +85,16 @@ An agent's move can be rehearsed before a host is rented, on a VM made the same 
     build/rehearse-move.sh tunnel <login> <homeserver port>
     build/rehearse-move.sh down
     build/rehearse-move.sh rented <address> --key <file> [--login <user>] [--machine-file <file>] [--order-time <UTC>]
-        [--zone <name>] [--org <program> --org-key <public key file> --person <login> --person-agent <socket>
+        [--zone <name>] [--pool ubuntu,fedora [--pool-accounts <n>]] [--jobs <n>] [--org <program> --org-key <public key file> --person <login> --person-agent <socket>
         --central-token <program> --project <name> [--repository <name>] [--retire-host <host>]
         [--provider-keys <directory>]]
 
 `rented` runs a move on a server the operator rented: it claims the server, checks it, runs `up`
 and, on every exit, the host's `down`, and writes one line per step to a report directory outside the checkout, one per run.
+`--pool` names the systems of a VM pool, ubuntu and fedora at most once each, with 1 to 8 accounts each from
+`--pool-accounts` (unset 1); `--jobs` sets the forge's job capacity from 1 to 16. Both go into the host's inventory as
+`porelo_host_vm_pool` and `forge_runner_capacity`, and the check is asked for KVM and the pool, so a server that cannot
+hold them is refused before `up`. Without them the host has no pool and the forge its own job count.
 Without the phase 2 options it stops after `up`. With them it also:
 
 - adds the organization operator's public key (`--org-key`, one ssh-ed25519 key; its comment is dropped) to root's

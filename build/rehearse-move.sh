@@ -13,7 +13,9 @@
 #        build/rehearse-move.sh down                             the host's down, then the VM deleted
 #        build/rehearse-move.sh rented <address> --key <file> [--login <user>]
 #                                    [--machine-file <file>] [--order-time <UTC>] [--zone <name>]
-#                                                              check, up and down on a server already rented
+#                                    [--pool ubuntu,fedora [--pool-accounts <n>]] [--jobs <n>]
+#                                                              check, up and down on a server already rented, with
+#                                                              the forge, and a VM pool and job capacity when asked
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 export LIBVIRT_DEFAULT_URI=qemu:///system
@@ -29,7 +31,7 @@ vm=$root/build/porelo-vm
 
 say() { printf '%s\n' "$*" >&2; }
 fail() { say "FAILED: $*"; exit 1; }
-usage() { fail "usage: $0 start [--machine-file <file> | --bare] [--cpus <n>] [--memory <GiB>] [--disk <GiB>] | ssh [<command>...] | tunnel <login> <port> | down | rented <address> --key <file> [--login <user>] [--machine-file <file>] [--order-time <UTC>] [--zone <name>] [--org <program> --org-key <public key file> --person <login> --person-agent <socket> --central-token <program> --project <name> [--repository <name>] [--retire-host <host>] [--provider-keys <directory>]] | rented-resume"; }
+usage() { fail "usage: $0 start [--machine-file <file> | --bare] [--cpus <n>] [--memory <GiB>] [--disk <GiB>] | ssh [<command>...] | tunnel <login> <port> | down | rented <address> --key <file> [--login <user>] [--machine-file <file>] [--order-time <UTC>] [--zone <name>] [--pool <systems> [--pool-accounts <n>]] [--jobs <n>] [--org <program> --org-key <public key file> --person <login> --person-agent <socket> --central-token <program> --project <name> [--repository <name>] [--retire-host <host>] [--provider-keys <directory>]] | rented-resume"; }
 
 # What libvirt lists of any rehearsal: its domains and volumes, one name a line.
 listed() {
@@ -195,7 +197,8 @@ setup_host() {
     if [ "${rented_mode:-}" = yes ]; then
         # systemd owns the remote processes even when an interrupted ssh connection has already gone away.
         host_root systemd-run --quiet --wait --pipe --collect --unit="$unit" -p KillMode=control-group \
-            bash -s "$account" "$given" rented "$kvm" "$staging" "$unit" "${packages_digest:-}"
+            bash -s "$account" "$given" rented "$kvm" "$staging" "$unit" "${packages_digest:-}" \
+            "${pool_systems:-}" "${pool_accounts:-}" "${jobs:-}"
     else
         host_root bash -s "$account" "$given" rehearsal false /tmp - "${packages_digest:-}"
     fi
@@ -236,6 +239,7 @@ EOF
     setup_host <<'EOF'
 set -euo pipefail
 account=$1 given=${2:-} host_name=$3 kvm=$4 staging=$5 digest=${7:-}
+pool_systems=${8:-} pool_accounts=${9:-} jobs=${10:-}
 if [ "$host_name" = rented ]; then [ "$(cat "$staging/owner")" = "$6" ]; fi
 # ssh passes this machine's LC_ALL=C on, and Ansible refuses any locale but UTF-8.
 export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8
@@ -271,6 +275,15 @@ all:
     porelo_host_forge: true
     porelo_host_kvm: $kvm
 INVENTORY
+# A rented host's pool and job capacity, as the rehearsal was asked for them; checked again by the roles.
+if [ -n "$pool_systems" ]; then
+    systems=$(printf '%s' "$pool_systems" | sed 's/,/, /g')
+    printf '    porelo_host_vm_pool: {systems: [%s], accounts: %s}\n' "$systems" "$pool_accounts" \
+        >> /root/porelo-host-inventory.yml.tmp
+fi
+if [ -n "$jobs" ]; then
+    printf '    forge_runner_capacity: %s\n' "$jobs" >> /root/porelo-host-inventory.yml.tmp
+fi
 if [ -n "$digest" ]; then
     # Each package set in a directory of its own, so a package left out of a later set is never installed from an older.
     printf '%s\n' "$digest" | grep -Eqx '[0-9a-f]{64}'
@@ -457,6 +470,41 @@ rented_step() {
     rented_abort_pending
 }
 
+# The pool and the job capacity a rented host is asked for: ubuntu and fedora at most once each, 1 to 8 accounts, 1 to
+# 16 jobs, each a whole number, so nothing but these words reaches the host's inventory.
+rented_pool_options() {
+    if [ -n "$pool_systems" ]; then
+        seen=''
+        for system in $(printf '%s' "$pool_systems" | tr ',' ' '); do
+            case $system in ubuntu|fedora) ;; *) fail "the pool takes ubuntu and fedora, not $system" ;; esac
+            case " $seen " in *" $system "*) fail "the pool names $system twice" ;; esac
+            seen="$seen $system"
+        done
+        [ -n "$seen" ] || fail 'the pool names no system'
+        case $pool_systems in *[!a-z,]*|,*|*,|*,,*) fail 'the pool is a comma-separated list of systems' ;; esac
+        pool_accounts=${pool_accounts:-1}
+        case $pool_accounts in [1-8]) ;; *) fail 'the pool takes 1 to 8 accounts per system' ;; esac
+    elif [ -n "$pool_accounts" ]; then
+        fail '--pool-accounts needs --pool'
+    fi
+    if [ -n "$jobs" ]; then
+        case $jobs in [1-9]|1[0-6]) ;; *) fail 'the forge takes 1 to 16 jobs' ;; esac
+    fi
+}
+
+# The check's choices: the forge always, KVM and the pool when a pool is asked for, the jobs when they are named.
+rented_choices() {
+    choices='{"forge":true,"ports":[3001]'
+    if [ -n "${pool_systems:-}" ]; then
+        list=$(printf '%s' "$pool_systems" | sed 's/[a-z]*/"&"/g')
+        choices="$choices,\"kvm\":true,\"pool\":{\"systems\":[$list],\"accounts\":$pool_accounts}"
+    else
+        choices="$choices,\"kvm\":false"
+    fi
+    [ -z "${jobs:-}" ] || choices="$choices,\"jobs\":$jobs"
+    printf '%s}\n' "$choices"
+}
+
 rented_prepare_check() {
     # These positional arguments expand in the remote shell.
     # shellcheck disable=SC2016
@@ -466,7 +514,7 @@ rented_prepare_check() {
     limits=$(cat "$root/roles/check/files/limits.json")
     check_status=0
     on_rented python3 -I "$staging/porelo-host-check" --limits "$limits" \
-        --choices '{"forge":true,"kvm":false,"ports":[3001]}' --wait-packages 300 \
+        --choices "$(rented_choices)" --wait-packages 300 \
         > "$report/check.out.tmp" || check_status=$?
     mv "$report/check.out.tmp" "$report/check.out"
     [ "$check_status" = 0 ] || return "$check_status"
@@ -1000,7 +1048,7 @@ rented() {
     shift
     key_file='' machine_file='' order_time='' account=root zone='' zone_given=no
     org_program='' org_key='' person='' person_agent='' central_token='' project='' retire_host='' repository=''
-    provider_keys=''
+    provider_keys='' pool_systems='' pool_accounts='' jobs=''
     while [ $# -gt 0 ]; do
         [ $# -ge 2 ] || usage
         case $1 in
@@ -1018,6 +1066,9 @@ rented() {
             --retire-host) retire_host=$2 ;;
             --repository) repository=$2 ;;
             --provider-keys) provider_keys=$2 ;;
+            --pool) pool_systems=$2 ;;
+            --pool-accounts) pool_accounts=$2 ;;
+            --jobs) jobs=$2 ;;
             *) usage ;;
         esac
         shift 2
@@ -1038,6 +1089,7 @@ rented() {
         [ -f "$machine_file" ] && [ -r "$machine_file" ] || fail "no readable machine file at $machine_file"
     fi
     rented_phase_two_options
+    rented_pool_options
     now=$(date -u +%s)
     ordered=$now
     if [ -n "$order_time" ]; then
@@ -1271,6 +1323,7 @@ rented_resume_request() {
         keep person "$person"; keep person_agent "$person_agent"; keep central_token "$central_token"
         keep project "$project"; keep retire_host "$retire_host"; keep deadline "$deadline"
         keep repository "$repository"; keep provider_keys "$provider_keys"
+        keep pool_systems "$pool_systems"; keep pool_accounts "$pool_accounts"; keep jobs "$jobs"
         keep check_started "$check_started"; keep check_passed "$check_passed"; keep resume_from "$resume_step"
     } > "$state/resume.env"
     if [ -n "$timer" ]; then stop_tree "$timer"; wait "$timer" 2>/dev/null || true; timer=''; fi

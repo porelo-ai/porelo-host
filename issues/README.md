@@ -71,7 +71,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho178"></a>[HO178](HO178-The-Rented-Rehearsal-Turns-The-Pool-On.md) | S | - | `build/rehearse-move.sh rented` takes the VM pool's systems and accounts and the forge's job capacity, writes them into the host's inventory and the check's choices, so a rented KVM host stands with the forge and the pool for another repository's pool proofs. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho125"></a>[HO125](HO125-What-A-Task-And-A-Job-Take.md) | L | - | The measuring run also reads a task, an agent's fixed start and Maven jobs, so a size can rest on what work takes: the tool for one measuring issue in Porelo. |
 | <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
@@ -91,6 +90,7 @@ it is left out.
 | <a id="ho171"></a>[HO171](HO171-The-Fallback-Ubuntu-Mirror-Removed.md) | XS | - | Once Canonical's Ubuntu archive is back, build/apt-fallback.sh, build/apt-fallback.cloud-config and their three uses go, and apt reads Canonical's archive again on the runner and in every VM. |
 | <a id="ho174"></a>[HO174](HO174-A-Rented-Rehearsal-Fails-Early-And-Cleans-Up.md) | S | - | build/rehearse-move.sh's rented mode probes its organization and token programs before it claims a server, lets a second run onto a server a clean down left, and takes its read keys off central for the organization the machine file names. |
 | <a id="ho177"></a>[HO177](HO177-A-Jobs-Own-Leg-Reaches-A-Pool-VM.md) | S | - | In Molecule with the forge and the pool on, a job on the forge's runner runs `porelo-machines acceptance --kind amd64` itself, told the pool by its environment and given the run key as a secret, and its leg passes on a pool VM. |
+| <a id="ho178"></a>[HO178](HO178-The-Rented-Rehearsal-Turns-The-Pool-On.md) | S | - | `build/rehearse-move.sh rented` takes the VM pool's systems and accounts and the forge's job capacity, writes them into the host's inventory and the check's choices, so a rented KVM host stands with the forge and the pool for another repository's pool proofs. |
 | <a id="ho127"></a>[HO127](HO127-The-Half-For-Jobs-Is-A-Setting.md) | S | - | The share of the host for jobs and the VM pool becomes a setting, today's half its default, `up`'s refusal naming it. |
 | <a id="ho154"></a>[HO154](HO154-A-Task-Account-Pushes-Only-Its-Own-Task-Branches.md) | S | - | A task's token pushes and force-pushes only `porelo/<task>` of its own person's tasks; the host refuses any other ref from that account. |
 | <a id="ho157"></a>[HO157](HO157-Molecule-And-The-Rehearsal-Run-On-The-Package.md) | M | - | Molecule and the move rehearsal install the local `porelo-host` package and check its version; `porelo-vm` moves to `build/`. |

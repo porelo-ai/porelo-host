@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO178",
   "title": "The Rented Rehearsal Turns The Pool On",
-  "state": "Backlog",
+  "state": "Review",
   "size": "S",
   "priority": "High",
   "rank": 2,
@@ -32,3 +32,12 @@ coordinator's order to prepare the rental.
 - The rehearsal's inventory, written by `rented` with and without the pool options, holds exactly the settings above;
   shellcheck and the YAML check pass.
 - The rental's `up` reports the pool's VMs made and `/etc/porelo-host/pool/pool.json` present.
+
+## As built
+
+- `rented` takes `--pool`, `--pool-accounts` and `--jobs`, refuses anything else before any ssh, writes
+  `porelo_host_vm_pool` and `forge_runner_capacity` into the inventory, and asks the check for KVM, the pool and the
+  jobs. A held run keeps them for its resume. `doc/testing.md` names the options.
+- tests/unit/test_move_tools.py proves the choices, the inventory with and without the options, and nine refusals;
+  the inventory and the list's shape each went red with their rule removed. The rental's own `up` is the remaining
+  proof, tomorrow.

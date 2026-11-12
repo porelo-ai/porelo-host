@@ -1398,6 +1398,62 @@ def test_rented_check_uses_the_roles_limits_choices_and_package_wait(rented):
     assert any(line.startswith("FAIL check ") and str(report / "check.out") in line for line in steps)
 
 
+def test_rented_asks_the_check_for_kvm_the_pool_and_the_jobs_it_was_given(rented):
+    """Prevent a host that cannot hold the asked pool from reaching up, where it would fail half installed."""
+    server = rented(check_failure=True)
+    server.call("--pool", "ubuntu,fedora", "--pool-accounts", "2", "--jobs", "4")
+    checks = server.events("check")
+    assert len(checks) == 1
+    assert checks[0]["choices"] == {
+        "forge": True,
+        "ports": [3001],
+        "kvm": True,
+        "pool": {"systems": ["ubuntu", "fedora"], "accounts": 2},
+        "jobs": 4,
+    }
+
+
+def test_rented_writes_the_pool_and_the_jobs_into_the_hosts_inventory(rented):
+    """Prevent a rented host from standing without the pool the proofs on it need."""
+    server = rented(cpu=True, device=True)
+    done = server.call("--login", "rehearsal", "--pool", "ubuntu", "--jobs", "3")
+    assert done.returncode == 0, done.stderr
+    inventory = (server.guest / "root/porelo-host-inventory.yml").read_text()
+    assert "    porelo_host_vm_pool: {systems: [ubuntu], accounts: 1}\n" in inventory
+    assert "    forge_runner_capacity: 3\n" in inventory
+    assert "porelo_host_kvm: true" in inventory
+
+
+def test_rented_without_the_pool_writes_neither_pool_nor_jobs(rented):
+    """Prevent a rehearsal that asked for no pool from getting one."""
+    server = rented(cpu=True, device=True)
+    done = server.call("--login", "rehearsal")
+    assert done.returncode == 0, done.stderr
+    inventory = (server.guest / "root/porelo-host-inventory.yml").read_text()
+    assert "porelo_host_vm_pool" not in inventory and "forge_runner_capacity" not in inventory
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ("--pool", "windows"),
+        ("--pool", "ubuntu,ubuntu"),
+        ("--pool", "ubuntu,"),
+        ("--pool", "ubuntu;reboot"),
+        ("--pool", "ubuntu", "--pool-accounts", "9"),
+        ("--pool", "ubuntu", "--pool-accounts", "0"),
+        ("--pool-accounts", "2"),
+        ("--jobs", "17"),
+        ("--jobs", "x"),
+    ],
+)
+def test_rented_refuses_a_pool_or_jobs_it_cannot_write_before_any_ssh(rented, arguments):
+    """Prevent anything but the known words from reaching the host's inventory."""
+    server = rented()
+    done = server.call(*arguments)
+    assert done.returncode != 0 and not server.events("ssh")
+
+
 @pytest.mark.parametrize("cpu,device", [(True, True), (False, True), (True, False), (False, False)])
 def test_rented_kvm_is_enabled_only_when_both_cpu_and_device_were_observed(rented, cpu, device):
     """Prevent installing a host with KVM that this machine cannot actually use."""
