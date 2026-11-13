@@ -7,6 +7,13 @@
     converge_tarball: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_TARBALL') }}"
     converge_offer: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MEASURE_OFFER', default='local-vm') }}"
     converge_result: /root/measure.json
+    # Staged by build/molecule.sh from PORELO_HOST_DEB and PORELO_HOST_PACKAGES, and installed in place of the
+    # channel's only when PORELO_HOST_MEASURE_LOCAL is on; the measure checks them by their sums.
+    converge_packages: >-
+      {{ lookup('ansible.builtin.env', 'PORELO_HOST_PACKAGES', default='')
+         if lookup('ansible.builtin.env', 'PORELO_HOST_MEASURE_LOCAL', default='off') == 'on' else '' }}
+    converge_steps: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MEASURE_STEPS', default='idle') | split }}"
+    converge_raise: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MEASURE_RAISE', default='off') == 'on' }}"
   tasks:
     - name: Install Ubuntu's own ansible-core
       ansible.builtin.apt:
@@ -43,6 +50,16 @@
         executable: /bin/bash
       changed_when: true
 
+    - name: Copy the handed-over packages onto the VM
+      ansible.builtin.copy:
+        src: "{{ converge_packages }}/"
+        dest: /root/measure-packages/
+        owner: root
+        group: root
+        mode: "0600"
+        directory_mode: "0700"
+      when: converge_packages | length > 0
+
     - name: Run the measuring playbook on the VM
       ansible.builtin.command:
         argv:
@@ -55,6 +72,8 @@
           - -e
           - >-
             {{ {'measure_out': converge_result, 'measure_fresh': true, 'measure_distribution': 'snapshots',
+                'measure_steps': converge_steps, 'measure_raise': converge_raise | bool,
+                'measure_packages': '/root/measure-packages' if converge_packages | length > 0 else '',
                 'measure_given': {'provider': 'local', 'offer': converge_offer}} | to_json }}
       changed_when: true
 

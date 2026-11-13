@@ -1167,3 +1167,69 @@ def test_a_developer_without_its_own_homeserver_says_so(tmp_path):
     assert code == 0
     rows = [r for r in report["facts"] if r.get("subject") == "developer's own homeserver"]
     assert rows and all(r["value"] is None and "no homeserver of its own" in r["why"] for r in rows)
+
+
+def handed_over(machine, stub=True):
+    """Packages as build/stage-packages.sh stages them: <package>.deb and .version, and SHA256SUMS over all of them."""
+    directory = machine.path("/root/measure-packages")
+    directory.mkdir(parents=True)
+    names = ["porelo", "porelo-host"] + (["porelo-agent-stub"] if stub else [])
+    for name in names:
+        (directory / f"{name}.deb").write_bytes(f"deb of {name}".encode())
+        (directory / f"{name}.version").write_text("0.5.1~snapshot.20261113T172922+local.20261113T172922\n")
+    sums = "".join(
+        f"{hashlib.sha256(path.read_bytes()).hexdigest()}  ./{path.name}\n" for path in sorted(directory.iterdir())
+    )
+    (directory / "SHA256SUMS").write_text(sums)
+    return directory
+
+
+# A local hand-over is installed as checked as the channel is: by its sums, its versions pinned, its own stub taken.
+def test_a_run_from_handed_over_packages_installs_them_by_their_sums_and_takes_their_stub(tmp_path):
+    module = load()
+    machine = developer_standin(module, prepare(tmp_path / "machine"))
+    handed_over(machine)
+    out = tmp_path / "result.json"
+    arguments = [
+        "--fresh",
+        "--out",
+        str(out),
+        "--given",
+        "{}",
+        "--steps",
+        "task",
+        "--packages",
+        "/root/measure-packages",
+    ]
+    assert module.main(arguments, machine) == 0
+    inventory = machine.calls[0][1]
+    assert inventory["porelo_local_packages"] == "/root/measure-packages"
+    assert inventory["porelo_version"] == "0.5.1~snapshot.20261113T172922+local.20261113T172922"
+    assert inventory["porelo_host_version"] == inventory["porelo_version"]
+    assert not machine.fetched, "the stub comes with the packages, not from the stub folder"
+    assert not any("install -D" in " ".join(arguments) for arguments, unused in others(machine))
+    report = json.loads(out.read_text())
+    assert any(r["field"] == "packages" and len(r["value"]) == 64 for r in report["facts"])
+
+
+# A package changed after its sum was taken must never reach the host.
+def test_a_handed_over_package_that_does_not_match_its_sum_is_refused_before_any_up(tmp_path):
+    module = load()
+    machine = developer_standin(module, prepare(tmp_path / "machine"))
+    directory = handed_over(machine)
+    (directory / "porelo.deb").write_bytes(b"something else")
+    out = tmp_path / "result.json"
+    arguments = [
+        "--fresh",
+        "--out",
+        str(out),
+        "--given",
+        "{}",
+        "--steps",
+        "task",
+        "--packages",
+        "/root/measure-packages",
+    ]
+    assert module.main(arguments, machine) != 0
+    assert not machine.calls, "nothing was played"
+    assert not out.exists()

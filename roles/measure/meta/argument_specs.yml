@@ -25,6 +25,12 @@ argument_specs:
         choices: [releases, snapshots]
         default: releases
         description: Which of Porelo's published distributions the run installs from; it stands in the result.
+      measure_packages:
+        type: path
+        default: ""
+        description: >-
+          Root's directory of handed-over packages as build/stage-packages.sh stages them, each checked against its
+          SHA256SUMS and installed in place of the channel's; empty installs from the distribution.
       measure_fresh:
         type: bool
         default: false

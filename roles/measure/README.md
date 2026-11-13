@@ -18,6 +18,7 @@ The local playbook accepts these options:
 | `measure_given` | Required `provider` and `offer` labels; no address, hostname, account or credential. |
 | `measure_fresh` | Default `false`; the person's word that this machine is fresh and disposable. |
 | `measure_distribution` | Default `releases`; `snapshots` for a collection newer than the last release, `up` then installing the newest `porelo` and `porelo-host` that channel's index names. It stands in the result. |
+| `measure_packages` | Default empty; root's directory of handed-over packages as `build/stage-packages.sh` stages them. Every file is checked against its `SHA256SUMS` before anything changes, and `up` installs `porelo` and `porelo-host` from there at their `.version`; a `porelo-agent-stub` there is the stub. The digest of the sums stands in the result. In `build/molecule.sh measure` it is `PORELO_HOST_MEASURE_LOCAL=on`, with `PORELO_HOST_MEASURE_STEPS` and `PORELO_HOST_MEASURE_RAISE=on`. |
 | `measure_steps` | Default `[idle]`; `task` measures stub tasks and `job` a Maven build in forge jobs, as below; `agent` is a placeholder with null and a reason. |
 | `measure_tasks` | Default `2`, from 1 to 12; how many stub tasks the `task` step starts in each sample. |
 | `measure_raise` | Default `false`; with `task`, also raise developers on one more `up`, as below. |

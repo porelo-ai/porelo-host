@@ -39,6 +39,7 @@ FIELDS = {
     "offer": "text",
     "collection.version": "text",
     "distribution": "text",
+    "packages": "text",
     "package.version": "text",
     "memory.current": "bytes",
     "memory.peak": "bytes",
@@ -531,13 +532,17 @@ def differences(report, before, after):
             )
 
 
-def run(machine, given, steps, distribution="releases", count=2, raised=False):
+def run(machine, given, steps, distribution="releases", count=2, raised=False, packages=None):
     """Measure before and each requested shape, always taking down even a failed up."""
     report = {"v": VERSION, "facts": []}
-    pins = pinned(machine, distribution)
+    local = handed_over(machine, packages) if packages else None
+    pins = local["pins"] if local else pinned(machine, distribution)
+    machine.local_stub = bool(local and local["stub"])
     before = machine.snapshot()
     facts(machine, report, given)
     put(report, "distribution", distribution, "machine")
+    if local:
+        put(report, "packages", local["sums"], "machine")
     versions(machine, report, "before")
     tasks = known_tasks(machine.collection)
     for sample in SAMPLES:
@@ -630,6 +635,46 @@ def pinned(machine, distribution):
     return {"porelo_version": newest["porelo"], "porelo_host_version": newest["porelo-host"]}
 
 
+# The packages build/stage-packages.sh stages: <package>.deb and <package>.version, SHA256SUMS over every file.
+STAGED = re.compile(r"([0-9a-f]{64})  \./([a-z0-9][a-z0-9+.-]*\.(?:deb|version))")
+
+
+def handed_over(machine, directory):
+    """A local hand-over checked by its sums, as the channel is by its signature; its pins, its sums' digest, its stub."""
+    if not directory.startswith("/"):
+        raise ValueError("the handed-over packages must be an absolute directory")
+    sums = machine.read(directory.rstrip("/") + "/SHA256SUMS")
+    if not sums:
+        raise ValueError("the handed-over packages hold no SHA256SUMS")
+    listed = {}
+    for line in sums.splitlines():
+        found = STAGED.fullmatch(line)
+        if not found:
+            raise ValueError("SHA256SUMS of the handed-over packages has a line of another shape")
+        listed[found[2]] = found[1]
+    place = machine.path(directory)
+    files = {entry.name for entry in place.iterdir() if entry.name != "SHA256SUMS"}
+    if files != set(listed):
+        raise ValueError("the handed-over packages and their SHA256SUMS name different files")
+    for name, digest in listed.items():
+        if hashlib.sha256((place / name).read_bytes()).hexdigest() != digest:
+            raise ValueError(f"the handed-over {name} does not match its SHA-256")
+    versions = {}
+    for name in ("porelo", "porelo-host"):
+        if f"{name}.deb" not in listed or f"{name}.version" not in listed:
+            raise ValueError(f"the handed-over packages hold no {name}")
+        versions[name] = (place / f"{name}.version").read_text(encoding="utf-8").strip()
+        if not re.fullmatch(r"[0-9][A-Za-z0-9.+:~_-]*", versions[name]):
+            raise ValueError(f"the handed-over {name} has no valid version")
+    pins = {
+        "porelo_version": versions["porelo"],
+        "porelo_host_version": versions["porelo-host"],
+        "porelo_local_packages": directory.rstrip("/"),
+    }
+    digest = hashlib.sha256(sums.encode("utf-8")).hexdigest()
+    return {"pins": pins, "sums": digest, "stub": "porelo-agent-stub.deb" in listed}
+
+
 def debian_order(version):
     """Enough of Debian's order for Porelo's versions: digits as numbers, and a tilde before everything, even the end."""
     key = []
@@ -687,7 +732,11 @@ STUB_HOME = "/home/{}/.local/lib/porelo-agent-stub/stub"
 
 
 def stub_agent(machine):
-    """The stub of the installed Porelo's version, as its digest names it; the bytes, or why there are none."""
+    """The stub of the installed Porelo's version, as its digest names it; the bytes, or why there are none.
+
+    None and no reason where the handed-over packages hold the stub: its package registers it for every account."""
+    if getattr(machine, "local_stub", False):
+        return None, None
     version = machine.packages().get("porelo")
     if not version or not re.fullmatch(r"[0-9][A-Za-z0-9.+:~_-]*", version):
         return None, "Porelo is not installed, so no stub agent version is known"
@@ -738,7 +787,7 @@ def make_developer(machine, stub, name=DEVELOPER):
         machine.pause(1)
     else:
         return uid, "the developer's session did not start within 30 seconds"
-    why = place_stub(machine, uid, stub, name)
+    why = place_stub(machine, uid, stub, name) if stub is not None else None
     if why:
         return uid, why
     # A passphrase made for this run, on standard input only, and gone with the account.
@@ -1149,6 +1198,7 @@ def main(arguments=None, machine=None):
     parser.add_argument("--distribution", choices=("releases", "snapshots"), default="releases")
     parser.add_argument("--tasks", type=int, choices=range(1, 13), default=2, metavar="1-12")
     parser.add_argument("--raise", dest="raised", action="store_true")
+    parser.add_argument("--packages", help="a directory of handed-over packages as build/stage-packages.sh stages them")
     options = parser.parse_args(arguments)
     if options.raised and "task" not in options.steps:
         parser.error("--raise raises developers in the task step; give --steps task with it")
@@ -1183,7 +1233,9 @@ def main(arguments=None, machine=None):
                 print("a measuring lock remains; inspect the machine for leftovers", file=sys.stderr)
                 return 1
             with tempfile.NamedTemporaryFile(mode="w", dir=destination.parent, encoding="utf-8") as stream:
-                report = run(machine, given, options.steps, options.distribution, options.tasks, options.raised)
+                report = run(
+                    machine, given, options.steps, options.distribution, options.tasks, options.raised, options.packages
+                )
                 os.chmod(stream.name, 0o600)
                 json.dump(report, stream, indent=2, allow_nan=False)
                 stream.write("\n")
