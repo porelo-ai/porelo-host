@@ -7,7 +7,7 @@
   "title": "The Host Has A Test Mode Set By Root",
   "state": "Backlog",
   "size": "M",
-  "priority": "High",
+  "priority": "Medium",
   "rank": 9,
   "blockedBy": [],
   "covers": "A host has one place for test switches, `/etc/porelo-host/test-mode.json`, written only by root through the role from `porelo_host_test_switches` and taken away at `down`; its first switch lets Porelo start an uncertified task on a measuring host; the measuring role sets it loudly and only there."
