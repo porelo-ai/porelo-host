@@ -129,5 +129,8 @@ since the snapshots channel holds no `porelo=0.5.0`, the role's pin (the fault f
 run cleaned up and ended 0. Two things stand before a reading:
 - the measuring inventory names the channel but no versions, so it needs what [HO185](README.md#ho185) gives the
   rehearsal, or local packages;
-- `porelo-agent-stub` is in neither the releases nor the snapshots channel, so the `task` step's install would
-  refuse next. It is porelo's package to publish, or the run must take it as a local package.
+- `porelo-agent-stub` is in neither the releases nor the snapshots channel, so the `task` step's `apt-get install`
+  would refuse next. It stays out of the channels on purpose (Agent Core, 2026-11-13): a host's `task` step takes it by
+  version from `porelo-dist-test/porelo-agent-stub/<version>/`, its SHA-256 beside it, the 20 newest kept (snapshot
+  508 is there), or from a local package. The step is to fetch it from there, by the version of the Porelo it
+  installed, and check it, instead of asking apt.
