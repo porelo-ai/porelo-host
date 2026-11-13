@@ -127,11 +127,13 @@ class Machine:
         """Ask who runs this, without changing the machine."""
         return os.geteuid()
 
-    def command(self, arguments, timeout):
-        """Bound the whole process group, including Ansible's children; never print its output."""
+    def command(self, arguments, timeout, given=None):
+        """Bound the whole process group, including Ansible's children; never print its output. What is given goes to
+        standard input, never onto the command line."""
         environment = dict(os.environ, ANSIBLE_STDOUT_CALLBACK="porelo.host.lines", ANSIBLE_NOCOLOR="1")
         with subprocess.Popen(
             arguments,
+            stdin=subprocess.PIPE if given is not None else subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -139,7 +141,10 @@ class Machine:
             start_new_session=True,
         ) as process:
             try:
-                output, _ = process.communicate(timeout=timeout)
+                if given is None:
+                    output, _ = process.communicate(timeout=timeout)
+                else:
+                    output, _ = process.communicate(given, timeout=timeout)
             except BaseException:
                 try:
                     os.killpg(process.pid, signal.SIGKILL)
@@ -196,6 +201,27 @@ class Machine:
                 numbers = [top[name] for top in tops]
                 groups["host"][name] = None if None in numbers else sum(numbers)
         return groups
+
+    def account(self, name):
+        """An account's uid, or None."""
+        for line in (self.read("/etc/passwd") or "").splitlines():
+            parts = line.split(":")
+            if len(parts) == 7 and parts[0] == name and parts[2].isdigit():
+                return int(parts[2])
+        return None
+
+    def slice_reading(self, uid):
+        """An account's slice: memory in use, its peak, and the CPU it has used, each None where the kernel has no file."""
+        relative = f"user.slice/user-{uid}.slice"
+        values = {}
+        for name in ("current", "peak"):
+            text = (self.read(f"/sys/fs/cgroup/{relative}/memory.{name}") or "").strip()
+            values[name] = int(text) if re.fullmatch(r"[0-9]+", text) else None
+        anon = re.search(r"(?m)^anon ([0-9]+)$", self.read(f"/sys/fs/cgroup/{relative}/memory.stat") or "")
+        values["anon"] = int(anon[1]) if anon else None
+        usage = re.search(r"(?m)^usage_usec ([0-9]+)$", self.read(f"/sys/fs/cgroup/{relative}/cpu.stat") or "")
+        values["cpu"] = int(usage[1]) / 1e6 if usage else None
+        return values
 
     def disk(self, path):
         """Filesystem bytes used at a growing path; shared filesystems must not be summed."""
@@ -457,7 +483,7 @@ def differences(report, before, after):
             )
 
 
-def run(machine, given, steps, distribution="releases"):
+def run(machine, given, steps, distribution="releases", count=2):
     """Measure before and each requested shape, always taking down even a failed up."""
     report = {"v": VERSION, "facts": []}
     before = machine.snapshot()
@@ -471,26 +497,7 @@ def run(machine, given, steps, distribution="releases"):
         with tempfile.TemporaryDirectory(prefix="porelo-measure-") as directory:
             inventory = Path(directory) / "inventory.json"
             for shape, (forge, room) in SHAPES.items():
-                inventory.write_text(
-                    json.dumps(
-                        {
-                            "all": {
-                                "hosts": {
-                                    "localhost": {
-                                        "ansible_connection": "local",
-                                        "porelo_host_inventory_version": 2,
-                                        "porelo_host_name": "measure",
-                                        "porelo_host_network": 7,
-                                        "porelo_host_distribution": distribution,
-                                        "porelo_host_kvm": False,
-                                        "porelo_host_forge": forge,
-                                        "porelo_host_room": room,
-                                    }
-                                }
-                            }
-                        }
-                    )
-                )
+                inventory.write_text(json.dumps(inventory_of(distribution, forge, room)))
                 stopped = None
                 for sample in SAMPLES:
                     step = f"idle.{shape}"
@@ -527,7 +534,14 @@ def run(machine, given, steps, distribution="releases"):
                         machine.holding = False
                         if machine.stopping:
                             raise KeyboardInterrupt
+    if "task" in steps:
+        with tempfile.TemporaryDirectory(prefix="porelo-measure-") as directory:
+            inventory = Path(directory) / "inventory.json"
+            inventory.write_text(json.dumps(inventory_of(distribution, False, True)))
+            task_step(machine, report, inventory, tasks, count)
     for step in ("task", "agent", "job"):
+        if step == "task" and "task" in steps:
+            continue
         why = "not measured"
         if step == "agent":
             why += ": real work needs a token and a model's answer varies"
@@ -537,6 +551,158 @@ def run(machine, given, steps, distribution="releases"):
     versions(machine, report, "after")
     differences(report, before, machine.snapshot())
     return report
+
+
+def inventory_of(distribution, forge, room):
+    """This run's own inventory for one shape, and no person's."""
+    return {
+        "all": {
+            "hosts": {
+                "localhost": {
+                    "ansible_connection": "local",
+                    "porelo_host_inventory_version": 2,
+                    "porelo_host_name": "measure",
+                    "porelo_host_network": 7,
+                    "porelo_host_distribution": distribution,
+                    "porelo_host_kvm": False,
+                    "porelo_host_forge": forge,
+                    "porelo_host_room": room,
+                }
+            }
+        }
+    }
+
+
+# The throwaway developer: made by this run, as porelo-host-person makes a person, and removed with everything it has.
+DEVELOPER = "porelo-measure"
+TASK_FIELDS = ("work", "memory.peak", "disk.growth", "start.time", "work.time", "cpu.time")
+
+
+def as_developer(machine, uid, arguments, timeout, given=None):
+    """Run as the throwaway developer in its own session's environment, from its home."""
+    return machine.command(
+        [
+            "runuser", "-u", DEVELOPER, "--", "env", "-C", f"/home/{DEVELOPER}", f"HOME=/home/{DEVELOPER}",
+            f"XDG_RUNTIME_DIR=/run/user/{uid}", f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus",
+            *arguments,
+        ],  # fmt: skip
+        timeout,
+        given,
+    )
+
+
+def developer_tasks(machine, report, sample, count):
+    """One developer with a vault and a checkout starts count stub tasks in default; None, or why it could not."""
+    if machine.command(["apt-get", "install", "-y", "-q", "porelo-agent-stub"], 600)[0] != 0:
+        return "the stub agent could not be installed"
+    groups = (machine.read("/etc/group") or "").splitlines()
+    member = [g for g in ("porelo-people",) if any(line.startswith(g + ":") for line in groups)]
+    made = ["useradd", "--create-home", "--user-group", "--shell", "/bin/bash"]
+    if machine.command([*made, *(["--groups", ",".join(member)] if member else []), DEVELOPER], 60)[0] != 0:
+        return "the developer's account could not be made"
+    uid = machine.account(DEVELOPER)
+    if uid is None or machine.command(["loginctl", "enable-linger", DEVELOPER], 60)[0] != 0:
+        return "the developer's session could not be kept"
+    for _ in range(30):
+        if machine.path(f"/run/user/{uid}/bus").exists():
+            break
+        machine.pause(1)
+    else:
+        return "the developer's session did not start within 30 seconds"
+    # A passphrase made for this run, on standard input only, and gone with the account.
+    passphrase = os.urandom(24).hex() + "\n"
+    for verb in ("init", "unlock"):
+        if as_developer(machine, uid, ["porelo", "vault", verb, "--passphrase-stdin"], 120, passphrase)[0] != 0:
+            return f"the developer's vault could not {verb}"
+    checkout = (
+        'git init -q -b main "$HOME/work" && git -C "$HOME/work" -c user.name=measure'
+        " -c user.email=measure@example.invalid -c commit.gpgsign=false commit -q --allow-empty -m start"
+    )
+    if as_developer(machine, uid, ["sh", "-c", checkout], 60)[0] != 0:
+        return "the developer's checkout could not be made"
+    before, disk = machine.slice_reading(uid), machine.disk("/home")
+    for number in range(1, count + 1):
+        start = machine.clock()
+        code, unused = as_developer(
+            machine,
+            uid,
+            ["sh", "-c", 'cd "$HOME/work" && exec porelo task start --agent stub --no-input --detach "$1"', "sh",
+             f"measure-{number}"],
+            900,
+        )  # fmt: skip
+        if code != 0:
+            return f"task {number} of {count} did not start"
+        put(report, "start.time", machine.clock() - start, "task", sample=sample, subject=f"task {number}")
+    why = settled(machine)
+    after = machine.slice_reading(uid)
+    put(report, "work", f"{count} stub tasks in default, one developer", "task", sample=sample)
+    put(report, "work.time", None, "task", sample=sample, why="a stub task does no work")
+    put(report, "memory.peak", None if why else after["peak"], "task", sample=sample, subject="developer",
+        why=why or "cgroup file is unavailable")  # fmt: skip
+    put(report, "memory.current", None if why else after["current"], "task", sample=sample, subject="developer",
+        why=why or "cgroup file is unavailable")  # fmt: skip
+    put(report, "memory.anon", None if why else after["anon"], "task", sample=sample, subject="developer",
+        why=why or "cgroup file is unavailable")  # fmt: skip
+    cpu = None if None in (before["cpu"], after["cpu"]) else after["cpu"] - before["cpu"]
+    put(report, "cpu.time", cpu, "task", sample=sample, subject="developer", why="cgroup file is unavailable")
+    growth = machine.disk("/home") - disk
+    put(report, "disk.growth", growth if growth >= 0 else None, "task", sample=sample, subject="/home",
+        why="the disk shrank while the tasks started")  # fmt: skip
+    return None
+
+
+def developer_gone(machine, count):
+    """The developer, its tasks and the stub agent taken away, whatever got made; each step tried."""
+    uid = machine.account(DEVELOPER)
+    if uid is not None:
+        for number in range(1, count + 1):
+            for verb in ("stop", "remove"):
+                as_developer(machine, uid, ["porelo", "task", verb, f"measure-{number}"], 300)
+        machine.command(["loginctl", "disable-linger", DEVELOPER], 60)
+        machine.command(["loginctl", "terminate-user", DEVELOPER], 60)
+        machine.command(["userdel", "--remove", "--force", DEVELOPER], 120)
+    machine.command(["apt-get", "purge", "-y", "-q", "porelo-agent-stub"], 300)
+    if machine.account(DEVELOPER) is not None:
+        raise ValueError("the throwaway developer could not be removed; refusing to measure over leftovers")
+
+
+def task_step(machine, report, inventory, tasks, count):
+    """Up in the room's shape, one developer's stub tasks in each sample, and down, as the idle shapes are."""
+    stopped = None
+    for sample in SAMPLES:
+        why = stopped
+        machine.dirty = True
+        try:
+            if not why:
+                try:
+                    why = settled(machine)
+                    if not why:
+                        machine.stand_in_organization()
+                        code, output = machine.play(inventory, "up")
+                        state, why = outcome(code, output, tasks)
+                        if state:
+                            why = developer_tasks(machine, report, sample, count)
+                            stopped = why
+                        else:
+                            stopped = why
+                except PROBLEMS:
+                    why = stopped = "the task step could not run"
+            if why:
+                for field in TASK_FIELDS:
+                    if not any(r["step"] == "task" and r.get("sample") == sample and r["field"] == field
+                               for r in report["facts"]):  # fmt: skip
+                        put(report, field, None, "task", sample=sample, why=why)
+        finally:
+            machine.holding = True
+            developer_gone(machine, count)
+            code, output = machine.play(inventory, "down")
+            state, unused = outcome(code, output, tasks)
+            if code != 0 or state != "reached":
+                raise ValueError("down failed; refusing to measure over leftovers")
+            machine.dirty = False
+            machine.holding = False
+            if machine.stopping:
+                raise KeyboardInterrupt
 
 
 def stopper(machine):
@@ -560,6 +726,7 @@ def main(arguments=None, machine=None):
     parser.add_argument("--steps", choices=("idle", "task", "agent", "job"), nargs="+", default=["idle"])
     parser.add_argument("--fresh", action="store_true")
     parser.add_argument("--distribution", choices=("releases", "snapshots"), default="releases")
+    parser.add_argument("--tasks", type=int, choices=range(1, 13), default=2, metavar="1-12")
     options = parser.parse_args(arguments)
     machine = machine or Machine()
     lock = None
@@ -592,7 +759,7 @@ def main(arguments=None, machine=None):
                 print("a measuring lock remains; inspect the machine for leftovers", file=sys.stderr)
                 return 1
             with tempfile.NamedTemporaryFile(mode="w", dir=destination.parent, encoding="utf-8") as stream:
-                report = run(machine, given, options.steps, options.distribution)
+                report = run(machine, given, options.steps, options.distribution, options.tasks)
                 os.chmod(stream.name, 0o600)
                 json.dump(report, stream, indent=2, allow_nan=False)
                 stream.write("\n")

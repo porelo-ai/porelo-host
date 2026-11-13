@@ -667,3 +667,96 @@ def test_the_page_keeps_the_summary_built_and_refuses_it_stale(tmp_path):
     assert module.main([], measures, page) == 0
     assert "fixture" in page.read_text().split(module.SIZES_END)[0]
     assert module.main(["--check"], measures, page) == 0
+
+
+def developer_standin(module, root, refuse_start=False):
+    """The idle stand-in, also answering the task step's commands as a host would, the developer's slice in files."""
+    machine = standin(module, root)
+    playbook = machine.command
+
+    def command(arguments, timeout, given=None):
+        if arguments[0] == "ansible-playbook":
+            return playbook(arguments, timeout)
+        machine.calls.append((arguments, given))
+        words = arguments[arguments.index("--") + 1 :] if arguments[0] == "runuser" else arguments
+        if words[0] == "useradd":
+            with machine.path("/etc/passwd").open("a") as stream:
+                stream.write("porelo-measure:x:1500:1500::/home/porelo-measure:/bin/bash\n")
+            machine.path("/run/user/1500").mkdir(parents=True, exist_ok=True)
+            machine.path("/run/user/1500/bus").write_text("")
+            slice_ = machine.path("/sys/fs/cgroup/user.slice/user-1500.slice")
+            slice_.mkdir(parents=True, exist_ok=True)
+            (slice_ / "memory.current").write_text("3000\n")
+            (slice_ / "memory.peak").write_text("9000\n")
+            (slice_ / "memory.stat").write_text("anon 2000\nfile 1000\n")
+            (slice_ / "cpu.stat").write_text("usage_usec 1000000\n")
+        if words[0] == "userdel":
+            passwd = machine.path("/etc/passwd")
+            passwd.write_text(
+                "".join(line for line in passwd.read_text().splitlines(True) if "porelo-measure" not in line)
+            )
+        if any("task start" in word for word in words):
+            (machine.path("/sys/fs/cgroup/user.slice/user-1500.slice") / "cpu.stat").write_text("usage_usec 4500000\n")
+            if refuse_start:
+                return 1, SECRET
+        return 0, SECRET
+
+    machine.command = command
+    return machine
+
+
+def measure_tasks(tmp_path, refuse_start=False):
+    module = load()
+    machine = developer_standin(module, prepare(tmp_path / "machine"), refuse_start)
+    out = tmp_path / "result.json"
+    code = module.main(
+        ["--fresh", "--out", str(out), "--given", "{}", "--steps", "task", "--tasks", "2"],
+        machine,
+    )
+    return code, json.loads(out.read_text()) if out.exists() else None, machine, out
+
+
+def others(machine):
+    return [call for call in machine.calls if not isinstance(call[0], str)]
+
+
+# The tasks' own cost, not an idle host's: a developer with a vault and a checkout, stub tasks started, and all of it gone.
+def test_the_task_step_starts_a_throwaway_developers_stub_tasks_and_takes_them_away(tmp_path):
+    code, report, machine, out = measure_tasks(tmp_path)
+    assert code == 0
+    assert SECRET not in out.read_text()
+    rows = [r for r in report["facts"] if r["step"] == "task"]
+    for sample in ("first", "second", "third"):
+        mine = {(r["field"], r.get("subject")): r for r in rows if r.get("sample") == sample}
+        assert mine[("start.time", "task 1")]["value"] > 0 and mine[("start.time", "task 2")]["value"] > 0
+        assert mine[("memory.peak", "developer")]["value"] == 9000
+        assert mine[("memory.anon", "developer")]["value"] == 2000
+        assert mine[("cpu.time", "developer")]["value"] == pytest.approx(3.5)
+        assert mine[("work", None)]["value"] == "2 stub tasks in default, one developer"
+        assert mine[("work.time", None)]["value"] is None and "stub" in mine[("work.time", None)]["why"]
+    calls = others(machine)
+    vault = [given for arguments, given in calls if "vault" in arguments]
+    assert len(vault) == 6 and all(given and given.endswith("\n") for given in vault), "init and unlock, per sample"
+    assert not any(given.strip() in " ".join(arguments) for arguments, unused in calls for given in vault)
+    starts = [arguments for arguments, unused in calls if arguments[-1].startswith("measure-")]
+    assert [a[-1] for a in starts][:2] == ["measure-1", "measure-2"]
+    assert any(arguments[:2] == ["userdel", "--remove"] for arguments, unused in calls)
+    assert "porelo-measure" not in machine.path("/etc/passwd").read_text()
+    plays = [call[0] for call in machine.calls if isinstance(call[0], str)]
+    assert plays == ["porelo.host.up", "porelo.host.down"] * 3
+    assert all(call[1]["porelo_host_room"] and not call[1]["porelo_host_forge"] for call in machine.calls[:1])
+    assert not any(r["step"] == "task" and r["value"] is None and "not measured" in r.get("why", "") for r in rows)
+
+
+# A start that is refused must not leave a developer or its tasks, nor publish half a sample as whole.
+def test_a_refused_task_start_is_null_with_its_reason_and_the_developer_is_still_removed(tmp_path):
+    code, report, machine, unused = measure_tasks(tmp_path, refuse_start=True)
+    assert code == 0
+    rows = [r for r in report["facts"] if r["step"] == "task"]
+    peaks = [r for r in rows if r["field"] == "memory.peak"]
+    assert len(peaks) == 3 and all(r["value"] is None and r["why"] == "task 1 of 2 did not start" for r in peaks)
+    # As an idle shape that failed: the later samples are not tried again, and say why.
+    assert sum(1 for arguments, unused in others(machine) if arguments[0] == "userdel") == 1
+    assert "porelo-measure" not in machine.path("/etc/passwd").read_text()
+    plays = [call[0] for call in machine.calls if isinstance(call[0], str)]
+    assert plays.count("porelo.host.down") == 3

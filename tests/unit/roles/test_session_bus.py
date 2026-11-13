@@ -27,6 +27,7 @@ def test_every_runtime_the_roles_set_names_its_session_bus_beside_it():
         "forge/vars/main.yml",
         "matrix/tasks/down.yml",
         "matrix/vars/main.yml",
+        "measure/files/porelo-host-measure",
         "porelo/vars/main.yml",
     }
 

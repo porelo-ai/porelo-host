@@ -34,4 +34,10 @@ argument_specs:
         elements: str
         default: [idle]
         choices: [idle, task, agent, job]
-        description: Idle measures four shapes; task, agent and job are recorded as not measured.
+        description: >-
+          Idle measures four shapes; task measures one throwaway developer's stub tasks in the room's shape; agent and
+          job are recorded as not measured.
+      measure_tasks:
+        type: int
+        default: 2
+        description: How many stub tasks the task step starts in each sample, 1 to 12.

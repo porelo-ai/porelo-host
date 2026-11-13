@@ -18,7 +18,8 @@ The local playbook accepts these options:
 | `measure_given` | Required `provider` and `offer` labels; no address, hostname, account or credential. |
 | `measure_fresh` | Default `false`; the person's word that this machine is fresh and disposable. |
 | `measure_distribution` | Default `releases`; `snapshots` for a collection newer than the last release. It stands in the result. |
-| `measure_steps` | Default `[idle]`; `task`, `agent` and `job` are placeholders with null and a reason. |
+| `measure_steps` | Default `[idle]`; `task` measures stub tasks, as below; `agent` and `job` are placeholders with null and a reason. |
+| `measure_tasks` | Default `2`, from 1 to 12; how many stub tasks the `task` step starts in each sample. |
 
 Example: in a root terminal on the disposable machine, with Ansible and the collection already installed:
 
@@ -41,7 +42,17 @@ The script can also be run from the installed collection's `roles/measure/files/
 It writes one versioned JSON object with a `facts` array. Every fact has an allowed
 `field`, `value`, `unit` and `step`; observations also name their `sample` and resource `subject`.
 A null always has `why`. All numbers use bytes, seconds or count. Three independent up/down cycles per shape
-keep all three readings. `task`, `agent` and `job` remain absent even when requested.
+keep all three readings. `agent` and `job` remain absent even when requested.
+
+The `task` step brings the host up in the room's shape, as the idle run does. In each of its three samples it then makes
+one throwaway developer, `porelo-measure`, as a person's account is made: an account in `porelo-people`, kept by
+linger. The developer gets a vault whose passphrase is made for the run and goes on standard input only, and a
+committed checkout. It installs `porelo-agent-stub` and starts `measure_tasks` stub tasks in `default` with
+`--no-input --detach`. Each start's time is kept. The developer's slice gives memory in use, its peak and the
+anonymous part, and the CPU the starts took; `/home` gives the disk they grew. Afterwards the tasks, the account and
+the stub package are taken away, each sample's whatever got made, and a developer that cannot be removed ends the run
+like a failed down. A stub does no work, so `work.time` is null with that reason. A refused step is null with its
+reason, and the later samples are not tried again.
 Provider and offer are the person's short class labels. Collection version comes from its `MANIFEST.json` or
 `galaxy.yml`; installed versions come from dpkg's database before and after the run.
 
