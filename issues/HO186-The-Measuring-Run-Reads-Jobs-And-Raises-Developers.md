@@ -9,7 +9,7 @@
   "size": "L",
   "priority": "Medium",
   "rank": 7,
-  "blockedBy": [],
+  "blockedBy": ["HO187"],
   "covers": "The measuring run reads a Maven build in a forge job at 1, 2 and 4 parallel jobs and past the half, cold and with the cache; raises developers until a start fails or pressure stays high; keeps an agent's fixed start null until a token is the operator's word; and a run on a local VM reads numbers."
 }
 ```
@@ -65,4 +65,8 @@ takes and how many developers a host holds, so a size can rest on what work take
   is read as the developer (`MemoryCurrent`), kept as `memory.current` of "developer's own homeserver", and stopped
   before the developer's slice is read, in the samples and in the raising; one that never ran is null with that
   reason. Two unit tests, and the raising test checks each raised one's is stopped.
-- **Not yet:** the VM run that reads numbers.
+- **The first VM run (2026-11-13), at 6f28b6d.** The `task` step's first developer and the raising step's first one
+  were refused at their first start: the machine is a host, and a host starts no task without a certificate signed
+  by a person of its applied organization. The measuring run's stand-in organization admits nobody, so
+  [HO187](README.md#ho187) has to come first. The `job` step ran on.
+- **Not yet:** the VM run that reads numbers for `task` and the raising.
