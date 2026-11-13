@@ -675,7 +675,7 @@ STUB = b"\x7fELF stand-in stub agent"
 STUB_PLACE = "https://fuinorg.jfrog.io/artifactory/porelo-dist-test/porelo-agent-stub/1.0/"
 
 
-def developer_standin(module, root, refuse_start=False, digest=None):
+def developer_standin(module, root, refuse_start=False, digest=None, homeserver=True):
     """The idle stand-in, also answering the task step's commands as a host would, the developer's slice in files."""
     machine = standin(module, root)
     playbook = machine.command
@@ -718,15 +718,17 @@ def developer_standin(module, root, refuse_start=False, digest=None):
             (machine.path("/sys/fs/cgroup/user.slice/user-1500.slice") / "cpu.stat").write_text("usage_usec 4500000\n")
             if refuse_start:
                 return 1, SECRET
+        if words[-3:] == ["-p", "MemoryCurrent", "porelo-matrix-homeserver.service"]:
+            return 0, "MemoryCurrent=123456\n" if homeserver else "MemoryCurrent=[not set]\n"
         return 0, SECRET
 
     machine.command = command
     return machine
 
 
-def measure_tasks(tmp_path, refuse_start=False, digest=None):
+def measure_tasks(tmp_path, refuse_start=False, digest=None, homeserver=True):
     module = load()
-    machine = developer_standin(module, prepare(tmp_path / "machine"), refuse_start, digest)
+    machine = developer_standin(module, prepare(tmp_path / "machine"), refuse_start, digest, homeserver)
     out = tmp_path / "result.json"
     code = module.main(
         ["--fresh", "--out", str(out), "--given", "{}", "--steps", "task", "--tasks", "2"],
@@ -1039,6 +1041,12 @@ def test_developers_are_raised_until_the_pressure_stays_high_and_all_go_again(tm
     starts = [a for a, unused in others(machine) if a[0] == "runuser" and a[2].startswith("porelo-measure-")
               and any("task start" in w for w in a)]  # fmt: skip
     assert len(starts) == 4 * 5, "five tasks each"
+    stopped = [
+        a[2]
+        for a, unused in others(machine)
+        if a[0] == "runuser" and a[-2:] == ["stop", "porelo-matrix-homeserver.service"]
+    ]
+    assert [s for s in stopped if s.startswith("porelo-measure-")] == made, "each one's own homeserver taken out"
     assert not any(line.startswith("porelo-measure") for line in machine.path("/etc/passwd").read_text().splitlines())
     plays = [name for name, unused in machine.calls if isinstance(name, str)]
     assert plays == ["porelo.host.up", "porelo.host.down"] * 4, "three samples and the raising, each its own up"
@@ -1096,3 +1104,28 @@ def test_raise_without_the_task_step_is_refused(tmp_path):
             ["--fresh", "--out", str(tmp_path / "r.json"), "--given", "{}", "--steps", "idle", "--raise"], machine
         )
     assert not machine.calls
+
+
+def words_of(arguments):
+    return arguments[arguments.index("--") + 1 :] if arguments[0] == "runuser" else arguments
+
+
+# Each developer's own homeserver stands in for the host's one gate: read as its own, then taken out of the reading.
+def test_each_developers_own_homeserver_is_read_and_stopped_before_its_slice(tmp_path):
+    code, report, machine, unused = measure_tasks(tmp_path)
+    assert code == 0
+    rows = [r for r in report["facts"] if r["step"] == "task" and r.get("subject") == "developer's own homeserver"]
+    assert len(rows) == 3 and all(r["field"] == "memory.current" and r["value"] == 123456 for r in rows)
+    calls = [words_of(a) for a, unused in others(machine)]
+    stops = [i for i, w in enumerate(calls) if w[-2:] == ["stop", "porelo-matrix-homeserver.service"]]
+    starts = [i for i, w in enumerate(calls) if any("task start" in word for word in w)]
+    assert len(stops) == 3 and all(any(s < stop for s in starts) for stop in stops)
+    assert all(calls[i][-4:-2] == ["systemctl", "--user"] and calls[i][0] == "env" for i in stops), "as the developer"
+
+
+# An account whose homeserver never ran says so, and its reading is the developer's alone.
+def test_a_developer_without_its_own_homeserver_says_so(tmp_path):
+    code, report, machine, unused = measure_tasks(tmp_path, homeserver=False)
+    assert code == 0
+    rows = [r for r in report["facts"] if r.get("subject") == "developer's own homeserver"]
+    assert rows and all(r["value"] is None and "no homeserver of its own" in r["why"] for r in rows)

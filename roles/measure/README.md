@@ -63,7 +63,10 @@ version from `porelo-dist-test/porelo-agent-stub/<version>/` and checks it again
 developer puts it into its own home and names it in its `agents.d`; a stub that cannot be had or does not match is
 null with its reason. It then starts `measure_tasks` stub tasks in `default` with
 `--no-input --detach`. Each start's time is kept. The developer's slice gives memory in use, its peak and the
-anonymous part, and the CPU the starts took; `/home` gives the disk they grew. Afterwards the tasks and the account,
+anonymous part, and the CPU the starts took; `/home` gives the disk they grew. With no project naming the host's
+gate, a developer's conversation is on a homeserver of its own, the user unit `porelo-matrix-homeserver.service`,
+where a real host has one gate: its memory is kept as its own reading and the unit is stopped before the developer's
+slice is read, here and in the raising. Afterwards the tasks and the account,
 with the stub in its home, are taken away, each sample's whatever got made, and a developer that cannot be removed
 ends the run like a failed down. A stub does no work, so `work.time` is null with that reason. A refused step is null with its
 reason, and the later samples are not tried again.

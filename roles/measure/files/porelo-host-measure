@@ -757,6 +757,20 @@ def start_task(machine, uid, number, name=DEVELOPER):
     return as_developer(machine, uid, [*start, f"measure-{number}"], 900, name=name)[0]
 
 
+# With no project naming the host's gate, a developer's conversation is on a homeserver of its own, a user unit; a
+# real host has the one gate. So each developer's own is read as its own and stopped before the developer is read.
+HOMESERVER = "porelo-matrix-homeserver.service"
+
+
+def own_homeserver(machine, uid, name=DEVELOPER):
+    """The memory of the developer's own homeserver, or None and why; the unit is stopped either way."""
+    code, output = as_developer(machine, uid, ["systemctl", "--user", "show", "-p", "MemoryCurrent", HOMESERVER], 60,
+                                name=name)  # fmt: skip
+    found = re.search(r"(?m)^MemoryCurrent=([0-9]+)$", output or "") if code == 0 else None
+    as_developer(machine, uid, ["systemctl", "--user", "stop", HOMESERVER], 120, name=name)
+    return (int(found[1]), None) if found else (None, "the developer had no homeserver of its own running")
+
+
 def developer_tasks(machine, report, sample, count):
     """One developer with a vault and a checkout starts count stub tasks in default; None, or why it could not."""
     stub, why = stub_agent(machine)
@@ -771,6 +785,8 @@ def developer_tasks(machine, report, sample, count):
         if start_task(machine, uid, number) != 0:
             return f"task {number} of {count} did not start"
         put(report, "start.time", machine.clock() - start, "task", sample=sample, subject=f"task {number}")
+    homeserver, why = own_homeserver(machine, uid)
+    put(report, "memory.current", homeserver, "task", sample=sample, subject="developer's own homeserver", why=why)
     why = settled(machine)
     after = machine.slice_reading(uid)
     put(report, "work", f"{count} stub tasks in default, one developer", "task", sample=sample)
@@ -850,6 +866,8 @@ def raise_step(machine, report, inventory, tasks):
                             if start_task(machine, uid, number, name) != 0:
                                 why = f"task {number} of developer {len(made)} did not start"
                                 break
+                        if not why:
+                            own_homeserver(machine, uid, name)
                     why = why or settled(machine) or pressure(machine)
                     if why:
                         break

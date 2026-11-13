@@ -61,5 +61,8 @@ takes and how many developers a host holds, so a size can rest on what work take
   tried and the host goes down even when one stays, which then ends the run. `--raise` without `task` is refused.
   Seven unit tests: stopped by pressure, by a refused start, every level held, no pressure told, a developer that
   stays, the word alone refused, and none without the word.
-- **Not yet:** each account's own homeserver read from its unit and stopped (the plan's room part), and the VM run
-  that reads numbers.
+- **Each account's own homeserver.** After its starts, each throwaway developer's `porelo-matrix-homeserver.service`
+  is read as the developer (`MemoryCurrent`), kept as `memory.current` of "developer's own homeserver", and stopped
+  before the developer's slice is read, in the samples and in the raising; one that never ran is null with that
+  reason. Two unit tests, and the raising test checks each raised one's is stopped.
+- **Not yet:** the VM run that reads numbers.
