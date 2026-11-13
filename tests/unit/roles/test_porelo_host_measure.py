@@ -2,6 +2,7 @@
 
 import importlib.machinery
 import importlib.util
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -669,10 +670,27 @@ def test_the_page_keeps_the_summary_built_and_refuses_it_stale(tmp_path):
     assert module.main(["--check"], measures, page) == 0
 
 
-def developer_standin(module, root, refuse_start=False):
+STUB = b"\x7fELF stand-in stub agent"
+STUB_PLACE = "https://fuinorg.jfrog.io/artifactory/porelo-dist-test/porelo-agent-stub/1.0/"
+
+
+def developer_standin(module, root, refuse_start=False, digest=None):
     """The idle stand-in, also answering the task step's commands as a host would, the developer's slice in files."""
     machine = standin(module, root)
     playbook = machine.command
+    machine.fetched = []
+    files = {
+        STUB_PLACE + "porelo-agent-stub": STUB,
+        STUB_PLACE + "porelo-agent-stub.sha256": ((digest or hashlib.sha256(STUB).hexdigest()) + "\n").encode(),
+    }
+
+    def fetch(url, timeout):
+        machine.fetched.append(url)
+        if url not in files:
+            raise OSError("not found: " + url)
+        return files[url]
+
+    machine.fetch = fetch
 
     def command(arguments, timeout, given=None):
         if arguments[0] == "ansible-playbook":
@@ -705,9 +723,9 @@ def developer_standin(module, root, refuse_start=False):
     return machine
 
 
-def measure_tasks(tmp_path, refuse_start=False):
+def measure_tasks(tmp_path, refuse_start=False, digest=None):
     module = load()
-    machine = developer_standin(module, prepare(tmp_path / "machine"), refuse_start)
+    machine = developer_standin(module, prepare(tmp_path / "machine"), refuse_start, digest)
     out = tmp_path / "result.json"
     code = module.main(
         ["--fresh", "--out", str(out), "--given", "{}", "--steps", "task", "--tasks", "2"],
@@ -760,3 +778,49 @@ def test_a_refused_task_start_is_null_with_its_reason_and_the_developer_is_still
     assert "porelo-measure" not in machine.path("/etc/passwd").read_text()
     plays = [call[0] for call in machine.calls if isinstance(call[0], str)]
     assert plays.count("porelo.host.down") == 3
+
+
+# The stub agent stays out of the package channels: it is fetched by the installed Porelo's version and its digest.
+def test_the_stub_agent_comes_from_its_own_folder_by_porelos_version_and_digest(tmp_path):
+    code, report, machine, unused = measure_tasks(tmp_path)
+    assert code == 0
+    assert machine.fetched[:2] == [STUB_PLACE + "porelo-agent-stub.sha256", STUB_PLACE + "porelo-agent-stub"]
+    assert not any(arguments[0] == "apt-get" for arguments, unused in others(machine)), "no package channel is asked"
+    starts = [i for i, (arguments, unused) in enumerate(others(machine)) if "measure-1" in arguments]
+    placed = [i for i, (arguments, unused) in enumerate(others(machine)) if "install -D" in " ".join(arguments)]
+    assert placed and placed[0] < starts[0], "the stub is in place before the first start"
+    install = others(machine)[placed[0]][0]
+    assert install[0] == "runuser", "the developer places it, so its home stays its own"
+    assert install[-1] == "/home/porelo-measure/.local/lib/porelo-agent-stub/stub" and "755" in install
+    registration = [given for arguments, given in others(machine) if "agents.d/stub.yaml" in " ".join(arguments)]
+    assert registration == ["executable: /home/porelo-measure/.local/lib/porelo-agent-stub/stub\n"] * 3
+    assert not machine.path("/run/porelo-host-measure-stub").exists(), "root's copy is gone once placed"
+
+
+# A stub that is not the one its digest names must never run as the developer.
+def test_a_stub_unlike_its_digest_is_null_with_its_reason_and_nothing_is_made(tmp_path):
+    code, report, machine, unused = measure_tasks(tmp_path, digest="0" * 64)
+    assert code == 0
+    peaks = [r for r in report["facts"] if r["step"] == "task" and r["field"] == "memory.peak"]
+    assert peaks and all(r["value"] is None and "SHA-256" in r["why"] for r in peaks)
+    assert not any(
+        arguments[0] == "useradd" or "install -D" in " ".join(arguments) for arguments, unused in others(machine)
+    )
+
+
+# The snapshots channel holds no release version, so a run from it names the newest snapshots it holds.
+def test_a_run_from_the_snapshots_pins_the_newest_porelo_there(tmp_path):
+    module = load()
+    machine = developer_standin(module, prepare(tmp_path / "machine"))
+    index = "Package: porelo\nVersion: 0.5.1~snapshot.508\n\nPackage: porelo-host\nVersion: 0.5.1~snapshot.508\n\n"
+    index += "Package: porelo\nVersion: 0.5.1~snapshot.99\n\nPackage: porelo-agent-pi\nVersion: 0.5.1~snapshot.900\n\n"
+    channel = "https://fuinorg.jfrog.io/artifactory/porelo-dist-deb/dists/snapshots/main/binary-amd64/Packages"
+    fetch = machine.fetch
+    machine.fetch = lambda url, timeout: index.encode() if url == channel else fetch(url, timeout)
+    out = tmp_path / "result.json"
+    arguments = ["--fresh", "--out", str(out), "--given", "{}", "--steps", "task", "--distribution", "snapshots"]
+    assert module.main(arguments, machine) == 0
+    inventory = machine.calls[0][1]
+    assert inventory["porelo_host_distribution"] == "snapshots"
+    assert inventory["porelo_version"] == "0.5.1~snapshot.508"
+    assert inventory["porelo_host_version"] == "0.5.1~snapshot.508"

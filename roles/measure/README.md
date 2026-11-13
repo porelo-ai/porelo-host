@@ -17,7 +17,7 @@ The local playbook accepts these options:
 | `measure_out` | Required absolute path for a new private JSON file on the machine; its parent must exist. |
 | `measure_given` | Required `provider` and `offer` labels; no address, hostname, account or credential. |
 | `measure_fresh` | Default `false`; the person's word that this machine is fresh and disposable. |
-| `measure_distribution` | Default `releases`; `snapshots` for a collection newer than the last release. It stands in the result. |
+| `measure_distribution` | Default `releases`; `snapshots` for a collection newer than the last release, `up` then installing the newest `porelo` and `porelo-host` that channel's index names. It stands in the result. |
 | `measure_steps` | Default `[idle]`; `task` measures stub tasks, as below; `agent` and `job` are placeholders with null and a reason. |
 | `measure_tasks` | Default `2`, from 1 to 12; how many stub tasks the `task` step starts in each sample. |
 
@@ -47,11 +47,14 @@ keep all three readings. `agent` and `job` remain absent even when requested.
 The `task` step brings the host up in the room's shape, as the idle run does. In each of its three samples it then makes
 one throwaway developer, `porelo-measure`, as a person's account is made: an account in `porelo-people`, kept by
 linger. The developer gets a vault whose passphrase is made for the run and goes on standard input only, and a
-committed checkout. It installs `porelo-agent-stub` and starts `measure_tasks` stub tasks in `default` with
+committed checkout. Porelo's stub agent is in no package channel. The run fetches the one of the installed Porelo's
+version from `porelo-dist-test/porelo-agent-stub/<version>/` and checks it against the SHA-256 beside it. The
+developer puts it into its own home and names it in its `agents.d`; a stub that cannot be had or does not match is
+null with its reason. It then starts `measure_tasks` stub tasks in `default` with
 `--no-input --detach`. Each start's time is kept. The developer's slice gives memory in use, its peak and the
-anonymous part, and the CPU the starts took; `/home` gives the disk they grew. Afterwards the tasks, the account and
-the stub package are taken away, each sample's whatever got made, and a developer that cannot be removed ends the run
-like a failed down. A stub does no work, so `work.time` is null with that reason. A refused step is null with its
+anonymous part, and the CPU the starts took; `/home` gives the disk they grew. Afterwards the tasks and the account,
+with the stub in its home, are taken away, each sample's whatever got made, and a developer that cannot be removed
+ends the run like a failed down. A stub does no work, so `work.time` is null with that reason. A refused step is null with its
 reason, and the later samples are not tried again.
 Provider and offer are the person's short class labels. Collection version comes from its `MANIFEST.json` or
 `galaxy.yml`; installed versions come from dpkg's database before and after the run.

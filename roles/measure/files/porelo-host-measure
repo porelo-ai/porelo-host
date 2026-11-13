@@ -3,15 +3,19 @@
 
 import argparse
 import fcntl
+import hashlib
+import http.client
 import json
 import math
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
 import time
+import urllib.request
 from pathlib import Path
 
 VERSION = 1
@@ -153,6 +157,11 @@ class Machine:
                 process.communicate()
                 raise
             return process.returncode, output
+
+    def fetch(self, url, timeout):
+        """Read one published file anonymously; an answer other than 200 is an OSError."""
+        with urllib.request.urlopen(url, timeout=timeout) as answer:
+            return answer.read()
 
     def pause(self, seconds):
         """Wait without using wall-clock time in tests."""
@@ -486,6 +495,7 @@ def differences(report, before, after):
 def run(machine, given, steps, distribution="releases", count=2):
     """Measure before and each requested shape, always taking down even a failed up."""
     report = {"v": VERSION, "facts": []}
+    pins = pinned(machine, distribution)
     before = machine.snapshot()
     facts(machine, report, given)
     put(report, "distribution", distribution, "machine")
@@ -497,7 +507,7 @@ def run(machine, given, steps, distribution="releases", count=2):
         with tempfile.TemporaryDirectory(prefix="porelo-measure-") as directory:
             inventory = Path(directory) / "inventory.json"
             for shape, (forge, room) in SHAPES.items():
-                inventory.write_text(json.dumps(inventory_of(distribution, forge, room)))
+                inventory.write_text(json.dumps(inventory_of(distribution, forge, room, pins)))
                 stopped = None
                 for sample in SAMPLES:
                     step = f"idle.{shape}"
@@ -537,7 +547,7 @@ def run(machine, given, steps, distribution="releases", count=2):
     if "task" in steps:
         with tempfile.TemporaryDirectory(prefix="porelo-measure-") as directory:
             inventory = Path(directory) / "inventory.json"
-            inventory.write_text(json.dumps(inventory_of(distribution, False, True)))
+            inventory.write_text(json.dumps(inventory_of(distribution, False, True, pins)))
             task_step(machine, report, inventory, tasks, count)
     for step in ("task", "agent", "job"):
         if step == "task" and "task" in steps:
@@ -553,7 +563,39 @@ def run(machine, given, steps, distribution="releases", count=2):
     return report
 
 
-def inventory_of(distribution, forge, room):
+# The snapshots channel holds no release, so a run from it names the newest Porelo and host program it holds; apt still
+# checks what it installs against the channel's signature.
+CHANNEL = "https://fuinorg.jfrog.io/artifactory/porelo-dist-deb/dists/{}/main/binary-amd64/Packages"
+
+
+def pinned(machine, distribution):
+    """The package versions up is to install: the roles' own for releases, the channel's newest for snapshots."""
+    if distribution != "snapshots":
+        return {}
+    try:
+        index = machine.fetch(CHANNEL.format(distribution), 120).decode("utf-8")
+    except (OSError, http.client.HTTPException, UnicodeDecodeError) as error:
+        raise ValueError("the snapshots channel's index could not be read") from error
+    newest = {}
+    for stanza in index.split("\n\n"):
+        fields = dict(re.findall(r"(?m)^(Package|Version): (\S+)$", stanza))
+        name, version = fields.get("Package"), fields.get("Version")
+        if name in ("porelo", "porelo-host") and re.fullmatch(r"[0-9][A-Za-z0-9.+:~_-]*", version or ""):
+            newest[name] = max(newest.get(name, version), version, key=debian_order)
+    if set(newest) != {"porelo", "porelo-host"}:
+        raise ValueError("the snapshots channel names no porelo or no porelo-host")
+    return {"porelo_version": newest["porelo"], "porelo_host_version": newest["porelo-host"]}
+
+
+def debian_order(version):
+    """Enough of Debian's order for Porelo's versions: digits as numbers, and a tilde before everything, even the end."""
+    key = []
+    for part in re.findall(r"[0-9]+|~|[^0-9~]+", version):
+        key.append((0, 0, "") if part == "~" else (2, int(part), "") if part.isdigit() else (1, 0, part))
+    return key + [(0.5, 0, "")]
+
+
+def inventory_of(distribution, forge, room, pins=None):
     """This run's own inventory for one shape, and no person's."""
     return {
         "all": {
@@ -567,6 +609,7 @@ def inventory_of(distribution, forge, room):
                     "porelo_host_kvm": False,
                     "porelo_host_forge": forge,
                     "porelo_host_room": room,
+                    **(pins or {}),
                 }
             }
         }
@@ -591,10 +634,52 @@ def as_developer(machine, uid, arguments, timeout, given=None):
     )
 
 
+# Porelo's stub agent is in no package channel: each version of it in a folder of its own, its SHA-256 beside it.
+STUB = "https://fuinorg.jfrog.io/artifactory/porelo-dist-test/porelo-agent-stub/{}/porelo-agent-stub"
+STUB_HOME = f"/home/{DEVELOPER}/.local/lib/porelo-agent-stub/stub"
+
+
+def stub_agent(machine):
+    """The stub of the installed Porelo's version, as its digest names it; the bytes, or why there are none."""
+    version = machine.packages().get("porelo")
+    if not version or not re.fullmatch(r"[0-9][A-Za-z0-9.+:~_-]*", version):
+        return None, "Porelo is not installed, so no stub agent version is known"
+    url = STUB.format(version)
+    try:
+        digest = machine.fetch(url + ".sha256", 120).decode("ascii").split()[0]
+        stub = machine.fetch(url, 300)
+    except (OSError, http.client.HTTPException, UnicodeDecodeError, IndexError):
+        return None, f"the stub agent {version} could not be fetched; its folder keeps the newest versions only"
+    if hashlib.sha256(stub).hexdigest() != digest.lower():
+        return None, f"the stub agent {version} does not match its SHA-256"
+    return stub, None
+
+
+def place_stub(machine, uid, stub):
+    """The stub put into the developer's own home by the developer, and named in its agents.d, as Porelo finds it."""
+    drop = machine.path("/run/porelo-host-measure-stub")
+    shutil.rmtree(drop, ignore_errors=True)
+    drop.mkdir()
+    try:
+        drop.chmod(0o755)
+        (drop / "stub").write_bytes(stub)
+        (drop / "stub").chmod(0o644)
+        place = ["install", "-D", "-m", "755", "/run/porelo-host-measure-stub/stub", STUB_HOME]
+        if as_developer(machine, uid, place, 60)[0] != 0:
+            return "the stub agent could not be placed"
+    finally:
+        shutil.rmtree(drop, ignore_errors=True)
+    register = 'mkdir -p "$HOME/.local/share/porelo/agents.d" && cat > "$HOME/.local/share/porelo/agents.d/stub.yaml"'
+    if as_developer(machine, uid, ["sh", "-c", register], 60, f"executable: {STUB_HOME}\n")[0] != 0:
+        return "the stub agent could not be registered"
+    return None
+
+
 def developer_tasks(machine, report, sample, count):
     """One developer with a vault and a checkout starts count stub tasks in default; None, or why it could not."""
-    if machine.command(["apt-get", "install", "-y", "-q", "porelo-agent-stub"], 600)[0] != 0:
-        return "the stub agent could not be installed"
+    stub, why = stub_agent(machine)
+    if why:
+        return why
     groups = (machine.read("/etc/group") or "").splitlines()
     member = [g for g in ("porelo-people",) if any(line.startswith(g + ":") for line in groups)]
     made = ["useradd", "--create-home", "--user-group", "--shell", "/bin/bash"]
@@ -609,6 +694,9 @@ def developer_tasks(machine, report, sample, count):
         machine.pause(1)
     else:
         return "the developer's session did not start within 30 seconds"
+    why = place_stub(machine, uid, stub)
+    if why:
+        return why
     # A passphrase made for this run, on standard input only, and gone with the account.
     passphrase = os.urandom(24).hex() + "\n"
     for verb in ("init", "unlock"):
@@ -652,7 +740,7 @@ def developer_tasks(machine, report, sample, count):
 
 
 def developer_gone(machine, count):
-    """The developer, its tasks and the stub agent taken away, whatever got made; each step tried."""
+    """The developer and its tasks taken away, the stub agent with its home, whatever got made; each step tried."""
     uid = machine.account(DEVELOPER)
     if uid is not None:
         for number in range(1, count + 1):
@@ -661,7 +749,6 @@ def developer_gone(machine, count):
         machine.command(["loginctl", "disable-linger", DEVELOPER], 60)
         machine.command(["loginctl", "terminate-user", DEVELOPER], 60)
         machine.command(["userdel", "--remove", "--force", DEVELOPER], 120)
-    machine.command(["apt-get", "purge", "-y", "-q", "porelo-agent-stub"], 300)
     if machine.account(DEVELOPER) is not None:
         raise ValueError("the throwaway developer could not be removed; refusing to measure over leftovers")
 

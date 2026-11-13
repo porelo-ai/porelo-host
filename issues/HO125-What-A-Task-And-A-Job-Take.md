@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO125",
   "title": "What A Task And A Job Take",
-  "state": "Backlog",
+  "state": "Review",
   "size": "L",
   "priority": "Medium",
   "rank": 1,
@@ -119,7 +119,7 @@ idle run makes. **Until this is done, a size that has to hold work does not rest
   mutations fail them: the cleanup dropped, and the passphrase on the command line.
 - **Not yet:** the `job` step (a Maven build in a forge job at 1, 2 and 4 parallel jobs, cold and with the cache),
   `agent`, which needs a token on the operator's word, and the first run on a local VM, which goes through the
-  coordinator. The issue stays in Backlog until those are done.
+  coordinator. At the Coordinator's word it goes to Review at a clean point; those stay open.
 
 ## The first local VM run (2026-11-13)
 
@@ -134,3 +134,17 @@ run cleaned up and ended 0. Two things stand before a reading:
   version from `porelo-dist-test/porelo-agent-stub/<version>/`, its SHA-256 beside it, the 20 newest kept (snapshot
   508 is there), or from a local package. The step is to fetch it from there, by the version of the Porelo it
   installed, and check it, instead of asking apt.
+
+## The stub and the snapshots, built (2026-11-13)
+
+- **The stub agent from its own folder.** The `task` step no longer asks apt. It reads the installed Porelo's version
+  and fetches `porelo-dist-test/porelo-agent-stub/<version>/porelo-agent-stub` and the `.sha256` beside it. A stub
+  unlike its digest, or one that cannot be fetched, is null with its reason, before any account is made. Root drops
+  it in a directory of its own under `/run`; the developer installs it into its own home and names it in its own
+  `agents.d`, as porelo-frontend's scenario does. It goes with the account.
+- **A run from the snapshots** (`--distribution snapshots`) reads that channel's index and pins the newest `porelo`
+  and `porelo-host` in the inventory, as [HO185](README.md#ho185) does for the rehearsal. An unreadable index or one
+  without them ends the run before the machine is touched.
+- **Its tests.** Three more unit tests: the stub fetched by version and digest and placed before the first start with
+  root's copy gone, a stub unlike its digest null with nothing made, and the snapshots pinned by Debian's order.
+- **Still not here:** the `job` step and `agent`, and a VM run of this step that reads numbers.
