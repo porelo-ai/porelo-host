@@ -17,7 +17,8 @@
 #   ST346 failed at <step>: <what was seen>       exit 1, a step no open issue explains
 #
 # The scratch repository and the resolved tools are removed at the end; the person's local Maven repository keeps
-# what was resolved.
+# what was resolved. A host without unzip gets Maven's tar.gz, pinned here by its SHA-256, since the wrapper would
+# check that file against the zip's.
 set -euo pipefail
 
 for name in REHEARSAL_PERSON_SSH REHEARSAL_REPORT REHEARSAL_DEADLINE; do
@@ -67,6 +68,14 @@ java_home=${2:-}
 mkdir -p "$1/tools" "$1/repo"
 tar -x -C "$1/tools"
 cd "$1/tools"
+if ! command -v unzip >/dev/null; then
+    p=.mvn/wrapper/maven-wrapper.properties
+    grep -qx "distributionUrl=https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.15/apache-maven-3.9.15-bin.zip" $p \
+        || { echo "the host has no unzip, and the wrapper names another Maven than 3.9.15"; exit 1; }
+    sed -i -e "s#-bin[.]zip\$#-bin.tar.gz#" \
+        -e "s#^distributionSha256Sum=.*#distributionSha256Sum=36182f85e91128cd5c4608462ac92194e7a30638f65034de66f4e1b00600a6fc#" $p
+    echo "the host has no unzip: the wrapper takes Maven 3.9.15 as its tar.gz, by the SHA-256 of that file"
+fi
 JAVA_HOME=$java_home ./mvnw -B -q -f build/pom.xml dependency:build-classpath -Dmdep.outputFile="$1/tools-cp.txt"
 printf "%s\n" "$java_home" > "$1/java-home"
 mv issues "$1/repo/issues"

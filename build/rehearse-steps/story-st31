@@ -4,7 +4,8 @@
 # --from-file stores it, and a task started with a provider Pi does not know is refused by name before it starts.
 #
 # A step under build/rehearse-steps, called by the contract in doc/testing.md; it reads REHEARSAL_PERSON_SSH,
-# REHEARSAL_PROJECT, REHEARSAL_REPOSITORY, REHEARSAL_REPORT and REHEARSAL_DEADLINE. The last line is the story's:
+# REHEARSAL_ORG, REHEARSAL_PERSON, REHEARSAL_HOST, REHEARSAL_HOST_KEY, REHEARSAL_PROJECT, REHEARSAL_REPOSITORY,
+# REHEARSAL_REPORT and REHEARSAL_DEADLINE. The last line is the story's:
 #
 #   ST31 passed                                   exit 0
 #   ST31 waiting on porelo#B228, ...              exit 77, a step whose open issue is named failed as expected
@@ -14,7 +15,8 @@
 # are removed at the end, whatever happened.
 set -euo pipefail
 
-for name in REHEARSAL_PERSON_SSH REHEARSAL_PROJECT REHEARSAL_REPOSITORY REHEARSAL_REPORT REHEARSAL_DEADLINE; do
+for name in REHEARSAL_PERSON_SSH REHEARSAL_ORG REHEARSAL_PERSON REHEARSAL_HOST REHEARSAL_HOST_KEY REHEARSAL_PROJECT \
+    REHEARSAL_REPOSITORY REHEARSAL_REPORT REHEARSAL_DEADLINE; do
     [ -n "${!name:-}" ] || {
         echo "ST31 failed at the contract: $name is not set"
         exit 1
@@ -186,10 +188,22 @@ fi
 printf 'st31-not-a-key\n' | on_host 120 porelo vault put example-unknown > "$out/put-provider.out" 2>&1 \
     || fail "the provider's credential" "$(tail -n 1 "$out/put-provider.out")"
 
+# The start goes from the person's side, as the host asks and the tasks step does it: the test identity's porelo here
+# starts it with --host, on the host key the run pinned at its first connection.
+pinned=$(printf '%s %s\n' "$REHEARSAL_HOST" "$REHEARSAL_HOST_KEY" | ssh-keygen -lf - | awk '{print $2}')
 status=0
-on_host 600 porelo task start --detach --no-input --agent=pi --provider=example-unknown --clearance=deny \
-    -p "$REHEARSAL_PROJECT" -r "$REHEARSAL_REPOSITORY" st31-unknown-provider < /dev/null > "$out/start.out" 2>&1 \
-    || status=$?
+case $pinned in
+    SHA256:*)
+        timeout 60 "$REHEARSAL_ORG" credentials trust-host --fingerprint="$pinned" "$REHEARSAL_HOST" < /dev/null \
+            > "$out/trust-host.out" 2>&1 || fail "the host's key" "$(tail -n 1 "$out/trust-host.out")"
+        ;;
+    *) fail "the host's key" "no fingerprint for the pinned host key" ;;
+esac
+left=$((REHEARSAL_DEADLINE - $(date +%s) - 60))
+[ "$left" -lt 600 ] || left=600
+timeout --kill-after=10 "$left" "$REHEARSAL_ORG" task start --host "$REHEARSAL_PERSON@$REHEARSAL_HOST" --no-input \
+    --agent=pi --provider=example-unknown --clearance=deny -p "$REHEARSAL_PROJECT" -r "$REHEARSAL_REPOSITORY" \
+    st31-unknown-provider < /dev/null > "$out/start.out" 2>&1 || status=$?
 cat "$out/start.out"
 on_host 60 porelo task list < /dev/null > "$out/tasks.out" 2>&1 || true
 if [ "$status" = 0 ] || grep -q 'st31-unknown-provider' "$out/tasks.out"; then

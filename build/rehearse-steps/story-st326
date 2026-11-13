@@ -8,7 +8,7 @@
 #
 # A step under build/rehearse-steps, called by the contract in doc/testing.md; it reads REHEARSAL_PERSON_SSH,
 # REHEARSAL_REPORT and REHEARSAL_DEADLINE, and PORELO_STORY_PLUGINS, the plugin repository's descriptor (default the
-# snapshots channel's updatePlugins.xml). The last line is the story's:
+# snapshots channel's latest/updatePlugins.xml). The last line is the story's:
 #
 #   ST326 passed                                  exit 0
 #   ST326 waiting on porelo#B606                  exit 77, a step whose open issue is named failed as expected
@@ -24,7 +24,7 @@ for name in REHEARSAL_PERSON_SSH REHEARSAL_REPORT REHEARSAL_DEADLINE; do
         exit 1
     }
 done
-plugins=${PORELO_STORY_PLUGINS:-https://fuinorg.jfrog.io/artifactory/porelo-dist-intellij/snapshots/updatePlugins.xml}
+plugins=${PORELO_STORY_PLUGINS:-https://fuinorg.jfrog.io/artifactory/porelo-dist-intellij/snapshots/latest/updatePlugins.xml}
 
 out=$REHEARSAL_REPORT/story-st326.d
 mkdir -p "$out"
