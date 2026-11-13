@@ -103,3 +103,20 @@ idle run makes. **Until this is done, a size that has to hold work does not rest
 - **Red first:** with the `Machine` stand-in, each step's facts and its cleanup, a leftover account refused, an account
   made by the run never kept after a failed step, and a share past the half reaching only that `up`.
 - **First run:** on a local VM, shape `room`, two stub tasks, about half an hour, before any rental.
+
+## Built so far (2026-11-13)
+
+- **The `task` step.** `porelo-host-measure --steps task [--tasks N]` (role option `measure_tasks`, default 2, 1 to
+  12) brings the host up in the room's shape, as the idle run does. In each of three samples it makes one throwaway
+  developer, `porelo-measure`: an account in `porelo-people`, with linger, its session bus waited for. The developer
+  gets a vault initialised and unlocked with a passphrase made for the run, on standard input only, and a committed
+  checkout. Then `porelo-agent-stub` is installed and N stub tasks start in `default` with `--no-input --detach`.
+- **What it keeps:** each start's time; the developer slice's memory in use, its peak and its anonymous part, once
+  settled; the CPU the starts used; `/home`'s growth. `work.time` is null, since a stub does no work.
+- **The cleanup.** The tasks, the account and the stub package go in every sample, whatever got made. A developer that
+  cannot be removed ends the run, as a failed down does.
+- **Its tests.** Two unit tests over the stand-in machine cover a whole run and a refused start. They pass, and two
+  mutations fail them: the cleanup dropped, and the passphrase on the command line.
+- **Not yet:** the `job` step (a Maven build in a forge job at 1, 2 and 4 parallel jobs, cold and with the cache),
+  `agent`, which needs a token on the operator's word, and the first run on a local VM, which goes through the
+  coordinator. The issue stays in Backlog until those are done.

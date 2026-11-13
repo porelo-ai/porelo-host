@@ -94,4 +94,4 @@ What stays here is the `store` role:
   its end;
 - the units, the tests and the documents.
 
-This issue waits on porelo's issue, and the measured round trip waits on a test bucket and its keys from the operator.
+This issue waits on porelo's [B688](https://github.com/porelo-ai/porelo/blob/main/issues/base/README.md#b688), filed by Agent Core, and the measured round trip waits on a test bucket and its keys from the operator.
