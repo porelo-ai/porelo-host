@@ -65,7 +65,8 @@ committed checkout. Porelo's stub agent is in no package channel. The run fetche
 version from `porelo-dist-test/porelo-agent-stub/<version>/` and checks it against the SHA-256 beside it. The
 developer puts it into its own home and names it in its `agents.d`; a stub that cannot be had or does not match is
 null with its reason. It then starts `measure_tasks` stub tasks in `default` with
-`--no-input --detach`. Each start's time is kept. The developer's slice gives memory in use, its peak and the
+`--no-input --yes --detach`. Each start's time is kept; a start that fails is null with its reason, which ends with
+the last two lines Porelo said, without colours. The developer's slice gives memory in use, its peak and the
 anonymous part, and the CPU the starts took; `/home` gives the disk they grew. With no project naming the host's
 gate, a developer's conversation is on a homeserver of its own, the user unit `porelo-matrix-homeserver.service`,
 where a real host has one gate: its memory is kept as its own reading and the unit is stopped before the developer's

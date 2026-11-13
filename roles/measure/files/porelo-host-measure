@@ -805,9 +805,17 @@ def make_developer(machine, stub, name=DEVELOPER):
 
 
 def start_task(machine, uid, number, name=DEVELOPER):
-    """One stub task started in default from the developer's checkout, uncertified in the test mode; its exit code."""
-    start = ["sh", "-c", 'cd "$HOME/work" && exec porelo task start --agent stub --no-input --yes --detach "$1"', "sh"]
-    return as_developer(machine, uid, [*start, f"measure-{number}"], 900, name=name)[0]
+    """One stub task started in default from the developer's checkout, uncertified in the test mode; None, or the
+    last two lines Porelo said, without colours, after ": " (or "" when it said nothing) if it did not start."""
+    start = ["sh", "-c", 'cd "$HOME/work" && exec porelo task start --agent stub --no-input --yes --detach "$1" 2>&1']
+    code, output = as_developer(machine, uid, [*start, "sh", f"measure-{number}"], 900, name=name)
+    if code == 0:
+        return None
+    kept = [
+        "".join(c for c in COLOURED.sub("", line) if c.isprintable()).strip() for line in (output or "").splitlines()
+    ]
+    tail = " | ".join([line for line in kept if line][-2:])[:160]
+    return f": {tail}" if tail else ""
 
 
 # With no project naming the host's gate, a developer's conversation is on a homeserver of its own, a user unit; a
@@ -835,8 +843,9 @@ def developer_tasks(machine, report, sample, count):
     before, disk = machine.slice_reading(uid), machine.disk("/home")
     for number in range(1, count + 1):
         start = machine.clock()
-        if start_task(machine, uid, number) != 0:
-            return f"task {number} of {count} did not start"
+        said = start_task(machine, uid, number)
+        if said is not None:
+            return f"task {number} of {count} did not start{said}"
         put(report, "start.time", machine.clock() - start, "task", sample=sample, subject=f"task {number}")
     homeserver, why = own_homeserver(machine, uid)
     put(report, "memory.current", homeserver, "task", sample=sample, subject="developer's own homeserver", why=why)
@@ -920,8 +929,9 @@ def raise_step(machine, report, inventory, tasks):
                         made.append(name)
                         uid, why = make_developer(machine, stub, name)
                         for number in range(1, RAISE_TASKS + 1) if not why else ():
-                            if start_task(machine, uid, number, name) != 0:
-                                why = f"task {number} of developer {len(made)} did not start"
+                            said = start_task(machine, uid, number, name)
+                            if said is not None:
+                                why = f"task {number} of developer {len(made)} did not start{said}"
                                 break
                         if not why:
                             own_homeserver(machine, uid, name)
@@ -935,7 +945,7 @@ def raise_step(machine, report, inventory, tasks):
             why = "the raising could not run"
         put(report, "developers", held or None, "task", subject="raised", why=f"no level held: {why}")
         text = f"developers raised 1, 2, 4 and on, {RAISE_TASKS} stub tasks each, until {why}"
-        put(report, "work", text[:240], "task", subject="raised")
+        put(report, "work", text[:320], "task", subject="raised")
     finally:
         machine.holding = True
         # Each developer is tried and down runs whatever one of them left; a leftover still ends the run after it.

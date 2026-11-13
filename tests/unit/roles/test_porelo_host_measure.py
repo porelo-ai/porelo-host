@@ -722,7 +722,7 @@ def developer_standin(module, root, refuse_start=False, digest=None, homeserver=
             record.mkdir(parents=True, exist_ok=True)
             (record / "measure-1.json").write_text("{}")
             if refuse_start:
-                return 1, SECRET
+                return 1, "\x1b[31mstarting measure-1\x1b[0m\n\nporelo: the host refused (exit 65): no certificate\n"
         if words[-3:] == ["-p", "MemoryCurrent", "porelo-matrix-homeserver.service"]:
             return 0, "MemoryCurrent=123456\n" if homeserver else "MemoryCurrent=[not set]\n"
         return 0, SECRET
@@ -792,7 +792,10 @@ def test_a_refused_task_start_is_null_with_its_reason_and_the_developer_is_still
     assert code == 0
     rows = [r for r in report["facts"] if r["step"] == "task"]
     peaks = [r for r in rows if r["field"] == "memory.peak"]
-    assert len(peaks) == 3 and all(r["value"] is None and r["why"] == "task 1 of 2 did not start" for r in peaks)
+    said = "task 1 of 2 did not start: starting measure-1 | porelo: the host refused (exit 65): no certificate"
+    assert len(peaks) == 3 and all(r["value"] is None and r["why"] == said for r in peaks), "with its last words"
+    starts = [arguments for arguments, unused in others(machine) if "task start" in " ".join(arguments)]
+    assert starts and all("2>&1" in " ".join(arguments) for arguments in starts), "porelo says why on its errors"
     # As an idle shape that failed: the later samples are not tried again, and say why.
     assert sum(1 for arguments, unused in others(machine) if arguments[0] == "userdel") == 1
     assert "porelo-measure" not in machine.path("/etc/passwd").read_text()
@@ -1048,7 +1051,7 @@ def raise_standin(module, root, pressure_from=None, refuse_from=None, psi=True, 
             name = arguments[2]
             if refuse_from and name.startswith("porelo-measure-") and int(name.rsplit("-", 1)[1]) >= refuse_from:
                 machine.calls.append((arguments, given))
-                return 1, SECRET
+                return 1, "porelo: the host refused (exit 65): no certificate\n"
         return inner(arguments, timeout, given)
 
     machine.command = command
@@ -1096,7 +1099,7 @@ def test_a_refused_start_ends_the_raising_at_the_level_before(tmp_path):
     assert code == 0
     rows = raised(report)
     assert rows["developers"]["value"] == 2
-    assert "did not start" in rows["work"]["value"]
+    assert rows["work"]["value"].endswith("did not start: porelo: the host refused (exit 65): no certificate")
     assert not any(line.startswith("porelo-measure") for line in machine.path("/etc/passwd").read_text().splitlines())
 
 
