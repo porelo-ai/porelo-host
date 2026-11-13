@@ -76,6 +76,7 @@ it is left out.
 | <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
 | <a id="ho163"></a>[HO163](HO163-A-Tasks-Signing-Key-Is-Known-Where-It-Pushes.md) | S | - | A task's signing key is registered with the forge account that receives its push, so its commits verify on the host's forge; what the central forge can take is measured first. |
 | <a id="ho165"></a>[HO165](HO165-The-Push-To-Central-Takes-Repository-Names-And-Says-A-Refused-Token.md) | XS | - | `porelo-host-push` takes the project's repository names as well as the forge's, and says plainly when the central forge refuses the token. |
+| <a id="ho185"></a>[HO185](HO185-A-Rehearsal-Without-Local-Packages-Installs-The-Snapshots.md) | S | - | A rented rehearsal given no PORELO_HOST_DEB installs Porelo and porelo-host from the snapshots it names, instead of failing at up on a release version the snapshots channel does not hold. |
 
 ## Implementing
 
