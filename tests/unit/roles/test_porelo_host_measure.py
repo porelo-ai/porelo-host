@@ -786,6 +786,17 @@ def test_the_measuring_host_is_in_test_mode_and_its_starts_take_it_without_askin
     assert starts and all(" --no-input --yes " in start for start in starts)
 
 
+def test_the_developer_signs_the_stub_in_before_its_first_start(tmp_path):
+    """Prevent every start refused for want of a credential: Porelo starts no agent that is not signed in."""
+    code, unused_report, machine, unused_out = measure_tasks(tmp_path)
+    assert code == 0
+    calls = [" ".join(arguments) for arguments, unused in others(machine)]
+    logins = [i for i, call in enumerate(calls) if "porelo vault login stub" in call]
+    starts = [i for i, call in enumerate(calls) if "task start" in call]
+    assert len(logins) == 3 and starts and logins[0] < starts[0], "one sign-in per developer, before it starts"
+    assert all(calls[i].startswith("runuser") and " script " in f" {calls[i]} " for i in logins), "at a terminal"
+
+
 # A start that is refused must not leave a developer or its tasks, nor publish half a sample as whole.
 def test_a_refused_task_start_is_null_with_its_reason_and_the_developer_is_still_removed(tmp_path):
     code, report, machine, unused = measure_tasks(tmp_path, refuse_start=True)

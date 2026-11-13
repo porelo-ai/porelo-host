@@ -64,7 +64,9 @@ linger. The developer gets a vault whose passphrase is made for the run and goes
 committed checkout. Porelo's stub agent is in no package channel. The run fetches the one of the installed Porelo's
 version from `porelo-dist-test/porelo-agent-stub/<version>/` and checks it against the SHA-256 beside it. The
 developer puts it into its own home and names it in its `agents.d`; a stub that cannot be had or does not match is
-null with its reason. It then starts `measure_tasks` stub tasks in `default` with
+null with its reason. Porelo starts no agent that is not signed in, so the developer signs the stub in with `porelo
+vault login stub` at a terminal `script` gives it; the stub's login writes a fixture, with no account, network or
+secret. It then starts `measure_tasks` stub tasks in `default` with
 `--no-input --yes --detach`. Each start's time is kept; a start that fails is null with its reason, which ends with
 the last two lines Porelo said, without colours. The developer's slice gives memory in use, its peak and the
 anonymous part, and the CPU the starts took; `/home` gives the disk they grew. With no project naming the host's

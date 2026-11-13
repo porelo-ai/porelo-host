@@ -795,6 +795,11 @@ def make_developer(machine, stub, name=DEVELOPER):
     for verb in ("init", "unlock"):
         if as_developer(machine, uid, ["porelo", "vault", verb, "--passphrase-stdin"], 120, passphrase, name)[0] != 0:
             return uid, f"the developer's vault could not {verb}"
+    # Porelo starts no agent that is not signed in. The stub signs in as a person's agent does, through its own login
+    # at a terminal, writing its fixture and no secret; script gives it that terminal.
+    login = ["script", "-qec", "porelo vault login stub", "/dev/null"]
+    if as_developer(machine, uid, login, 600, name=name)[0] != 0:
+        return uid, "the developer's stub could not sign in"
     checkout = (
         'git init -q -b main "$HOME/work" && git -C "$HOME/work" -c user.name=measure'
         " -c user.email=measure@example.invalid -c commit.gpgsign=false commit -q --allow-empty -m start"
