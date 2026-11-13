@@ -41,3 +41,9 @@ argument_specs:
         type: int
         default: 2
         description: How many stub tasks the task step starts in each sample, 1 to 12.
+      measure_raise:
+        type: bool
+        default: false
+        description: >-
+          With the task step, also raise developers 1, 2, 4 and on, five stub tasks each, on one more up, until a start
+          fails or the memory's or the CPU's pressure stays above its line; the count held is kept.

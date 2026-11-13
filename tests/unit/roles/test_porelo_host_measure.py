@@ -966,3 +966,133 @@ def test_a_failed_job_is_null_with_its_reason_and_the_repository_still_goes(tmp_
     assert first and all(r["value"] is None and "failure" in r["why"] for r in first)
     deleted = [route for method, route, unused in machine.api if method == "DELETE"]
     assert len(deleted) == 3
+
+
+def raise_standin(module, root, pressure_from=None, refuse_from=None, psi=True, stuck=None):
+    """The task stand-in with many developers: each account its own uid and bus; pressure and refusals by count."""
+    machine = developer_standin(module, root)
+    inner = machine.command
+    machine.accounts = []
+    # The inherited start answer writes the one developer's slice; here it only has to exist.
+    machine.path("/sys/fs/cgroup/user.slice/user-1500.slice").mkdir(parents=True, exist_ok=True)
+
+    def command(arguments, timeout, given=None):
+        if arguments[0] == "useradd":
+            name = arguments[-1]
+            machine.calls.append((arguments, given))
+            uid = 1600 + len(machine.accounts)
+            machine.accounts.append(name)
+            with machine.path("/etc/passwd").open("a") as stream:
+                stream.write(f"{name}:x:{uid}:{uid}::/home/{name}:/bin/bash\n")
+            machine.path(f"/run/user/{uid}").mkdir(parents=True, exist_ok=True)
+            machine.path(f"/run/user/{uid}/bus").write_text("")
+            live = len([a for a in machine.accounts if a.startswith("porelo-measure-")])
+            level = "42.00" if pressure_from and live >= pressure_from else "0.00"
+            if psi:
+                machine.path("/proc/pressure").mkdir(parents=True, exist_ok=True)
+                memory = f"some avg10={level} avg60=0.00 avg300=0.00 total=1\n"
+                machine.path("/proc/pressure/memory").write_text(memory)
+                machine.path("/proc/pressure/cpu").write_text("some avg10=0.00 avg60=0.00 avg300=0.00 total=1\n")
+            return 0, SECRET
+        if arguments[0] == "userdel":
+            machine.calls.append((arguments, given))
+            name = arguments[-1]
+            if name == stuck:
+                return 8, SECRET
+            passwd = machine.path("/etc/passwd")
+            passwd.write_text(
+                "".join(line for line in passwd.read_text().splitlines(True) if not line.startswith(name + ":"))
+            )
+            return 0, SECRET
+        if arguments[0] == "runuser" and any("task start" in word for word in arguments):
+            name = arguments[2]
+            if refuse_from and name.startswith("porelo-measure-") and int(name.rsplit("-", 1)[1]) >= refuse_from:
+                machine.calls.append((arguments, given))
+                return 1, SECRET
+        return inner(arguments, timeout, given)
+
+    machine.command = command
+    return machine
+
+
+def measure_raise(tmp_path, **settings):
+    module = load()
+    machine = raise_standin(module, prepare(tmp_path / "machine"), **settings)
+    out = tmp_path / "result.json"
+    code = module.main(["--fresh", "--out", str(out), "--given", "{}", "--steps", "task", "--raise"], machine)
+    return code, json.loads(out.read_text()) if out.exists() else None, machine
+
+
+def raised(report):
+    return {r["field"]: r for r in report["facts"] if r["step"] == "task" and r.get("subject") == "raised"}
+
+
+# How many developers a host holds: raised 1, 2, 4 and on, five tasks each, until the memory's pressure stays high.
+def test_developers_are_raised_until_the_pressure_stays_high_and_all_go_again(tmp_path):
+    code, report, machine = measure_raise(tmp_path, pressure_from=4)
+    assert code == 0
+    rows = raised(report)
+    assert rows["developers"]["value"] == 2
+    assert "memory pressure" in rows["work"]["value"]
+    made = [a for a in machine.accounts if a.startswith("porelo-measure-")]
+    assert made == [f"porelo-measure-{n}" for n in range(1, 5)], "the level that suffered was made in full"
+    starts = [a for a, unused in others(machine) if a[0] == "runuser" and a[2].startswith("porelo-measure-")
+              and any("task start" in w for w in a)]  # fmt: skip
+    assert len(starts) == 4 * 5, "five tasks each"
+    assert not any(line.startswith("porelo-measure") for line in machine.path("/etc/passwd").read_text().splitlines())
+    plays = [name for name, unused in machine.calls if isinstance(name, str)]
+    assert plays == ["porelo.host.up", "porelo.host.down"] * 4, "three samples and the raising, each its own up"
+
+
+# A start that fails ends the raising there: the count before it is what the host held.
+def test_a_refused_start_ends_the_raising_at_the_level_before(tmp_path):
+    code, report, machine = measure_raise(tmp_path, refuse_from=3)
+    assert code == 0
+    rows = raised(report)
+    assert rows["developers"]["value"] == 2
+    assert "did not start" in rows["work"]["value"]
+    assert not any(line.startswith("porelo-measure") for line in machine.path("/etc/passwd").read_text().splitlines())
+
+
+# Without the word, no raising: the task step stays three samples of one developer.
+def test_without_raise_the_task_step_is_three_samples(tmp_path):
+    code, report, machine, unused = measure_tasks(tmp_path)
+    assert not raised(report)
+
+
+# A kernel that tells no pressure cannot say a level held: the raising stops and says so.
+def test_without_the_kernels_pressure_no_level_is_said_to_hold(tmp_path):
+    code, report, machine = measure_raise(tmp_path, psi=False)
+    assert code == 0
+    rows = raised(report)
+    assert rows["developers"]["value"] is None and "no memory pressure" in rows["developers"]["why"]
+
+
+# A host that holds every level says so, with the last level's count.
+def test_a_host_that_holds_every_level_names_the_last(tmp_path):
+    code, report, machine = measure_raise(tmp_path)
+    assert code == 0
+    rows = raised(report)
+    assert rows["developers"]["value"] == 32 and "the last level, 32 developers, held" in rows["work"]["value"]
+    assert not any(line.startswith("porelo-measure") for line in machine.path("/etc/passwd").read_text().splitlines())
+
+
+# One developer that will not go must not keep the others or the down from running; the run then ends without a file.
+def test_a_developer_that_stays_still_lets_the_others_go_and_the_host_down(tmp_path):
+    code, report, machine = measure_raise(tmp_path, pressure_from=4, stuck="porelo-measure-2")
+    assert code == 2 and report is None
+    names = [line.split(":")[0] for line in machine.path("/etc/passwd").read_text().splitlines()]
+    assert "porelo-measure-2" in names and not {"porelo-measure-1", "porelo-measure-3", "porelo-measure-4"} & set(names)
+    plays = [name for name, unused in machine.calls if isinstance(name, str)]
+    assert plays[-1] == "porelo.host.down"
+
+
+# Raising belongs to the task step; asked for alone it is refused before anything is touched.
+def test_raise_without_the_task_step_is_refused(tmp_path):
+    module = load()
+    machine = raise_standin(module, prepare(tmp_path / "machine"))
+    with pytest.raises(SystemExit):
+        module.main(
+            ["--fresh", "--out", str(tmp_path / "r.json"), "--given", "{}", "--steps", "idle", "--raise"], machine
+        )
+    assert not machine.calls

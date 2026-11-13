@@ -53,4 +53,13 @@ takes and how many developers a host holds, so a size can rest on what work take
 - **Its tests.** Five unit tests over the stand-in: every count's runs and plays, the refused count, a failed build
   null with the repository still removed, the workflow's YAML, and the token never on a command line. The forge's
   task list grows a part a poll there, so a run is not counted done early.
-- **Not yet:** developers raised until something suffers, and the VM run that reads numbers.
+- **Developers raised.** `--raise` (role option `measure_raise`): after the `task` samples, one more `up`, developers
+  `porelo-measure-1` and on raised 1, 2, 4 and on to 32, five stub tasks each. After each level, memory is let settle
+  and the kernel's pressure is read twice, half a minute apart. The raising stops at a failed start, or at memory
+  pressure of 10% or CPU pressure of 80% that stays. `developers` keeps the last level that held, and `work` says why
+  it stopped; where no level held, or the kernel tells no pressure, it is null with that reason. Every developer is
+  tried and the host goes down even when one stays, which then ends the run. `--raise` without `task` is refused.
+  Seven unit tests: stopped by pressure, by a refused start, every level held, no pressure told, a developer that
+  stays, the word alone refused, and none without the word.
+- **Not yet:** each account's own homeserver read from its unit and stopped (the plan's room part), and the VM run
+  that reads numbers.

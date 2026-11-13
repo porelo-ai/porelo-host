@@ -51,6 +51,7 @@ FIELDS = {
     "start.time": "seconds",
     "work.time": "seconds",
     "cpu.time": "seconds",
+    "developers": "count",
     **{
         f"changes.{kind}.{way}": "names"
         for kind in ("packages", "units", "accounts", "directories")
@@ -530,7 +531,7 @@ def differences(report, before, after):
             )
 
 
-def run(machine, given, steps, distribution="releases", count=2):
+def run(machine, given, steps, distribution="releases", count=2, raised=False):
     """Measure before and each requested shape, always taking down even a failed up."""
     report = {"v": VERSION, "facts": []}
     pins = pinned(machine, distribution)
@@ -587,6 +588,8 @@ def run(machine, given, steps, distribution="releases", count=2):
             inventory = Path(directory) / "inventory.json"
             inventory.write_text(json.dumps(inventory_of(distribution, False, True, pins)))
             task_step(machine, report, inventory, tasks, count)
+            if raised:
+                raise_step(machine, report, inventory, tasks)
     if "job" in steps:
         job_step(machine, report, tasks, distribution, pins)
     for step in ("task", "agent", "job"):
@@ -661,11 +664,11 @@ DEVELOPER = "porelo-measure"
 TASK_FIELDS = ("work", "memory.peak", "disk.growth", "start.time", "work.time", "cpu.time")
 
 
-def as_developer(machine, uid, arguments, timeout, given=None):
+def as_developer(machine, uid, arguments, timeout, given=None, name=DEVELOPER):
     """Run as the throwaway developer in its own session's environment, from its home."""
     return machine.command(
         [
-            "runuser", "-u", DEVELOPER, "--", "env", "-C", f"/home/{DEVELOPER}", f"HOME=/home/{DEVELOPER}",
+            "runuser", "-u", name, "--", "env", "-C", f"/home/{name}", f"HOME=/home/{name}",
             f"XDG_RUNTIME_DIR=/run/user/{uid}", f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus",
             *arguments,
         ],  # fmt: skip
@@ -676,7 +679,7 @@ def as_developer(machine, uid, arguments, timeout, given=None):
 
 # Porelo's stub agent is in no package channel: each version of it in a folder of its own, its SHA-256 beside it.
 STUB = "https://fuinorg.jfrog.io/artifactory/porelo-dist-test/porelo-agent-stub/{}/porelo-agent-stub"
-STUB_HOME = f"/home/{DEVELOPER}/.local/lib/porelo-agent-stub/stub"
+STUB_HOME = "/home/{}/.local/lib/porelo-agent-stub/stub"
 
 
 def stub_agent(machine):
@@ -695,7 +698,7 @@ def stub_agent(machine):
     return stub, None
 
 
-def place_stub(machine, uid, stub):
+def place_stub(machine, uid, stub, name=DEVELOPER):
     """The stub put into the developer's own home by the developer, and named in its agents.d, as Porelo finds it."""
     drop = machine.path("/run/porelo-host-measure-stub")
     shutil.rmtree(drop, ignore_errors=True)
@@ -704,15 +707,54 @@ def place_stub(machine, uid, stub):
         drop.chmod(0o755)
         (drop / "stub").write_bytes(stub)
         (drop / "stub").chmod(0o644)
-        place = ["install", "-D", "-m", "755", "/run/porelo-host-measure-stub/stub", STUB_HOME]
-        if as_developer(machine, uid, place, 60)[0] != 0:
+        place = ["install", "-D", "-m", "755", "/run/porelo-host-measure-stub/stub", STUB_HOME.format(name)]
+        if as_developer(machine, uid, place, 60, name=name)[0] != 0:
             return "the stub agent could not be placed"
     finally:
         shutil.rmtree(drop, ignore_errors=True)
     register = 'mkdir -p "$HOME/.local/share/porelo/agents.d" && cat > "$HOME/.local/share/porelo/agents.d/stub.yaml"'
-    if as_developer(machine, uid, ["sh", "-c", register], 60, f"executable: {STUB_HOME}\n")[0] != 0:
+    if as_developer(machine, uid, ["sh", "-c", register], 60, f"executable: {STUB_HOME.format(name)}\n", name)[0] != 0:
         return "the stub agent could not be registered"
     return None
+
+
+def make_developer(machine, stub, name=DEVELOPER):
+    """A throwaway developer as a person's account is made, with the stub, a vault and a checkout; uid and why."""
+    groups = (machine.read("/etc/group") or "").splitlines()
+    member = [g for g in ("porelo-people",) if any(line.startswith(g + ":") for line in groups)]
+    made = ["useradd", "--create-home", "--user-group", "--shell", "/bin/bash"]
+    if machine.command([*made, *(["--groups", ",".join(member)] if member else []), name], 60)[0] != 0:
+        return None, "the developer's account could not be made"
+    uid = machine.account(name)
+    if uid is None or machine.command(["loginctl", "enable-linger", name], 60)[0] != 0:
+        return uid, "the developer's session could not be kept"
+    for _ in range(30):
+        if machine.path(f"/run/user/{uid}/bus").exists():
+            break
+        machine.pause(1)
+    else:
+        return uid, "the developer's session did not start within 30 seconds"
+    why = place_stub(machine, uid, stub, name)
+    if why:
+        return uid, why
+    # A passphrase made for this run, on standard input only, and gone with the account.
+    passphrase = os.urandom(24).hex() + "\n"
+    for verb in ("init", "unlock"):
+        if as_developer(machine, uid, ["porelo", "vault", verb, "--passphrase-stdin"], 120, passphrase, name)[0] != 0:
+            return uid, f"the developer's vault could not {verb}"
+    checkout = (
+        'git init -q -b main "$HOME/work" && git -C "$HOME/work" -c user.name=measure'
+        " -c user.email=measure@example.invalid -c commit.gpgsign=false commit -q --allow-empty -m start"
+    )
+    if as_developer(machine, uid, ["sh", "-c", checkout], 60, name=name)[0] != 0:
+        return uid, "the developer's checkout could not be made"
+    return uid, None
+
+
+def start_task(machine, uid, number, name=DEVELOPER):
+    """One stub task started in default from the developer's checkout; its exit code."""
+    start = ["sh", "-c", 'cd "$HOME/work" && exec porelo task start --agent stub --no-input --detach "$1"', "sh"]
+    return as_developer(machine, uid, [*start, f"measure-{number}"], 900, name=name)[0]
 
 
 def developer_tasks(machine, report, sample, count):
@@ -720,45 +762,13 @@ def developer_tasks(machine, report, sample, count):
     stub, why = stub_agent(machine)
     if why:
         return why
-    groups = (machine.read("/etc/group") or "").splitlines()
-    member = [g for g in ("porelo-people",) if any(line.startswith(g + ":") for line in groups)]
-    made = ["useradd", "--create-home", "--user-group", "--shell", "/bin/bash"]
-    if machine.command([*made, *(["--groups", ",".join(member)] if member else []), DEVELOPER], 60)[0] != 0:
-        return "the developer's account could not be made"
-    uid = machine.account(DEVELOPER)
-    if uid is None or machine.command(["loginctl", "enable-linger", DEVELOPER], 60)[0] != 0:
-        return "the developer's session could not be kept"
-    for _ in range(30):
-        if machine.path(f"/run/user/{uid}/bus").exists():
-            break
-        machine.pause(1)
-    else:
-        return "the developer's session did not start within 30 seconds"
-    why = place_stub(machine, uid, stub)
+    uid, why = make_developer(machine, stub)
     if why:
         return why
-    # A passphrase made for this run, on standard input only, and gone with the account.
-    passphrase = os.urandom(24).hex() + "\n"
-    for verb in ("init", "unlock"):
-        if as_developer(machine, uid, ["porelo", "vault", verb, "--passphrase-stdin"], 120, passphrase)[0] != 0:
-            return f"the developer's vault could not {verb}"
-    checkout = (
-        'git init -q -b main "$HOME/work" && git -C "$HOME/work" -c user.name=measure'
-        " -c user.email=measure@example.invalid -c commit.gpgsign=false commit -q --allow-empty -m start"
-    )
-    if as_developer(machine, uid, ["sh", "-c", checkout], 60)[0] != 0:
-        return "the developer's checkout could not be made"
     before, disk = machine.slice_reading(uid), machine.disk("/home")
     for number in range(1, count + 1):
         start = machine.clock()
-        code, unused = as_developer(
-            machine,
-            uid,
-            ["sh", "-c", 'cd "$HOME/work" && exec porelo task start --agent stub --no-input --detach "$1"', "sh",
-             f"measure-{number}"],
-            900,
-        )  # fmt: skip
-        if code != 0:
+        if start_task(machine, uid, number) != 0:
             return f"task {number} of {count} did not start"
         put(report, "start.time", machine.clock() - start, "task", sample=sample, subject=f"task {number}")
     why = settled(machine)
@@ -779,18 +789,97 @@ def developer_tasks(machine, report, sample, count):
     return None
 
 
-def developer_gone(machine, count):
+def developer_gone(machine, count, name=DEVELOPER):
     """The developer and its tasks taken away, the stub agent with its home, whatever got made; each step tried."""
-    uid = machine.account(DEVELOPER)
+    uid = machine.account(name)
     if uid is not None:
         for number in range(1, count + 1):
             for verb in ("stop", "remove"):
-                as_developer(machine, uid, ["porelo", "task", verb, f"measure-{number}"], 300)
-        machine.command(["loginctl", "disable-linger", DEVELOPER], 60)
-        machine.command(["loginctl", "terminate-user", DEVELOPER], 60)
-        machine.command(["userdel", "--remove", "--force", DEVELOPER], 120)
-    if machine.account(DEVELOPER) is not None:
+                as_developer(machine, uid, ["porelo", "task", verb, f"measure-{number}"], 300, name=name)
+        machine.command(["loginctl", "disable-linger", name], 60)
+        machine.command(["loginctl", "terminate-user", name], 60)
+        machine.command(["userdel", "--remove", "--force", name], 120)
+    if machine.account(name) is not None:
         raise ValueError("the throwaway developer could not be removed; refusing to measure over leftovers")
+
+
+# How many developers a host holds: raised 1, 2, 4 and on, five stub tasks each, until a start fails or the memory's or
+# the CPU's pressure stays above its line, read twice half a minute apart.
+RAISE_LEVELS = (1, 2, 4, 8, 16, 32)
+RAISE_TASKS = 5
+PRESSURE_LINES = (("memory", 10.0), ("cpu", 80.0))
+
+
+def pressure(machine):
+    """The resource whose pressure stays above its line, or None; the kernel's share of time some task waited."""
+    for attempt in range(2):
+        if attempt:
+            machine.pause(30)
+        over = []
+        for resource, line in PRESSURE_LINES:
+            found = re.search(r"(?m)^some avg10=([0-9.]+)", machine.read(f"/proc/pressure/{resource}") or "")
+            if not found:
+                return f"the kernel tells no {resource} pressure"
+            if float(found[1]) >= line:
+                over.append(f"{resource} pressure stayed above {line:g}%")
+        if not over:
+            return None
+    return over[0]
+
+
+def raise_step(machine, report, inventory, tasks):
+    """One up in the room's shape, developers added a level at a time; the count held is a fact, then all go."""
+    made, held, why = [], 0, None
+    machine.dirty = True
+    try:
+        try:
+            why = settled(machine)
+            if not why:
+                machine.stand_in_organization()
+                code, output = machine.play(inventory, "up")
+                state, why = outcome(code, output, tasks)
+                stub = None
+                if state:
+                    stub, why = stub_agent(machine)
+                for level in RAISE_LEVELS if not why else ():
+                    while len(made) < level and not why:
+                        name = f"{DEVELOPER}-{len(made) + 1}"
+                        made.append(name)
+                        uid, why = make_developer(machine, stub, name)
+                        for number in range(1, RAISE_TASKS + 1) if not why else ():
+                            if start_task(machine, uid, number, name) != 0:
+                                why = f"task {number} of developer {len(made)} did not start"
+                                break
+                    why = why or settled(machine) or pressure(machine)
+                    if why:
+                        break
+                    held = level
+                else:
+                    why = why or f"the last level, {RAISE_LEVELS[-1]} developers, held"
+        except PROBLEMS:
+            why = "the raising could not run"
+        put(report, "developers", held or None, "task", subject="raised", why=f"no level held: {why}")
+        text = f"developers raised 1, 2, 4 and on, {RAISE_TASKS} stub tasks each, until {why}"
+        put(report, "work", text[:240], "task", subject="raised")
+    finally:
+        machine.holding = True
+        # Each developer is tried and down runs whatever one of them left; a leftover still ends the run after it.
+        left = []
+        for name in made:
+            try:
+                developer_gone(machine, RAISE_TASKS, name)
+            except PROBLEMS:
+                left.append(name)
+        code, output = machine.play(inventory, "down")
+        state, unused = outcome(code, output, tasks)
+        if code != 0 or state != "reached":
+            raise ValueError("down failed; refusing to measure over leftovers")
+        if left:
+            raise ValueError("a throwaway developer could not be removed; refusing to measure over leftovers")
+        machine.dirty = False
+        machine.holding = False
+        if machine.stopping:
+            raise KeyboardInterrupt
 
 
 def task_step(machine, report, inventory, tasks, count):
@@ -988,7 +1077,10 @@ def main(arguments=None, machine=None):
     parser.add_argument("--fresh", action="store_true")
     parser.add_argument("--distribution", choices=("releases", "snapshots"), default="releases")
     parser.add_argument("--tasks", type=int, choices=range(1, 13), default=2, metavar="1-12")
+    parser.add_argument("--raise", dest="raised", action="store_true")
     options = parser.parse_args(arguments)
+    if options.raised and "task" not in options.steps:
+        parser.error("--raise raises developers in the task step; give --steps task with it")
     machine = machine or Machine()
     lock = None
     try:
@@ -1020,7 +1112,7 @@ def main(arguments=None, machine=None):
                 print("a measuring lock remains; inspect the machine for leftovers", file=sys.stderr)
                 return 1
             with tempfile.NamedTemporaryFile(mode="w", dir=destination.parent, encoding="utf-8") as stream:
-                report = run(machine, given, options.steps, options.distribution, options.tasks)
+                report = run(machine, given, options.steps, options.distribution, options.tasks, options.raised)
                 os.chmod(stream.name, 0o600)
                 json.dump(report, stream, indent=2, allow_nan=False)
                 stream.write("\n")

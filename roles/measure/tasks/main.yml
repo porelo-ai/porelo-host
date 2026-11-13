@@ -16,7 +16,8 @@
       {{ ['python3', role_path ~ '/files/porelo-host-measure', '--out', measure_out,
           '--given', measure_given | to_json, '--distribution', measure_distribution | default('releases'),
           '--tasks', measure_tasks | default(2) | string, '--steps'] + (measure_steps | default(['idle']))
-         + (['--fresh'] if measure_fresh | default(false) | bool else []) }}
+         + (['--fresh'] if measure_fresh | default(false) | bool else [])
+         + (['--raise'] if measure_raise | default(false) | bool else []) }}
   async: 14400
   poll: 15
   register: __measure_run

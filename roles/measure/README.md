@@ -20,6 +20,7 @@ The local playbook accepts these options:
 | `measure_distribution` | Default `releases`; `snapshots` for a collection newer than the last release, `up` then installing the newest `porelo` and `porelo-host` that channel's index names. It stands in the result. |
 | `measure_steps` | Default `[idle]`; `task` measures stub tasks and `job` a Maven build in forge jobs, as below; `agent` is a placeholder with null and a reason. |
 | `measure_tasks` | Default `2`, from 1 to 12; how many stub tasks the `task` step starts in each sample. |
+| `measure_raise` | Default `false`; with `task`, also raise developers on one more `up`, as below. |
 
 Example: in a root terminal on the disposable machine, with Ansible and the collection already installed:
 
@@ -66,6 +67,14 @@ anonymous part, and the CPU the starts took; `/home` gives the disk they grew. A
 with the stub in its home, are taken away, each sample's whatever got made, and a developer that cannot be removed
 ends the run like a failed down. A stub does no work, so `work.time` is null with that reason. A refused step is null with its
 reason, and the later samples are not tried again.
+
+With `measure_raise` (`--raise`), the `task` step then brings the host up once more and raises developers 1, 2, 4 and
+on to 32, `porelo-measure-1` and on, each made as above with five stub tasks. After each level it waits for memory
+to settle and reads the kernel's pressure twice, half a minute apart. It stops at the first start that fails, or when
+the memory's pressure stays at 10% or more or the CPU's at 80% or more. The number of developers of the last level that
+held is kept as `developers`, and `work` says what stopped it; where no level held, or the kernel tells no pressure,
+`developers` is null with that reason. Every developer goes again, each tried even when one stays, and the host goes
+down; a developer left behind then ends the run as a failed down does. `--raise` without `task` is refused.
 Provider and offer are the person's short class labels. Collection version comes from its `MANIFEST.json` or
 `galaxy.yml`; installed versions come from dpkg's database before and after the run.
 
