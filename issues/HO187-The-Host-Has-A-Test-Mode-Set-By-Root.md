@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO187",
   "title": "The Host Has A Test Mode Set By Root",
-  "state": "Backlog",
+  "state": "Review",
   "size": "M",
   "priority": "Medium",
   "rank": 9,
@@ -71,7 +71,26 @@ The host's helper accepts only one signed by the person's current key in the app
 - **Tests.** Six role tests over the real tasks and the specs (the file, its removal, names and shapes refused, a
   link replaced, down's first plain removal and the sudo rule, the known switch), the sudo-rule test at seven, and a
   measure test for the switch, `--yes` and the records. A Sonnet reading found no Red; its Yellows are in.
-- **Not yet:** a VM run, once Core's B717 is in a snapshot.
+- **The VM run's own gaps.** The measure threw away what a refused start said, so its reason now keeps Porelo's last
+  two lines (cut to the report's 240-character text bound in the raising). And Porelo starts no agent that is not
+  signed in, so each throwaway developer now signs the stub in with `porelo vault login stub` at a terminal `script`
+  gives it; the stub's login writes a fixture, with no account, network or secret. Both red first, at unit level.
+
+## Measured (2026-11-13)
+
+On the build box, as one Molecule `measure` run in a guest (12 GB, 4 vCPUs), with the local hand-over of Porelo
+`95edd73df` (`0.5.1~snapshot.20261113T172922+local.20261113T172922`, which carries B717's `ed33945e0`) installed from
+its checked sums (`packages` `c59d0ba8…`), at porelo-host `22dafc8`, steps `task` and the raising:
+
+- **Runs 1 to 3** started no task. Run 3's reason, once kept: "the agent would start without a credential and fail on
+  its first request. Sign in first with 'porelo vault login stub'". So the test mode let the start past its
+  certificate; the measure's developer had not signed its agent in.
+- **Run 4** (19:02Z to 20:37Z, box load between 3.9 and 32.7 on 32 cores, mostly 10 to 20): each of the three samples
+  started its two stub tasks uncertified in the test mode, in 20.6 to 25.7 s each; the developer's slice peaked at
+  734 to 779 MB, 174 MB of it anonymous, with 8.9 to 10.3 s of CPU and 1.9 MB of `/home`. The raising held 16
+  developers with 5 stub tasks each and stopped at developer 25, whose fourth start failed while starting the task's
+  gate, credential proxy and helpers. Every developer and its records were removed, and `down` took the test mode
+  away.
 
 ## Acceptance
 
