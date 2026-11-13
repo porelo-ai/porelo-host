@@ -45,3 +45,14 @@ token GitHub does not take ends "foo-1: the push failed; not pushed: none. Git s
 'https://github.com': terminal prompts disabled", exit 1; the same for `foo-project`. Nothing names the 401. The names
 part could not be shown there: foo-project's file names its repositories as the forge does. The collection's move to the
 host's own program removes `porelo-host-push`, so both parts go to the host program that takes over the gathered push.
+
+**2026-11-13, on a local VM in the rented rehearsal** (porelo-host ad4aca4, porelo 0.5.1~snapshot.508), the
+`refused-token` step as the test identity with `porelo host push`:
+- by the project file's name, `porelo host push foo-project foo-1`: "foo-1: taken; pushed: foo-1", exit 0;
+- by an unknown name, `no-such-repository`: "the config for foo-project holds no repository 'no-such-repository';
+  available key/name pairs: foo-1/foo-1 foo-2/foo-2 foo-project/foo-project", exit 64;
+- with a token GitHub refuses: "foo-1: central forge github.com refused authentication (HTTP 401)", exit 1; no
+  prompt, nothing pushed.
+
+The refused token is said plainly, as the acceptance asks. The second name is still not shown: foo-project's file names
+each repository as central does, so a push by a different central name needs a project whose names differ.
