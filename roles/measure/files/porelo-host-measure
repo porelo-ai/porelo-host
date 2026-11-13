@@ -2,6 +2,7 @@
 """Measure a disposable local host; write only selected, typed facts, never command messages."""
 
 import argparse
+import base64
 import fcntl
 import hashlib
 import http.client
@@ -157,6 +158,43 @@ class Machine:
                 process.communicate()
                 raise
             return process.returncode, output
+
+    def forge(self, method, route, body=None):
+        """Ask the host's forge as its admin, through its socket; the token goes to curl on standard input only."""
+        uid = self.account("porelo-forge")
+        home = next(
+            (
+                line.split(":")[5]
+                for line in (self.read("/etc/passwd") or "").splitlines()
+                if line.startswith("porelo-forge:")
+            ),
+            None,
+        )
+        token = (self.read(f"{home}/.config/porelo-forge/api.token") or "").strip() if home else ""
+        if uid is None or not token:
+            raise ValueError("the host's forge has no admin token")
+        words = [
+            "curl",
+            "-sS",
+            "--max-time",
+            "120",
+            "-K",
+            "-",
+            "--unix-socket",
+            f"/run/user/{uid}/porelo-forge/http.sock",
+        ]
+        words += ["-X", method, "-H", "Content-Type: application/json", "-w", "\n%{http_code}"]
+        words += ["-d", json.dumps(body)] if body is not None else []
+        code, output = self.command(
+            [*words, f"http://localhost/api/v1/{route}"], 180, f'header = "Authorization: token {token}"\n'
+        )
+        text, unused, status = output.rpartition("\n")
+        if code != 0 or not status.strip().isdigit():
+            return 0, None
+        try:
+            return int(status), json.loads(text) if text.strip().startswith(("{", "[")) else None
+        except json.JSONDecodeError:
+            return int(status), None
 
     def fetch(self, url, timeout):
         """Read one published file anonymously; an answer other than 200 is an OSError."""
@@ -549,8 +587,10 @@ def run(machine, given, steps, distribution="releases", count=2):
             inventory = Path(directory) / "inventory.json"
             inventory.write_text(json.dumps(inventory_of(distribution, False, True, pins)))
             task_step(machine, report, inventory, tasks, count)
+    if "job" in steps:
+        job_step(machine, report, tasks, distribution, pins)
     for step in ("task", "agent", "job"):
-        if step == "task" and "task" in steps:
+        if step in ("task", "job") and step in steps:
             continue
         why = "not measured"
         if step == "agent":
@@ -790,6 +830,140 @@ def task_step(machine, report, inventory, tasks, count):
             machine.holding = False
             if machine.stopping:
                 raise KeyboardInterrupt
+
+
+# A job's load: porelo-buildtools at a pinned tag, built with Maven in N parallel jobs on the host's own forge, once
+# cold and once with the cache, at 1, 2 and 4 jobs and past the half of the host.
+JOB_SOURCE = "https://github.com/porelo-ai/porelo-buildtools.git"
+JOB_TAG = "v0.5.1"
+JOB_TREE = "61d76cd46270b88299b227928d49cfffa6143d45"
+JOB_REPOSITORY = "porelo-admin/measure-jobs"
+JOB_COUNTS = (("1 job", 1, None), ("2 jobs", 2, None), ("4 jobs", 4, None), ("4 jobs past the half", 4, 90))
+JOB_RUNS = ("cold", "with the cache")
+JOB_FIELDS = ("work", "work.time", "memory.peak", "cpu.time")
+JOB_WAIT = 40 * 60
+
+
+def job_workflow(count, label, run):
+    """N copies of one build; the cache key is the count's own, so its first run is cold and its second is not."""
+    key = re.sub(r"[^a-z0-9]+", "-", label)
+    parts = ", ".join(str(n) for n in range(1, count + 1))
+    return (
+        f"# {run}\non: push\njobs:\n  build:\n    runs-on: ubuntu-24.04\n"
+        f"    strategy:\n      matrix:\n        part: [{parts}]\n    steps:\n"
+        "      - uses: actions/cache@v4\n        with:\n          path: ~/.m2/repository\n"
+        f"          key: measure-{key}\n"
+        "      - shell: bash\n        env:\n          FORGE_TOKEN: ${{ github.token }}\n        run: |\n"
+        "          set -euo pipefail\n          mkdir -p /tmp/tree\n"
+        '          printf \'header = "Authorization: token %s"\\n\' "$FORGE_TOKEN" | curl -fsS -K - \\\n'
+        '              "$GITHUB_SERVER_URL/api/v1/repos/$GITHUB_REPOSITORY/archive/$GITHUB_SHA.tar.gz" \\\n'
+        "              | tar -xz -C /tmp/tree --strip-components=1\n"
+        "          cd /tmp/tree && JAVA_HOME=$JAVA_HOME_25_X64 ./mvnw -B -s settings.xml -DskipTests package\n"
+    )
+
+
+def job_runs(machine, report, label, count, runner):
+    """The pinned tree carried onto the forge, its build run cold and then cached; None, or why it stopped."""
+    code, unused = machine.forge("POST", "repos/migrate", {
+        "clone_addr": JOB_SOURCE, "repo_owner": "porelo-admin", "repo_name": "measure-jobs", "service": "git",
+    })  # fmt: skip
+    if code != 201:
+        return f"the build's repository could not be carried onto the forge ({code})"
+    code, branch = machine.forge("POST", f"repos/{JOB_REPOSITORY}/branches", {
+        "new_branch_name": "measure", "old_ref_name": JOB_TAG,
+    })  # fmt: skip
+    if code != 201 or ((branch or {}).get("commit") or {}).get("id") != JOB_TREE:
+        return f"the pinned tag {JOB_TAG} is not the tree it names"
+    for run in JOB_RUNS:
+        subject = f"{label}, {run}"
+        before = machine.slice_reading(runner) if runner is not None else {"cpu": None}
+        start = machine.clock()
+        content = base64.b64encode(job_workflow(count, label, run).encode()).decode()
+        route = f"repos/{JOB_REPOSITORY}/contents/.forgejo/workflows/measure.yml"
+        sha = None
+        if run != JOB_RUNS[0]:
+            sha = (machine.forge("GET", f"{route}?ref=measure")[1] or {}).get("sha")
+            if not sha:
+                return "the cold run's workflow could not be read back to change it"
+        code, made = machine.forge("PUT" if sha else "POST", route, {
+            "branch": "measure", "content": content, "message": f"measure: {subject}", **({"sha": sha} if sha else {}),
+        })  # fmt: skip
+        commit = ((made or {}).get("commit") or {}).get("sha")
+        if code not in (200, 201) or not commit:
+            return f"the workflow could not be committed ({code})"
+        status = None
+        while machine.clock() - start < JOB_WAIT:
+            machine.pause(15)
+            runs = (machine.forge("GET", f"repos/{JOB_REPOSITORY}/actions/tasks")[1] or {}).get("workflow_runs") or []
+            mine = [r.get("status") for r in runs if r.get("head_sha") == commit]
+            # A job has a row only once the runner took it, so a run is done when all its parts have one and ended.
+            if len(mine) >= count and all(state in ("success", "failure", "cancelled", "skipped") for state in mine):
+                status = "success" if all(state == "success" for state in mine) else "failure"
+                break
+        if status != "success":
+            return f"the build ended in {status or 'no answer'} within {JOB_WAIT // 60} minutes"
+        after = machine.slice_reading(runner) if runner is not None else {"peak": None, "cpu": None}
+        put(report, "work", f"porelo-buildtools {JOB_TAG} in {count} parallel Maven jobs", "job", subject=subject)
+        put(report, "work.time", machine.clock() - start, "job", subject=subject)
+        # A slice's peak cannot be set back for all readers, so after the cold run it would still be the cold run's.
+        peak, why = (
+            (after.get("peak"), "cgroup file is unavailable")
+            if run == JOB_RUNS[0]
+            else (None, "the runner's peak is still the cold run's")
+        )
+        put(report, "memory.peak", peak, "job", subject=subject, why=why)
+        cpu = None if None in (before.get("cpu"), after.get("cpu")) else after["cpu"] - before["cpu"]
+        put(report, "cpu.time", cpu, "job", subject=subject, why="cgroup file is unavailable")
+    return None
+
+
+def job_step(machine, report, tasks, distribution, pins):
+    """Each count on a host up in the forge's shape alone, its repository gone and the host down after it."""
+    for label, count, share in JOB_COUNTS:
+        with tempfile.TemporaryDirectory(prefix="porelo-measure-") as directory:
+            inventory = Path(directory) / "inventory.json"
+            shape = inventory_of(distribution, True, False, pins)
+            host = shape["all"]["hosts"]["localhost"]
+            host["forge_runner_capacity"] = count
+            if share is not None:
+                host["porelo_host_work_share"] = share
+            inventory.write_text(json.dumps(shape))
+            machine.dirty = True
+            made = False
+            try:
+                try:
+                    why = settled(machine)
+                    if not why:
+                        machine.stand_in_organization()
+                        code, output = machine.play(inventory, "up")
+                        state, why = outcome(code, output, tasks)
+                        if state:
+                            made = True
+                            why = job_runs(machine, report, label, count, machine.account("porelo-runner"))
+                except PROBLEMS:
+                    why = "the job step could not run"
+                if why:
+                    for run in JOB_RUNS:
+                        subject = f"{label}, {run}"
+                        for field in JOB_FIELDS:
+                            if not any(r["step"] == "job" and r.get("subject") == subject and r["field"] == field
+                                       for r in report["facts"]):  # fmt: skip
+                                put(report, field, None, "job", subject=subject, why=why)
+            finally:
+                machine.holding = True
+                if made:
+                    try:
+                        machine.forge("DELETE", f"repos/{JOB_REPOSITORY}")
+                    except PROBLEMS:
+                        pass
+                code, output = machine.play(inventory, "down")
+                state, unused = outcome(code, output, tasks)
+                if code != 0 or state != "reached":
+                    raise ValueError("down failed; refusing to measure over leftovers")
+                machine.dirty = False
+                machine.holding = False
+                if machine.stopping:
+                    raise KeyboardInterrupt
 
 
 def stopper(machine):

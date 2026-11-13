@@ -18,7 +18,7 @@ The local playbook accepts these options:
 | `measure_given` | Required `provider` and `offer` labels; no address, hostname, account or credential. |
 | `measure_fresh` | Default `false`; the person's word that this machine is fresh and disposable. |
 | `measure_distribution` | Default `releases`; `snapshots` for a collection newer than the last release, `up` then installing the newest `porelo` and `porelo-host` that channel's index names. It stands in the result. |
-| `measure_steps` | Default `[idle]`; `task` measures stub tasks, as below; `agent` and `job` are placeholders with null and a reason. |
+| `measure_steps` | Default `[idle]`; `task` measures stub tasks and `job` a Maven build in forge jobs, as below; `agent` is a placeholder with null and a reason. |
 | `measure_tasks` | Default `2`, from 1 to 12; how many stub tasks the `task` step starts in each sample. |
 
 Example: in a root terminal on the disposable machine, with Ansible and the collection already installed:
@@ -42,7 +42,17 @@ The script can also be run from the installed collection's `roles/measure/files/
 It writes one versioned JSON object with a `facts` array. Every fact has an allowed
 `field`, `value`, `unit` and `step`; observations also name their `sample` and resource `subject`.
 A null always has `why`. All numbers use bytes, seconds or count. Three independent up/down cycles per shape
-keep all three readings. `agent` and `job` remain absent even when requested.
+keep all three readings. `agent` remains absent even when requested.
+
+The `job` step brings the host up in the forge's shape alone, once for each count: 1, 2 and 4 parallel jobs, and 4
+past the half of the host with `porelo_host_work_share` at 90 on that `up` only. A count the forge's capacity check
+refuses is null with that refusal. On each, the forge's admin carries `porelo-buildtools` onto the forge, branches it
+at the pinned tag `v0.5.1` and checks that the tag is the commit it names, then commits a workflow that builds it with
+Maven in that many parallel jobs on `ubuntu-24.04`. It runs once cold and once with the count's own cache. Each run
+keeps its wall time from the commit to the last of its jobs' end, and the CPU the runner account took; the account's
+memory peak is kept for the cold run alone, since a slice's peak cannot be set back between runs.
+A failed or unanswered build, past 40 minutes, is null with its reason. The repository goes after each count, and
+the host goes down.
 
 The `task` step brings the host up in the room's shape, as the idle run does. In each of its three samples it then makes
 one throwaway developer, `porelo-measure`, as a person's account is made: an account in `porelo-people`, kept by

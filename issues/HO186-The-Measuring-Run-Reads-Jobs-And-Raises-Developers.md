@@ -40,3 +40,17 @@ takes and how many developers a host holds, so a size can rest on what work take
 - A local VM run's result file holds non-null `task` and `job` facts for every sample, or a null with the reason of a
   step that was refused.
 - The raising stops on its own and names the count; nothing the run made is left after it.
+
+## Built so far (2026-11-13)
+
+- **The `job` step.** `porelo-host-measure --steps job` brings the host up in the forge's shape alone for each of 1, 2
+  and 4 jobs and 4 past the half (`porelo_host_work_share` 90 on that `up` only); a count the capacity check refuses
+  is null with that refusal. The forge's admin, through the forge's socket with its token on curl's standard input,
+  carries `porelo-buildtools` onto the forge and branches it at `v0.5.1`, checked against the commit the tag names. A
+  workflow of N parallel Maven builds on `ubuntu-24.04` with the count's own cache runs cold, then with the cache.
+  Each keeps its wall time (until every part has ended), the runner's CPU, and its memory peak on the cold run. The
+  repository goes after each count, and the host goes down.
+- **Its tests.** Five unit tests over the stand-in: every count's runs and plays, the refused count, a failed build
+  null with the repository still removed, the workflow's YAML, and the token never on a command line. The forge's
+  task list grows a part a poll there, so a run is not counted done early.
+- **Not yet:** developers raised until something suffers, and the VM run that reads numbers.

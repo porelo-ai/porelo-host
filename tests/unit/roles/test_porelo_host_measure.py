@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).parents[3]
 SCRIPT = ROOT / "roles/measure/files/porelo-host-measure"
@@ -824,3 +825,144 @@ def test_a_run_from_the_snapshots_pins_the_newest_porelo_there(tmp_path):
     assert inventory["porelo_host_distribution"] == "snapshots"
     assert inventory["porelo_version"] == "0.5.1~snapshot.508"
     assert inventory["porelo_host_version"] == "0.5.1~snapshot.508"
+
+
+def job_standin(module, root, failing=()):
+    """The idle stand-in, also answering the forge's API as a host's forge would; jobs end as asked."""
+    machine = standin(module, root)
+    playbook = machine.command
+    machine.api = []
+    machine.parts = []
+    state = {"runs": 0, "commits": 0}
+
+    def command(arguments, timeout, given=None):
+        if arguments[0] == "ansible-playbook":
+            code, output = playbook(arguments, timeout)
+            if arguments[-1].endswith("up"):
+                with machine.path("/etc/passwd").open("a") as stream:
+                    stream.write("porelo-runner:x:996:996::/home/porelo-runner:/bin/sh\n")
+                runner = machine.path("/sys/fs/cgroup/user.slice/user-996.slice")
+                runner.mkdir(parents=True, exist_ok=True)
+                (runner / "memory.peak").write_text("7000\n")
+                (runner / "cpu.stat").write_text("usage_usec 2000000\n")
+                inventory = json.loads(Path(arguments[4]).read_text())["all"]["hosts"]["localhost"]
+                if inventory.get("forge_runner_capacity") == 4 and "porelo_host_work_share" not in inventory:
+                    return 2, json.dumps(
+                        {
+                            "v": 1,
+                            "state": "failed",
+                            "task": "forge : capacity | Stop when the runner's jobs and the VM pool would take more than the host's share for work",
+                            "msg": SECRET,
+                        }
+                    )
+                return 0, json.dumps({"v": 1, "state": "ok", "msg": SECRET})
+            return code, output
+        machine.calls.append((arguments, given))
+        return 0, SECRET
+
+    def forge(method, route, body=None):
+        machine.api.append((method, route, body))
+        if route.endswith("/contents/.forgejo/workflows/measure.yml"):
+            state["commits"] += 1
+            return 201, {"commit": {"sha": f"c{state['commits']}"}}
+        if route.endswith("/actions/tasks"):
+            # The runner takes one part a poll, so the rows grow; a run is done only when every part has one.
+            sha = f"c{state['commits']}"
+            state["polls"] = state.get("polls", 0) + 1 if state.get("sha") == sha else 1
+            state["sha"] = sha
+            failed = state["commits"] in failing
+            rows = [{"head_sha": sha, "status": "failure" if failed else "success"}] * state["polls"]
+            machine.parts.append(len(rows))
+            return 200, {"workflow_runs": rows}
+        if "/contents/" in route and method == "GET":
+            return 200, {"sha": "blob"}
+        if route.endswith("/branches"):
+            return 201, {"commit": {"id": module.JOB_TREE}}
+        return {"POST": 201, "DELETE": 204}.get(method, 200), {}
+
+    machine.command = command
+    machine.forge = forge
+    return machine
+
+
+def measure_jobs(tmp_path, failing=()):
+    module = load()
+    machine = job_standin(module, prepare(tmp_path / "machine"), failing)
+    out = tmp_path / "result.json"
+    code = module.main(["--fresh", "--out", str(out), "--given", "{}", "--steps", "job"], machine)
+    return code, json.loads(out.read_text()) if out.exists() else None, machine, module
+
+
+# A job's cost on the host's own forge: buildtools built at 1, 2 and 4 jobs and past the half, cold and with the cache.
+def test_the_job_step_builds_the_pinned_tree_cold_and_cached_at_each_count(tmp_path):
+    code, report, machine, module = measure_jobs(tmp_path)
+    assert code == 0
+    rows = {(r["field"], r.get("subject")): r for r in report["facts"] if r["step"] == "job"}
+    for label in ("1 job", "2 jobs", "4 jobs past the half"):
+        for run in ("cold", "with the cache"):
+            assert rows[("work.time", f"{label}, {run}")]["value"] > 0
+        assert rows[("memory.peak", f"{label}, cold")]["value"] == 7000
+        cached = rows[("memory.peak", f"{label}, with the cache")]
+        assert cached["value"] is None and "cold run" in cached["why"]
+    refused = rows[("work.time", "4 jobs, cold")]
+    assert refused["value"] is None and "share for work" in refused["why"]
+    ups = [inventory for name, inventory in machine.calls if isinstance(name, str) and name.endswith("up")]
+    assert [u.get("forge_runner_capacity") for u in ups] == [1, 2, 4, 4]
+    assert [u.get("porelo_host_work_share") for u in ups] == [None, None, None, 90]
+    assert all(u["porelo_host_forge"] and not u["porelo_host_room"] for u in ups)
+    plays = [name for name, unused in machine.calls if isinstance(name, str)]
+    assert plays == ["porelo.host.up", "porelo.host.down"] * 4
+    migrations = [body for method, route, body in machine.api if route == "repos/migrate"]
+    assert len(migrations) == 3 and all(b["clone_addr"] == module.JOB_SOURCE for b in migrations)
+    branches = [body for method, route, body in machine.api if route.endswith("/branches")]
+    assert all(b["old_ref_name"] == module.JOB_TAG for b in branches)
+    workflows = [body for method, route, body in machine.api if route.endswith("measure.yml")]
+    assert len(workflows) == 6
+    assert [body.get("sha") for body in workflows] == [None, "blob"] * 3, "the cached run changes the cold run's file"
+    assert max(machine.parts) == 4 and 3 in machine.parts, "a 4-job run waited past its third part"
+    deleted = [route for method, route, unused in machine.api if method == "DELETE"]
+    assert len(deleted) == 3, "the repository goes after each count's runs"
+    rows_agent = [r for r in report["facts"] if r["step"] == "agent"]
+    assert rows_agent and all(r["value"] is None for r in rows_agent)
+    assert not any(r["step"] == "job" and "not measured" in r.get("why", "") for r in report["facts"])
+
+
+# The workflow each count commits is one YAML document: N parts of one build, the count's own cache key.
+def test_the_job_workflow_runs_n_parts_of_the_pinned_build_with_the_counts_own_cache():
+    module = load()
+    workflow = yaml.safe_load(module.job_workflow(4, "4 jobs past the half", "cold"))
+    build = workflow["jobs"]["build"]
+    assert build["strategy"]["matrix"]["part"] == [1, 2, 3, 4]
+    assert build["steps"][0]["with"]["key"] == "measure-4-jobs-past-the-half"
+    assert "./mvnw -B -s settings.xml -DskipTests package" in build["steps"][1]["run"]
+    assert (
+        "Authorization: token" in build["steps"][1]["run"] and "github.token" in build["steps"][1]["env"]["FORGE_TOKEN"]
+    )
+
+
+# The forge's admin token is read by root and goes to curl on standard input, never onto a command line.
+def test_the_forge_is_asked_with_its_token_on_standard_input_only(tmp_path):
+    module = load()
+    root = prepare(tmp_path / "machine")
+    with (root / "etc/passwd").open("a") as stream:
+        stream.write("porelo-forge:x:997:997::/var/lib/porelo-forge:/bin/sh\n")
+    token = root / "var/lib/porelo-forge/.config/porelo-forge/api.token"
+    token.parent.mkdir(parents=True)
+    token.write_text(SECRET + "\n")
+    machine = module.Machine(root)
+    asked = []
+    machine.command = lambda arguments, timeout, given=None: asked.append((arguments, given)) or (0, '{"a": 1}\n201')
+    assert machine.forge("POST", "repos/migrate", {"x": 1}) == (201, {"a": 1})
+    arguments, given = asked[0]
+    assert SECRET not in " ".join(arguments) and SECRET in given
+    assert "/run/user/997/porelo-forge/http.sock" in arguments
+
+
+# A failed build is not a time: null with its reason, and the host still goes down clean.
+def test_a_failed_job_is_null_with_its_reason_and_the_repository_still_goes(tmp_path):
+    code, report, machine, module = measure_jobs(tmp_path, failing=(1,))
+    assert code == 0
+    first = [r for r in report["facts"] if r["step"] == "job" and r.get("subject") == "1 job, cold"]
+    assert first and all(r["value"] is None and "failure" in r["why"] for r in first)
+    deleted = [route for method, route, unused in machine.api if method == "DELETE"]
+    assert len(deleted) == 3

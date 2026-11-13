@@ -35,8 +35,8 @@ argument_specs:
         default: [idle]
         choices: [idle, task, agent, job]
         description: >-
-          Idle measures four shapes; task measures one throwaway developer's stub tasks in the room's shape; agent and
-          job are recorded as not measured.
+          Idle measures four shapes; task measures one throwaway developer's stub tasks in the room's shape; job
+          measures a Maven build in parallel forge jobs in the forge's shape; agent is recorded as not measured.
       measure_tasks:
         type: int
         default: 2
