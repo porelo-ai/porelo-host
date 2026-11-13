@@ -78,3 +78,20 @@ host admin runs as root over SSH with their card, on its standard input, never t
   with its time measured.
 - A failing entry command stops the timer's run and `down`, names the entry, and no `forget` runs after it.
 - `restic snapshots` shows each entry under its tag, at most its count kept.
+
+## The cut (2026-11-13)
+
+Agreed with the coordinator (2026-11-12, 23:57Z). Under today's rule only four collection programs reach a host, and
+host administration belongs to the pinned `porelo-host` package. So the plan's script `porelo-host-keep` and its
+one-time key command move to porelo, as `porelo-host store put|keep|restore`. The issue text went to Agent Core in the
+room to file in porelo (Backlog, Medium).
+
+What stays here is the `store` role:
+- restic, pinned by version and checked against restic's own `SHA256SUMS`;
+- root's hourly timer that runs `porelo-host store keep`;
+- `up` running `porelo-host store restore` before the homeserver;
+- `down` running `porelo-host store keep --all` first, stopping if it fails, and removing `/etc/porelo-host/store/` at
+  its end;
+- the units, the tests and the documents.
+
+This issue waits on porelo's issue, and the measured round trip waits on a test bucket and its keys from the operator.
