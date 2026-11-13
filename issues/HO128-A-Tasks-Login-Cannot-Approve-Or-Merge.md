@@ -7,7 +7,7 @@
   "title": "A Task's Login Cannot Approve Or Merge",
   "state": "Idea",
   "size": "-",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 7,
   "blockedBy": [],
   "covers": "A task's gate login on the forge can neither approve nor merge a pull request on `main`, by the forge's own rule, not only because the task never holds its token."

@@ -7,7 +7,7 @@
   "title": "A Host Reached By IPv6 Alone",
   "state": "Idea",
   "size": "-",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 13,
   "blockedBy": [],
   "covers": "A server reached by IPv6 alone is prepared: its public interface told by the IPv6 default route, the firewall and the forge holding for it."

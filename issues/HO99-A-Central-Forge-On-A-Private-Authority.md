@@ -7,7 +7,7 @@
   "title": "A Central Forge On A Private Authority",
   "state": "Idea",
   "size": "-",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 15,
   "blockedBy": [],
   "covers": "A central forge on a private authority is reached by the fetch, the read key, the migration and the push, from one setting."

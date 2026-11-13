@@ -7,7 +7,7 @@
   "title": "A Project That No Token Can Cure",
   "state": "Idea",
   "size": "-",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 17,
   "blockedBy": [],
   "covers": "A project with no usable central address has a state of its own, `waiting-for-address`, as no token can cure it"

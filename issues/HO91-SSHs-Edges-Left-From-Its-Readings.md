@@ -7,7 +7,7 @@
   "title": "SSH's Edges Left From Its Readings",
   "state": "Idea",
   "size": "-",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 11,
   "blockedBy": [],
   "covers": "The KRL validated before sshd reads it, a root key with an options prefix refused, and a lock ordered against a concurrent follow."

@@ -7,7 +7,7 @@
   "title": "The Host's Helpers Hardened",
   "state": "Idea",
   "size": "-",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 23,
   "blockedBy": [],
   "covers": "The people's SSH drop-in read first and a project registration retried after a forge timeout."

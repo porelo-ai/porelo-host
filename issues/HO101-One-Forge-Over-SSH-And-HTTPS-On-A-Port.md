@@ -7,7 +7,7 @@
   "title": "One Forge Over SSH And HTTPS On A Port",
   "state": "Idea",
   "size": "-",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 16,
   "blockedBy": [],
   "covers": "One forge's ssh address and its https address on a port count as one forge."

@@ -7,7 +7,7 @@
   "title": "Only The Gates' Sockets Forwarded",
   "state": "Idea",
   "size": "-",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 19,
   "blockedBy": [],
   "covers": "A person's SSH connection forwards only to the gates' sockets and their own return socket, and to no TCP address."

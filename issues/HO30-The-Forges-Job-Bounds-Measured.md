@@ -7,7 +7,7 @@
   "title": "The Forge's Job Bounds Measured",
   "state": "Idea",
   "size": "-",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 24,
   "blockedBy": [],
   "covers": "A running job's container measured to carry its bounds, beyond what Molecule reads from the files the roles write."

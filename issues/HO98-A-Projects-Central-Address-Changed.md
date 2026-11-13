@@ -7,7 +7,7 @@
   "title": "A Project's Central Address Changed",
   "state": "Idea",
   "size": "-",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 14,
   "blockedBy": [],
   "covers": "A signed change of a project's central address is named, not called carried over an absent repository."

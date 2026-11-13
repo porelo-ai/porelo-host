@@ -7,7 +7,7 @@
   "title": "The Forge's Admin Tokens A Project Helper Leaves",
   "state": "Idea",
   "size": "-",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 31,
   "blockedBy": [],
   "covers": "A run of the project helper leaves no lasting admin token on the host's forge"

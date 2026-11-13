@@ -7,7 +7,7 @@
   "title": "The Services' Podman Kept Small",
   "state": "Idea",
   "size": "-",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 22,
   "blockedBy": [],
   "covers": "Once a day, and after a missed day, each service account's Podman loses the images and volumes no container used for a set time."

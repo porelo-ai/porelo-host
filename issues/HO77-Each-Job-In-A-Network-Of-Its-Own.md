@@ -7,7 +7,7 @@
   "title": "Each Job In A Network Of Its Own",
   "state": "Idea",
   "size": "-",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 21,
   "blockedBy": [],
   "covers": "Concurrent jobs on a host cannot reach one another's network, and no host login reaches Forgejo over TCP."

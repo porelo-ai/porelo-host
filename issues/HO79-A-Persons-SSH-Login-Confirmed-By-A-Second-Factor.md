@@ -7,7 +7,7 @@
   "title": "A Person's SSH Login Confirmed By A Second Factor",
   "state": "Idea",
   "size": "M",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 20,
   "blockedBy": [],
   "covers": "A person's SSH login needs a second factor beside their key: FIDO2 touch, or TOTP through PAM."

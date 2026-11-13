@@ -7,7 +7,7 @@
   "title": "How Long The Host Has Not Read Its Organization",
   "state": "Idea",
   "size": "-",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 30,
   "blockedBy": [],
   "covers": "`org status` says when the host last read its organization, as a follow that cannot fetch keeps a removed member's login with nothing said"

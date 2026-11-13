@@ -7,7 +7,7 @@
   "title": "The Host On Fedora",
   "state": "Idea",
   "size": "-",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 28,
   "blockedBy": [],
   "covers": "The host on Fedora as on Ubuntu 26.04: SELinux, firewalld, `dnf` and a Molecule scenario on Fedora to measure."

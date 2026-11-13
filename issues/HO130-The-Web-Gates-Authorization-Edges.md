@@ -7,7 +7,7 @@
   "title": "The Web Gate's Authorization Edges",
   "state": "Idea",
   "size": "-",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 6,
   "blockedBy": [],
   "covers": "`web.sock` treats an empty `Authorization` as a token and passes the cookie beside it, takes any scheme, and no test holds its refusal of a second `Authorization` or of a request target that is not a path."

@@ -7,7 +7,7 @@
   "title": "Each Person's State Named By Status",
   "state": "Idea",
   "size": "S",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 29,
   "blockedBy": [],
   "covers": "`org status` leaves out revoked and refused logins and names a cut-off purge or a removal's window `pending`."

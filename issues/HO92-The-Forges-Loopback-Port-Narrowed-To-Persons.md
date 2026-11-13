@@ -7,7 +7,7 @@
   "title": "The Forge's Loopback Port Narrowed To Persons",
   "state": "Idea",
   "size": "-",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 12,
   "blockedBy": [],
   "covers": "Only the persons and the forge account reach the forge on `127.0.0.1:<git_port>`, by an nftables rule on their uids."

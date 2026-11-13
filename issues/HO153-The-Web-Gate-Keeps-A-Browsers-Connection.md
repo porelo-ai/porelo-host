@@ -7,7 +7,7 @@
   "title": "The Web Gate Keeps A Browser's Connection",
   "state": "Backlog",
   "size": "-",
-  "priority": "Medium",
+  "priority": "Low",
   "rank": 2,
   "blockedBy": [],
   "covers": "Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes."
