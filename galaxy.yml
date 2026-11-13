@@ -29,6 +29,7 @@ build_ignore:
   - extensions
   - tests
   - issues
+  - stats
   - mkdocs.yml
   - AGENTS.md
   - CLAUDE.md
