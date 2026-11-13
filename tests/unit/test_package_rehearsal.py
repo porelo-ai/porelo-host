@@ -260,6 +260,63 @@ def test_staged_packages_reach_up_as_its_local_packages_and_pins(tmp_path, packa
     assert not (staging / "porelo-packages.tar").exists()
 
 
+def unstaged_block(tmp_path, index, answer=0):
+    """The up script's package part with no local packages, its channel index served by a stand-in curl."""
+    text = (ROOT / "build/rehearse-move.sh").read_text()
+    begin = text.index('if [ -n "$digest" ]; then\n')
+    end = text.index("\nfi\n", begin) + 4
+    root = tmp_path / "root"
+    root.mkdir()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (tmp_path / "index").write_text(index)
+    curl = bin_dir / "curl"
+    curl.write_text(f'#!/bin/sh\necho "$*" >> {tmp_path}/curl.args\ncat {tmp_path}/index\nexit {answer}\n')
+    curl.chmod(0o755)
+    script = "set -euo pipefail\nstaging=/nonexistent digest=\n" + text[begin:end].replace("/root/", f"{root}/")
+    environment = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    done = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False, env=environment)
+    inventory = root / "porelo-host-inventory.yml.tmp"
+    asked = tmp_path / "curl.args"
+    return done, inventory.read_text() if inventory.exists() else "", asked.read_text() if asked.exists() else ""
+
+
+def test_without_local_packages_up_takes_the_newest_snapshots(tmp_path):
+    """Prevent a rehearsal asking the snapshots channel for the roles' release version, which it does not hold."""
+    index = "".join(
+        f"Package: {name}\nVersion: {version}\nArchitecture: amd64\n\n"
+        for name, version in [
+            ("porelo", "0.5.1~snapshot.99"),
+            ("porelo-host", "0.5.1~snapshot.508"),
+            ("porelo", "0.5.1~snapshot.508"),
+            ("porelo-agent-pi", "0.5.1~snapshot.600"),
+            ("porelo-host", "0.5.1~snapshot.100"),
+        ]
+    )
+    done, inventory, asked = unstaged_block(tmp_path, index)
+    assert done.returncode == 0, done.stderr
+    assert "/dists/snapshots/main/binary-amd64/Packages" in asked
+    assert '    porelo_version: "0.5.1~snapshot.508"\n' in inventory
+    assert '    porelo_host_version: "0.5.1~snapshot.508"\n' in inventory
+    assert "porelo_local_packages" not in inventory
+    assert "porelo 0.5.1~snapshot.508" in done.stdout
+
+
+def test_without_local_packages_a_channel_without_porelo_stops_up(tmp_path):
+    """Prevent up starting on the roles' defaults when the channel's index names no Porelo."""
+    done, inventory, unused = unstaged_block(tmp_path, "Package: porelo-host\nVersion: 0.5.1~snapshot.1\n\n")
+    assert done.returncode != 0
+    assert "holds no porelo" in done.stderr
+
+
+def test_without_local_packages_an_unreadable_channel_stops_up(tmp_path):
+    """Prevent up starting on the roles' defaults when the channel's index cannot be read."""
+    done, inventory, asked = unstaged_block(tmp_path, "", answer=22)
+    assert done.returncode != 0
+    assert "/dists/snapshots/main/binary-amd64/Packages" in asked
+    assert "porelo_version" not in inventory
+
+
 def test_remote_package_sets_use_separate_directories(tmp_path, package_inputs):
     """Prevent a package removed from a later handover from being installed out of an old cache."""
     run, root, unused_staging, digest = packages_block(tmp_path, package_inputs)

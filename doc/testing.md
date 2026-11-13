@@ -91,6 +91,8 @@ An agent's move can be rehearsed before a host is rented, on a VM made the same 
 
 `rented` runs a move on a server the operator rented: it claims the server, checks it, runs `up`
 and, on every exit, the host's `down`, and writes one line per step to a report directory outside the checkout, one per run.
+With `PORELO_HOST_DEB` set, `up` installs the staged packages; without it, the newest `porelo` and `porelo-host` the
+signed snapshots channel's index names, which `up`'s lines say, and it stops if the index cannot be read or names none.
 `--pool` names the systems of a VM pool, ubuntu and fedora at most once each, with 1 to 8 accounts each from
 `--pool-accounts` (unset 1); `--jobs` sets the forge's job capacity from 1 to 16. Both go into the host's inventory as
 `porelo_host_vm_pool` and `forge_runner_capacity`, and the check is asked for KVM and the pool, so a server that cannot

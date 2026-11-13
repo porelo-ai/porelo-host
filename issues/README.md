@@ -76,7 +76,6 @@ it is left out.
 | <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
 | <a id="ho163"></a>[HO163](HO163-A-Tasks-Signing-Key-Is-Known-Where-It-Pushes.md) | S | - | A task's signing key is registered with the forge account that receives its push, so its commits verify on the host's forge; what the central forge can take is measured first. |
 | <a id="ho165"></a>[HO165](HO165-The-Push-To-Central-Takes-Repository-Names-And-Says-A-Refused-Token.md) | XS | - | `porelo-host-push` takes the project's repository names as well as the forge's, and says plainly when the central forge refuses the token. |
-| <a id="ho185"></a>[HO185](HO185-A-Rehearsal-Without-Local-Packages-Installs-The-Snapshots.md) | S | - | A rented rehearsal given no PORELO_HOST_DEB installs Porelo and porelo-host from the snapshots it names, instead of failing at up on a release version the snapshots channel does not hold. |
 
 ## Implementing
 
@@ -109,6 +108,7 @@ it is left out.
 | <a id="ho168"></a>[HO168](HO168-Forgejo-Images-From-A-Cache-In-The-Build.md) | M | - | The Molecule job takes the forge role's three pinned images from a cache kept by their digests, so an outage of codeberg.org, code.forgejo.org or docker.io leaves it green; only the newest digests stay cached. |
 | <a id="ho148"></a>[HO148](HO148-The-Move-Check-Finds-The-Push-By-Its-Branch-And-Names-The-Answer.md) | XS | - | Bug: the move check finds the push in the forge repository that holds its branch, fails a Build nobody reads, and names what the forge, Git or the vault answered. |
 | <a id="ho147"></a>[HO147](HO147-A-Hosts-Builds-Also-Read-The-Upstream-Snapshots.md) | XS | - | Each organization the host registers holds `MAVEN_UPSTREAM_SNAPSHOTS_URL`, Sonatype's snapshots read anonymously, so a build resolves the snapshots the host's registry lacks. |
+| <a id="ho185"></a>[HO185](HO185-A-Rehearsal-Without-Local-Packages-Installs-The-Snapshots.md) | S | - | A rented rehearsal given no PORELO_HOST_DEB installs Porelo and porelo-host from the snapshots it names, instead of failing at up on a release version the snapshots channel does not hold. |
 | <a id="ho146"></a>[HO146](HO146-A-Lent-Forge-Token-Leaves-The-Persons-Token.md) | S | - | Porelo's git commands on the host's forge take a lent token of their own, so the person's `<forge>.person` token in the vault, which a task's builds read, stays valid. |
 | <a id="ho145"></a>[HO145](HO145-A-Host-Task-Reads-Its-Builds-From-The-Hosts-Forge.md) | S | - | A host task reads its Builds from the host's forge: the follow names `builds` in each project's file beside `fetch_from`. |
 | <a id="ho142"></a>[HO142](HO142-The-Persons-Vault-Holds-Their-Forge-Token-From-The-Start.md) | S | - | Bug: the person's vault holds `<forge>.person` from the start, made the one way `porelo-host-push` makes it. |

@@ -177,7 +177,7 @@ EOF
 }
 
 # With PORELO_HOST_DEB set, the host program and the packages beside it come from this checkout's staged set, as in
-# Molecule; without it, up installs from the signed repository.
+# Molecule; without it, up installs from the signed snapshots channel, at the newest Porelo and porelo-host there.
 stage_packages() {
     packages_digest=
     [ -n "${PORELO_HOST_DEB:-}" ] || return 0
@@ -299,6 +299,20 @@ if [ -n "$digest" ]; then
         [ -f "$packages/$package.version" ] || continue
         version=$(cat "$packages/$package.version")
         printf '%s\n' "$version" | grep -Eqx '[0-9][A-Za-z0-9.+:~_-]*'
+        printf '    %s_version: "%s"\n' "$(printf '%s' "$package" | tr - _)" "$version" >> /root/porelo-host-inventory.yml.tmp
+    done
+else
+    # Without local packages up installs from the signed snapshots channel, at the newest Porelo and porelo-host its index
+    # names: the roles' defaults are a release and an older snapshot, which that channel need not hold. apt still checks
+    # what it installs against the channel's signature.
+    channel=https://fuinorg.jfrog.io/artifactory/porelo-dist-deb/dists/snapshots
+    index=$(curl -fsSL --max-time 60 "$channel/main/binary-amd64/Packages")
+    for package in porelo-host porelo; do
+        version=$(printf '%s\n' "$index" | awk -v name="$package" '$1 == "Package:" { package = $2 }
+            $1 == "Version:" && package == name { print $2 }' | sort -V | tail -n 1)
+        printf '%s\n' "$version" | grep -Eqx '[0-9][A-Za-z0-9.+:~_-]*' \
+            || { echo "the snapshots channel holds no $package" >&2; exit 1; }
+        echo "without local packages: $package $version from the snapshots channel"
         printf '    %s_version: "%s"\n' "$(printf '%s' "$package" | tr - _)" "$version" >> /root/porelo-host-inventory.yml.tmp
     done
 fi

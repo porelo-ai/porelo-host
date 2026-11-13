@@ -799,6 +799,14 @@ elif name == 'apt-get':
             time.sleep(30)
 elif name == 'ansible-galaxy':
     event(name, args=args)
+elif name == 'curl':
+    # Only the snapshots channel's index, read on the host when no local packages are staged; anything else is a fetch
+    # the rehearsal must not make.
+    if not any(value.endswith('/dists/snapshots/main/binary-amd64/Packages') for value in args):
+        print('unexpected curl', file=sys.stderr)
+        sys.exit(99)
+    event(name, args=args)
+    print('Package: porelo-host\nVersion: 0.5.1~snapshot.9\n\nPackage: porelo\nVersion: 0.5.1~snapshot.9\n')
 elif name == 'systemd-run':
     unit = next(value.split('=', 1)[1] for value in args if value.startswith('--unit='))
     command = args[args.index('bash'):]
@@ -968,6 +976,7 @@ class RentedServer:
             "install",
             "apt-get",
             "ansible-galaxy",
+            "curl",
             "systemd-run",
             "systemctl",
             "ansible-playbook",
@@ -994,7 +1003,7 @@ class RentedServer:
             command.write_text(f"#!{sys.executable}\n" + RENTED_COMMANDS)
             command.chmod(0o755)
         fake(self.root / "build", "tools.sh", 'exec "$REHEARSAL_TEST_BIN/collection-build" "$@"\n')
-        for name in ("virsh", "curl", "podman", "scp"):
+        for name in ("virsh", "podman", "scp"):
             fake(self.bin, name, f'echo "unexpected {name}" >&2\nexit 99\n')
         self.key = tmp_path / "private key"
         self.key.write_text("stand-in private key\n")
