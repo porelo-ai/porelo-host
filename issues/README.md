@@ -71,7 +71,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho187"></a>[HO187](HO187-The-Measuring-Run-Stands-In-An-Organization-That-Admits-Its-Developers.md) | L | - | The measuring run's throwaway developers start certified tasks on the host, because the run stands in an organization, signed by a key held for the run only, that admits them to `default`; and the measure's promise about person records says what it now writes and takes away. |
+| <a id="ho187"></a>[HO187](HO187-The-Host-Has-A-Test-Mode-Set-By-Root.md) | M | - | A host has one place for test switches, `/etc/porelo-host/test-mode.json`, written only by root through the role from `porelo_host_test_switches` and taken away at `down`; its first switch lets Porelo start an uncertified task on a measuring host; the measuring role sets it loudly and only there. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
 | <a id="ho163"></a>[HO163](HO163-A-Tasks-Signing-Key-Is-Known-Where-It-Pushes.md) | S | - | A task's signing key is registered with the forge account that receives its push, so its commits verify on the host's forge; what the central forge can take is measured first. |

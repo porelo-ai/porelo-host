@@ -67,6 +67,6 @@ takes and how many developers a host holds, so a size can rest on what work take
   reason. Two unit tests, and the raising test checks each raised one's is stopped.
 - **The first VM run (2026-11-13), at 6f28b6d.** The `task` step's first developer and the raising step's first one
   were refused at their first start: the machine is a host, and a host starts no task without a certificate signed
-  by a person of its applied organization. The measuring run's stand-in organization admits nobody, so
-  [HO187](README.md#ho187) has to come first. The `job` step ran on.
+  by a person of its applied organization. The measuring run's stand-in organization admits nobody, so the host's
+  test mode, [HO187](README.md#ho187), has to come first. The `job` step ran on.
 - **Not yet:** the VM run that reads numbers for `task` and the raising.
