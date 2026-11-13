@@ -52,7 +52,9 @@ at the pinned tag `v0.5.1` and checks that the tag is the commit it names, then 
 Maven in that many parallel jobs on `ubuntu-24.04`. It runs once cold and once with the count's own cache. Each run
 keeps its wall time from the commit to the last of its jobs' end, and the CPU the runner account took; the account's
 memory peak is kept for the cold run alone, since a slice's peak cannot be set back between runs.
-A failed or unanswered build, past 40 minutes, is null with its reason. The repository goes after each count, and
+A failed or unanswered build, past 40 minutes, is null with its reason; a failed one's reason ends with the last two
+lines of its first failed job's own log, read from the forge's volume before the repository goes, without times or
+colours. The repository goes after each count, and
 the host goes down.
 
 The `task` step brings the host up in the room's shape, as the idle run does. In each of its three samples it then makes

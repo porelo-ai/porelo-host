@@ -859,6 +859,7 @@ def job_standin(module, root, failing=()):
             if arguments[-1].endswith("up"):
                 with machine.path("/etc/passwd").open("a") as stream:
                     stream.write("porelo-runner:x:996:996::/home/porelo-runner:/bin/sh\n")
+                    stream.write("porelo-forge:x:995:995::/home/porelo-forge:/usr/sbin/nologin\n")
                 runner = machine.path("/sys/fs/cgroup/user.slice/user-996.slice")
                 runner.mkdir(parents=True, exist_ok=True)
                 (runner / "memory.peak").write_text("7000\n")
@@ -889,7 +890,20 @@ def job_standin(module, root, failing=()):
             state["polls"] = state.get("polls", 0) + 1 if state.get("sha") == sha else 1
             state["sha"] = sha
             failed = state["commits"] in failing
-            rows = [{"head_sha": sha, "status": "failure" if failed else "success"}] * state["polls"]
+            rows = [
+                {"id": 300 + part, "head_sha": sha, "status": "failure" if failed else "success"}
+                for part in range(state["polls"])
+            ]
+            if failed:
+                # The forge keeps each job's log in its data volume, as Forgejo writes it: a line a step, timed.
+                logs = machine.path(f"/home/porelo-forge/{module.FORGE_DATA}/actions_log/{module.JOB_REPOSITORY}/2c")
+                logs.mkdir(parents=True, exist_ok=True)
+                (logs / "300.log").write_text(
+                    "2026-11-13T05:36:01.0000000Z Run ./mvnw\n"
+                    "2026-11-13T05:36:09.0000000Z \x1b[31m[ERROR]\x1b[0m Failed to execute goal on project release\n"
+                    "2026-11-13T05:36:09.5000000Z \n"
+                    "2026-11-13T05:36:10.0000000Z ::error::Process completed with exit code 1.\n"
+                )
             machine.parts.append(len(rows))
             return 200, {"workflow_runs": rows}
         if "/contents/" in route and method == "GET":
@@ -982,6 +996,13 @@ def test_a_failed_job_is_null_with_its_reason_and_the_repository_still_goes(tmp_
     assert code == 0
     first = [r for r in report["facts"] if r["step"] == "job" and r.get("subject") == "1 job, cold"]
     assert first and all(r["value"] is None and "failure" in r["why"] for r in first)
+    # The tail of the failed job's own log, its last lines without times or colours, so a reader knows which step.
+    assert all(
+        r["why"].endswith(
+            ": [ERROR] Failed to execute goal on project release | ::error::Process completed with exit code 1."
+        )
+        for r in first
+    ), first[0]["why"]
     deleted = [route for method, route, unused in machine.api if method == "DELETE"]
     assert len(deleted) == 3
 

@@ -69,4 +69,8 @@ takes and how many developers a host holds, so a size can rest on what work take
   were refused at their first start: the machine is a host, and a host starts no task without a certificate signed
   by a person of its applied organization. The measuring run's stand-in organization admits nobody, so the host's
   test mode, [HO187](README.md#ho187), has to come first. The `job` step ran on.
-- **Not yet:** the VM run that reads numbers for `task` and the raising.
+  Every build of the `job` step ended in failure, and the jobs' logs went with each count's repository.
+- **A failed job's log kept in its reason.** The reason of a failed build ends with the last two lines of its first
+  failed job's own log, read as root from the forge's volume (`actions_log`, plain or zstd) before the repository
+  goes, without times, colours or unprintable characters. One unit test over the stand-in's log.
+- **Not yet:** the VM run that reads numbers for `task`, the raising and `job`.

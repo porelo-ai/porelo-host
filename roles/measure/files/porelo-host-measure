@@ -976,6 +976,46 @@ def job_workflow(count, label, run):
     )
 
 
+# Where the host's forge keeps its data, under its account's home: the rootless volume its container mounts.
+FORGE_DATA = ".local/share/containers/storage/volumes/forgejo-data/_data"
+TIMED = re.compile(r"^\S+Z ")
+COLOURED = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def job_log_tail(machine, ids, lines=2):
+    """The last lines of the first failed job's log the forge kept, without times or colours; "" if none is kept.
+
+    Forgejo writes each job's log as actions_log/<repository>/<id % 256 in hex>/<id>.log and compresses a finished
+    one to .log.zst; read as root from the forge's volume before the repository goes."""
+    home = next(
+        (line.split(":")[5] for line in (machine.read("/etc/passwd") or "").splitlines()
+         if line.startswith("porelo-forge:")),
+        None,
+    )  # fmt: skip
+    if not home:
+        return ""
+    for task in ids:
+        if not isinstance(task, int) or isinstance(task, bool):
+            continue
+        base = machine.path(f"{home}/{FORGE_DATA}/actions_log/{JOB_REPOSITORY}/{task % 256:02x}/{task}.log")
+        text = None
+        try:
+            if base.is_file() and not base.is_symlink():
+                text = base.read_text(encoding="utf-8", errors="replace")
+            elif base.with_name(base.name + ".zst").is_file():
+                code, output = machine.command(["zstd", "-dcq", str(base) + ".zst"], 60)
+                text = output if code == 0 else None
+        except OSError:
+            text = None
+        if not text:
+            continue
+        kept = [COLOURED.sub("", TIMED.sub("", line)).strip() for line in text.splitlines()]
+        kept = ["".join(c for c in line if c.isprintable())[:200] for line in kept if line.strip()]
+        if kept:
+            return " | ".join(kept[-lines:])
+    return ""
+
+
 def job_runs(machine, report, label, count, runner):
     """The pinned tree carried onto the forge, its build run cold and then cached; None, or why it stopped."""
     code, unused = machine.forge("POST", "repos/migrate", {
@@ -1005,17 +1045,22 @@ def job_runs(machine, report, label, count, runner):
         commit = ((made or {}).get("commit") or {}).get("sha")
         if code not in (200, 201) or not commit:
             return f"the workflow could not be committed ({code})"
-        status = None
+        status, rows = None, []
         while machine.clock() - start < JOB_WAIT:
             machine.pause(15)
             runs = (machine.forge("GET", f"repos/{JOB_REPOSITORY}/actions/tasks")[1] or {}).get("workflow_runs") or []
-            mine = [r.get("status") for r in runs if r.get("head_sha") == commit]
+            rows = [r for r in runs if r.get("head_sha") == commit]
+            mine = [r.get("status") for r in rows]
             # A job has a row only once the runner took it, so a run is done when all its parts have one and ended.
             if len(mine) >= count and all(state in ("success", "failure", "cancelled", "skipped") for state in mine):
                 status = "success" if all(state == "success" for state in mine) else "failure"
                 break
         if status != "success":
-            return f"the build ended in {status or 'no answer'} within {JOB_WAIT // 60} minutes"
+            failed = [r.get("id") for r in rows if r.get("status") != "success"] if status else []
+            tail = job_log_tail(machine, failed)
+            return f"the build ended in {status or 'no answer'} within {JOB_WAIT // 60} minutes" + (
+                f": {tail}" if tail else ""
+            )
         after = machine.slice_reading(runner) if runner is not None else {"peak": None, "cpu": None}
         put(report, "work", f"porelo-buildtools {JOB_TAG} in {count} parallel Maven jobs", "job", subject=subject)
         put(report, "work.time", machine.clock() - start, "job", subject=subject)
