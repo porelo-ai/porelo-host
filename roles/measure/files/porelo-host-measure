@@ -945,7 +945,7 @@ def raise_step(machine, report, inventory, tasks):
             why = "the raising could not run"
         put(report, "developers", held or None, "task", subject="raised", why=f"no level held: {why}")
         text = f"developers raised 1, 2, 4 and on, {RAISE_TASKS} stub tasks each, until {why}"
-        put(report, "work", text[:320], "task", subject="raised")
+        put(report, "work", text[:240], "task", subject="raised")
     finally:
         machine.holding = True
         # Each developer is tried and down runs whatever one of them left; a leftover still ends the run after it.

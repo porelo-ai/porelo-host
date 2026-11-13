@@ -1051,7 +1051,7 @@ def raise_standin(module, root, pressure_from=None, refuse_from=None, psi=True, 
             name = arguments[2]
             if refuse_from and name.startswith("porelo-measure-") and int(name.rsplit("-", 1)[1]) >= refuse_from:
                 machine.calls.append((arguments, given))
-                return 1, "porelo: the host refused (exit 65): no certificate\n"
+                return 1, "porelo: the host refused (exit 65): no certificate" + ", and more" * 20 + "\n"
         return inner(arguments, timeout, given)
 
     machine.command = command
@@ -1099,7 +1099,8 @@ def test_a_refused_start_ends_the_raising_at_the_level_before(tmp_path):
     assert code == 0
     rows = raised(report)
     assert rows["developers"]["value"] == 2
-    assert rows["work"]["value"].endswith("did not start: porelo: the host refused (exit 65): no certificate")
+    assert len(rows["work"]["value"]) == 240
+    assert "did not start: porelo: the host refused" in rows["work"]["value"], "cut to the report's text bound"
     assert not any(line.startswith("porelo-measure") for line in machine.path("/etc/passwd").read_text().splitlines())
 
 
