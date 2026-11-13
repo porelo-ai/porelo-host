@@ -18,3 +18,8 @@ porelo_repository_url: https://fuinorg.jfrog.io/artifactory/porelo-dist-deb
 # The person's machine file, uploaded by the interface into the host's setup directory,
 # which names the project, its signing key and the keys; Porelo reads it, never this role (porelo's doc/hosts.md).
 porelo_machine_file: /etc/porelo-host/setup/machine.yml
+
+# The host's test switches, for measuring and test hosts alone: each turns one of the host's checks off.
+# None by default, and down always takes them away.
+porelo_host_test_switches: []
+porelo_host_test_why: "set by porelo.host's up from porelo_host_test_switches"

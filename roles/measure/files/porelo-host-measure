@@ -652,6 +652,10 @@ def inventory_of(distribution, forge, room, pins=None):
                     "porelo_host_kvm": False,
                     "porelo_host_forge": forge,
                     "porelo_host_room": room,
+                    # A measuring host has no person who could certify a task, so it is in the host's test mode:
+                    # its developers' tasks start uncertified, which up says loudly and down takes away.
+                    "porelo_host_test_switches": ["start-uncertified"],
+                    "porelo_host_test_why": "porelo-host-measure: a measuring host, given back after the run",
                     **(pins or {}),
                 }
             }
@@ -752,8 +756,8 @@ def make_developer(machine, stub, name=DEVELOPER):
 
 
 def start_task(machine, uid, number, name=DEVELOPER):
-    """One stub task started in default from the developer's checkout; its exit code."""
-    start = ["sh", "-c", 'cd "$HOME/work" && exec porelo task start --agent stub --no-input --detach "$1"', "sh"]
+    """One stub task started in default from the developer's checkout, uncertified in the test mode; its exit code."""
+    start = ["sh", "-c", 'cd "$HOME/work" && exec porelo task start --agent stub --no-input --yes --detach "$1"', "sh"]
     return as_developer(machine, uid, [*start, f"measure-{number}"], 900, name=name)[0]
 
 
@@ -815,7 +819,10 @@ def developer_gone(machine, count, name=DEVELOPER):
         machine.command(["loginctl", "disable-linger", name], 60)
         machine.command(["loginctl", "terminate-user", name], 60)
         machine.command(["userdel", "--remove", "--force", name], 120)
-    if machine.account(name) is not None:
+    # The host keeps each start's record in root's task records, which no account removal reaches.
+    records = machine.path(f"/var/lib/porelo-host/tasks/{name}")
+    shutil.rmtree(records, ignore_errors=True)
+    if machine.account(name) is not None or os.path.lexists(records):
         raise ValueError("the throwaway developer could not be removed; refusing to measure over leftovers")
 
 

@@ -716,6 +716,10 @@ def developer_standin(module, root, refuse_start=False, digest=None, homeserver=
             )
         if any("task start" in word for word in words):
             (machine.path("/sys/fs/cgroup/user.slice/user-1500.slice") / "cpu.stat").write_text("usage_usec 4500000\n")
+            # The host records an uncertified start in test mode as it records every start, in root's task records.
+            record = machine.path("/var/lib/porelo-host/tasks/porelo-measure")
+            record.mkdir(parents=True, exist_ok=True)
+            (record / "measure-1.json").write_text("{}")
             if refuse_start:
                 return 1, SECRET
         if words[-3:] == ["-p", "MemoryCurrent", "porelo-matrix-homeserver.service"]:
@@ -767,6 +771,18 @@ def test_the_task_step_starts_a_throwaway_developers_stub_tasks_and_takes_them_a
     assert plays == ["porelo.host.up", "porelo.host.down"] * 3
     assert all(call[1]["porelo_host_room"] and not call[1]["porelo_host_forge"] for call in machine.calls[:1])
     assert not any(r["step"] == "task" and r["value"] is None and "not measured" in r.get("why", "") for r in rows)
+
+
+def test_the_measuring_host_is_in_test_mode_and_its_starts_take_it_without_asking(tmp_path):
+    """Prevent a measuring host starting no task for want of a certificate, or a host left in test mode unsaid."""
+    code, unused_report, machine, unused_out = measure_tasks(tmp_path)
+    assert code == 0
+    ups = [call[1] for call in machine.calls if call[0] == "porelo.host.up"]
+    assert ups and all(up["porelo_host_test_switches"] == ["start-uncertified"] for up in ups)
+    assert not machine.path("/var/lib/porelo-host/tasks/porelo-measure").exists(), "the host's record of its starts"
+    assert all("porelo-host-measure" in up["porelo_host_test_why"] for up in ups)
+    starts = [" ".join(arguments) for arguments, unused in others(machine) if "task start" in " ".join(arguments)]
+    assert starts and all(" --no-input --yes " in start for start in starts)
 
 
 # A start that is refused must not leave a developer or its tasks, nor publish half a sample as whole.

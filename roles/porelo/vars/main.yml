@@ -9,3 +9,9 @@ __porelo_setup_dir: "{{ porelo_machine_file | dirname }}"
 __porelo_transport_kinds: [transport, conversation]
 # Where down reads the people's records before stopping anything; the unit tests name another directory in its place.
 __porelo_people_dir: /etc/porelo-host/people
+# The host's test mode, which the host program reads; the unit tests name another file in its place.
+__porelo_test_mode_path: /etc/porelo-host/test-mode.json
+__porelo_test_mode_owner: root
+# The test switches the host program knows; the role refuses any other name.
+__porelo_test_known: [start-uncertified]
+__porelo_test_switches: "{{ porelo_host_test_switches }}"

@@ -85,7 +85,9 @@ The script refuses without changing files unless given `--fresh` and root, and r
 `/etc/porelo-host/people` or `/var/lib/porelo-host/people`, and any `/etc/porelo-host`, `/var/lib/porelo-host` or forge account, as a `down` would
 remove what they hold. Existing homeserver data is conservatively refused by its
 service account or gate directory; the script cannot prove that a homeserver database contains no room.
-It never writes person records. A machine-wide lock refuses concurrent runs or leftovers, and stays after a failed `down`
+It never writes person records. Its hosts are in the host's [test mode](../../doc/task-certificates.md#test-mode)
+with `start-uncertified`, since no person on them could certify a task: each `up` says `TEST MODE` and each `down`
+takes it away, and the developers' stub tasks start with `--yes`, uncertified. A machine-wide lock refuses concurrent runs or leftovers, and stays after a failed `down`
 until the machine has been inspected and its leftovers removed. The result's directory is checked before any cycle starts, and the file appears only at the end.
 The generated inventory
 is private, contains only fixed local settings and the selected forge and room booleans, and is removed on exit.

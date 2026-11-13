@@ -42,6 +42,12 @@
           got {{ porelo_host_network | to_json if porelo_host_network is defined else 'undefined' }}
         quiet: true
 
+    # First of all, before any check may refuse: a host being given back keeps no check switched off.
+    - name: Take the host's test mode away
+      ansible.builtin.file:
+        path: /etc/porelo-host/test-mode.json
+        state: absent
+
     - name: Read whether the host has projects to check
       ansible.builtin.stat:
         path: /etc/porelo-host/projects

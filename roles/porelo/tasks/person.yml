@@ -2,6 +2,9 @@
 - name: person | Configure the organization and its follow timer
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/organization.yml"
 
+- name: person | Write or take away the host's test mode
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/test_mode.yml"
+
 - name: person | Allow people their own commands
   ansible.builtin.template:
     src: "{{ role_path }}/templates/porelo-host-person.sudoers.j2"

@@ -1,0 +1,59 @@
+---
+# The host's test mode: one root-only file of named switches, which the host program reads and Porelo asks it for
+# through `sudo porelo-host test-switches --json`. It is for measuring and test hosts alone; an empty list takes it
+# away, as down does. Each switch turns one check off on this host, so up says each one where it cannot be missed.
+- name: test_mode | Stop on a test switch the host program does not know
+  ansible.builtin.assert:
+    that:
+      - __porelo_test_switches is sequence
+      - __porelo_test_switches is not string
+      - __porelo_test_switches is not mapping
+      - __porelo_test_switches | select('string') | list | length == __porelo_test_switches | length
+      - __porelo_test_switches | difference(__porelo_test_known) | length == 0
+    fail_msg: >-
+      porelo_host_test_switches takes a list of {{ __porelo_test_known | join(', ') }};
+      got {{ __porelo_test_switches | to_json }}
+    quiet: true
+
+- name: test_mode | Read what stands where the test mode goes
+  ansible.builtin.stat:
+    path: "{{ __porelo_test_mode_path }}"
+    follow: false
+  register: __porelo_test_mode_found
+
+# A link or anything else there is replaced, never written through.
+- name: test_mode | Take away what is no plain file where the test mode goes
+  ansible.builtin.file:
+    path: "{{ __porelo_test_mode_path }}"
+    state: absent
+  when: __porelo_test_mode_found.stat.exists and not __porelo_test_mode_found.stat.isreg
+
+- name: test_mode | Write the host's test switches, for root alone
+  ansible.builtin.copy:
+    dest: "{{ __porelo_test_mode_path }}"
+    owner: "{{ __porelo_test_mode_owner }}"
+    group: "{{ __porelo_test_mode_owner }}"
+    follow: false
+    content: "{{ (__porelo_test_mode | to_json) ~ '\n' }}"
+    mode: "0600"
+  vars:
+    __porelo_test_mode:
+      v: 1
+      switches: "{{ __porelo_test_switches | unique }}"
+      why: "{{ porelo_host_test_why }}"
+  when: __porelo_test_switches | length > 0
+
+- name: test_mode | Take the host's test mode away
+  ansible.builtin.file:
+    path: "{{ __porelo_test_mode_path }}"
+    state: absent
+  when: __porelo_test_switches | length == 0
+
+- name: test_mode | Say the host is in test mode
+  ansible.builtin.debug:
+    msg: >-
+      TEST MODE: this host is a measuring or test host.
+      Switched off here: {{ __porelo_test_switches | unique | join(', ') }} ({{ porelo_host_test_why }}).
+      Never give it people's work; down takes the test mode away.
+  when: __porelo_test_switches | length > 0
+  tags: [porelo_host_note]

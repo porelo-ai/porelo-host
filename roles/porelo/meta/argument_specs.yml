@@ -47,8 +47,21 @@ argument_specs:
         description: The machine file, whose directory down removes.
   person:
     short_description: >-
-      The host program's six person sudo rules, organization configuration and maintenance timers.
+      The host program's seven person sudo rules, organization configuration, maintenance timers and test mode.
     options:
+      porelo_host_test_switches:
+        type: list
+        elements: str
+        choices: [start-uncertified]
+        default: []
+        description: >-
+          The host's test switches, for measuring and test hosts alone; each turns one of the host's checks off.
+          start-uncertified lets a task start without a certificate. Written to /etc/porelo-host/test-mode.json for
+          root alone; an empty list, and every down, takes it away.
+      porelo_host_test_why:
+        type: str
+        default: "set by porelo.host's up from porelo_host_test_switches"
+        description: Who set the test switches and for what, kept beside them.
       porelo_machine_file:
         type: path
         default: /etc/porelo-host/setup/machine.yml

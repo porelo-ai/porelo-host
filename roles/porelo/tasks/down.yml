@@ -1,5 +1,11 @@
 ---
 
+# First, and plainly: no variable an extra var could outrank decides it.
+- name: down | Take the host's test mode away
+  ansible.builtin.file:
+    path: /etc/porelo-host/test-mode.json
+    state: absent
+
 - name: down | Remove the collection's former host programs
   ansible.builtin.include_tasks: "{{ role_path }}/tasks/legacy_programs.yml"
 

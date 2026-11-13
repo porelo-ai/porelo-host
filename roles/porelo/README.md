@@ -9,8 +9,8 @@ dependencies and installs that local batch before comparing versions. The versio
 The follow service and runtime restoration call `porelo-host org follow`. Immediate refresh and pin renewal use
 `org refresh` and `org renew-pin`, with their input on standard input. No person helper, stop helper or token wrapper
 is installed.
-The packaged `forge issue-token`, `forge lend-token`, `org follow-now`, `task start *`, `task end *` and
-`task show *` commands have six separate sudo rules; `org follow-now`, which sudo allows with no argument at all (`""`), has the host follow its
+The packaged `forge issue-token`, `forge lend-token`, `org follow-now`, `task start *`, `task end *`,
+`task show *` and `test-switches --json` commands have seven separate sudo rules; `org follow-now`, which sudo allows with no argument at all (`""`), has the host follow its
 organization at once instead of at the timer's next pass. Command defaults reset the environment, disable `env_keep`
 and forbid `setenv`; `task sweep` runs from the daily timer. Arrivals use a published file's read ACL, with no sudo
 rule.
@@ -85,6 +85,9 @@ Certificates stay in root's private task records; token answers leave through st
 [task certificate contract](../../doc/task-certificates.md) for validation, Porelo's own check and token scopes.
 The push judge's replacement is unavailable. Arrivals are published with a project member read ACL; see
 [each push judged](../../doc/local-forge.md#each-push-judged-when-it-arrives).
+
+**The host's test mode.** The person entry writes `/etc/porelo-host/test-mode.json` from `porelo_host_test_switches`,
+for measuring and test hosts alone, and `down` always takes it away. See [test mode](../../doc/task-certificates.md#test-mode).
 
 The account-bound entry points (`main`, `project`, `down`) remain on disk for an explicit `porelo_account`
 when called directly; `up` and `down` do not call them.

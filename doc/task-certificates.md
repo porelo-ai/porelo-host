@@ -59,3 +59,20 @@ Push, pull and migration take the person's token from `sudo -n porelo-host-perso
 own commands on the host's forge ask for `--lend`. Each puts it into the vault entry `<forge>.person` at once for the person's own tools, since it
 replaces the one before. No stop
 waits for an identity's token any more.
+
+## Test mode
+
+A measuring or test host has no person who could certify a task. For such a host alone, root sets test switches:
+the person entry of the `porelo` role writes `porelo_host_test_switches` to `/etc/porelo-host/test-mode.json`, and
+`down` always takes it away. The file is a regular file owned by root, mode 0600, holding `{"v": 1, "switches":
+[...], "why": "..."}`. `switches` is an open set: the host program acts only on the names it knows, and a file that is
+missing, of another `v`, unreadable, a link or not root's means no switch at all. The role refuses a name the host
+program does not know. While a switch is on, `up` says it on a note line of its own, `TEST MODE`.
+
+A person asks for the switches with `sudo porelo-host test-switches --json`, which answers `{"switches": [...]}`. The
+first switch is `start-uncertified`: while it is on, `porelo-host task start <task>` with an empty standard input
+starts the task without a certificate. Porelo warns and asks first, and `--yes` answers for it. Without the switch,
+the host refuses such a start with 65, whatever Porelo asks. The host program's side is Porelo's.
+
+The measuring role sets `start-uncertified` in its own inventory only, so its throwaway developers start their stub
+tasks; it writes no person record.
