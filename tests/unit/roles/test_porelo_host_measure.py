@@ -716,8 +716,9 @@ def developer_standin(module, root, refuse_start=False, digest=None, homeserver=
             )
         if any("task start" in word for word in words):
             (machine.path("/sys/fs/cgroup/user.slice/user-1500.slice") / "cpu.stat").write_text("usage_usec 4500000\n")
-            # The host records an uncertified start in test mode as it records every start, in root's task records.
-            record = machine.path("/var/lib/porelo-host/tasks/porelo-measure")
+            # The host records an uncertified start in test mode as it records every start, in root's task records,
+            # under the project default.
+            record = machine.path("/var/lib/porelo-host/tasks/porelo-measure/default")
             record.mkdir(parents=True, exist_ok=True)
             (record / "measure-1.json").write_text("{}")
             if refuse_start:

@@ -15,15 +15,18 @@ by <login>`, the one principal, the five default extensions and no critical opti
 start. A refusal is shown on stderr and refuses the task. An answer for another task key, signer or project than the
 host read is refused with exit 69.
 
-The certificate is recorded once in `/var/lib/porelo-host/tasks/<login>/<task>.json`, owned by root with mode 0600
-inside mode 0700 directories. The record includes its canonical certificate line, task key fingerprint, signer,
-principals, key ID and validity. The certificate comment is discarded. Another certificate cannot replace the record,
+The certificate is recorded once in `/var/lib/porelo-host/tasks/<login>/<project>/<task>.json`, the project taken from
+its principal, owned by root with mode 0600 inside mode 0700 directories; an uncertified start in test mode is recorded
+under the project `default`. So one person's tasks of one name in two projects keep two records and two tokens. The
+record includes its canonical certificate line, task key fingerprint, signer, principals, key ID and validity. The certificate comment is discarded. Another certificate cannot replace the record,
 and a fingerprint cannot name two tasks. Retrying the same certificate replaces the token for that task.
 
 On a host running Forgejo, a successful start answers the task's token alone on stdout, with no newline. The consumer
 must capture this answer directly in the host gate, outside the task container; never display or log it. The helper
 writes no token file. On a host without Forgejo it records the certificate and answers no token.
-`sudo porelo-host-person task --end <task>` deletes only the named task's token and leaves the certificate record.
+The task's forge token is `porelo-task-<project>_<task>`. `sudo porelo-host task end <project> <task>` deletes only
+that project's task token and leaves the certificate record. A record of the older layout, `tasks/<login>/<task>.json`
+with the token `porelo-task-<task>`, is still listed, shown, swept and ended, and never moved.
 `sudo porelo-host-person task --show <fingerprint>` answers the JSON record to any unlocked admitted person, or root.
 Missing records are refused. Other non-token answers are JSON lines, and refusals go to stderr with nonzero status.
 

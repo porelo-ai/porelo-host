@@ -819,7 +819,8 @@ def developer_gone(machine, count, name=DEVELOPER):
         machine.command(["loginctl", "disable-linger", name], 60)
         machine.command(["loginctl", "terminate-user", name], 60)
         machine.command(["userdel", "--remove", "--force", name], 120)
-    # The host keeps each start's record in root's task records, which no account removal reaches.
+    # The host keeps each start's record in root's task records, <login>/<project>/<task>.json, which no account
+    # removal reaches; an uncertified start's project is default.
     records = machine.path(f"/var/lib/porelo-host/tasks/{name}")
     shutil.rmtree(records, ignore_errors=True)
     if machine.account(name) is not None or os.path.lexists(records):

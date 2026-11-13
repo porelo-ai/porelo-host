@@ -402,7 +402,7 @@ if FORGE_ON:
     # A task's token, made by a real task start of fb's: it reads its project's snapshots, writes none, and reads no
     # organization fb is not in. Everything it makes goes again, also when a step fails.
     other = "follow-other"
-    record = Path("/var/lib/porelo-host/tasks/fb/pkgread.json")
+    record = Path(f"/var/lib/porelo-host/tasks/fb/{PROJECT}/pkgread.json")
     try:
         code = forge("POST", "orgs", {"username": other, "visibility": "private"})[0]
         check(code == 201, "a second organization fb is not in", code)
@@ -435,11 +435,12 @@ if FORGE_ON:
             refused = package("GET", task_token, "porelo-fb", other)
             check(refused in ("401", "403", "404"), "the task's token refused another organization's package", refused)
     finally:
-        ended = run("runuser", "-u", "fb", "--", "sudo", "-n", HELPER, "task", "end", "pkgread")
+        ended = run("runuser", "-u", "fb", "--", "sudo", "-n", HELPER, "task", "end", PROJECT, "pkgread")
         check(ended.returncode == 0 or not record.exists(), "fb's task to end", ended.stderr)
         record.unlink(missing_ok=True)
-        if record.parent.exists() and not any(record.parent.iterdir()):
-            record.parent.rmdir()
+        for directory in (record.parent, record.parent.parent):
+            if directory.exists() and not any(directory.iterdir()):
+                directory.rmdir()
         for organization in (PROJECT, other):
             package("DELETE", forge_token, "porelo-admin", organization)
         code = forge("DELETE", f"orgs/{other}")[0]
@@ -580,7 +581,7 @@ if FORGE_ON:
     check(400 <= merged_alone("renamed") < 500, "the author not to merge alone under a renamed rule")
     # A task's pull request: opened by its own account with its task's token, approved and merged by its person, so a
     # project of one member merges under a required review. Its task goes again, also when a step fails.
-    record = Path("/var/lib/porelo-host/tasks/fb/prown.json")
+    record = Path(f"/var/lib/porelo-host/tasks/fb/{PROJECT}/prown.json")
     try:
         with tempfile.TemporaryDirectory(prefix="task-act-") as task_keys:
             made = run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "", "-f", f"{task_keys}/task")
@@ -642,11 +643,12 @@ if FORGE_ON:
             check(code == 200, "fb to merge its task's pull request under a required review", code)
     finally:
         forge("DELETE", "admin/users/follow-outsider?purge=true")
-        ended = run("runuser", "-u", "fb", "--", "sudo", "-n", HELPER, "task", "end", "prown")
+        ended = run("runuser", "-u", "fb", "--", "sudo", "-n", HELPER, "task", "end", PROJECT, "prown")
         check(ended.returncode == 0 or not record.exists(), "fb's pull request task to end", ended.stderr)
         record.unlink(missing_ok=True)
-        if record.parent.exists() and not any(record.parent.iterdir()):
-            record.parent.rmdir()
+        for directory in (record.parent, record.parent.parent):
+            if directory.exists() and not any(directory.iterdir()):
+                directory.rmdir()
     # Every person's running user manager holds porelo-people, which opens the host's Matrix gate to their porelod.
     people = run("getent", "group", "porelo-people").stdout.split(":")
     for login in ("fa", "fb"):

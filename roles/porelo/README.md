@@ -78,7 +78,7 @@ as `porelo-matrix`, including after a prior lock, with the homeserver administra
 `porelo/matrix/gate/admin-token` in the `porelo-matrix` account's config folder on stdin alone. Every command run as another account
 starts in `/` with that account's own `HOME`. See [Matrix access](../../doc/matrix.md) for the gate boundary.
 
-The program provides `forge issue-token`, `forge lend-token`, `task start <task>`, `task end <task>`,
+The program provides `forge issue-token`, `forge lend-token`, `task start <task>`, `task end <project> <task>`,
 `task show <fingerprint>` and root's `task sweep`. The person role configures their sudo rules and the daily persistent
 `porelo-host-task-sweep.timer` once its runtime and follow commands are available.
 Certificates stay in root's private task records; token answers leave through stdout alone. See the

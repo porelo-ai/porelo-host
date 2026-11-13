@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO188",
   "title": "A Host's Task Record Is One Project's",
-  "state": "Backlog",
+  "state": "Review",
   "size": "S",
   "priority": "Medium",
   "rank": 10,
@@ -52,3 +52,18 @@ under the old key on a running host is the operator's question, asked under
 - Two projects' tasks of one name of one person each keep their own record and token on the host; the end of one
   leaves the other's.
 - The host's documents and checks name the record and the token as porelo's host program keeps them.
+
+## What is built
+
+- `doc/task-certificates.md` names the record `tasks/<login>/<project>/<task>.json` (`default` for an uncertified start
+  in test mode), the token `porelo-task-<project>_<task>`, the end `porelo-host task end <project> <task>`, and that a
+  record of the older layout is still listed, shown, swept and ended, never moved. `roles/porelo/README.md` names the new
+  end.
+- The Molecule default scenario's `follow_act.py` reads its two task records under the project and ends them with the
+  project named; its clean-up takes the emptied project directory and the person's.
+- The measuring role already removes the whole `tasks/<login>` of its throwaway developer, so the project level changes
+  nothing there; its comment and its unit test's stand-in record go under `default`.
+- The sudo rule `task end *` takes the added argument unchanged.
+- That two projects' tasks of one name keep their own records and tokens and the end of one leaves the other's is
+  porelo's host program's behavior, proved by its own tests under its issue; the host's Molecule run checks the layout
+  once porelo's package with it is released.
