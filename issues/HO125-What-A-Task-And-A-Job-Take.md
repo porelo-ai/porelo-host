@@ -120,3 +120,14 @@ idle run makes. **Until this is done, a size that has to hold work does not rest
 - **Not yet:** the `job` step (a Maven build in a forge job at 1, 2 and 4 parallel jobs, cold and with the cache),
   `agent`, which needs a token on the operator's word, and the first run on a local VM, which goes through the
   coordinator. The issue stays in Backlog until those are done.
+
+## The first local VM run (2026-11-13)
+
+`porelo-host-measure --fresh --distribution snapshots --steps task --tasks 2` on a fresh bare VM, collection from
+ad4aca4: every sample's six fields are null, with the reason "porelo.host.porelo : install | Install Porelo from it",
+since the snapshots channel holds no `porelo=0.5.0`, the role's pin (the fault filed as [HO185](README.md#ho185)). The
+run cleaned up and ended 0. Two things stand before a reading:
+- the measuring inventory names the channel but no versions, so it needs what [HO185](README.md#ho185) gives the
+  rehearsal, or local packages;
+- `porelo-agent-stub` is in neither the releases nor the snapshots channel, so the `task` step's install would
+  refuse next. It is porelo's package to publish, or the run must take it as a local package.
