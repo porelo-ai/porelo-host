@@ -119,7 +119,7 @@ idle run makes. **Until this is done, a size that has to hold work does not rest
   mutations fail them: the cleanup dropped, and the passphrase on the command line.
 - **Not yet:** the `job` step (a Maven build in a forge job at 1, 2 and 4 parallel jobs, cold and with the cache),
   `agent`, which needs a token on the operator's word, and the first run on a local VM, which goes through the
-  coordinator. At the Coordinator's word it goes to Review at a clean point; those stay open.
+  coordinator. Those went to [HO186](README.md#ho186) on the Coordinator's word.
 
 ## The first local VM run (2026-11-13)
 
@@ -147,4 +147,5 @@ run cleaned up and ended 0. Two things stand before a reading:
   without them ends the run before the machine is touched.
 - **Its tests.** Three more unit tests: the stub fetched by version and digest and placed before the first start with
   root's copy gone, a stub unlike its digest null with nothing made, and the snapshots pinned by Debian's order.
-- **Still not here:** the `job` step and `agent`, and a VM run of this step that reads numbers.
+- **Not here:** the `job` step, developers raised until something suffers, `agent`, and a VM run that reads numbers.
+  They are [HO186](README.md#ho186)'s; this issue's Review covers what is built above.
