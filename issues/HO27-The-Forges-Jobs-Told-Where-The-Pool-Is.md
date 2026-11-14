@@ -23,8 +23,8 @@ on GitHub the variable does not exist.
 
 - `porelo-machines acceptance` takes the pool only from `--pool <file>`, so a workflow that should use the pool on the
   forge would differ from its GitHub copy.
-- The pool's file is mounted read-only into every job and its run key is the organization's secret `PORELO_POOL_SSH`
-  ([HO12](README.md#ho12)), sent into each project's organization; `acceptance --kind` exists; beyond those, only
+- The pool's file is mounted read-only into every job and its run key is the organization's secret `PORELO_POOL_SSH`,
+  sent into each project's organization; `acceptance --kind` exists; beyond those, only
   the switch is missing.
 - It needs, in porelo-buildtools: `acceptance` reading `PORELO_MACHINES_POOL` when `--pool` is not given, empty
   counting as unset, and `sweep --mine` doing nothing where the job rented from the pool.
