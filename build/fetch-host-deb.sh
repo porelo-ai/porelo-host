@@ -1,5 +1,5 @@
 #!/bin/sh
-# Fetches the porelo-host package the role pins, and porelo of the same run, from Porelo's repository, for a Molecule
+# Fetches the porelo-host package the role holds the host to, its floor, and porelo of the same run, from Porelo's repository, for a Molecule
 # run with no local hand-over (GitHub's runner): both come from one porelo build, as a local hand-over does. apt takes
 # them only signed by the key with the pinned fingerprint, as a host's up does; nothing of the machine's own apt
 # sources or state is read or changed, and no root is needed.
@@ -11,13 +11,18 @@ fail() { printf 'FAILED: %s\n' "$*" >&2; exit 1; }
 dest=$1
 root=$(cd "$(dirname "$0")/.." && pwd)
 defaults=$root/roles/porelo/defaults/main.yml
+names=$root/roles/porelo/vars/main.yml
 pinned() { sed -n "s/^$1: \"\{0,1\}\([^\"]*\)\"\{0,1\}\$/\1/p" "$defaults"; }
-version=$(pinned porelo_host_version)
+pinned_var() { sed -n "s/^$1: \"\{0,1\}\([^\"]*\)\"\{0,1\}\$/\1/p" "$names"; }
+# The role's porelo_host_version is a template (empty on snapshots, the newest); the floor is the one plain version.
+version=$(pinned_var __porelo_host_floor)
 url=$(pinned porelo_repository_url)
 key_url=$(pinned porelo_key_url)
 fingerprint=$(pinned porelo_key_fingerprint)
 [ -n "$version" ] && [ -n "$url" ] && [ -n "$key_url" ] && [ -n "$fingerprint" ] \
     || fail "cannot read the pins in $defaults"
+# A plain Debian version, never a template of the role's: apt would look for a package of that name.
+printf '%s\n' "$version" | grep -Eqx '[0-9][A-Za-z0-9.+~-]*' || fail "the host program's pin is no Debian version: $version"
 # A published snapshot is in the snapshots distribution, a release in releases.
 case $version in *~snapshot.*) distribution=snapshots ;; *) distribution=releases ;; esac
 [ ! -e "$dest" ] && [ ! -L "$dest" ] || fail "directory already exists: $dest"

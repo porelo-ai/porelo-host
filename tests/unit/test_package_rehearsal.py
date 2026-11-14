@@ -3,6 +3,7 @@
 import json
 import ast
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -366,10 +367,38 @@ def test_the_runner_stages_the_pinned_published_packages_before_molecule():
 
 
 def test_fetch_host_deb_reads_every_pin_it_needs_from_the_role():
-    """The fetch takes version, repository, key and fingerprint from the role's defaults, never its own copy."""
+    """The fetch takes version, repository, key and fingerprint from the role, never its own copy."""
     defaults = yaml.safe_load((ROOT / "roles/porelo/defaults/main.yml").read_text())
     script = (ROOT / "build/fetch-host-deb.sh").read_text()
-    for pin in ("porelo_host_version", "porelo_repository_url", "porelo_key_url", "porelo_key_fingerprint"):
+    for pin in ("porelo_repository_url", "porelo_key_url", "porelo_key_fingerprint"):
         assert f"pinned {pin}" in script and pin in defaults
     assert defaults["porelo_key_fingerprint"] not in script and "jfrog" not in script
     assert "--with-colons --show-keys" in script and "signed-by=" in script
+
+
+def test_fetch_host_deb_reads_a_plain_version_and_goes_on_to_the_key(tmp_path):
+    """Prevent CI's Molecule fetching a package named by the role's Jinja default instead of the floor's version.
+
+    The role's porelo_host_version is a template since the snapshots channel takes the newest; the fetch needs the one
+    version the collection is held to, a plain Debian version, and must get past reading its pins to the key.
+    """
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "curl-arguments"
+    curl = bin_dir / "curl"
+    curl.write_text(f"#!/bin/sh\nprintf '%s\\n' \"$@\" > {calls}\nexit 22\n")
+    curl.chmod(0o755)
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path)}
+    done = subprocess.run(
+        ["sh", str(ROOT / "build/fetch-host-deb.sh"), str(tmp_path / "packages")],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert done.returncode != 0
+    assert "cannot fetch Porelo's key" in done.stderr, done.stderr
+    assert calls.exists(), "the pins were read, so the key was asked for"
+    names = yaml.safe_load((ROOT / "roles/porelo/vars/main.yml").read_text())
+    assert "pinned_var __porelo_host_floor" in (ROOT / "build/fetch-host-deb.sh").read_text()
+    assert re.fullmatch(r"[0-9][A-Za-z0-9.+~-]*", names["__porelo_host_floor"])
