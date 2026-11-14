@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO170",
   "title": "The Rehearsal Starts A Task That Reads Every Repository",
-  "state": "Implementing",
+  "state": "Backlog",
   "size": "XS",
   "priority": "Medium",
   "rank": 7,
@@ -41,6 +41,10 @@ favour.
 5. **Older porelo.** While the host's porelo refuses the start option as unknown, the part is SKIPPED with porelo's
    own words. The step goes on with the other tasks, so the rehearsal stays green on an older snapshot.
 6. **Docs.** `doc/testing.md`'s list of what the `tasks` step proves gets the line.
+
+**How far it got.** Steps 1 to 6 are on `main` (0af0afc), and a local VM's rehearsal against Core's local build
+of B619 (aa7d65c3) showed `rehearsal-all` reading foo-1, foo-2 and foo-project, its write refused and nothing left
+after its removal. Left: the reading by another model and the hand-over to Review; no work lies on a branch.
 
 The step is a rehearsal script, so a VM run of the rehearsal is its proof. It is proven against Core's local build of
 B619, handed over with its sha256, not against porelo's `main`.
