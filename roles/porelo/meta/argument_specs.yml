@@ -12,11 +12,14 @@ argument_specs:
     options:
       porelo_version:
         type: str
-        default: "0.5.0"
-        description: Exact Debian version of the porelo package.
+        description: >-
+          Exact Debian version of the porelo package; 0.5.0 on the releases channel, and on the snapshots channel
+          empty, the newest the channel holds.
       porelo_host_version:
         type: str
-        description: Exact Debian version of the porelo-host package, from the same repository and distribution.
+        description: >-
+          Exact Debian version of the porelo-host package, from the same repository and distribution; on the
+          snapshots channel empty by default, the newest the channel holds, never older than 0.5.1~snapshot.474.
       porelo_local_packages:
         type: path
         default: ""

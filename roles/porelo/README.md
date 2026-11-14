@@ -1,8 +1,11 @@
 # porelo
 
 `tasks_from: install` installs the exact Debian versions `porelo_version` and `porelo_host_version` of `porelo` and
-`porelo-host` from the same signed apt repository and distribution. A dpkg version comparison refuses an older host
-program and names both versions. Snapshot pins must name the complete Debian build version.
+`porelo-host` from the same signed apt repository and distribution. On the snapshots channel both are empty unless the
+inventory names them, and an empty one installs the newest the channel's signed index holds; `up` names the versions it
+took on a note line. A dpkg version comparison refuses a host program older than the named version, or else older than
+`0.5.1~snapshot.474`, whose verbs the collection calls, and names both versions. Snapshot pins must name the complete
+Debian build version.
 With `porelo_local_packages` set to a root-owned package directory on the host, up refreshes the repository for
 dependencies and installs that local batch before comparing versions. The version variables still pin both programs.
 
@@ -101,8 +104,8 @@ Ubuntu 26.04, run as root on the host itself (`-c local`).
 | Variable | Default | What it is |
 |---|---|---|
 | `porelo_distribution` | `{{ porelo_host_distribution \| default('releases') }}` | Which of Porelo's published distributions (`releases` or `snapshots`) the host installs from. |
-| `porelo_version` | `0.5.0` | Exact Debian version of Porelo; package availability is not verified. |
-| `porelo_host_version` | `{{ porelo_version }}` | Exact Debian version of the host program, from the same source. |
+| `porelo_version` | `0.5.0`; on snapshots empty | Exact Debian version of Porelo; empty takes the channel's newest. |
+| `porelo_host_version` | `0.5.1~snapshot.474`; on snapshots empty | Exact Debian version of the host program, from the same source; empty takes the channel's newest. |
 | `porelo_local_packages` | empty | Root's directory of local Debian packages; empty selects the signed repository. |
 | `porelo_key_url` | in `defaults/main.yml` | Where Porelo's package key is fetched from. |
 | `porelo_key_fingerprint` | in `defaults/main.yml` | The fingerprint the package key must have. |

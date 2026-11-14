@@ -51,18 +51,21 @@
 # are made by the host program, each with its own subordinate ID range, which the script would give them alike.
 - name: install | Install Porelo from it, with its filter and rootless networking
   ansible.builtin.apt:
-    name:
-      - "porelo={{ porelo_version }}"
-      - "porelo-host={{ porelo_host_version }}"
-      - porelo-message-sluice-filter
-      - uidmap
-      - slirp4netns
-      - passt
-      - catatonit
-      - acl
+    name: >-
+      {{ __porelo_pinned_programs
+         + ['porelo-message-sluice-filter', 'uidmap', 'slirp4netns', 'passt', 'catatonit', 'acl'] }}
     state: present
     update_cache: true
   when: porelo_local_packages | length == 0
+
+# A program whose version nobody named is the newest the channel's signed index holds, just refreshed above.
+- name: install | Install the newest Porelo the channel holds where no version is named
+  ansible.builtin.apt:
+    name: "{{ __porelo_newest_programs }}"
+    state: latest  # noqa: package-latest
+  when:
+    - porelo_local_packages | length == 0
+    - __porelo_newest_programs | length > 0
 
 - name: install | Require an absolute directory for local packages
   ansible.builtin.assert:
@@ -98,13 +101,20 @@
     argv: >-
       {{ ['apt-get', 'install', '-y', '-qq', '--allow-downgrades', '--no-remove']
          + (__porelo_local_packages.files | map(attribute='path') | sort | list)
-         + ['porelo=' ~ porelo_version, 'porelo-host=' ~ porelo_host_version,
-            'porelo-message-sluice-filter', 'uidmap', 'slirp4netns', 'passt', 'catatonit', 'acl'] }}
+         + __porelo_pinned_programs + __porelo_newest_programs
+         + ['porelo-message-sluice-filter', 'uidmap', 'slirp4netns', 'passt', 'catatonit', 'acl'] }}
   environment:
     DEBIAN_FRONTEND: noninteractive
   register: __porelo_local_installed
   changed_when: __porelo_local_installed.stdout | trim | length > 0
   when: porelo_local_packages | length > 0
+
+- name: install | Read the installed Porelo package version
+  ansible.builtin.command:
+    argv: [dpkg-query, --show, '--showformat=${Version}', porelo]
+  register: __porelo_package
+  changed_when: false
+  check_mode: false
 
 - name: install | Read the installed host package version
   ansible.builtin.command:
@@ -113,9 +123,18 @@
   changed_when: false
   check_mode: false
 
+- name: install | Say which versions the host took as the newest
+  ansible.builtin.debug:
+    msg: >-
+      No version named for {{ __porelo_newest_programs | join(' and ') }}: took the newest of the
+      {{ porelo_distribution }} channel. Installed porelo {{ __porelo_package.stdout }}
+      and porelo-host {{ __porelo_host_package.stdout }}.
+  when: __porelo_newest_programs | length > 0
+  tags: [porelo_host_note]
+
 - name: install | Compare the installed host package with the pinned version
   ansible.builtin.command:
-    argv: [dpkg, --compare-versions, "{{ __porelo_host_package.stdout }}", ge, "{{ porelo_host_version }}"]
+    argv: [dpkg, --compare-versions, "{{ __porelo_host_package.stdout }}", ge, "{{ porelo_host_version or __porelo_host_floor }}"]
   register: __porelo_host_version_comparison
   changed_when: false
   failed_when: __porelo_host_version_comparison.rc not in [0, 1]
@@ -125,7 +144,8 @@
   ansible.builtin.assert:
     that: __porelo_host_version_comparison.rc == 0
     fail_msg: >-
-      installed porelo-host {{ __porelo_host_package.stdout }} is older than the required {{ porelo_host_version }}
+      installed porelo-host {{ __porelo_host_package.stdout }} is older than the required
+      {{ porelo_host_version or __porelo_host_floor }}
     quiet: true
 
 # Every published agent is installed (operator's decision, 2026-10-29): a person's project chooses among them without

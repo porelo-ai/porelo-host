@@ -78,11 +78,14 @@ def test_a_host_package_without_the_push_judge_is_refused_before_upgrade_cleanup
     refusal = next(i for i, t in enumerate(tasks) if "__porelo_host_version_comparison.rc == 0" in str(t))
     assert refusal < cleanup
     defaults = yaml.safe_load((ROOT / "roles/porelo/defaults/main.yml").read_text())
+    names = yaml.safe_load((ROOT / "roles/porelo/vars/main.yml").read_text())
     # A host installs from Porelo's repository, which publishes snapshots by run number and never a local build's
     # +local version. 462 (porelo 7b1517f20) is the first published with the judge-push verb, socket-started units
-    # under systemd 258+ and a task's push of its own branch.
-    release, snapshot = re.fullmatch(r"([0-9.]+)~snapshot\.([0-9]+)", defaults["porelo_host_version"]).groups()
+    # under systemd 258+ and a task's push of its own branch. The floor holds the snapshots channel's newest to it, and
+    # the releases channel's pin is that floor.
+    release, snapshot = re.fullmatch(r"([0-9.]+)~snapshot\.([0-9]+)", names["__porelo_host_floor"]).groups()
     assert (release, int(snapshot) >= 462) == ("0.5.1", True)
+    assert f"else '{names['__porelo_host_floor']}'" in defaults["porelo_host_version"]
 
 
 def test_expected_follow_refusals_are_not_counted_as_failures():

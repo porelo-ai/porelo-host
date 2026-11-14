@@ -10,7 +10,7 @@
   "priority": "Low",
   "rank": 1,
   "blockedBy": [],
-  "covers": "`up`'s waiting stop and `porelo_host_needs`, which nothing in the collection fills since HO42, are removed with what only they use, or the issue says why they must stay."
+  "covers": "`up`'s waiting stop and `porelo_host_needs`, which nothing in the collection fills any more, are removed with what only they use, or the issue says why they must stay."
 }
 ```
 

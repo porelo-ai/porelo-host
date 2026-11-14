@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO192",
   "title": "The Snapshots Channel Without Versions Installs Its Newest",
-  "state": "Implementing",
+  "state": "Review",
   "size": "S",
   "priority": "Highest",
   "rank": 1,
@@ -46,3 +46,21 @@ version, so the role took its release defaults. [HO185](README.md#ho185) fixed t
 - The unit tests, seen red without the change and green with it.
 - On a fresh VM, `up` with the snapshots channel and no versions passes the install and prints the note with both
   versions.
+
+## As built
+
+The plan as written. `__porelo_pinned_programs` and `__porelo_newest_programs` in the role's vars split Porelo's two
+programs by whether a version is named. The newest are installed with `state: latest` after the pinned install
+refreshed the index, and the local-packages path takes their bare names. `__porelo_host_floor` holds the host program
+to `0.5.1~snapshot.474` when no version is named. The wiring test now reads that floor instead of the old default.
+
+Red first: `test_the_snapshots_channel_without_versions_installs_its_newest` failed with
+`porelo=0.5.0` on the snapshots channel before the change. The note and floor tests failed too, and the pinned tests
+passed before and after.
+
+On a fresh local VM (Ubuntu 26.04, 2026-11-14), the collection built from this commit was installed, and
+`porelo.host.up` ran with an inventory naming only its version, `alpha`, network 7 and
+`porelo_host_distribution: snapshots`. The install passed: Porelo installed, the newest installed, the floor held. The
+note line read "No version named for porelo and porelo-host: took the newest of the snapshots channel. Installed porelo
+0.5.1~snapshot.540 and porelo-host 0.5.1~snapshot.540." `up` stopped afterwards at the machine file the window uploads,
+which this VM was not given.

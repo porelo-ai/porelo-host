@@ -15,3 +15,12 @@ __porelo_test_mode_owner: root
 # The test switches the host program knows; the role refuses any other name.
 __porelo_test_known: [start-uncertified]
 __porelo_test_switches: "{{ porelo_host_test_switches }}"
+# Porelo's own programs: those whose version is named are installed exactly, the others as the newest the channel holds.
+__porelo_pinned_programs: >-
+  {{ (['porelo=' ~ porelo_version] if porelo_version | length > 0 else [])
+     + (['porelo-host=' ~ porelo_host_version] if porelo_host_version | length > 0 else []) }}
+__porelo_newest_programs: >-
+  {{ ([] if porelo_version | length > 0 else ['porelo'])
+     + ([] if porelo_host_version | length > 0 else ['porelo-host']) }}
+# The oldest host program whose verbs the collection calls (org follow-now); a newest one is held to it.
+__porelo_host_floor: "0.5.1~snapshot.474"

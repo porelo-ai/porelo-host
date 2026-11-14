@@ -73,6 +73,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A host set up from the snapshots channel without versions installs the newest Porelo.** `porelo_version` and
+  `porelo_host_version` default to empty there, and `up` installs the newest `porelo` and `porelo-host` the channel's
+  signed index holds and names both on a note line, instead of failing on the release pin `porelo=0.5.0`. A host
+  program older than `0.5.1~snapshot.474` is still refused; the releases channel keeps its pins.
 - **A task's account pushes only its own person's task branches.** The host's push judge refuses an update or deletion
   from `porelo-<login>` to any ref but `porelo/<task>` of that person's recorded tasks, so one task's token no longer
   writes another person's task branch, a tag or a new branch. Force-pushing its own `porelo/<task>`, as an amend does,
