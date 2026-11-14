@@ -73,6 +73,12 @@ it is left out.
 | <a id="ho186"></a>[HO186](HO186-The-Measuring-Run-Reads-Jobs-And-Raises-Developers.md) | L | - | The measuring run reads a Maven build in a forge job at 1, 2 and 4 parallel jobs and past the half, cold and with the cache; raises developers until a start fails or pressure stays high; keeps an agent's fixed start null until a token is the operator's word; and a run on a local VM reads numbers. |
 | <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
 
+## Implementing
+
+| # | Size | Blocked by | What it covers |
+|---|---|---|---|
+| <a id="ho191"></a>[HO191](HO191-The-Docs-Say-What-The-Code-Does.md) | M | - | Every sentence of the README, `doc/` but its decisions' history, and the changelog's latest section that names a command, flag, path, default, state, message or behavior is borne out by the code on `main`, or a bug is filed for the code. |
+
 ## Review
 
 | # | Size | Blocked by | What it covers |
