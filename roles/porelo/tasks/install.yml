@@ -134,7 +134,12 @@
 
 - name: install | Compare the installed host package with the pinned version
   ansible.builtin.command:
-    argv: [dpkg, --compare-versions, "{{ __porelo_host_package.stdout }}", ge, "{{ porelo_host_version or __porelo_host_floor }}"]
+    argv:
+      - dpkg
+      - --compare-versions
+      - "{{ __porelo_host_package.stdout }}"
+      - ge
+      - "{{ porelo_host_version or __porelo_host_floor }}"
   register: __porelo_host_version_comparison
   changed_when: false
   failed_when: __porelo_host_version_comparison.rc not in [0, 1]
