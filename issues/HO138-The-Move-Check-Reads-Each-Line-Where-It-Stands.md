@@ -40,7 +40,7 @@ and `porelo/sluice-2`, its pull request #2 merged with the Build green. Still:
   project has no `builds:` block, instead of `nothing`.
 - **The conversation:** the task joined the project's conversation, by `porelo task status` or a message the task
   sent into it in `porelo talk log`. The line names the task's account in the room, not the development machine's
-  agent name. The waking message's line stays as it is, until the room's tunnel joins the two.
+  agent name. The waking message's line stays as it is.
 - **Red first:** unit tests with stand-ins for `porelo` and `git`: a branch other than `porelo/<task>`, no `builds:`
   block, and a task that joined its conversation. Each is red on today's script.
 

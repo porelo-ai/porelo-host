@@ -32,19 +32,19 @@ a fault in the host's setup can stop its own work.
 - **The move:** `porelo task start -p <project> -r porelo-host --agent claude`, attended, from the image `porelo.yml`
   names.
 - **Inside the task:** the skills fetched and checked, this issue set to Review, the forge's Build read through the
-  `forgejo` reader and green, and the agent answering in the room as `Agent Host`.
+  `forgejo` reader and green, and the agent answering in the host's room as `Agent Host`.
 - **The way back, once:** the task's open work fetched from the host's forge into this machine's checkout, the upstream
   switched back, the local session resumed.
 - **Not in the task:** `build/molecule.sh`, `build/rehearse-move.sh` and any VM test, which need KVM and libvirt; `up` or
   `down` on the move's own host; machine credentials. Those stay on this machine, so the agent keeps a session here
-  beside the task. The reading by Codex CLI or Antigravity CLI is done from outside, as the procedure says.
+  beside the task. The reading before the hand-over is done on the host, by a reader started apart from the task.
 
 ## Acceptance
 
 - The task follows `porelo-host` through the gate, its pushes reach the host's Forgejo, and the build there is green
   and read through the `forgejo` reader.
-- This issue is taken from start to Review inside the task, and the agent is reached in the room as `Agent Host`, from
-  the nickname `Host` on the repository `porelo-host` in porelo-ai's `project.yml`.
+- This issue is taken from start to Review inside the task, and the agent is reached in the host's room as
+  `Agent Host`, from the nickname `Host` on the repository `porelo-host` in porelo-ai's `project.yml`.
 - The way back is shown once: the task's open work fetched from the host's forge into this machine's checkout, the
   upstream switched back, the local session resumed, as that procedure's way back says.
 
