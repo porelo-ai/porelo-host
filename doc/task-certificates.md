@@ -1,6 +1,6 @@
 # Task certificates and host tokens
 
-The root helper accepts a task certificate through `sudo porelo-host-person task <task>`. Standard input is bounded
+The host program accepts a task certificate through `sudo porelo-host task start <task>`. Standard input is bounded
 at 16 KiB and contains one Ed25519 SSH user certificate. Task names match `[a-z0-9][a-z0-9._-]{0,63}`.
 OpenSSH reads the certificate from a private temporary file and verifies its signature. Its signing CA must be the
 calling person's current, unrevoked key in `/etc/porelo-host/organization/applied.json`. Its one principal
@@ -27,16 +27,16 @@ writes no token file. On a host without Forgejo it records the certificate and a
 The task's forge token is `porelo-task-<project>_<task>`. `sudo porelo-host task end <project> <task>` deletes only
 that project's task token and leaves the certificate record. A record of the older layout, `tasks/<login>/<task>.json`
 with the token `porelo-task-<task>`, is still listed, shown, swept and ended, and never moved.
-`sudo porelo-host-person task --show <fingerprint>` answers the JSON record to any unlocked admitted person, or root.
+`sudo porelo-host task show <fingerprint>` answers the JSON record to any unlocked admitted person, or root.
 Missing records are refused. Other non-token answers are JSON lines, and refusals go to stderr with nonzero status.
 
-The daily persistent `porelo-host-task-sweep.timer` runs root's `porelo-host-person sweep`, deleting tokens whose
+The daily persistent `porelo-host-task-sweep.timer` runs root's `porelo-host task sweep`, deleting tokens whose
 recorded certificates have expired. It skips hosts without `forge.conf`. One person's API failure does not prevent
 the remaining deletions; any failure still returns nonzero. Expiration cleanup can lag until the daily sweep runs.
 
-Admission creates the person's forge users without tokens. `sudo porelo-host-person forge-token` replaces all tokens
+Admission creates the person's forge users without tokens. `sudo porelo-host forge issue-token` replaces all tokens
 of the calling person's forge login but its lends younger than a day and answers one token alone on stdout: the person's token, which
-their vault keeps as `<forge>.person`. `sudo porelo-host-person forge-token --lend` makes a lend beside it, a token for
+their vault keeps as `<forge>.person`. `sudo porelo-host forge lend-token` makes a lend beside it, a token for
 one of Porelo's commands named `porelo-host-lend-<UTC time>-<uuid>`, deletes only the login's lends a day old or
 older, and answers it the same way. A lend left over until then reaches no more than the person's own token, of
 the same login and scopes, and lies in no file, so Porelo's gate commands and task starts leave the vault's token valid and two
@@ -58,10 +58,9 @@ following links.
 Porelo's task start is the consumer: it keeps the answered token in the task's vault entry for its gate, which pushes
 as `porelo-<login>` on the host's loopback. The host keeps no lasting gate token.
 
-Push, pull and migration take the person's token from `sudo -n porelo-host-person forge-token` at each run; Porelo's
-own commands on the host's forge ask for `--lend`. Each puts it into the vault entry `<forge>.person` at once for the person's own tools, since it
-replaces the one before. No stop
-waits for an identity's token any more.
+The person's own tools take their token from `sudo -n porelo-host forge issue-token`, which replaces the one before;
+Porelo's own commands on the host's forge ask `sudo -n porelo-host forge lend-token` for a lend. The collection installs
+no push wrapper or vault token wrapper, and no stop waits for an identity's token.
 
 ## Test mode
 

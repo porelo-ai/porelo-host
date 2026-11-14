@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   organization follow, gate measurement and pool acceptance use native commands.
 
 - Pin the `porelo` and `porelo-host` packages from the same signed source, compare the installed host version,
-  and restrict person sudo access to six packaged token, task and follow rules with a reset environment.
+  and restrict person sudo access to seven packaged token, task, follow and test-mode rules with a reset environment.
   Remove host program sources.
 - Move the development VM tool to `build/`, outside the installed collection, and retain only the pre-receive hook,
   pre-installation check, measuring program and pool VM give-back as collection script exceptions.
@@ -40,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as OCI archives, `<digest>.tar` each; `up` loads an image from its archive into the account's podman, checked
   against its pin, instead of pulling it. The Build's `molecule` job takes the three images from a cache kept by their
   digests, so an outage of codeberg.org, code.forgejo.org or docker.io no longer turns it red.
-- **A person has the host follow its organization at once.** The person sudo rules add a sixth,
+- **A person has the host follow its organization at once.** The person sudo rules add
   `porelo-host org follow-now` with no argument at all (`""`), so an admitted person, as `porelo host follow` does, starts one
   follow pass and waits for it instead of for the five-minute timer; anyone else is refused by sudo.
 - **The half of the host for jobs and the VM pool is a setting.** `porelo_host_work_share`, the percent of the
@@ -51,16 +51,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A host's builds also read the upstream snapshots.** Each new organization on the host holds
   `MAVEN_UPSTREAM_SNAPSHOTS_URL`, Sonatype's snapshots, which a repository's `forge` profile reads without a token for
   the `org.fuin.porelo` snapshots the host's registry does not hold, such as a parent pom.
-- **Porelo's commands on the host's forge take a lend of their own.** `porelo-host-person forge-token --lend` makes a
+- **Porelo's commands on the host's forge take a lend of their own.** `porelo-host forge lend-token` makes a
   token of the person's login for one command, beside the person's token, and deletes only lends a day old;
-  `forge-token` replaces every token but the lends younger than a day. A gate command or a task start that asks for a
+  `forge issue-token` replaces every token but the lends younger than a day. A gate command or a task start that asks for a
   lend no longer deletes the `<forge>.person` token a task's builds watch reads from the vault.
 - **A task on the host reads its Builds from the host's forge.** Each project's file on the host names `builds` beside
   `fetch_from`: the forge's API on the git port and the person's `<forge>.person` vault entry, so a guarded project's
   task reads the Builds of its pushes while its `project.yml` stays the same everywhere.
 - **A host carries single repositories of a project.** Where the organization's state names the host's
   `repositories` of a project, the follow takes only those and the project's own; one named no longer is taken off the
-  host's forge by `porelo-host-project take-off`, held while its work is not at the central forge, its deploy key
+  host's forge by `porelo-host project take-off`, held while its work is not at the central forge, its deploy key
   deleted with a token or named for its owner. `org status` says `not-carried` and `held` per repository.
 - **A task's token also reads packages** (`read:package`), so a task can resolve its project's snapshots from the
   host's forge. It reads those of every organization its person's task account is in and writes none; Porelo's task
@@ -93,9 +93,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repository's work is not known to be at central, unless the host is given back anyway.
 - **The forge's web gate names its two working addresses when it refuses a foreign Host.** The addresses come
   from the forge's settings; other refusals and unreadable settings keep an empty response.
-- **A person puts their forge token in the vault before the first push.** `porelo-host-forge-token` puts the admitted
-  person's token for the host's forge into Porelo-Vault as `<forge>.person` before their tools read the forge over git.
-  Push and pull refresh it through the same helper; a refused vault write warns while the transfer continues.
 - **The host reads the project file's `central` alone.** A row's `upstream`, a host's address the project file no
   longer holds, no longer decides whether the project's own repository stays open to merges, and the host keeps none.
 - **A project's `why` in `org status` says each like reason of its repositories once,** as `<names>: <reason>`, and

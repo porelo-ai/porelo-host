@@ -426,15 +426,8 @@ Starting that merge task automatically is not built.
 
 ## Credentials belong to their destination
 
-Each name in `porelo_host_forge_agents` gets its own local forge account, `agent-<name>`, when repositories are
-configured. Its team can write the organization's code, pull requests and issues, and read actions and packages; it
-cannot create repositories. Its token is written into `/etc/porelo-host/forge/agents/<name>.token`, owned by root, mode
-`0600`, in a `0700` directory. An existing file is kept across `up`; removing an inventory name does not delete the
-account or token. These accounts carry no authority to write to the central forge.
-
-An agent's push starts the workflows' `push` and `pull_request` runs, but the forge refuses it a `workflow_dispatch`
-(`403`), since the team only reads Actions. Its token also reads no job's log (`404` through the API), no push mirror
-(`403`) and not its own user (`403`, no `read:user` scope).
+The collection makes no forge account or token for an agent: a task pushes with its own task token as its person's
+forge user, `porelo-<login>` (see [task certificates](task-certificates.md)).
 
 Each admitted person's web login is their own account name. In a project they own or join they belong to its
 `Owners` or `developers` team. Their browser reaches the forge through the [web gate](#socket-gates), which derives
@@ -538,6 +531,7 @@ Work that exists only on the host is lost with it: task branches, accepted local
 local build records and local registry snapshots. A green local build or a local merge does not put that work on the
 central forge.
 
-`down` removes the forge's volumes and credentials and the pool's VMs, snapshots and keys. It stops tasks but leaves
-their containers and workspaces on the host, then clears the vault. None of these teardown roles exports the local
+`down` removes the forge's volumes and credentials and the pool's VMs, snapshots and keys. It refuses while a person
+still holds a membership, and a person's tasks stop when the follow purges them; their containers and workspaces stay
+on the host. None of these teardown roles exports the local
 forge, its registry or task workspaces anywhere. Preserve local-only work before teardown.

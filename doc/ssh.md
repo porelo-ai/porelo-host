@@ -39,25 +39,11 @@ so on a rented machine it asks for a key that signs nothing else. Nothing of Por
 
 ## Organization input
 
-The verified organization reader is a separate component. The `Host` class in the installed person helper exposes these
-root-only integration calls; they consume already verified public input, never fetch or verify organization state:
-
-- `write_authorized_key(login, key, expires=None)` atomically replaces one account's key file with one canonical
-  Ed25519 public key, optionally prefixed with `expiry-time="YYYYMMDDHHMMSSZ"`. It accepts no source address
-  restriction. The reader converts the card's expiry to UTC and supplies it here.
-- `admit_runtime(login)` creates or validates the private runtime directory and the `porelod.sock` link in it, leaving a
-  person's own entry at that name, and writes their boot rule.
-- `apply_ssh_revocations(keys, users)` takes the complete host-wide public-key revocation list and the affected
-  account logins. It validates the inputs, atomically replaces the KRL via `write_krl(keys)`, then terminates every
-  listed user's sessions and waits for their user manager to stop. All affected users are attempted on failure;
-  a failed termination is reported and must be retried. Root is refused in the affected-user list.
-- `end_sessions(login)` calls `loginctl terminate-user` and `systemctl stop user@<uid>.service`, and attempts both
-  even if one fails. A lock from the follow, a revoked key or the last membership lost, performs these operations too.
-
-The reader holds the helper's existing configuration lock while reconciling. The install task invokes
-`restore-runtime` under that same lock for existing unlocked member records. It supplies the complete affected-user
-list for a KRL change; `write_krl` alone is a publication primitive and cannot infer users from public keys.
-Only host admin organization revocations and key changes signed by the key owner enter this list. A project-scoped
+The verified organization reader is the packaged host program, `/usr/sbin/porelo-host`, not the collection: its
+follow, `porelo-host org follow`, reads the applied organization state and writes each admitted person's key file, their private runtime directory and the `porelod.sock` link in it, and the host-wide KRL, and ends the
+sessions and the user manager of a person it locks, revokes or purges. The collection's person step runs that follow at
+every `up`, which also restores the runtime directories and boot rules of the recorded people; `porelo-host person
+restore-runtime` does that alone. Only host admin organization revocations and key changes signed by the key owner enter the KRL's list of affected users. A project-scoped
 revocation removes that project's membership alone; another membership preserves host access, and no project
 operation calls the KRL writer or replaces the pinned host admin key.
 

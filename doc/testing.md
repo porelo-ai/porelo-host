@@ -50,7 +50,7 @@ place of the published one.
 each one through the forge role's `forge_image_archives` instead of pulling it from its registry. Unset, every image is
 pulled.
 
-**The VM** is Ubuntu 26.04 from the cloud image `build/test-image` pins by URL and SHA-256, 4 vCPUs and 4 GB, with the
+**The VM** is Ubuntu 26.04 from the cloud image `build/test-image` pins by URL and SHA-256, 4 vCPUs and 6 GiB (`PORELO_HOST_MOLECULE_MEMORY` in MiB, 6144 by default), with the
 host's CPU passed through so KVM runs inside it, as on a rented host. Its ssh host key is made for the run and is the
 only one accepted.
 

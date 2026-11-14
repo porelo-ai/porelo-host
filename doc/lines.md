@@ -54,57 +54,15 @@ the task as `failed`, its `msg` beginning with "unreachable". A task with `no_lo
 Ansible hides it before the callback sees it, and the callback writes "hidden, the task has no_log" where it can
 tell.
 
-**The stop.** `up`'s second play begins with the step only the person can take. When something is missing it stops
-with one line in place of a failure:
+**The stop.** `up`'s second play begins with a stop for what only the person can give. When the fact
+`porelo_host_needs` names something missing, it stops with one line in place of a failure:
 
     {"v": 1, "state": "waiting", "needs": ["vault-new", "keys"]}
 
-`needs` names what is missing: `vault-new` with `keys` when the account has no vault yet, `vault` when its vault is
-shut. `up` starts no task. `ansible-playbook` itself exits 2 on a waiting stop, as on any failure, so a program
-tells the stop from a failure by this line, never by the exit code. A second `up` after the person's step runs both
-plays from the top; what is done is done, so it goes on where it stopped.
-
-Any other answer about the vault is a failure with words.
-
-A person at the host's terminal may instead run `porelo-host-stop NEED...` as the account, with `vault-new` or
-`vault`: `vault-new` asks for a new vault passphrase twice, `vault` for the existing one to unlock it. A failed attempt
-shows the command's error and asks `Try again? [Y/n]`. `drive` is no need any more and is refused with 64.
-
-The command exits 0 when every named need is done, 75 on `n`, `N` or Ctrl+C, 64 for a wrong call, and 69 when a
-required command is missing. Its last line on success is "The host's stop is done; close this terminal, and setup
-goes on." On cancellation it is "Cancelled; the host waits at this stop. Running up again comes back here."
-
-Push and pull run in the person's own account: `/usr/local/sbin/porelo-host-push [--pull] <project> [repos...]`;
-root running them is refused with 77. They read the central token on
-stdin and only the caller's private push config, and get the local token through
-`sudo -n /usr/local/sbin/porelo-host-person forge-token`, which refuses a locked person or one no project holds. That
-token replaces the person's last one, so it goes on a pipe into their vault as `<forge>.person`; a vault that takes
-none is said on stderr and the push goes on. Local Git reaches the forge on `127.0.0.1:<git_port>`, the same token-only gate `git.sock` is; API requests use the
-socket directly. No local CA or vault token is used. Neither push nor pull stores the central token.
-
-**The stop on standard input.** Every need is given from the person's secrets file by one pipeline, as the person:
-
-    <secrets> | ssh <person>@<host> porelo-host-stop --stdin NEED...
-
-with the needs as `up` names them. Standard input holds one line per secret, `<need> <value>` or, for a key,
-`key <name> <value>`, the value in base64:
-
-| Need | Its lines | Where the value goes |
-|---|---|---|
-| `vault-new` | `vault-new <passphrase>` | `porelo vault init --passphrase-stdin`, as the account |
-| `vault` | `vault <passphrase>` | `porelo vault unlock --passphrase-stdin`, as the account |
-| `keys` | `key <name> <key>`, one per key of the machine, none or more | `porelo vault put <name>`, as the account, once the vault is open |
-
-Every line is checked before any is used: a need not named, an unknown need, a line given twice, a key name other than
-letters, digits, `.`, `_` and `-`, or a value that is not base64 is refused, naming the line and never the value, and so
-is a named need no line gives; only `keys` beside `vault-new` may come with no line, for a machine without keys. `drive`
-is refused, as is a call made as root. The values then go in the table's order, each decoded on a pipe into its
-user, and nothing is asked. A key the vault lacks later is given by another call with `keys`;
-`up` fails with a message beginning `keys:` for a missing key. Matrix access uses
-the transport's Unix socket gate and asks for no machine or registration token at the stop.
-
-It exits 0 when every line is used, printing "Your stop is done."; 64 for a wrong call or a wrong line, with nothing
-used; 65 when the vault refuses a value (`vault-new`, `vault`, a key), naming it; and 69 when a required command is missing.
+`ansible-playbook` itself exits 2 on a waiting stop, as on any failure, so a program tells the stop from a failure by
+this line, never by the exit code. A second `up` after the person's step runs both plays from the top; what is done is
+done, so it goes on where it stopped. No role of the collection adds a need at present: `up` prepares the host with no
+project and no person, so it runs through without this line.
 
 **The version.** `v` is the contract's version. An added field or state keeps it; a field that changes or goes away
 raises it. A reader skips a `state` it does not know, as it skips a field.

@@ -4,20 +4,20 @@
 
 > **Crazy chicken - just hatched.** Interfaces, formats and even the purpose may change any day. Use it only to try ideas, never to build on.
 
-Brings a Porelo project up on a server and takes it down again, owned or rented by the hour: an Ansible
-collection. From the project's `project.yml`, its repositories' own files and the person's file for the machine,
-it sets up the host - packages, SSH, the forge, the homeserver, Porelo and its account - restores the
-data the project keeps, and installs every offered agent; the person starts tasks and signs agents in as needed.
-At down it stops every running task of the account, copies that data off and leaves the machine to be given
-back. What keeps a guarantee stays Porelo's: the playbook calls Porelo's own commands for following a signed
-project, and the person's stop deposits the keys through them, from the person's secrets file on standard input.
+Brings a server up for Porelo and takes it down again, owned or rented by the hour: an Ansible collection. `up`
+prepares the host once with no project and no person - packages, SSH, the firewall, Porelo and its account, the host
+program, every published agent, the forge, the VM pool and the homeserver where the host asks for them - and starts
+the host's follow of its organization, which admits people and carries projects. At down it refuses while a project's
+work is not at its central forge or a person still holds a membership, then takes the forge, the homeserver and the VM
+pool off and leaves the machine to be given back; it copies nothing off. What keeps a guarantee stays Porelo's: the
+playbook calls the packaged host program and Porelo's own commands.
 
 The [host lifecycle](doc/index.md) explains setup and teardown. The [local forge](doc/local-forge.md) explains
 how task work is built and accepted locally, and which steps toward central publication remain unbuilt.
 
 **Requirements**: a host with Ubuntu 26.04; the playbook runs on the host itself, with the `ansible-core` Ubuntu
 carries (2.20; the collection needs 2.19 or newer), so the person's computer needs only ssh. Porelo in the version
-the collection's own follows (`0.5.13-snapshot`, Porelo 0.5.1, its snapshots until Porelo releases it). It is
+the collection's own follows (`0.5.13-snapshot`, Porelo 0.5.0 with its host program 0.5.1, a snapshot until Porelo releases it). It is
 installed from the tarball a release attaches, `ansible-galaxy collection install porelo-host-<version>.tar.gz`.
 Every push to `main` that builds also publishes one as a snapshot on the pre-release `snapshot`,
 `https://github.com/porelo-ai/porelo-host/releases/download/snapshot/`: `porelo-host-<version>.<run>.tar.gz`, its
