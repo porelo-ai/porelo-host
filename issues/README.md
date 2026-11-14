@@ -76,7 +76,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho189"></a>[HO189](HO189-The-Move-Rehearsal-Opens-No-Room-Tunnel.md) | S | - | `build/rehearse-move.sh` loses its `tunnel` verb and `build/room-tunnel.sh` goes, with what only they use; the rehearsal otherwise stays as it is. |
 | <a id="ho170"></a>[HO170](HO170-The-Rehearsal-Starts-A-Task-That-Reads-Every-Repository.md) | XS | - | The rented host's rehearsal starts one task with porelo's read-all start option and checks that it sees every repository of the project under /workspace, can write none of them, and leaves nothing behind after it ends. |
 
 ## Review
@@ -84,6 +83,7 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho177"></a>[HO177](HO177-A-Jobs-Own-Leg-Reaches-A-Pool-VM.md) | S | - | In Molecule with the forge and the pool on, a job on the forge's runner runs `porelo-machines acceptance --kind amd64` itself, told the pool by its environment and given the run key as a secret, and its leg passes on a pool VM. |
+| <a id="ho189"></a>[HO189](HO189-The-Move-Rehearsal-Opens-No-Room-Tunnel.md) | S | - | `build/rehearse-move.sh` loses its `tunnel` verb and `build/room-tunnel.sh` goes, with what only they use; the rehearsal otherwise stays as it is. |
 | <a id="ho178"></a>[HO178](HO178-The-Rented-Rehearsal-Turns-The-Pool-On.md) | S | - | `build/rehearse-move.sh rented` takes the VM pool's systems and accounts and the forge's job capacity, writes them into the host's inventory and the check's choices, so a rented KVM host stands with the forge and the pool for another repository's pool proofs. |
 | <a id="ho179"></a>[HO179](HO179-The-Story-Test-Of-ST31.md) | S | - | A script beside the rehearsal scripts plays ST31 on the test VM as a person at the command line: it pastes a long key with odd characters at `vault put`'s prompt through a terminal, reads it back whole, starts an agent with a provider Porelo does not know and sees it refused by name before anything starts; it reports passed, failed with the step, or waiting on porelo's B228, P09 or B316. |
 | <a id="ho180"></a>[HO180](HO180-The-Story-Test-Of-ST41.md) | M | - | A script beside the rehearsal scripts plays ST41 on the test VM: in a sample Maven repository `porelo project init` writes the `.porelo.yml` and `project.yml` drafts, each proposed value names its source, and after a change in the local repository `refresh` reads the project again and shows it; it reports passed, failed with the step, or waiting on porelo-project's PJ52. |
@@ -108,7 +108,7 @@ it is left out.
 | <a id="ho143"></a>[HO143](HO143-Work-Ahead-Of-Central-Is-Said-And-Holds-The-Give-Back.md) | S | - | Bug: `org status` says each taken repository's state against central, and `down` refuses while work is not at central, unless given back anyway. |
 | <a id="ho138"></a>[HO138](HO138-The-Move-Check-Reads-Each-Line-Where-It-Stands.md) | S | - | Bug: the move check reads the push from the forge's branch the task names, not the build reader, and the conversation from the task, not the peers list. |
 | <a id="ho137"></a>[HO137](HO137-A-Tasks-Account-Opens-Its-Pull-Request.md) | S | - | The task's token opens its pull request `porelo/<task>` → `main` on the host's forge, and the person's approval counts, measured in the follow act. |
-| <a id="ho132"></a>[HO132](HO132-A-Move-Rehearsed-On-A-Local-VM.md) | S | - | `build/rehearse-move.sh` makes a throwaway VM, runs `up` with the forge and no pool, opens the room tunnel and takes it all down again, so a move is rehearsed before a host is rented. |
+| <a id="ho132"></a>[HO132](HO132-A-Move-Rehearsed-On-A-Local-VM.md) | S | - | `build/rehearse-move.sh` makes a throwaway VM, runs `up` with the forge and no pool, and takes it all down again, so a move is rehearsed before a host is rented. |
 | <a id="ho131"></a>[HO131](HO131-A-Task-Reads-Its-Projects-Snapshots.md) | S | - | A task's token also reads its organization's packages, `read:package`, so a task resolves its project's snapshots from the host's forge; it writes none. |
 | <a id="ho129"></a>[HO129](HO129-The-Web-Gate-Serves-Its-Own-Site-Alone.md) | S | - | The web gate refuses a `Host` other than the forge's own site, and on a request that changes something a foreign `Origin` or a cross-site `Sec-Fetch-Site`, so another page in the browser cannot act as the person. |
 | <a id="ho27"></a>[HO27](HO27-The-Forges-Jobs-Told-Where-The-Pool-Is.md) | M | - | The forge's runner tells every job where the VM pool is, so one workflow takes a pool account on the forge and rents a server on GitHub. |

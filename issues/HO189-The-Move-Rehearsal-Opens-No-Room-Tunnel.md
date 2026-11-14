@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO189",
   "title": "The Move Rehearsal Opens No Room Tunnel",
-  "state": "Implementing",
+  "state": "Review",
   "size": "S",
   "priority": "High",
   "rank": 1,

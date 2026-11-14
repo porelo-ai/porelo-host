@@ -22,4 +22,4 @@ refuses a second ed25519 key beside it, so the run's key has to be replaced by h
 ## Acceptance
 
 - After a start with a machine file, `org host refresh` from the admin's agent hands its token over without a step by
-  hand, and `ssh`, `tunnel` and `down` still reach the VM through the run's own login.
+  hand, and `ssh` and `down` still reach the VM through the run's own login.

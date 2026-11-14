@@ -562,8 +562,8 @@ and the UTC time that text last changed; change it in the channel first, never i
   `build/pom.xml`, which builds nothing; `build/tools.sh`, `build/sanity.sh`, `build/check-tarball.sh` and
   `build/molecule.sh`, shell, since they run the container, read its tarball and drive libvirt where the collection is
   checked;
-  `build/room-tunnel.sh` and `build/move-check.sh`, shell, since they only start `ssh` and read Porelo's and the forge's
-  answers during an agent's move, on a development machine and a host that need no Java for them;
+  `build/move-check.sh`, shell, since it only reads Porelo's and the forge's answers during an agent's move, on a
+  development machine and a host that need no Java for it;
   `build/rehearse-move.sh`, shell like `build/molecule.sh`, since it drives libvirt and ssh to rehearse a move on a VM;
   `build/stage-packages.sh`, shell, since it stages and checks local Debian inputs before the test container runs;
   `build/porelo-vm`, shell, since it drives virsh on a development machine for Molecule and the rehearsal and is

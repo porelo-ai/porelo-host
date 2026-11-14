@@ -61,6 +61,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   host's forge. It reads those of every organization its person's task account is in and writes none; Porelo's task
   gate holds a task to its own project's.
 
+### Removed
+
+- `build/room-tunnel.sh` and the move rehearsal's `tunnel`: nothing joins the development machine to a host's tasks;
+  a moved agent talks only in the host's own room.
+
 ### Fixed
 
 - **A task's account pushes only its own person's task branches.** The host's push judge refuses an update or deletion

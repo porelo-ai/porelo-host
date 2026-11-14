@@ -82,7 +82,6 @@ An agent's move can be rehearsed before a host is rented, on a VM made the same 
 
     build/rehearse-move.sh start [--machine-file <file> | --bare] [--cpus <n>] [--memory <GiB>] [--disk <GiB>]
     build/rehearse-move.sh ssh [<command>...]
-    build/rehearse-move.sh tunnel <login> <homeserver port>
     build/rehearse-move.sh down
     build/rehearse-move.sh rented <address> --key <file> [--login <user>] [--machine-file <file>] [--order-time <UTC>]
         [--zone <name>] [--pool ubuntu,fedora [--pool-accounts <n>]] [--jobs <n>] [--org <program> --org-key <public key file> --person <login> --person-agent <socket>
@@ -191,8 +190,7 @@ person then prepares it in the interface's *Prepare a server* on its address. Th
 in the VM's own account, reached with `build/rehearse-move.sh ssh`, and from then on the interface logs in as root and
 runs `up` itself. Such a host is taken down by the interface; `down` here then only deletes the VM.
 
-`ssh` logs in as the VM's admin with the run's own key and host key. `tunnel` runs `build/room-tunnel.sh` to the VM for an
-admitted login, accepting only the run's host key, and stops once `down` has removed it. `down` runs
+`ssh` logs in as the VM's admin with the run's own key and host key. `down` runs
 `porelo.host.down` on a running VM first, as on a rented host, and keeps the VM when that fails. It then deletes the
 VM, its disk and its seed by the name its `start` recorded, believes that only once libvirt lists no rehearsal, and
 removes the run's files under `target/rehearsal`.

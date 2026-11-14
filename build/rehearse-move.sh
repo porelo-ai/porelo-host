@@ -9,7 +9,6 @@
 #                                                              the VM made (8, 16, 80 by default) and up run on it;
 #                                                              bare, without up, for a person's window to prepare
 #        build/rehearse-move.sh ssh [<command>...]               the VM's admin login, with the run's keys
-#        build/rehearse-move.sh tunnel <login> <port>            build/room-tunnel.sh to the VM, with its host key
 #        build/rehearse-move.sh down                             the host's down, then the VM deleted
 #        build/rehearse-move.sh rented <address> --key <file> [--login <user>]
 #                                    [--machine-file <file>] [--order-time <UTC>] [--zone <name>]
@@ -31,7 +30,7 @@ vm=$root/build/porelo-vm
 
 say() { printf '%s\n' "$*" >&2; }
 fail() { say "FAILED: $*"; exit 1; }
-usage() { fail "usage: $0 start [--machine-file <file> | --bare] [--cpus <n>] [--memory <GiB>] [--disk <GiB>] | ssh [<command>...] | tunnel <login> <port> | down | rented <address> --key <file> [--login <user>] [--machine-file <file>] [--order-time <UTC>] [--zone <name>] [--pool <systems> [--pool-accounts <n>]] [--jobs <n>] [--org <program> --org-key <public key file> --person <login> --person-agent <socket> --central-token <program> --project <name> [--repository <name>] [--retire-host <host>] [--provider-keys <directory>]] | rented-resume"; }
+usage() { fail "usage: $0 start [--machine-file <file> | --bare] [--cpus <n>] [--memory <GiB>] [--disk <GiB>] | ssh [<command>...] | down | rented <address> --key <file> [--login <user>] [--machine-file <file>] [--order-time <UTC>] [--zone <name>] [--pool <systems> [--pool-accounts <n>]] [--jobs <n>] [--org <program> --org-key <public key file> --person <login> --person-agent <socket> --central-token <program> --project <name> [--repository <name>] [--retire-host <host>] [--provider-keys <directory>]] | rented-resume"; }
 
 # What libvirt lists of any rehearsal: its domains and volumes, one name a line.
 listed() {
@@ -1402,22 +1401,6 @@ case "$verb" in
     rented) rented "$@" ;;
     rented-resume) [ $# -eq 0 ] || usage; rented_resume ;;
     ssh) on_vm "$@" ;;
-    tunnel)
-        [ $# -eq 2 ] || usage
-        at=$(address)
-        real=$(command -v ssh) || fail "no ssh on PATH"
-        # room-tunnel.sh takes ssh's own defaults; a fixed wrapper first on its PATH adds this run's host key, and
-        # refuses once down has removed it rather than falling back to the person's own known hosts.
-        shim=$state/tunnel-bin
-        mkdir -p "$shim"
-        cat > "$shim/ssh" <<'EOF'
-#!/bin/sh
-[ -f "$REHEARSAL_KNOWN_HOSTS" ] || { echo "the rehearsal's host key is gone: $REHEARSAL_KNOWN_HOSTS" >&2; exit 1; }
-exec "$REHEARSAL_SSH" -o "UserKnownHostsFile=$REHEARSAL_KNOWN_HOSTS" -o StrictHostKeyChecking=yes "$@"
-EOF
-        chmod 0700 "$shim/ssh"
-        REHEARSAL_SSH=$real REHEARSAL_KNOWN_HOSTS=$state/known_hosts PATH=$shim:$PATH \
-            exec "$root/build/room-tunnel.sh" "$1" "$at" "$2" ;;
     down) down ;;
     *) usage ;;
 esac

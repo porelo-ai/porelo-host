@@ -1,4 +1,4 @@
-"""Guard the move's read-only check and the room's tunnel against saying more than they saw."""
+"""Guard the move's read-only check against saying more than it saw."""
 
 import base64
 import json
@@ -14,7 +14,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 CHECK = ROOT / "build/move-check.sh"
-TUNNEL = ROOT / "build/room-tunnel.sh"
 
 GOOD = {
     "host_version": "porelo-host 0.5.1~snapshot.fixture\n",
@@ -468,54 +467,6 @@ def test_missing_arguments_are_refused(tmp_path, porelo):
     assert check(tmp_path).returncode == 64
 
 
-def run_tunnel(tmp_path, *arguments):
-    log = tmp_path / "ssh-calls"
-    fake(tmp_path, "ssh", f'echo "$*" >> {log}\nexit 0\n')
-    environment = {**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}", "ROOM_TUNNEL_ONCE": "1"}
-    done = subprocess.run([str(TUNNEL), *arguments], capture_output=True, text=True, env=environment, check=False)
-    return done, log.read_text() if log.exists() else ""
-
-
-def test_the_tunnel_binds_one_socket_of_the_persons_own_to_the_homeservers_port(tmp_path):
-    """Prevent the tunnel taking the window's return socket, a TCP listener, or a shell on the host."""
-    done, calls = run_tunnel(tmp_path, "alice", "host.example", "8448")
-    assert done.returncode == 0, done.stderr
-    assert "-R /run/porelo-host/people/alice/room.sock:127.0.0.1:8448" in calls
-    assert " -N " in f" {calls} " and "ExitOnForwardFailure=yes" in calls and "StreamLocalBindUnlink=yes" in calls
-    assert "return.sock" not in calls and calls.rstrip().endswith("alice@host.example")
-    assert done.stdout.strip() == "unix:/run/porelo-host/people/alice/room.sock"
-
-
-@pytest.mark.parametrize(
-    "arguments",
-    [
-        ("alice\nbad x", "room.example", "8448"),
-        ("alice", "room.example\nbad x", "8448"),
-        ("alice", "room.example", "8448\nx"),
-    ],
-)
-def test_the_tunnel_refuses_a_value_with_a_second_line(tmp_path, arguments):
-    """Prevent grep passing a value because one of its lines fits, the rest reaching ssh."""
-    done, calls = run_tunnel(tmp_path, *arguments)
-    assert done.returncode == 64 and not calls
-
-
-@pytest.mark.parametrize(
-    "arguments",
-    [
-        ("alice", "host.example"),
-        ("Al/ice", "host.example", "8448"),
-        ("alice", "-oProxyCommand=x", "8448"),
-        ("alice", "host.example", "port"),
-        ("alice", "host.example", "70000"),
-    ],
-)
-def test_the_tunnel_refuses_what_could_become_an_option_or_a_path(tmp_path, arguments):
-    """Prevent an argument turning into an ssh option or leaving the person's directory."""
-    done, calls = run_tunnel(tmp_path, *arguments)
-    assert done.returncode == 64 and not calls
-
-
 REHEARSE = ROOT / "build/rehearse-move.sh"
 
 
@@ -527,9 +478,6 @@ def rehearsal(tmp_path, *, listed="", running=False):
     script.write_bytes(REHEARSE.read_bytes())
     script.chmod(0o755)
     (root / "build/test-image").write_bytes((ROOT / "build/test-image").read_bytes())
-    tunnel = root / "build/room-tunnel.sh"
-    tunnel.write_bytes(TUNNEL.read_bytes())
-    tunnel.chmod(0o755)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     log = tmp_path / "calls"
@@ -588,24 +536,6 @@ def test_down_refuses_a_recorded_name_that_is_no_rehearsals(tmp_path):
     done, calls = call("down")
     assert done.returncode != 0, "a down for a name that is no rehearsal's must fail"
     assert "porelo-vm delete" not in calls and "virsh" not in calls, "nothing is asked of libvirt"
-
-
-def test_the_tunnel_takes_only_the_runs_host_key_and_refuses_once_it_is_gone(tmp_path, monkeypatch):
-    """Prevent the tunnel trusting the person's own known hosts for the VM's address."""
-    state, call = rehearsal(tmp_path)
-    state.mkdir(parents=True)
-    (state / "address").write_text("192.0.2.10\n")
-    known = state / "known_hosts"
-    known.write_text("192.0.2.10 ssh-ed25519 AAAA\n")
-    monkeypatch.setenv("ROOM_TUNNEL_ONCE", "1")
-    done, calls = call("tunnel", "alice", "8448")
-    assert done.returncode == 0, done.stderr
-    tunnel = [line for line in calls.splitlines() if line.startswith("ssh ")]
-    assert len(tunnel) == 1 and f"UserKnownHostsFile={known}" in tunnel[0], "the run's host key alone is trusted"
-    assert "StrictHostKeyChecking=yes" in tunnel[0] and tunnel[0].endswith("alice@192.0.2.10")
-    known.unlink()
-    done, calls_after = call("tunnel", "alice", "8448")
-    assert calls_after == calls, "no ssh runs once the run's host key is gone"
 
 
 @pytest.mark.parametrize("size", ["24x", "0", "1+1", "a[$(id)]", "16\n32", ""])
