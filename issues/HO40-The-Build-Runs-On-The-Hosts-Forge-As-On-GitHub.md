@@ -5,13 +5,12 @@
   "$schema": "issue-1.json",
   "id": "HO40",
   "title": "The Build Runs On The Host's Forge As On GitHub",
-  "state": "Analyzed",
+  "state": "Backlog",
   "size": "M",
   "priority": "Medium",
   "rank": 1,
   "blockedBy": [],
-  "covers": "The move's builds on the host's forge: `build.yml` green on the host's Forgejo and on GitHub unchanged, with task branches built, the tools without `podman run`, snapshots by variable and Molecule on a machine with KVM.",
-  "openQuestions": 1
+  "covers": "The move's builds on the host's forge: `build.yml` green on the host's Forgejo and on GitHub unchanged, with task branches built, the tools without `podman run`, snapshots by variable and Molecule on a machine with KVM."
 }
 ```
 
@@ -33,13 +32,18 @@ runner, against porelo-message-sluice's workflows, which already run on both.
 - **The tools without `podman run`.** The `build` job runs in the tools image `build/tools-image` pins, as a job
   container on both forges, with `HOST_TOOLS_IN_IMAGE` set, so `build/tools.sh` runs each tool directly there as it does
   in a task. A job container on the forge's runner cannot start podman, and GitHub's runner then needs none either.
+  `build/tools.sh` already runs a tool directly under `HOST_TOOLS_IN_IMAGE`; the workflow alone changes.
+- **The `pinned-jdk` action in the job container.** It starts the shared tools with the runner's `JAVA_HOME_25_X64`,
+  which the tools image does not carry; the job container gets the pinned GraalVM by digest, as `porelo.yml`'s image
+  adds it, and the action stops in words where no Java is there. Its GitHub token goes only to
+  `https://github.com` already.
 - **The shared tools' snapshots by variable.** `build/pom.xml` names its snapshot repository by `MAVEN_SNAPSHOTS_URL`
   and reads it with `PORELO_PACKAGES_READ_TOKEN` through a settings file the `pinned-jdk` action passes, as
   porelo-message-sluice's do. On GitHub the variable is Sonatype's address, read anonymously; on the forge it is the
   forge's registry. The step stops in words where either is empty.
 - **Molecule.** It needs KVM, systemd and libvirt, which a job container on the forge's runner lacks. The `molecule`
-  job runs only where `github.server_url` is `https://github.com`, until a pool VM gives the forge a kind for it (open
-  question below).
+  job runs only where `github.server_url` is `https://github.com`, both legs of its `kvm` matrix; GitHub's run is the
+  one that counts.
 - **`release.yml`** creates its GitHub release with `gh` on a `v*` tag. It runs only where `vars.PORELO_PUBLISH` is
   `true`, so a tag on the host's forge publishes nothing and fails nothing. Publishing stays central.
 - **`shared-rules.yml`** needs no change: its scheduled step reads `main`'s commits from the checkout, not from GitHub's
