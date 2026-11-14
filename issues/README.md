@@ -64,7 +64,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho190"></a>[HO190](HO190-A-Released-Collection-Installs-The-Host-Program-Porelo-Calls.md) | S | - | A collection release from `main` installs the packaged `/usr/sbin/porelo-host`, which `porelo org host refresh` calls, so a machine the window sets up takes the host admin's token; 0.5.12 has only `porelo-host-person`. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho40"></a>[HO40](HO40-The-Build-Runs-On-The-Hosts-Forge-As-On-GitHub.md) | M | - | The move's builds on the host's forge: `build.yml` green on the host's Forgejo and on GitHub unchanged, with task branches built, the tools without `podman run`, snapshots by variable and Molecule on a machine with KVM. |
 | <a id="ho39"></a>[HO39](HO39-The-Hosts-Agent-Works-In-A-Porelo-Task.md) | S | [HO40](README.md#ho40) | porelo-host's agent, `Agent Host`, in a Porelo task on the move's host, with a way back: the image from `porelo.yml`. |
@@ -73,6 +72,12 @@ it is left out.
 | <a id="ho170"></a>[HO170](HO170-The-Rehearsal-Starts-A-Task-That-Reads-Every-Repository.md) | XS | - | The rented host's rehearsal starts one task with porelo's read-all start option and checks that it sees every repository of the project under /workspace, can write none of them, and leaves nothing behind after it ends. |
 | <a id="ho186"></a>[HO186](HO186-The-Measuring-Run-Reads-Jobs-And-Raises-Developers.md) | L | - | The measuring run reads a Maven build in a forge job at 1, 2 and 4 parallel jobs and past the half, cold and with the cache; raises developers until a start fails or pressure stays high; keeps an agent's fixed start null until a token is the operator's word; and a run on a local VM reads numbers. |
 | <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
+
+## Implementing
+
+| # | Size | Blocked by | What it covers |
+|---|---|---|---|
+| <a id="ho190"></a>[HO190](HO190-A-Snapshot-Collection-Is-Published-From-Every-Build-Of-Main.md) | S | - | Every green Build of `main` publishes the collection as a snapshot, its SHA256SUMS and a `latest.json` pointer on the rolling `snapshot` pre-release, so a Porelo snapshot carries the newest collection and its `/usr/sbin/porelo-host`. |
 
 ## Review
 
