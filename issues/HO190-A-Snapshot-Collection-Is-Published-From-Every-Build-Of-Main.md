@@ -5,12 +5,12 @@
   "$schema": "issue-1.json",
   "id": "HO190",
   "title": "A Snapshot Collection Is Published From Every Build Of Main",
-  "state": "Implementing",
+  "state": "Review",
   "size": "S",
   "priority": "Highest",
   "rank": 1,
   "blockedBy": [],
-  "covers": "Every green Build of `main` publishes the collection as a snapshot, its SHA256SUMS and a `latest.json` pointer on the rolling `snapshot` pre-release, so a Porelo snapshot carries the newest collection and its `/usr/sbin/porelo-host`."
+  "covers": "Every push to `main` that builds publishes the collection as a snapshot, its SHA256SUMS and a `latest.json` pointer on the rolling `snapshot` pre-release, so a Porelo snapshot carries the newest collection and its `/usr/sbin/porelo-host`."
 }
 ```
 
@@ -30,21 +30,23 @@ machine set up from it has `/usr/sbin/porelo-host`, which `porelo org host refre
 - **The files.** `porelo-host-<galaxy version>.<run number>.tar.gz` (e.g. `porelo-host-0.5.13-snapshot.412.tar.gz`), a
   valid collection version that sorts by run number; `SHA256SUMS` with one line per tarball kept, the newest five; and
   `latest.json`, `{"version", "file", "sha256", "commit"}`, uploaded last so it never names a file that is not there.
-- **The jobs.** On a push to `main` (or by hand on `main`) after `build`: `snapshot` builds the tarball with the run's
-  version, checks it with `build/check-tarball.sh`, writes the three files and checks them with
-  `build/check-snapshot.sh`, holding no token; `snapshot-publish` takes them by the artifact's id, as `release.yml`
-  does, creates the pre-release once, uploads in that order, removes tarballs no longer listed, and then fetches all
-  three anonymously and checks them again.
-- **`build/check-snapshot.sh <dir>`**, shell like the other build scripts: `latest.json`'s fields well formed, its file
-  present with that digest, and `SHA256SUMS` naming it exactly once with the same digest; a failure prints what it
-  asked and what it got.
+- **The jobs**, in `release.yml`, whose `publish` is the one job `check-actions` lets write `contents`: on a push to
+  `main` (the Build's own paths), `build` builds the tarball with the run's version, checks it with
+  `build/check-tarball.sh`, writes `SHA256SUMS` and `latest.json` and checks them with `build/check-snapshot.py`,
+  holding no token; `publish`, with no checkout, takes them by the artifact's id, creates the pre-release once,
+  uploads in that order and removes tarballs no longer listed; `snapshot-check`, without a token, fetches all three
+  anonymously and checks them again. A `v*` tag publishes its release as before. The Build checks the same commit
+  beside it.
+- **`build/check-snapshot.py <dir>`**, Python like `build/measure-tables.py`, since it reads JSON: `latest.json`'s
+  fields well formed, its file present with that digest, and `SHA256SUMS` naming it exactly once with the same digest;
+  a failure prints what it asked and what it got.
 - **Red first:** `tests/unit/test_check_snapshot.py` over fixtures: a good directory passes; a pointer with another
   digest, a file that changed, a `SHA256SUMS` without the file or naming it twice, and a pointer that is no JSON each
   fail. Red while the script does not exist.
-- **Documents:** `doc/testing.md` says where the snapshot is; `AGENTS.md` names the script; a changelog entry.
+- **Documents:** the README says where the snapshot is; `AGENTS.md` names the script; a changelog entry.
 
 ## Acceptance
 
-- After the push, the Build's `snapshot-publish` is green, and `latest.json` at the place names a file whose digest
-  matches the file and `SHA256SUMS`, checked anonymously with `build/check-snapshot.sh`.
+- After the push, Release's `snapshot-check` is green, and `latest.json` at the place names a file whose digest
+  matches the file and `SHA256SUMS`, checked anonymously with `build/check-snapshot.py`.
 - The unit tests, seen red without the script and green with it.

@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A snapshot collection from every push to `main` that builds,** on the rolling pre-release `snapshot`: the tarball
+  `porelo-host-<version>.<run>.tar.gz`, `SHA256SUMS` over the newest five and a `latest.json` pointer, checked by
+  `build/check-snapshot.py` before the upload and again as fetched anonymously. A Porelo snapshot now finds the
+  collection it needs, with the packaged `/usr/sbin/porelo-host`, as a snapshot too.
+
 - **A job on the forge is told where the pool is.** Where the host has a VM pool, every job on its forge gets
   `PORELO_MACHINES_POOL=/etc/porelo-host/pool/pool.json`, so `porelo-machines acceptance` takes a pool account there
   without `--pool`, and the same workflow rents a server on GitHub.

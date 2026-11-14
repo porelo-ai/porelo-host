@@ -1,12 +1,17 @@
 # A release carries the one tarball built for its tag and its digest, so host up can refuse any other file.
 # The tag must match the collection's plain release version, read first from its version line and then from the
 # tarball's name, before anything is attached; the digest names this build, since a rebuild may differ in its bytes.
+# A push to main publishes the collection as a snapshot instead, on the rolling pre-release `snapshot`, so whatever
+# Porelo snapshot is used finds the collection it needs as a snapshot too; the Build checks the same commit beside it.
 # Separate jobs keep the publishing token away from the checkout, build tools, and fetched actions.
 name: Release
 
 on:
     push:
         tags: ['v*']
+        branches: [main]
+        # What the Build leaves out builds no snapshot either: the collection's tarball holds none of it.
+        paths-ignore: ['porelo.yml', 'issues/**', 'doc/**', '**/*.md', '.github/**']
 
 permissions:
     contents: read
@@ -24,6 +29,7 @@ jobs:
                   persist-credentials: false
 
             - name: The tag matches the collection's release version
+              if: github.ref_type == 'tag'
               id: version
               env:
                   TAG: ${{ github.ref_name }}
@@ -56,6 +62,22 @@ jobs:
                   echo "VERSION=$version" >> "$GITHUB_ENV"
                   echo "version=$version" >> "$GITHUB_OUTPUT"
 
+            # The galaxy version plus this run's number, so each snapshot has its own name and they sort by run. A
+            # release commit on main carries a plain version and is published by its tag alone.
+            - name: The snapshot's version
+              if: github.ref_type == 'branch'
+              run: |
+                  set -eu
+                  base=$(sed -n 's/^version:[[:blank:]]*\([^[:blank:]#]*\).*/\1/p' galaxy.yml)
+                  if [[ ! "$base" =~ ^[0-9]+\.[0-9]+\.[0-9]+-snapshot$ ]]; then
+                      echo "::error::galaxy.yml's version $base on main is no MAJOR.MINOR.PATCH-snapshot"
+                      exit 1
+                  fi
+                  version=$base.$GITHUB_RUN_NUMBER
+                  sed -i "s/^version:.*/version: $version/" galaxy.yml
+                  grep -qx "version: $version" galaxy.yml || { echo "::error::galaxy.yml did not take $version"; exit 1; }
+                  echo "VERSION=$version" >> "$GITHUB_ENV"
+
             - name: The tarball, holding only what the collection ships
               run: |
                   set -eu
@@ -73,6 +95,17 @@ jobs:
                   sha256sum "porelo-host-$VERSION.tar.gz" > SHA256SUMS
                   sha256sum -c SHA256SUMS
 
+            # The pointer the window's build reads, checked against the file and its digest before anything leaves.
+            - name: The snapshot's pointer, checked as it will be published
+              if: github.ref_type == 'branch'
+              run: |
+                  set -eu
+                  file=porelo-host-$VERSION.tar.gz
+                  digest=$(cut -d' ' -f1 target/SHA256SUMS)
+                  python3 -c 'import json, sys; print(json.dumps(dict(zip(("version", "file", "sha256", "commit"), sys.argv[1:]))))' \
+                      "$VERSION" "$file" "$digest" "$GITHUB_SHA" > target/latest.json
+                  python3 build/check-snapshot.py target
+
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               id: upload
               with:
@@ -80,22 +113,27 @@ jobs:
                   path: |
                       target/porelo-host-${{ env.VERSION }}.tar.gz
                       target/SHA256SUMS
+                      target/latest.json
                   if-no-files-found: error
                   retention-days: 1
 
+    # No checkout and no fetched action: only the runner's gh, with the token. A snapshot goes up as the tarball, then
+    # SHA256SUMS over the newest five, then latest.json, so the pointer never names a file that is not there. One at a
+    # time, so two pushes never interleave their lists.
     publish:
         needs: build
         runs-on: ubuntu-26.04
         timeout-minutes: 20
+        concurrency:
+            group: release-publish
+            cancel-in-progress: false
         permissions:
             contents: write
             actions: read
         steps:
-            - name: The release with its tarball and digest
+            - name: The artifact this build uploaded
               env:
                   GH_TOKEN: ${{ github.token }}
-                  TAG: ${{ github.ref_name }}
-                  VERSION: ${{ needs.build.outputs.version }}
                   ARTIFACT: ${{ needs.build.outputs.artifact }}
               run: |
                   set -eu
@@ -106,6 +144,16 @@ jobs:
                   unzip -q release.zip -d release
                   cd release
                   sha256sum -c SHA256SUMS
+
+            - name: The release with its tarball and digest
+              if: github.ref_type == 'tag'
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  TAG: ${{ github.ref_name }}
+                  VERSION: ${{ needs.build.outputs.version }}
+              run: |
+                  set -eu
+                  cd release
                   shopt -s nullglob dotglob
                   files=(*)
                   [ "${#files[@]}" -eq 2 ] && [ -f "porelo-host-$VERSION.tar.gz" ] && [ -f SHA256SUMS ] \
@@ -117,3 +165,72 @@ jobs:
                   gh release create "$TAG" "porelo-host-$VERSION.tar.gz" SHA256SUMS \
                       -R "$GITHUB_REPOSITORY" --verify-tag --title "porelo.host $VERSION" \
                       --notes "See [CHANGELOG.md]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$TAG/CHANGELOG.md)."
+
+            - name: The snapshot on the pre-release
+              if: github.ref_type == 'branch'
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  set -euo pipefail
+                  cd release
+                  shopt -s nullglob
+                  tarballs=(porelo-host-*.tar.gz)
+                  [ "${#tarballs[@]}" -eq 1 ] && [ -f latest.json ] && [ ! -L latest.json ] && [ ! -L "${tarballs[0]}" ] \
+                      || { echo "::error::expected one tarball, SHA256SUMS and latest.json"; exit 1; }
+                  file=${tarballs[0]}
+                  grep -qF "\"file\": \"$file\"" latest.json || { echo "::error::latest.json does not name $file"; exit 1; }
+                  if ! gh release view snapshot -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+                      gh release create snapshot -R "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" \
+                          --title "porelo.host snapshots" \
+                          --notes "The collection built from each push to main; latest.json names the newest."
+                  fi
+                  assets=$(gh release view snapshot -R "$GITHUB_REPOSITORY" --json assets -q '.assets[].name')
+                  mkdir ../old
+                  : > ../old/SHA256SUMS
+                  if printf '%s\n' "$assets" | grep -qx SHA256SUMS; then
+                      gh release download snapshot -R "$GITHUB_REPOSITORY" -p SHA256SUMS -D ../old --clobber
+                  fi
+                  { awk -v name="$file" '$2 != name' ../old/SHA256SUMS | tail -n 4; cat SHA256SUMS; } > ../SHA256SUMS
+                  mv ../SHA256SUMS SHA256SUMS
+                  grep -qF "  $file" SHA256SUMS || { echo "::error::SHA256SUMS lost $file"; exit 1; }
+                  gh release upload snapshot -R "$GITHUB_REPOSITORY" --clobber "$file"
+                  gh release upload snapshot -R "$GITHUB_REPOSITORY" --clobber SHA256SUMS
+                  gh release upload snapshot -R "$GITHUB_REPOSITORY" --clobber latest.json
+                  { printf '%s\n' "$assets" | grep -x 'porelo-host-.*\.tar\.gz' || true; } | while read -r asset; do
+                      if ! awk -v name="$asset" '$2 == name { found = 1 } END { exit !found }' SHA256SUMS; then
+                          gh release delete-asset snapshot "$asset" -R "$GITHUB_REPOSITORY" -y
+                      fi
+                  done
+
+    # As the window's build fetches it: anonymously, following GitHub's redirect, tried again while the new assets
+    # settle; with a checkout for the check, and no token.
+    snapshot-check:
+        needs: publish
+        if: github.ref_type == 'branch'
+        runs-on: ubuntu-26.04
+        timeout-minutes: 10
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+
+            - name: The published snapshot, fetched anonymously and checked
+              run: |
+                  set -euo pipefail
+                  base=$(sed -n 's/^version:[[:blank:]]*\([^[:blank:]#]*\).*/\1/p' galaxy.yml)
+                  file=porelo-host-$base.$GITHUB_RUN_NUMBER.tar.gz
+                  url=https://github.com/$GITHUB_REPOSITORY/releases/download/snapshot
+                  for attempt in 1 2 3 4 5 6; do
+                      got=$RUNNER_TEMP/fetched-$attempt
+                      mkdir "$got"
+                      if curl -fsSL --proto '=https' --proto-redir '=https' -o "$got/latest.json" "$url/latest.json" \
+                          && grep -qF "\"file\": \"$file\"" "$got/latest.json" \
+                          && curl -fsSL --proto '=https' --proto-redir '=https' -o "$got/SHA256SUMS" "$url/SHA256SUMS" \
+                          && curl -fsSL --proto '=https' --proto-redir '=https' -o "$got/$file" "$url/$file" \
+                          && python3 build/check-snapshot.py "$got"; then
+                          exit 0
+                      fi
+                      sleep 10
+                  done
+                  echo "::error::latest.json at $url did not name $file with its digest after six tries"
+                  exit 1

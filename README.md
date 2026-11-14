@@ -19,6 +19,10 @@ how task work is built and accepted locally, and which steps toward central publ
 carries (2.20; the collection needs 2.19 or newer), so the person's computer needs only ssh. Porelo in the version
 the collection's own follows (`0.5.13-snapshot`, Porelo 0.5.1, its snapshots until Porelo releases it). It is
 installed from the tarball a release attaches, `ansible-galaxy collection install porelo-host-<version>.tar.gz`.
+Every push to `main` that builds also publishes one as a snapshot on the pre-release `snapshot`,
+`https://github.com/porelo-ai/porelo-host/releases/download/snapshot/`: `porelo-host-<version>.<run>.tar.gz`, its
+`SHA256SUMS` over the newest five, and `latest.json` naming the newest file, its `sha256` and its `commit`;
+`build/check-snapshot.py <directory>` checks the three agree.
 
 **Documentation: [porelo-ai.github.io](https://porelo-ai.github.io)**, all of Porelo's documentation in one site.
 

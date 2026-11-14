@@ -572,6 +572,7 @@ and the UTC time that text last changed; change it in the channel first, never i
   `roles/check/files/porelo-host-check`, Python's standard library, since it runs on a machine before anything is installed;
   `roles/measure/files/porelo-host-measure`, Python's standard library, since it measures a host without Java;
   `build/measure-tables.py`, Python, since it reads the result files without running the measured machine;
+  `build/check-snapshot.py`, Python, since it reads the snapshot's `latest.json` where the Build runs, before Java;
   `doc/images/local-forge-svg.py`, Python like the collection's plugins, since it draws the document's picture; and the
   collection itself is YAML.
 - **Only four collection programs may reach a host:** the forge's pre-receive hook, `porelo-host-check`,

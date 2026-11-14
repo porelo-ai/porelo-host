@@ -73,16 +73,11 @@ it is left out.
 | <a id="ho186"></a>[HO186](HO186-The-Measuring-Run-Reads-Jobs-And-Raises-Developers.md) | L | - | The measuring run reads a Maven build in a forge job at 1, 2 and 4 parallel jobs and past the half, cold and with the cache; raises developers until a start fails or pressure stays high; keeps an agent's fixed start null until a token is the operator's word; and a run on a local VM reads numbers. |
 | <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
 
-## Implementing
-
-| # | Size | Blocked by | What it covers |
-|---|---|---|---|
-| <a id="ho190"></a>[HO190](HO190-A-Snapshot-Collection-Is-Published-From-Every-Build-Of-Main.md) | S | - | Every green Build of `main` publishes the collection as a snapshot, its SHA256SUMS and a `latest.json` pointer on the rolling `snapshot` pre-release, so a Porelo snapshot carries the newest collection and its `/usr/sbin/porelo-host`. |
-
 ## Review
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho190"></a>[HO190](HO190-A-Snapshot-Collection-Is-Published-From-Every-Build-Of-Main.md) | S | - | Every push to `main` that builds publishes the collection as a snapshot, its SHA256SUMS and a `latest.json` pointer on the rolling `snapshot` pre-release, so a Porelo snapshot carries the newest collection and its `/usr/sbin/porelo-host`. |
 | <a id="ho177"></a>[HO177](HO177-A-Jobs-Own-Leg-Reaches-A-Pool-VM.md) | S | - | In Molecule with the forge and the pool on, a job on the forge's runner runs `porelo-machines acceptance --kind amd64` itself, told the pool by its environment and given the run key as a secret, and its leg passes on a pool VM. |
 | <a id="ho189"></a>[HO189](HO189-The-Move-Rehearsal-Opens-No-Room-Tunnel.md) | S | - | `build/rehearse-move.sh` loses its `tunnel` verb and `build/room-tunnel.sh` goes, with what only they use; the rehearsal otherwise stays as it is. |
 | <a id="ho178"></a>[HO178](HO178-The-Rented-Rehearsal-Turns-The-Pool-On.md) | S | - | `build/rehearse-move.sh rented` takes the VM pool's systems and accounts and the forge's job capacity, writes them into the host's inventory and the check's choices, so a rented KVM host stands with the forge and the pool for another repository's pool proofs. |

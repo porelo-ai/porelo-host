@@ -1,4 +1,5 @@
 AGENTS.md no-smart-quotes # the shared rules' block is checked against its hash and changed only where it is kept
+build/check-snapshot.py shebang # a script the Release workflow runs, not a module
 build/measure-tables.py shebang # a script run by hand to build the machine page, not a module
 doc/images/local-forge-svg.py pylint:disallowed-name # _ names a thrown-away value
 doc/images/local-forge-svg.py shebang # a script run by hand to draw the picture, not a module
