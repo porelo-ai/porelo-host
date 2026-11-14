@@ -71,7 +71,14 @@ it is left out.
 | <a id="ho165"></a>[HO165](HO165-The-Push-To-Central-Takes-Repository-Names-And-Says-A-Refused-Token.md) | XS | - | `porelo-host-push` takes the project's repository names as well as the forge's, and says plainly when the central forge refuses the token. |
 | <a id="ho170"></a>[HO170](HO170-The-Rehearsal-Starts-A-Task-That-Reads-Every-Repository.md) | XS | - | The rented host's rehearsal starts one task with porelo's read-all start option and checks that it sees every repository of the project under /workspace, can write none of them, and leaves nothing behind after it ends. |
 | <a id="ho186"></a>[HO186](HO186-The-Measuring-Run-Reads-Jobs-And-Raises-Developers.md) | L | - | The measuring run reads a Maven build in a forge job at 1, 2 and 4 parallel jobs and past the half, cold and with the cache; raises developers until a start fails or pressure stays high; keeps an agent's fixed start null until a token is the operator's word; and a run on a local VM reads numbers. |
+| <a id="ho193"></a>[HO193](HO193-The-Waiting-Stop-Nothing-Asks-For-Is-Gone.md) | XS | - | `up`'s waiting stop and `porelo_host_needs`, which nothing in the collection fills since HO42, are removed with what only they use, or the issue says why they must stay. |
 | <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
+
+## Implementing
+
+| # | Size | Blocked by | What it covers |
+|---|---|---|---|
+| <a id="ho192"></a>[HO192](HO192-The-Snapshots-Channel-Without-Versions-Installs-Its-Newest.md) | S | - | Bug: `up` with `porelo_host_distribution: snapshots` and no versions installs the newest `porelo` and `porelo-host` the snapshots channel's signed index holds and says which, instead of failing on the release pin `porelo=0.5.0`; releases stay pinned. |
 
 ## Review
 
