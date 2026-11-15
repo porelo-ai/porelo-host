@@ -79,9 +79,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho190"></a>[HO190](HO190-A-Snapshot-Collection-Is-Published-From-Every-Build-Of-Main.md) | S | - | Every push to `main` that builds publishes the collection as a snapshot, its SHA256SUMS and a `latest.json` pointer on the rolling `snapshot` pre-release, so a Porelo snapshot carries the newest collection and its `/usr/sbin/porelo-host`. |
-| <a id="ho191"></a>[HO191](HO191-The-Docs-Say-What-The-Code-Does.md) | M | - | Every sentence of the README, `doc/` but its decisions' history, and the changelog's latest section that names a command, flag, path, default, state, message or behavior is borne out by the code on `main`, or a bug is filed for the code. |
-| <a id="ho192"></a>[HO192](HO192-The-Snapshots-Channel-Without-Versions-Installs-Its-Newest.md) | S | - | Bug: `up` with `porelo_host_distribution: snapshots` and no versions installs the newest `porelo` and `porelo-host` the snapshots channel's signed index holds and says which, instead of failing on the release pin `porelo=0.5.0`; releases stay pinned. |
 | <a id="ho177"></a>[HO177](HO177-A-Jobs-Own-Leg-Reaches-A-Pool-VM.md) | S | - | In Molecule with the forge and the pool on, a job on the forge's runner runs `porelo-machines acceptance --kind amd64` itself, told the pool by its environment and given the run key as a secret, and its leg passes on a pool VM. |
 | <a id="ho189"></a>[HO189](HO189-The-Move-Rehearsal-Opens-No-Room-Tunnel.md) | S | - | `build/rehearse-move.sh` loses its `tunnel` verb and `build/room-tunnel.sh` goes, with what only they use; the rehearsal otherwise stays as it is. |
 | <a id="ho178"></a>[HO178](HO178-The-Rented-Rehearsal-Turns-The-Pool-On.md) | S | - | `build/rehearse-move.sh rented` takes the VM pool's systems and accounts and the forge's job capacity, writes them into the host's inventory and the check's choices, so a rented KVM host stands with the forge and the pool for another repository's pool proofs. |
@@ -122,6 +119,9 @@ it is left out.
 
 | # | Title | What was built |
 |---|---|---|
+| <a id="ho190"></a>HO190 | A Snapshot Collection Is Published From Every Build Of Main | Every build of `main` publishes the collection as a snapshot on the rolling `snapshot` pre-release, with `SHA256SUMS` over the newest five and a `latest.json` pointer, checked anonymously by `build/check-snapshot.py`. |
+| <a id="ho191"></a>HO191 | The Docs Say What The Code Does | The README, `doc/` and the changelog were read against the code, and 20 claims the code did not bear out were corrected in the documents. |
+| <a id="ho192"></a>HO192 | The Snapshots Channel Without Versions Installs Its Newest | `up` from the snapshots channel with no versions installs the newest `porelo` and `porelo-host`, names both on a note line and holds the host program to its floor; the releases channel keeps its pins. |
 | <a id="ho122"></a>HO122 | A Project Says What The Follow Took | `org status` names each repository of a project with its state, and a row with no `central` is a `why`. |
 | <a id="ho133"></a>HO133 | A Host Carries Single Repositories Of A Project | The follow migrates only the repositories the host's card names, and `porelo-host-project take-off` takes one off the forge and its deploy key off central, or holds it while its work is not there. |
 | <a id="ho134"></a>HO134 | A Project's Why Gathers Its Repositories' Reasons | A project's `why` says each reason of its repositories once with their names, and rows with no central address give it none. |
