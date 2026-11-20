@@ -15,6 +15,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho198"></a>[HO198](HO198-Playbooks-And-Programs-Only-Map.md) | S | - | `down.yml` checks its inventory and calls roles, its give-back check with the follow paused moving into a role, and `porelo-host-measure`'s `main` maps its arguments to one call, the lock and the result's publication moving behind it. |
 | <a id="ho160"></a>[HO160](HO160-A-Local-Rehearsal-Takes-The-Organizations-Host-Name.md) | - | - | Bug: a local rehearsal with a real organization's machine file runs `up` under that host's name, not `rehearsal`, so its fetch takes the pin. |
 | <a id="ho161"></a>[HO161](HO161-A-Local-Rehearsal-Pins-The-Host-Admins-Key-For-Root.md) | - | - | Bug: a local rehearsal with a real organization's machine file leaves root's login to the host admin's key, so `org host refresh` reaches it. |
 | <a id="ho166"></a>[HO166](HO166-A-Room-Refused-While-The-Homeserver-Is-Away-Is-Asked-Again.md) | - | - | Bug: a room the gate refused while the homeserver was away is asked again on a later follow pass, and `up` fails when its homeserver does not answer. |
