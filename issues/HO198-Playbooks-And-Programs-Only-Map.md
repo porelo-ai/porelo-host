@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO198",
   "title": "Playbooks And Programs Only Map",
-  "state": "Idea",
+  "state": "Accepted",
   "size": "S",
   "priority": "High",
   "rank": 1,
