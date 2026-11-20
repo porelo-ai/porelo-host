@@ -23,11 +23,15 @@ its Build, prepush or rehearsal scripts reads one.
 
 ## Plan
 
-- Done only after the carry-over has written every open issue of `issues/` to GitHub Issues, each with its old id.
+- Done only after the carry-over has run on the cut-over day: it writes every open issue of `issues/` to GitHub
+  Issues, each with its old id, and reads every row of the index once for the highest number the prefix `HO` ever
+  used, so a new issue never takes a used number. Finished and Rejected rows are not carried over; they go with
+  `issues/README.md`.
 - Delete `issues/`: the issue files, `README.md` and the shared `workflow.yml` copy.
 - `.github/workflows/shared-rules.yml`: drop the step "The issue heads" (`issues check issues`). Keep "No citation of
-  an issue that goes stale" (`check-citations .`) as long as the shared tools keep that command, now without
-  `issues/`.
+  an issue that goes stale" (`check-citations .`): the rule that code and shipped text never cite an issue number
+  stays after the cut-over, for the old ids and the GitHub numbers alike, and the shared tools keep the command,
+  reading no `issues/`.
 - `build/rehearse-steps/story-st346` plays a story test of the Markdown issue check. Retire it with its line in the
   rehearsal's step list, and with its unit test if one names it.
 - `AGENTS.md`'s own part and `.agents/skills/host-build`: drop what points at `issues/`. The shared block and the
@@ -39,11 +43,5 @@ its Build, prepush or rehearsal scripts reads one.
 - The Build and shared-rules workflows pass on a commit without `issues/`. `check-citations .` passes there.
 - `git grep -n 'issues/'` finds nothing but the changelog's history, and that search is shown to find a known hit
   before the removal.
+- `check-citations .` still refuses an issue number, `HO12` or `#12`, written into code on that commit.
 - Before the cut-over: nothing of this is merged.
-
-## To be checked
-
-- Whether the shared tools' `check-citations` still runs after the cut-over, or goes too. That decides whether its step
-  stays.
-- Whether the carry-over also takes the Finished and Rejected rows of the index, or whether they are dropped. They
-  live only in `issues/README.md`.
