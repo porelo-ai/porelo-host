@@ -38,6 +38,12 @@ at once; the roles' down steps already take down only what is there, so they ser
   the forge, and `forge` down. Memberships are not checked, since people stay on a host that keeps running.
 - `uninstall` of Matrix: `matrix` down alone; no project's work is kept there.
 - Neither uninstall takes `base` or `porelo` down; those go only with `down`, which stays as it is.
+- On a host, whether the person may uninstall is the window's check before it calls the playbook, since only the
+  person's machine knows who the person is: from the organization's signed state, `porelo org --json`, the person
+  must be a Machine Admin of that host, and no project the host carries may have project admins that leave the
+  person out. The playbook keeps the check of work at central, which only the host can answer.
+- A pull request waiting for review does not stop an uninstall: the window warns of it before it calls the playbook,
+  and the playbook refuses only while work is not at central.
 - Red first, a unit test in `tests/unit` that reads the playbook as YAML:
   - an unknown part or action stops before any role;
   - the forge's uninstall runs `give-back-check` before any down task;
@@ -55,15 +61,9 @@ at once; the roles' down steps already take down only what is there, so they ser
 - On a rented host with both parts, the forge is uninstalled while a project's branch is ahead of central: refused,
   naming the project. Once the work is at central, it is uninstalled, and Matrix still answers.
 
-## Open questions
-
-- Whether uninstalling the forge warns, rather than refuses, while a pull request waits for review, as the design
-  asks. The playbook can only refuse or go on; a warning belongs to the window, which would read the open reviews
-  before it calls the playbook. Proposed: the window warns, and the playbook refuses only for work not at central.
-
 ## To be checked
 
-- Where a host's Machine Admin check runs, and how the window learns that another person's project uses the forge:
-  `give-back-check` names projects, not their owners. To be asked of Agent Core and Agent Frontend.
+- The field names of a host's admins and carried projects in `porelo org --json`, read from its output before the
+  window builds on them.
 - Whether `porelo`'s person part assumes a forge or homeserver in what it writes, so that installing one part first
   writes a rule for the other.

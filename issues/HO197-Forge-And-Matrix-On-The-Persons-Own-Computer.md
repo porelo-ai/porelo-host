@@ -15,7 +15,8 @@
 ```
 
 **Why this size.** It needs several pieces: the collection as a Debian package with a root-owned entry command, an
-inventory for this computer, a switch that keeps a host's hardening off a personal computer, a record of what an install
+inventory for this computer, a switch that keeps a host's hardening off a personal computer, the person admitted by
+uid instead of a group, the organization's follow with its waiting stop, a record of what an install
 added so its uninstall leaves the computer as it was, and an acceptance run on a fresh Ubuntu VM. It is L because it
 crosses Agent Core's apt repository and Agent Frontend's window.
 
@@ -32,6 +33,11 @@ write is run as root: the prompt runs a fixed command from a package, never a pl
   - It installs the collection under `/usr/share/porelo-host/collection` and depends on Ubuntu's `ansible-core`.
   - It ships the entry `/usr/libexec/porelo-host/part`, which takes only `forge|matrix` and `install|uninstall`,
     writes its inventory itself, and runs `part.yml` with `-c local` and the lines callback.
+  - The release uploads the `.deb` over REST into Artifactory's `porelo-dist-deb`, under
+    `pool/main/p/porelo-host-collection/`, with the properties `deb.distribution=<channel>`, `deb.component=main` and
+    `deb.architecture=amd64`, without which it is stored but never indexed. It refuses a version already in
+    `dists/releases/main/binary-amd64/Packages`, and waits until the index shows the new one. It needs its own
+    `JF_ACCESS_TOKEN` secret, which the operator grants.
 - **The administrator step:** the window runs `pkexec /usr/libexec/porelo-host/part <part> <action>`. A polkit action
   shipped in the package names only that path. One prompt per action.
 - **The inventory for this computer:**
@@ -44,9 +50,14 @@ write is run as root: the prompt runs a fixed command from a package, never a pl
   - Skips the nftables firewall, sshd's `Match Group`, the KVM removal, controller delegation beyond what rootless
     podman needs, and the legacy VPN.
   - The check role asks for the same.
-- **People:** the person's own account joins `porelo-people`, recorded as on a host, so the socket gates admit it. A
-  new group takes effect only at the next login, so either the window says so once, or the gate admits the account by
-  its uid.
+- **The person:** on the person's own computer no `porelo-people` group is made or joined. The forge's gate in the
+  `porelo-host` package and the Matrix gate in the Matrix transport admit the one account the part's settings name,
+  by its uid from the socket's peer credentials, so the person needs no new login. The entry writes that account,
+  the one that ran pkexec (`PKEXEC_UID`), into the settings; a host's gates keep admitting `porelo-people`.
+- **The organization:** the computer's forge follows the person's organization as a host's does. The install takes
+  `porelo`'s organization part, and its waiting stop asks for the organization's token, which the person puts into
+  the computer's vault through `porelo vault`, as on a host; nothing of the token passes through the entry or the
+  inventory.
 - **What install added:** each package and group the install added, that was not there before, is recorded under
   `/var/lib/porelo-host/added/<part>`. Uninstall removes what it recorded and nothing else, and only once no other part
   still needs it.
@@ -62,16 +73,11 @@ write is run as root: the prompt runs a fixed command from a package, never a pl
   afterwards equals the first one.
 - The window's install shows the lines live, and a second install changes nothing.
 
-## Open questions
-
-- Whether the forge on a person's own computer follows the person's organization like a host's forge, which needs the
-  organization's token in the computer's vault, or holds only the person's own work until it is brought to central.
-  The story's test brings work to central from it, so following seems meant; this decides the vault step.
-- Whether the person's account in `porelo-people` waits for the next login, said once by the window, or the gate on
-  this computer admits the person's account by its uid.
-
 ## To be checked
 
-- With Agent Core: publishing `porelo-host-collection` in Porelo's apt repository, and a review of the polkit action.
-- With Agent Frontend: how the window runs pkexec and reads the lines, and how it shows the next-login note.
+- The polkit action file and the `part` entry, handed to Agent Core by commit for a reading: what the action allows,
+  `auth_admin` or `auth_admin_keep`, that it names the one path and no argument pattern, and what `part` accepts.
+- With Agent Frontend: how the window runs pkexec and reads the lines.
+- With Agent Core and Agent Matrix: each gate admitting the one account its settings name, by uid, beside the
+  `porelo-people` group it admits on a host.
 - Whether Forgejo's runner on a personal computer needs the VM pool, or runs its jobs in podman alone.
