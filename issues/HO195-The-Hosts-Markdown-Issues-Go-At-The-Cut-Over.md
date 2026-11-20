@@ -25,7 +25,7 @@ its Build, prepush or rehearsal scripts reads one.
 
 - Done only after the carry-over has run on the cut-over day: it writes every open issue of `issues/` to GitHub
   Issues, each with its old id, and reads every row of the index once for the highest number the prefix `HO` ever
-  used, so a new issue never takes a used number. Finished and Rejected rows are not carried over; they go with
+  used, which it writes into `project.yml`'s `issue_floor`, so a new issue never takes a used number. Finished and Rejected rows are not carried over; they go with
   `issues/README.md`.
 - Delete `issues/`: the issue files, `README.md` and the shared `workflow.yml` copy.
 - `.github/workflows/shared-rules.yml`: drop the step "The issue heads" (`issues check issues`). Keep "No citation of
