@@ -31,6 +31,7 @@ jobs:
                   fetch-depth: 0
 
             - name: The shared build tools and the pinned GraalVM
+              id: pinned-jdk
               uses: ./.github/actions/pinned-jdk
 
             - name: The shared blocks against their hashes
@@ -100,6 +101,12 @@ jobs:
                   fi
                   "$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.release.Main \
                       check-commits "$start..$GITHUB_SHA"
+
+            # Even after a failure, so what the job fetched is not asked of Central again.
+            - if: always()
+              uses: ./.github/actions/maven-cache-save
+              with:
+                  key: ${{ steps.pinned-jdk.outputs.maven-cache-key }}
 
     # The roles on a VM made and deleted for the run, as build/molecule.sh runs them locally and as the Forgejo build
     # runs them: GitHub's runner offers KVM, measured by a probe that ran the scenario green there. Never for a fork's

@@ -28,6 +28,7 @@ jobs:
                   fetch-depth: 0
 
             - name: The shared build tools and the pinned GraalVM
+              id: pinned-jdk
               uses: ./.github/actions/pinned-jdk
 
             - name: The shared blocks against their hashes
@@ -84,3 +85,9 @@ jobs:
                   start=$(git rev-list -1 --before='26 hours ago' HEAD)
                   "$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.release.Main \
                       check-commits "${start:+$start..}HEAD"
+
+            # Even after a failure, so what the job fetched is not asked of Central again.
+            - if: always()
+              uses: ./.github/actions/maven-cache-save
+              with:
+                  key: ${{ steps.pinned-jdk.outputs.maven-cache-key }}

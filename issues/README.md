@@ -83,7 +83,6 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho195"></a>[HO195](HO195-The-Hosts-Markdown-Issues-Go-At-The-Cut-Over.md) | S | - | In the step after the host's issues are carried over to GitHub Issues and checked, porelo-host moves to the shared tools that recognize the tracker, and `issues/`, `stats/`, the shared-rules step that checks the issues and the story rehearsal that plays it are removed; until then nothing changes. |
-| <a id="ho199"></a>[HO199](HO199-The-Maven-Cache-Follows-What-The-Build-Resolved.md) | S | - | Bug: the Build's Maven cache is keyed by build/pom.xml alone and saved only on a miss, so the build tools' versions that their snapshots move are fetched from Central on every Build until that pom changes. |
 
 ## Review
 
@@ -91,6 +90,7 @@ it is left out.
 |---|---|---|---|
 | <a id="ho177"></a>[HO177](HO177-A-Jobs-Own-Leg-Reaches-A-Pool-VM.md) | S | - | In Molecule with the forge and the pool on, a job on the forge's runner runs `porelo-machines acceptance --kind amd64` itself, told the pool by its environment and given the run key as a secret, and its leg passes on a pool VM. |
 | <a id="ho189"></a>[HO189](HO189-The-Move-Rehearsal-Opens-No-Room-Tunnel.md) | S | - | `build/rehearse-move.sh` loses its `tunnel` verb and `build/room-tunnel.sh` goes, with what only they use; the rehearsal otherwise stays as it is. |
+| <a id="ho199"></a>[HO199](HO199-The-Maven-Cache-Follows-What-The-Build-Resolved.md) | S | - | Bug: the Build's Maven cache is keyed by build/pom.xml alone and saved only on a miss, so the build tools' versions that their snapshots move are fetched from Central on every Build until that pom changes. |
 | <a id="ho178"></a>[HO178](HO178-The-Rented-Rehearsal-Turns-The-Pool-On.md) | S | - | `build/rehearse-move.sh rented` takes the VM pool's systems and accounts and the forge's job capacity, writes them into the host's inventory and the check's choices, so a rented KVM host stands with the forge and the pool for another repository's pool proofs. |
 | <a id="ho179"></a>[HO179](HO179-The-Story-Test-Of-ST31.md) | S | - | A script beside the rehearsal scripts plays ST31 on the test VM as a person at the command line: it pastes a long key with odd characters at `vault put`'s prompt through a terminal, reads it back whole, starts an agent with a provider Porelo does not know and sees it refused by name before anything starts; it reports passed, failed with the step, or waiting on porelo's B228, P09 or B316. |
 | <a id="ho180"></a>[HO180](HO180-The-Story-Test-Of-ST41.md) | M | - | A script beside the rehearsal scripts plays ST41 on the test VM: in a sample Maven repository `porelo project init` writes the `.porelo.yml` and `project.yml` drafts, each proposed value names its source, and after a change in the local repository `refresh` reads the project again and shows it; it reports passed, failed with the step, or waiting on porelo-project's PJ52. |
