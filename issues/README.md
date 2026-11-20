@@ -109,7 +109,6 @@ it is left out.
 | <a id="ho146"></a>[HO146](HO146-A-Lent-Forge-Token-Leaves-The-Persons-Token.md) | S | - | Porelo's git commands on the host's forge take a lent token of their own, so the person's `<forge>.person` token in the vault, which a task's builds read, stays valid. |
 | <a id="ho145"></a>[HO145](HO145-A-Host-Task-Reads-Its-Builds-From-The-Hosts-Forge.md) | S | - | A host task reads its Builds from the host's forge: the follow names `builds` in each project's file beside `fetch_from`. |
 | <a id="ho142"></a>[HO142](HO142-The-Persons-Vault-Holds-Their-Forge-Token-From-The-Start.md) | S | - | Bug: the person's vault holds `<forge>.person` from the start, made the one way `porelo-host-push` makes it. |
-| <a id="ho188"></a>[HO188](HO188-A-Hosts-Task-Record-Is-One-Projects.md) | S | - | The host's documents, its Molecule checks and the measuring role read a task's record and forge token under the project and the task, as porelo's host program keys them once two projects of one person may each have a task of one name. |
 | <a id="ho141"></a>[HO141](HO141-The-Move-Check-Reads-Push-And-Pull-Request-From-The-Forge.md) | S | - | Bug: the move check reads the push and the pull request from the host's forge, and names the Build not configured without `builds:`. |
 | <a id="ho143"></a>[HO143](HO143-Work-Ahead-Of-Central-Is-Said-And-Holds-The-Give-Back.md) | S | - | Bug: `org status` says each taken repository's state against central, and `down` refuses while work is not at central, unless given back anyway. |
 | <a id="ho138"></a>[HO138](HO138-The-Move-Check-Reads-Each-Line-Where-It-Stands.md) | S | - | Bug: the move check reads the push from the forge's branch the task names, not the build reader, and the conversation from the task, not the peers list. |
@@ -128,6 +127,7 @@ it is left out.
 
 | # | Title | What was built |
 |---|---|---|
+| <a id="ho188"></a>HO188 | A Host's Task Record Is One Project's | The host's documents, its Molecule checks and the measuring role read a task's record and forge token under the project and the task, as porelo's host program keys them. |
 | <a id="ho190"></a>HO190 | A Snapshot Collection Is Published From Every Build Of Main | Every build of `main` publishes the collection as a snapshot on the rolling `snapshot` pre-release, with `SHA256SUMS` over the newest five and a `latest.json` pointer, checked anonymously by `build/check-snapshot.py`. |
 | <a id="ho191"></a>HO191 | The Docs Say What The Code Does | The README, `doc/` and the changelog were read against the code, and 20 claims the code did not bear out were corrected in the documents. |
 | <a id="ho192"></a>HO192 | The Snapshots Channel Without Versions Installs Its Newest | `up` from the snapshots channel with no versions installs the newest `porelo` and `porelo-host`, names both on a note line and holds the host program to its floor; the releases channel keeps its pins. |
