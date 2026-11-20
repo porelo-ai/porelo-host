@@ -9,7 +9,7 @@
   "size": "M",
   "priority": "High",
   "rank": 1,
-  "blockedBy": [],
+  "blockedBy": ["HO198"],
   "covers": "The forge and the Matrix homeserver are each installed and uninstalled alone, by one playbook taking the part and the action, the same on a host and on a person's own computer; uninstalling one leaves the other and everything both share, and uninstalling the forge refuses while a project's work is not at its central forge."
 }
 ```
@@ -33,8 +33,8 @@ at once; the roles' down steps already take down only what is there, so they ser
   both parts need podman, subordinate ids and the `porelo-people` group. Then the part's role runs, then `porelo`'s
   person part and `base`'s host summary, so the people's sudo rules and the summary name what now runs. The forge
   part sets `porelo_host_forge` for the run; the inventory value stays what `host up` wrote.
-- `uninstall` of the forge: the checks of `down`'s first block, reduced to the forge: `porelo-host project
-  give-back-check`, asked again with the follow paused, as `down` does. Then `vm_pool` down, whose runner rents from
+- `uninstall` of the forge: `roles/porelo/tasks/give_back_check.yml` with `porelo_host_give_back_people: false`,
+  which asks `porelo-host project give-back-check` and asks again with the follow paused, as `down` does. Then `vm_pool` down, whose runner rents from
   the forge, and `forge` down. Memberships are not checked, since people stay on a host that keeps running.
 - `uninstall` of Matrix: `matrix` down alone; no project's work is kept there.
 - Neither uninstall takes `base` or `porelo` down; those go only with `down`, which stays as it is.
