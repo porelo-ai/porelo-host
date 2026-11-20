@@ -5,7 +5,7 @@
   "$schema": "issue-1.json",
   "id": "HO197",
   "title": "Forge And Matrix On The Person's Own Computer",
-  "state": "Analyzed",
+  "state": "Estimated",
   "size": "L",
   "priority": "High",
   "rank": 2,
