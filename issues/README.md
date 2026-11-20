@@ -58,13 +58,13 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho196"></a>[HO196](HO196-Forge-And-Matrix-Installed-And-Uninstalled-Alone.md) | M | [HO198](README.md#ho198) | The forge and the Matrix homeserver are each installed and uninstalled alone, by one playbook taking the part and the action, the same on a host and on a person's own computer; uninstalling one leaves the other and everything both share, and uninstalling the forge refuses while a project's work is not at its central forge. |
-| <a id="ho198"></a>[HO198](HO198-Playbooks-And-Programs-Only-Map.md) | S | - | `down.yml` checks its inventory and calls roles, its give-back check with the follow paused moving into a role, and `porelo-host-measure`'s `main` maps its arguments to one call, the lock and the result's publication moving behind it. |
 | <a id="ho197"></a>[HO197](HO197-Forge-And-Matrix-On-The-Persons-Own-Computer.md) | L | [HO196](README.md#ho196) | On a person's own Ubuntu computer with Porelo from apt, the window installs and uninstalls the forge and Matrix with one administrator prompt each, by the same part playbook a host runs, from the collection Porelo's apt repository ships; nothing of a host's hardening is applied there, and uninstalling leaves the computer as it was. |
 
 ## Estimated
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
+| <a id="ho198"></a>[HO198](HO198-Playbooks-And-Programs-Only-Map.md) | S | - | `down.yml` checks its inventory and calls roles, its give-back check with the follow paused moving into a role, and `porelo-host-measure`'s `main` maps its arguments to one call, the lock and the result's publication moving behind it. |
 | <a id="ho23"></a>[HO23](HO23-A-Machine-Rented-And-Given-Back-By-OpenTofu.md) | L | - | An administrator rents and gives back a host by one OpenTofu module per provider, its state kept encrypted with the administrator, outside the interface. |
 | <a id="ho159"></a>[HO159](HO159-The-Hosts-Tests-Follow-The-Pyramid.md) | L | - | The host's tests follow the pyramid (ST296): its pool and role logic unit-tested over fakes, its subprocess tests narrowed, `tests/unit` and `tests/integration` apart, and Molecule's sleeps gone. |
 
