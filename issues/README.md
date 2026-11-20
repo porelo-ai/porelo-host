@@ -64,7 +64,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho195"></a>[HO195](HO195-The-Hosts-Markdown-Issues-Go-At-The-Cut-Over.md) | S | - | Once the host's issues are carried over to GitHub Issues on the cut-over day, `issues/` and the shared-rules step that checks it are removed, and the story rehearsal that plays the issue check is retired; until then nothing changes. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho40"></a>[HO40](HO40-The-Build-Runs-On-The-Hosts-Forge-As-On-GitHub.md) | M | - | The move's builds on the host's forge: `build.yml` green on the host's Forgejo and on GitHub unchanged, with task branches built, the tools without `podman run`, snapshots by variable and Molecule on a machine with KVM. |
 | <a id="ho39"></a>[HO39](HO39-The-Hosts-Agent-Works-In-A-Porelo-Task.md) | S | [HO40](README.md#ho40) | porelo-host's agent, `Agent Host`, in a Porelo task on the move's host, with a way back: the image from `porelo.yml`. |
@@ -75,6 +74,12 @@ it is left out.
 | <a id="ho194"></a>[HO194](HO194-A-Running-Up-Stops-Cleanly-Between-Its-Steps.md) | M | - | A person who interrupts a running `up` can ask it to stop: it ends the step it is in, starts no further one, says on a line of its own after which step it stopped, and leaves a host that a second `up` resumes and `down` takes back. |
 | <a id="ho193"></a>[HO193](HO193-The-Waiting-Stop-Nothing-Asks-For-Is-Gone.md) | XS | - | `up`'s waiting stop and `porelo_host_needs`, which nothing in the collection fills any more, are removed with what only they use, or the issue says why they must stay. |
 | <a id="ho153"></a>[HO153](HO153-The-Web-Gate-Keeps-A-Browsers-Connection.md) | - | - | Stopped by the operator, waits on the porelo-host CLI: the forge's web gate keeps a browser's connection open for several requests, each checked as the first, so a page starts few gate processes. |
+
+## Implementing
+
+| # | Size | Blocked by | What it covers |
+|---|---|---|---|
+| <a id="ho195"></a>[HO195](HO195-The-Hosts-Markdown-Issues-Go-At-The-Cut-Over.md) | S | - | Once the host's issues are carried over to GitHub Issues on the cut-over day, `issues/` and the shared-rules step that checks it are removed, and the story rehearsal that plays the issue check is retired; until then nothing changes. |
 
 ## Review
 
