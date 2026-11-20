@@ -1,7 +1,7 @@
 # HO199 — The Maven Cache Follows What The Build Resolved
 
 ```json
-{ "$schema": "issue-1.json", "id": "HO199", "title": "The Maven Cache Follows What The Build Resolved", "state": "Backlog",
+{ "$schema": "issue-1.json", "id": "HO199", "title": "The Maven Cache Follows What The Build Resolved", "state": "Implementing",
   "size": "S", "priority": "High", "rank": 1, "blockedBy": [],
   "covers": "Bug: the Build's Maven cache is keyed by build/pom.xml alone and saved only on a miss, so the build tools' versions that their snapshots move are fetched from Central on every Build until that pom changes." }
 ```

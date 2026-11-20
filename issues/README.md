@@ -67,7 +67,6 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho199"></a>[HO199](HO199-The-Maven-Cache-Follows-What-The-Build-Resolved.md) | S | - | Bug: the Build's Maven cache is keyed by build/pom.xml alone and saved only on a miss, so the build tools' versions that their snapshots move are fetched from Central on every Build until that pom changes. |
 | <a id="ho07"></a>[HO07](HO07-The-Projects-Store-Restored-And-Kept.md) | L | - | Role `store`: restic pinned, each entry's own copy and restore command, an hourly timer of root's, a last copy at `down`, the restore before anything reads it. |
 | <a id="ho40"></a>[HO40](HO40-The-Build-Runs-On-The-Hosts-Forge-As-On-GitHub.md) | M | - | The move's builds on the host's forge: `build.yml` green on the host's Forgejo and on GitHub unchanged, with task branches built, the tools without `podman run`, snapshots by variable and Molecule on a machine with KVM. |
 | <a id="ho39"></a>[HO39](HO39-The-Hosts-Agent-Works-In-A-Porelo-Task.md) | S | [HO40](README.md#ho40) | porelo-host's agent, `Agent Host`, in a Porelo task on the move's host, with a way back: the image from `porelo.yml`. |
@@ -84,6 +83,7 @@ it is left out.
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
 | <a id="ho195"></a>[HO195](HO195-The-Hosts-Markdown-Issues-Go-At-The-Cut-Over.md) | S | - | In the step after the host's issues are carried over to GitHub Issues and checked, porelo-host moves to the shared tools that recognize the tracker, and `issues/`, `stats/`, the shared-rules step that checks the issues and the story rehearsal that plays it are removed; until then nothing changes. |
+| <a id="ho199"></a>[HO199](HO199-The-Maven-Cache-Follows-What-The-Build-Resolved.md) | S | - | Bug: the Build's Maven cache is keyed by build/pom.xml alone and saved only on a miss, so the build tools' versions that their snapshots move are fetched from Central on every Build until that pom changes. |
 
 ## Review
 
