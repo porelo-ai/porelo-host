@@ -53,6 +53,13 @@ it is left out.
 |---|---|---|---|
 | <a id="ho167"></a>[HO167](HO167-Down-And-A-Host-The-Organization-No-Longer-Lists.md) | - | - | `down` on a host the organization no longer lists, while persons still hold memberships, names them and asks y/N before it takes them off and goes down; `--force` skips the question, and without a terminal it refuses. |
 
+## Analyzed
+
+| # | Size | Blocked by | What it covers |
+|---|---|---|---|
+| <a id="ho196"></a>[HO196](HO196-Forge-And-Matrix-Installed-And-Uninstalled-Alone.md) | M | - | The forge and the Matrix homeserver are each installed and uninstalled alone, by one playbook taking the part and the action, the same on a host and on a person's own computer; uninstalling one leaves the other and everything both share, and uninstalling the forge refuses while a project's work is not at its central forge. |
+| <a id="ho197"></a>[HO197](HO197-Forge-And-Matrix-On-The-Persons-Own-Computer.md) | L | [HO196](README.md#ho196) | On a person's own Ubuntu computer with Porelo from apt, the window installs and uninstalls the forge and Matrix with one administrator prompt each, by the same part playbook a host runs, from the collection Porelo's apt repository ships; nothing of a host's hardening is applied there, and uninstalling leaves the computer as it was. |
+
 ## Estimated
 
 | # | Size | Blocked by | What it covers |
