@@ -10,16 +10,17 @@
   "priority": "High",
   "rank": 1,
   "blockedBy": [],
-  "covers": "Once the host's issues are carried over to GitHub Issues on the cut-over day, `issues/` and the shared-rules step that checks it are removed, and the story rehearsal that plays the issue check is retired; until then nothing changes."
+  "covers": "In the step after the host's issues are carried over to GitHub Issues and checked, porelo-host moves to the shared tools that recognize the tracker, and `issues/`, `stats/`, the shared-rules step that checks the issues and the story rehearsal that plays it are removed; until then nothing changes."
 }
 ```
 
-**Why this size.** Deleting `issues/` and one workflow step, plus one rehearsal script and the rules and documents that
-point at `issues/`. No program or role changes: S.
+**Why this size.** Deleting `issues/`, `stats/` and one workflow step, one version in `build/pom.xml`, plus one
+rehearsal script and the rules and documents that point at `issues/`. No program or role changes: S.
 
-**What must be true.** Projects move from Markdown issues to GitHub Issues on one cut-over day. Until that day,
-porelo-host's `issues/` and its checks stay as they are. After it, the repository holds no Markdown issue, and no step of
-its Build, prepush or rehearsal scripts reads one.
+**What must be true.** Projects move from Markdown issues to GitHub Issues on one cut-over day, on which only the
+project's `project.yml` changes: porelo-host's `issues/` and its checks stay as they are and keep passing. In the step
+after the carry-over and its check, the repository drops its Markdown issues: it then holds none, and no step of its
+Build, prepush or rehearsal scripts reads one.
 
 ## Plan
 
@@ -32,16 +33,26 @@ its Build, prepush or rehearsal scripts reads one.
   an issue that goes stale" (`check-citations .`): the rule that code and shipped text never cite an issue number
   stays after the cut-over, for the old ids and the GitHub numbers alike, and the shared tools keep the command,
   reading no `issues/`.
-- `build/rehearse-steps/story-st346` plays a story test of the Markdown issue check. Retire it with its line in the
-  rehearsal's step list, and with its unit test if one names it.
+- `build/rehearse-steps/story-st346` plays a story test of the Markdown issue check. Retire it, and its sentence in
+  `doc/testing.md`. The rehearsal runs every `build/rehearse-steps/story-*` it finds, so no list names it and no unit
+  test holds it; as a test script it gets none.
+- Delete `stats/`: once the project's tracker is GitHub Issues the shared tools write and read no stage record.
+- `build/pom.xml`: `porelo.buildtools.version` to `0.5.3-SNAPSHOT`, whose shared tools read the project's tracker.
+  The `0.5.2-SNAPSHOT` in use stops check-commits unanswered when `issues/` holds no prefix and refuses a commit
+  deleting a stage record, so this commit is pushed only once the snapshot recognizing the tracker is published.
+- `build.yml` and `release.yml`'s `paths-ignore`, `build/ansible-lint.yml`, `build/yamllint.yml` and
+  `build/yamllint-ansible.yml`: drop `issues/`. `CONTRIBUTING.md`: a change starts in porelo-project's planning or as
+  an issue of this repository on GitHub.
 - `AGENTS.md`'s own part and `.agents/skills/host-build`: drop what points at `issues/`. The shared block and the
   shared skills follow the shared change, never one copy.
-- Red first: a test that `story-st346` is no longer in the rehearsal's step list fails today.
+- No program changes, so no unit test goes red first. Measured instead: on this tree with `issues/` and `stats/`
+  deleted, `check-commits` from `0.5.2-SNAPSHOT` stops unanswered, and from the new snapshot, with porelo-project's
+  `project.yml` naming the tracker, it passes.
 
 ## Acceptance
 
 - The Build and shared-rules workflows pass on a commit without `issues/`. `check-citations .` passes there.
 - `git grep -n 'issues/'` finds nothing but the changelog's history, and that search is shown to find a known hit
   before the removal.
-- `check-citations .` still refuses an issue number, `HO12` or `#12`, written into code on that commit.
+- `check-citations .` still refuses an issue number, `HO12` or `porelo-ai/porelo-host#12`, written into code on that commit.
 - Before the cut-over: nothing of this is merged.

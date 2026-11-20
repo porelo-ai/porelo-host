@@ -79,7 +79,7 @@ it is left out.
 
 | # | Size | Blocked by | What it covers |
 |---|---|---|---|
-| <a id="ho195"></a>[HO195](HO195-The-Hosts-Markdown-Issues-Go-At-The-Cut-Over.md) | S | - | Once the host's issues are carried over to GitHub Issues on the cut-over day, `issues/` and the shared-rules step that checks it are removed, and the story rehearsal that plays the issue check is retired; until then nothing changes. |
+| <a id="ho195"></a>[HO195](HO195-The-Hosts-Markdown-Issues-Go-At-The-Cut-Over.md) | S | - | In the step after the host's issues are carried over to GitHub Issues and checked, porelo-host moves to the shared tools that recognize the tracker, and `issues/`, `stats/`, the shared-rules step that checks the issues and the story rehearsal that plays it are removed; until then nothing changes. |
 
 ## Review
 
