@@ -1,5 +1,9 @@
 .*
 !.gitignore
+!.agents
+!.claude
+.claude/*
+!.claude/skills
 !.gitkeep
 !.editorconfig
 !.github
