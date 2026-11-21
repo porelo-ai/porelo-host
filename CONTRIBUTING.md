@@ -7,8 +7,8 @@ rules are kept there and in the shared block of [`AGENTS.md`](AGENTS.md), not he
 ## In this repository
 
 The collection's shape is planned in
-[porelo-project's issues](https://github.com/porelo-ai/porelo-project/blob/main/issues/README.md); a change
-starts there or as an issue in [`issues/`](issues/README.md).
+[porelo-project's issues](https://github.com/porelo-ai/porelo-project/issues); a change starts there or as an
+[issue of this repository](https://github.com/porelo-ai/porelo-host/issues).
 
 A change is checked as the Build checks it. The Ansible tools run from the image `build/tools-image` pins, through
 podman, so nothing but podman and Java 25 is installed:

@@ -127,7 +127,7 @@ for name in a b; do
 done
 echo "rehearsal-a and rehearsal-b run and read their messages for $answer_minutes minutes; rehearsal-c is stopped"
 
-# HO170, for porelo's B619: a fourth task reads every repository of the project, read only, and leaves nothing behind.
+# A fourth task reads every repository of the project, read only, and leaves nothing behind.
 # Started prompt-less and detached on the host itself: B619 removes a prompt run of a reading task only from its fix on.
 all_task=rehearsal-all
 container="porelo-${REHEARSAL_PROJECT}_$all_task"

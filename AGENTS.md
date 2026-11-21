@@ -72,7 +72,6 @@ into a shared skill or this block, one that concerns only this machine into `.AG
 
 ## Work in this repository
 
-- **Issue prefix `HO`.**
 - **An Ansible collection, `porelo.host`**, versioned to match Porelo's releases, since it calls Porelo's
   commands.
 - **What keeps a guarantee is never done here:** following a signed project, depositing a key and starting a

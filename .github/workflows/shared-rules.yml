@@ -37,12 +37,6 @@ jobs:
             - name: No citation of an issue that goes stale
               run: '"$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.release.Main check-citations .'
 
-            # Every issue head held to issue-1.json and each index to its heads, on the checked-out commit, never on a
-            # working tree: a head the planner's board refuses, one without a size or with a rank of null, is named
-            # here by its file and its field.
-            - name: The issue heads
-              run: '"$JAVA_HOME/bin/java" -cp "$(cat "$RUNNER_TEMP/tools-cp.txt")" org.fuin.porelo.release.Main issues check issues'
-
             # A pull request's own commits held to the shared rule on commit messages. One from outside - from another
             # repository, or opened by someone not a member - also carries its author's Signed-off-by: on each commit,
             # the Developer Certificate of Origin; Dependabot's and GitHub's own commits are exempt by the author and

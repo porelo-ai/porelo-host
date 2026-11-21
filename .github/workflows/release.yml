@@ -11,7 +11,7 @@ on:
         tags: ['v*']
         branches: [main]
         # What the Build leaves out builds no snapshot either: the collection's tarball holds none of it.
-        paths-ignore: ['porelo.yml', 'issues/**', 'doc/**', '**/*.md', '.github/**']
+        paths-ignore: ['porelo.yml', 'doc/**', '**/*.md', '.github/**']
 
 permissions:
     contents: read

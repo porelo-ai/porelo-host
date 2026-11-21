@@ -900,7 +900,7 @@ rented_push_pull() {
     mv "$report/central-state.json.tmp" "$report/central-state.json"
 }
 
-# HO165's measurement: the answers go into the report as they come, the token itself never.
+# The measurement: the answers go into the report as they come, the token itself never.
 rented_refused_token() {
     # The client names the central token's vault entry after the forge's name, as forge.conf gives it.
     forge=$(on_rented sed -n 's/^name=//p' /etc/porelo-host/forge.conf)

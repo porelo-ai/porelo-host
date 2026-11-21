@@ -8,7 +8,6 @@ ignore: |
     build/
     meta/
     doc/
-    issues/
     tests/
     mkdocs.yml
     porelo.yml
