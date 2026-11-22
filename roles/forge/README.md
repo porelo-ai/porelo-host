@@ -44,8 +44,8 @@ person's token. `/etc/porelo-host/forge.conf` records `host`, `name`, `port`, `g
 Root's administration helpers reach the private upstream socket; a person's forge calls use `git.sock`.
 
 `up` creates no default forge user and removes an unrecorded `operator` login. Each person gets their own login
-at admission. Browser access needs no password. The role removes the password helper, old HTTPS units and forge TLS
-files; the person's sudoers configuration provides no password-setting command.
+at admission. Browser access needs no password. The role removes the password helper; the person's sudoers
+configuration provides no password-setting command.
 
 `up` retains `/etc/porelo-host/forge/central-ca.conf` (`0644`, holding `forge_central_ca`) as configuration for
 `porelo-host project check-central <project> <repository>...`. The collection installs no gathered-push wrapper.
@@ -63,7 +63,7 @@ sudoers drop-in an older host had for the push.
 before removing the project, dropping its memberships from `/etc/porelo-host/people/` and locking each person left with
 none through the host program's person lifecycle. Its credentials stay in memory and Forgejo;
 [project registration](../../doc/local-forge.md#registering-a-project)
-describes the records, refusal checks and failure behavior. Down removes project records and legacy helpers.
+describes the records, refusal checks and failure behavior. Down removes project records.
 
 The [resource bounds](../../doc/index.md) are set by `forge_cpus`, `forge_memory`, `forge_pids_limit`,
 `forge_runner_cpus`, `forge_runner_memory` and `forge_runner_pids_limit`; job bounds use `forge_job_cpus`,

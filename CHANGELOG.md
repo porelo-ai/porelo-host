@@ -68,6 +68,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- `up` and `down` no longer remove the forge's old HTTPS listener, its TLS files and marked host name, or the host
+  programs the collection installed before the native package; no host set up that way remains.
 - `up` and `down` no longer look for or remove a VPN that an earlier setup of the host left behind; no host set up
   that way remains.
 - `build/room-tunnel.sh` and the move rehearsal's `tunnel`: nothing joins the development machine to a host's tasks;

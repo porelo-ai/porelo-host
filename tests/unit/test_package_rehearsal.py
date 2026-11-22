@@ -19,8 +19,8 @@ def verify_tasks():
     return yaml.safe_load((ROOT / "extensions/molecule/default/verify.yml").read_text())[0]["tasks"]
 
 
-def test_verify_refuses_the_wrong_host_version_and_every_legacy_program():
-    """Refuse a different privileged build or a legacy program surviving an upgrade."""
+def test_verify_refuses_the_wrong_host_version():
+    """Refuse a different privileged build."""
     tasks = verify_tasks()
     version = next(t for t in tasks if t.get("register") == "verify_host_program_version")
     assert version["ansible.builtin.command"]["argv"][-2:] == ["/usr/sbin/porelo-host", "--version"]
@@ -32,25 +32,6 @@ def test_verify_refuses_the_wrong_host_version_and_every_legacy_program():
     check = env.compile_expression(assertion["that"])
     assert check(verify_host_program_version={"stdout": "porelo-host pinned"}, verify_host_version="pinned")
     assert not check(verify_host_program_version={"stdout": "porelo-host stale"}, verify_host_version="pinned")
-    legacy = next(t for t in tasks if t.get("register") == "verify_legacy_programs")
-    assert legacy["ansible.builtin.stat"]["follow"] is False
-    assert set(legacy["loop"]) == {
-        "/usr/local/sbin/porelo-host-person",
-        "/usr/local/sbin/porelo-host-project",
-        "/usr/local/libexec/porelo-forge-gate",
-        "/usr/local/sbin/porelo-host-push",
-        "/usr/local/bin/porelo-host-forge-token",
-        "/usr/local/share/porelo-host-forge-token.sh",
-        "/usr/local/bin/porelo-host-stop",
-        "/usr/local/libexec/porelo-host/porelo-pool-revert",
-        "/usr/local/libexec/porelo-host/porelo-vm",
-        "/usr/local/sbin/porelo-host-forge-password",
-    }
-    assertion = next(t for t in tasks if t.get("name") == "Assert no legacy host program remains")
-    assert assertion["loop"] == "{{ verify_legacy_programs.results }}"
-    checks = [env.compile_expression(c) for c in assertion["ansible.builtin.assert"]["that"]]
-    for exists, link in [(False, False), (True, False), (False, True)]:
-        assert all(c(item={"stat": {"exists": exists, "islnk": link}}) for c in checks) is not (exists or link)
 
 
 @pytest.fixture

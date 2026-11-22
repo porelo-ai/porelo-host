@@ -31,33 +31,6 @@
         fail_msg: >-
           expected porelo-host {{ verify_host_version }}, got {{ verify_host_program_version.stdout }}
 
-    - name: Inspect every former host program without following links
-      ansible.builtin.stat:
-        path: "{{ item }}"
-        follow: false
-      loop:
-        - /usr/local/sbin/porelo-host-person
-        - /usr/local/sbin/porelo-host-project
-        - /usr/local/libexec/porelo-forge-gate
-        - /usr/local/sbin/porelo-host-push
-        - /usr/local/bin/porelo-host-forge-token
-        - /usr/local/share/porelo-host-forge-token.sh
-        - /usr/local/bin/porelo-host-stop
-        - /usr/local/libexec/porelo-host/porelo-pool-revert
-        - /usr/local/libexec/porelo-host/porelo-vm
-        - /usr/local/sbin/porelo-host-forge-password
-      register: verify_legacy_programs
-
-    - name: Assert no legacy host program remains
-      ansible.builtin.assert:
-        that:
-          - not item.stat.exists
-          - not (item.stat.islnk | default(false))
-        fail_msg: "removed host program still exists at {{ item.item }}"
-      loop: "{{ verify_legacy_programs.results }}"
-      loop_control:
-        label: "{{ item.item }}"
-
     - name: Read every account on the host from getent passwd
       ansible.builtin.getent:
         database: passwd

@@ -3,7 +3,6 @@
 The collection installs `porelo-host` beside `porelo`, from the same signed source at its pinned Debian version.
 Only the pre-receive hook, `porelo-host-check`, `porelo-host-measure` and a pool VM's `porelo-pool-give-back`
 remain collection scripts. `build/porelo-vm` belongs to development and is excluded from the installed collection.
-Both up and down include removal of the former host programs.
 
 The native package supplies organization follow, refresh and pin renewal, forge gates and measurement, and pool
 make, address, delete, revert and give-back. Runtime restoration runs through `org follow`. The pre-receive hook is

@@ -97,29 +97,3 @@ def test_password_helper_is_removed_instead_of_installed():
         task.get("ansible.builtin.file") == {"path": "/usr/local/sbin/porelo-host-forge-password", "state": "absent"}
         for task in tasks
     )
-
-
-def test_teardown_stops_the_previous_https_listener_without_an_upgrade():
-    """Prevent an old public listener from surviving a direct teardown."""
-    tasks = yaml.safe_load((ROOT / "roles/forge/tasks/down.yml").read_text())
-    units = next(task["loop"] for task in tasks if "__forge_down_gate_units" == task.get("register"))
-    assert set(units) == {
-        "porelo-forge-web.socket",
-        "porelo-forge-git.socket",
-        "porelo-forge-runner.socket",
-        "porelo-host-verify.socket",
-        "porelo-forge-https.socket",
-        "porelo-forge-https.service",
-    }
-    stop = next(task for task in tasks if task.get("ansible.builtin.systemd_service", {}).get("state") == "stopped")
-    assert stop["ansible.builtin.systemd_service"]["enabled"] is False
-    assert "__forge_down_gate_units" in stop["loop"]
-    removed = set().union(
-        *(
-            set(task.get("loop", []))
-            for task in tasks
-            if task.get("ansible.builtin.file", {}).get("path") == "/etc/systemd/system/{{ item }}"
-            and task["ansible.builtin.file"].get("state") == "absent"
-        )
-    )
-    assert set(units) <= removed

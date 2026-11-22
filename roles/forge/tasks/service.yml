@@ -1,9 +1,6 @@
 ---
 # Forgejo as a quadlet unit of the forge's account. The image is pulled before the unit starts, so its start is not
 # timed by a download; only the forge account can open the upstream socket.
-- name: service | Remove the forge's old HTTPS listener
-  ansible.builtin.include_tasks: "{{ role_path }}/tasks/legacy.yml"
-
 - name: service | Make the account's directories for quadlet units
   ansible.builtin.file:
     path: "{{ item }}"

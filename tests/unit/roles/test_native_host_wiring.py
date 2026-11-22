@@ -71,12 +71,10 @@ def test_pool_acceptance_and_follow_are_enabled():
     assert follow.get("when") is not False
 
 
-def test_a_host_package_without_the_push_judge_is_refused_before_upgrade_cleanup():
-    """Prevent an upgrade deleting executable targets of still-active legacy units."""
+def test_a_host_package_without_the_push_judge_is_refused():
+    """Prevent a host installing a porelo-host older than the push judge it needs."""
     tasks = yaml.safe_load((ROOT / "roles/porelo/tasks/install.yml").read_text())
-    cleanup = next(i for i, t in enumerate(tasks) if "legacy_programs.yml" in str(t))
-    refusal = next(i for i, t in enumerate(tasks) if "__porelo_host_version_comparison.rc == 0" in str(t))
-    assert refusal < cleanup
+    assert any("__porelo_host_version_comparison.rc == 0" in str(t) for t in tasks)
     defaults = yaml.safe_load((ROOT / "roles/porelo/defaults/main.yml").read_text())
     names = yaml.safe_load((ROOT / "roles/porelo/vars/main.yml").read_text())
     # A host installs from Porelo's repository, which publishes snapshots by run number and never a local build's

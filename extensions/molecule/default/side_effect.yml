@@ -206,16 +206,12 @@
         - /etc/porelo-host/forge
         - /etc/porelo-host/forge.conf
         - /usr/local/sbin/porelo-host-forge-password
-        - /usr/local/sbin/porelo-host-push
         - /etc/systemd/system/porelo-forge-web.socket
         - /etc/systemd/system/porelo-forge-git.socket
         - /etc/systemd/system/porelo-forge-runner.socket
         - /etc/systemd/system/porelo-forge-web@.service
         - /etc/systemd/system/porelo-forge-git@.service
         - /etc/systemd/system/porelo-forge-runner@.service
-        - /usr/local/libexec/porelo-forge-gate
-        - /etc/systemd/system/porelo-forge-https.socket
-        - /etc/systemd/system/porelo-forge-https.service
       register: side_effect_paths_after
 
     - name: Assert down removed every home, linger file, host.json and forge file
@@ -233,7 +229,6 @@
     - name: Assert down removed the forge.alpha and matrix.alpha blocks and names from /etc/hosts
       ansible.builtin.assert:
         that:
-          - "'porelo-host forge name' not in side_effect_hosts_text"
           - "'porelo-host matrix name' not in side_effect_hosts_text"
           - "'forge.alpha' not in side_effect_hosts_text"
           - "'matrix.alpha' not in side_effect_hosts_text"

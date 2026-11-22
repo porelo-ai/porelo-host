@@ -193,6 +193,3 @@
     owner: root
     group: root
     mode: "0755"
-
-- name: install | Remove the collection's former host programs
-  ansible.builtin.include_tasks: "{{ role_path }}/tasks/legacy_programs.yml"
