@@ -2,7 +2,8 @@
 # What `host down` runs on the host itself, with `-c local`, before the host is given back. It refuses first while any
 # project's work on the host's forge is not at its central forge and while any person still holds a membership, then
 # runs the steps of the roles that bring something up, the other way round: the homeserver, the VM pool, the forge,
-# then cleanup of a legacy VPN. Each takes down only what is there, so it also follows a failed `up`.
+# then the person's key and the host summary, leaving the firewall on. Each takes down only what is there, so it also
+# follows a failed `up`.
 - name: Take the host down
   hosts: localhost
   connection: local
@@ -143,7 +144,7 @@
           seconds: 10
 
 
-    - name: Remove a legacy VPN left by an earlier setup
+    - name: Take the person's key and the host summary off
       ansible.builtin.include_role:
         name: porelo.host.base
         tasks_from: down

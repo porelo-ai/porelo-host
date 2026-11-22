@@ -1,4 +1,5 @@
 import org.fuin.porelo.machines.Credential;
+import org.fuin.porelo.machines.Kind;
 import org.fuin.porelo.machines.Lease;
 import org.fuin.porelo.machines.LocalPool;
 import org.fuin.porelo.machines.Pool;
@@ -31,7 +32,7 @@ public final class PoolAcceptance {
         final Credential key = Credential.of(System.getenv("PORELO_POOL_SSH"), null);
         final Path state = Path.of(System.getenv("XDG_STATE_HOME"), "porelo-machines", "pool");
         final Path dirty = state.resolve(vm.name()).resolve("run.dirty");
-        final Spec spec = Spec.of("pool-acceptance", "ubuntu", "run", key);
+        final Spec spec = Spec.of("pool-acceptance", "ubuntu", Kind.AMD64_BUILD, "run", key);
         try (LocalPool pool =
                 LocalPool.onThisHost(definition, key, state, Duration.ofSeconds(30))) {
             if (args.length == 3 && args[2].equals("hold")) {

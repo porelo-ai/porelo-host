@@ -1,6 +1,6 @@
 ---
 # Runs `down` on the host itself with the same v2 inventory, after verify has read what `up` left, and checks that
-# `down` leaves no service account, linger file, process, VPN interface, host summary, /etc/hosts block, forge unit or
+# `down` leaves no service account, linger file, process, host summary, /etc/hosts block, forge unit or
 # pool VM behind.
 - name: Side effect
   hosts: all
@@ -84,26 +84,18 @@
         src: /etc/hosts
       register: side_effect_hosts_before
 
-    - name: Read whether wg-porelo exists before down
-      ansible.builtin.command:
-        argv: [ip, link, show, wg-porelo]
-      register: side_effect_vpn_before
-      changed_when: false
-      failed_when: false
-
-    - name: Assert the service accounts, linger files, host.json and hosts block exist, wg-porelo absent, before down
+    - name: Assert the service accounts, linger files, host.json and hosts block exist before down
       ansible.builtin.assert:
         that:
           - side_effect_service_uids | length == (side_effect_expected_accounts | length)
           - side_effect_before_paths.results | rejectattr('stat.exists') | list | length == 0
           - "'porelo-host matrix name' in side_effect_hosts_text"
           - "'matrix.alpha.porelo.internal' in side_effect_hosts_text"
-          - side_effect_vpn_before.rc != 0
         fail_msg: >-
-          asked for accounts {{ side_effect_expected_accounts }}, paths, the /etc/hosts block and wg-porelo before down;
+          asked for accounts {{ side_effect_expected_accounts }}, paths, and the /etc/hosts block before down;
           got uids {{ side_effect_service_uids }}, missing paths
           {{ side_effect_before_paths.results | rejectattr('stat.exists') | map(attribute='item') | list }},
-          wg rc {{ side_effect_vpn_before.rc }}, hosts {{ side_effect_hosts_text }}
+          hosts {{ side_effect_hosts_text }}
       vars:
         side_effect_hosts_text: "{{ side_effect_hosts_before.content | b64decode }}"
 
@@ -194,7 +186,7 @@
           asked pgrep for no process under UIDs {{ side_effect_service_uids }} (rc 1);
           got rc {{ side_effect_processes_after.rc }}: {{ side_effect_processes_after.stdout_lines }}
 
-    - name: Read whether any home, linger file, host.json, VPN file or forge file remains after down
+    - name: Read whether any home, linger file, host.json or forge file remains after down
       ansible.builtin.stat:
         path: "{{ item }}"
       loop:
@@ -211,9 +203,6 @@
         - /etc/systemd/system/porelo-host-follow.service
         - /etc/systemd/system/porelo-host-follow.timer
         - /var/lib/private/porelo-host-org-fetch
-        - /etc/wireguard/wg-porelo.conf
-        - /etc/wireguard/porelo-host.key
-        - /etc/porelo-host/vpn.conf
         - /etc/porelo-host/forge
         - /etc/porelo-host/forge.conf
         - /usr/local/sbin/porelo-host-forge-password
@@ -229,26 +218,12 @@
         - /etc/systemd/system/porelo-forge-https.service
       register: side_effect_paths_after
 
-    - name: Assert down removed every home, linger file, host.json, VPN file and forge file
+    - name: Assert down removed every home, linger file, host.json and forge file
       ansible.builtin.assert:
         that: side_effect_paths_after.results | selectattr('stat.exists') | list | length == 0
         fail_msg: >-
-          asked for no service home, linger file, host.json, VPN file or forge file after down;
+          asked for no service home, linger file, host.json or forge file after down;
           left {{ side_effect_paths_after.results | selectattr('stat.exists') | map(attribute='item') | list }}
-
-    - name: Read whether the VPN interface wg-porelo still exists after down
-      ansible.builtin.command:
-        argv: [ip, link, show, wg-porelo]
-      register: side_effect_vpn_after
-      changed_when: false
-      failed_when: false
-
-    - name: Assert down took the VPN interface wg-porelo down
-      ansible.builtin.assert:
-        that: side_effect_vpn_after.rc != 0
-        fail_msg: >-
-          asked for wg-porelo to be absent after down;
-          got rc {{ side_effect_vpn_after.rc }}: {{ side_effect_vpn_after.stdout }}
 
     - name: Read /etc/hosts after down
       ansible.builtin.slurp:

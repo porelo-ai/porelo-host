@@ -40,7 +40,7 @@ argument_specs:
         default: /etc/porelo-host/host.json
         description: Where the host's summary JSON is written, root's with mode 0644.
   down:
-    short_description: Remove legacy VPN files and the host summary, with optional account key cleanup.
+    short_description: Remove the host summary, with optional account key cleanup.
     options:
       base_account:
         type: str

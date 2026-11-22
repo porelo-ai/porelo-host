@@ -68,6 +68,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- `up` and `down` no longer look for or remove a VPN that an earlier setup of the host left behind; no host set up
+  that way remains.
 - `build/room-tunnel.sh` and the move rehearsal's `tunnel`: nothing joins the development machine to a host's tasks;
   a moved agent talks only in the host's own room.
 

@@ -16,9 +16,6 @@
     - base_authorized_key | length > 0
     - ansible_facts['getent_passwd'][base_account] is not none
 
-- name: down | Remove the VPN left by an earlier setup
-  ansible.builtin.include_tasks: "{{ role_path }}/tasks/legacy_vpn.yml"
-
 - name: down | Remove the host summary
   ansible.builtin.file:
     path: /etc/porelo-host/host.json

@@ -45,7 +45,7 @@ not yet on the forge has none either. `porelo-host down --give-back-anyway` give
 knowingly, its work lost. Refuses while any person record in
 `/etc/porelo-host/people/` still holds a project membership (a host admin's own does not count), naming each
 person and their memberships with `"Take the project off"` and `"Purge"`. Once no membership remains, it takes the homeserver, the VM pool and the forge off the host and
-removes any legacy VPN files last. Every step takes down only what is there, so `down` after a failed `up` works
+takes the person's key and the host summary off last. Every step takes down only what is there, so `down` after a failed `up` works
 too. **The firewall stays on,** so that a machine kept after `down` does not expose the next service unasked; `down` ends by saying so, with the command that takes it off.
 
 [SSH access](ssh.md) describes the key source, revocation input and Unix socket permissions.

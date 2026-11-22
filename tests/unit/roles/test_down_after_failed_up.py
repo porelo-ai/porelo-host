@@ -5,7 +5,7 @@ import subprocess
 
 
 def test_down_goes_through_when_up_made_nothing(tmp_path):
-    # As after an up that base's CPU check stopped: no account of the forge or the homeserver, no VPN file.
+    # As after an up that base's CPU check stopped: no account of the forge or the homeserver.
     inventory = tmp_path / "inventory.yml"
     inventory.write_text(
         "all:\n  hosts:\n    localhost:\n  vars:\n    porelo_host_inventory_version: 2\n"
