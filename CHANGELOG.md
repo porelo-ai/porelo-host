@@ -68,6 +68,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- `up` no longer removes an unrecorded `operator` forge login, the forge password helper or the sudo rule that ran
+  the gathered push as root, and `down` no longer removes the forge gate, the old hook path, the gathered push, the
+  password helper or `porelo-host-project`; no host set up that way remains.
 - `up` and `down` no longer remove the forge's old HTTPS listener, its TLS files and marked host name, or the host
   programs the collection installed before the native package; no host set up that way remains.
 - `up` and `down` no longer look for or remove a VPN that an earlier setup of the host left behind; no host set up

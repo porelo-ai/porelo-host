@@ -117,7 +117,7 @@ def test_down_takes_the_judge_its_hook_and_its_records_away():
         "porelo-host-verify.socket",
         "porelo-host-verify@.service",
         "porelo-host-verify@*.service",
-        "/usr/local/libexec/porelo-forge-pre-receive",
+        "/usr/local/libexec/porelo/pre-receive",
         "/var/lib/porelo-host/arrivals",
     ):
         assert name in down, name

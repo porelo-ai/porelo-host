@@ -43,9 +43,8 @@ Token issuance and task-token isolation belong to the host's token lifecycle. Ta
 person's token. `/etc/porelo-host/forge.conf` records `host`, `name`, `port`, `git_port` and `account`, with no secret.
 Root's administration helpers reach the private upstream socket; a person's forge calls use `git.sock`.
 
-`up` creates no default forge user and removes an unrecorded `operator` login. Each person gets their own login
-at admission. Browser access needs no password. The role removes the password helper; the person's sudoers
-configuration provides no password-setting command.
+`up` creates no default forge user. Each person gets their own login at admission. Browser access needs no
+password, and the person's sudoers configuration provides no password-setting command.
 
 `up` retains `/etc/porelo-host/forge/central-ca.conf` (`0644`, holding `forge_central_ca`) as configuration for
 `porelo-host project check-central <project> <repository>...`. The collection installs no gathered-push wrapper.

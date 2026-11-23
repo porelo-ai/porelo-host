@@ -410,29 +410,8 @@
       loop_control:
         label: "{{ item['item'] }}"
 
-    - name: Verify up made no operator forge login or password helper
+    - name: Verify up made no operator forge login
       ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_person.yml"
-      when: verify_forge == 'on'
-
-    # Simulate a host prepared by an earlier version: an unrecorded operator user in Forgejo and person= in forge.conf.
-    - name: Plant an unrecorded operator forge login and a legacy person= line before up with -vvv
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          cd /
-          [ ! -e /etc/porelo-host/people/operator.conf ] && [ ! -L /etc/porelo-host/people/operator.conf ] \
-              || { echo "unexpected /etc/porelo-host/people/operator.conf before up -vvv" >&2; exit 1; }
-          as_forge() { runuser -u porelo-forge -- env XDG_RUNTIME_DIR="/run/user/$(id -u porelo-forge)" "$@"; }
-          as_forge podman exec forgejo forgejo admin user create --username operator \
-              --email operator@forge.alpha.porelo.internal --random-password --must-change-password=false > /dev/null
-          users=$(as_forge podman exec forgejo forgejo admin user list)
-          printf '%s\n' "$users" | awk 'NR > 1 {print $2}' | grep -Fx operator > /dev/null \
-              || { echo "asked for operator present before up -vvv, got none" >&2; exit 1; }
-          printf 'person=operator\n' >> /etc/porelo-host/forge.conf
-          grep -Fx 'person=operator' /etc/porelo-host/forge.conf > /dev/null
-        executable: /bin/bash
-      changed_when: true
-      no_log: true
       when: verify_forge == 'on'
 
     # Ansible's own most talkative output of a whole up, searched for the host's and the pool's private keys and the
@@ -522,10 +501,6 @@
           ansible.builtin.file:
             path: /root/porelo-host-vvv.out
             state: absent
-
-    - name: Verify up with -vvv removed the unrecorded operator login
-      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/forge_person.yml"
-      when: verify_forge == 'on'
 
     # The VM pool: one VM per run account, its file for porelo-machines holding no key, its run key root's alone on the
     # host, and a give-back that leaves nothing of the run on the VM, what the run wrote as root included.

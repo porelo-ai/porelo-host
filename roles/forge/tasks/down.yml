@@ -117,14 +117,8 @@
     path: "{{ item }}"
     state: absent
   loop:
-    - /usr/local/libexec/porelo-forge-gate
-    - /usr/local/libexec/porelo-forge-pre-receive
     - /usr/local/libexec/porelo/pre-receive
     - /var/lib/porelo-host/arrivals
-    - /etc/sudoers.d/porelo-host-push
-    - /usr/local/sbin/porelo-host-push
-    - /usr/local/sbin/porelo-host-forge-password
-    - /usr/local/sbin/porelo-host-project
     - /etc/porelo-host/forge.conf
     - /etc/porelo-host/projects
     - /opt/porelo-host/runner-job-hosts

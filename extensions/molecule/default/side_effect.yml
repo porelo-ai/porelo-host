@@ -205,7 +205,6 @@
         - /var/lib/private/porelo-host-org-fetch
         - /etc/porelo-host/forge
         - /etc/porelo-host/forge.conf
-        - /usr/local/sbin/porelo-host-forge-password
         - /etc/systemd/system/porelo-forge-web.socket
         - /etc/systemd/system/porelo-forge-git.socket
         - /etc/systemd/system/porelo-forge-runner.socket

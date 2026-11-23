@@ -1,5 +1,5 @@
 ---
-# No default operator login, password helper, password file or CA key belongs on the host; the refusal of a person
+# No default operator login, password file or CA key belongs on the host; the refusal of a person
 # named operator is with the persons, who come from the organization.
 - name: Read whether a password file or a CA key of a person's is on the host
   ansible.builtin.stat:
@@ -14,16 +14,6 @@
     that: verify_person_files.results | selectattr('stat.exists') | list | length == 0
     fail_msg: >-
       found {{ verify_person_files.results | selectattr('stat.exists') | map(attribute='item') | list }} on the host
-
-- name: Read whether the password helper remains
-  ansible.builtin.stat:
-    path: /usr/local/sbin/porelo-host-forge-password
-  register: verify_person_script
-
-- name: Assert the password helper is absent
-  ansible.builtin.assert:
-    that: not verify_person_script.stat.exists
-    fail_msg: "asked for no forge password helper, got {{ verify_person_script.stat }}"
 
 - name: Read /etc/porelo-host/forge.conf to verify no person= setting remains
   ansible.builtin.slurp:

@@ -15,9 +15,3 @@
     group: root
     mode: "0644"
     content: "{{ forge_central_ca }}\n"
-
-# A host prepared before Git reached the forge on loopback had the push and pull run as root.
-- name: push | Remove the rule that ran the push and pull as root
-  ansible.builtin.file:
-    path: /etc/sudoers.d/porelo-host-push
-    state: absent
