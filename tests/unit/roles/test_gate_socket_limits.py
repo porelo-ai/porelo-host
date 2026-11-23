@@ -39,9 +39,8 @@ def test_a_burst_of_connections_never_fails_the_socket_for_good(path):
 
 @pytest.mark.parametrize("path", GATE_SOCKETS, ids=lambda path: path.name)
 def test_the_connections_at_once_are_bounded_explicitly(path):
-    """Not systemd's default 64: the people's and the runner's gates fit a browser's pages and polls, the judge 16."""
-    value = socket_section(path).get("MaxConnections")
-    assert value == ("16" if "verify" in path.name else "256")
+    """Not systemd's default 64, nor a bound a project's pushes, pages and jobs reach at once: one guard for all."""
+    assert socket_section(path).get("MaxConnections") == "4096"
 
 
 def listening_check(tasks_file, name, after):

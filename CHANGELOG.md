@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Every gate socket (the forge's web, git and runner gates, the push judge and the Matrix gate) takes up to 4096
+  connections at once, a guard no real load reaches: the push judge no longer refuses a 17th push at the same time,
+  and the gates no longer refuse past 256.
 - `down` no longer counts a host admin's own membership: an organization always has a host admin, so a host that
   followed one could never be taken down. Any project membership still stops it.
 - Follow, forge gate and pool units use the pinned native host package. The collection installs the forge hook at

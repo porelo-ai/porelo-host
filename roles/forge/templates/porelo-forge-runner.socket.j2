@@ -13,8 +13,8 @@ RemoveOnStop=true
 # A burst of connections must not stop the socket for good: systemd's trigger limit would fail it, RemoveOnStop
 # deletes the path, and every request through the window's forward is then empty, as the forge page once was.
 TriggerLimitIntervalSec=0
-# One process each: a browser's pages and polls, and every request of the runner's jobs, fit in this many at once.
-MaxConnections=256
+# One process each, under a guard no real load reaches; without the line, systemd would refuse past 64.
+MaxConnections=4096
 
 [Install]
 WantedBy=sockets.target

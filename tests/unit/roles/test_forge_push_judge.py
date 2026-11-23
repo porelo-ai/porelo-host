@@ -97,7 +97,7 @@ def test_the_host_program_judges_each_push_behind_its_socket_before_forgejo_star
     assert "User=" not in service, "the helper runs as root and answers only the forge account's peer"
     assert "RuntimeMaxSec=310\n" in service, "a judge that hangs holds its connection for ever"
     assert "SocketUser={{ forge_account }}\n" in socket and "SocketMode=0600\n" in socket, "anyone may connect"
-    assert "MaxConnections=16\n" in socket
+    assert "MaxConnections=4096\n" in socket
 
 
 def test_a_new_hook_reaches_forgejo_and_its_directory_is_made_first():
