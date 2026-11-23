@@ -430,7 +430,10 @@ def test_the_interfaces_one_look_does_not_wait(tmp_path):
 
 def test_up_asks_the_check_to_wait():
     tasks = (Path(__file__).parents[3] / "roles/check/tasks/main.yml").read_text()
-    assert "--wait-packages 300" in tasks
+    assert (
+        "--wait-packages {{ (300 * __porelo_host_limits.machines | float) | round(6) | round(0, 'ceil') | int }}"
+        in tasks
+    )
 
 
 def test_a_run_starting_just_after_the_lock_was_free_does_not_say_held_without_a_wait(tmp_path, monkeypatch):
@@ -461,5 +464,8 @@ def test_every_apt_of_up_waits_for_a_package_run_as_long_as_the_check():
     """Prevent a daily run starting after the check stopping up at apt's own 60 seconds."""
     import yaml
 
-    plays = yaml.safe_load((Path(__file__).parents[3] / "playbooks/up.yml").read_text())
-    assert all(play["module_defaults"]["ansible.builtin.apt"]["lock_timeout"] == 300 for play in plays)
+    root = Path(__file__).parents[3]
+    plays = yaml.safe_load((root / "playbooks/up.yml").read_text())
+    check = yaml.safe_load((root / "roles/check/tasks/main.yml").read_text())[0]["ansible.builtin.script"]["cmd"]
+    waits = {play["module_defaults"]["ansible.builtin.apt"]["lock_timeout"] for play in plays}
+    assert len(waits) == 1 and "--wait-packages " + waits.pop() + " " in check

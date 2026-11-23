@@ -7,7 +7,8 @@
       {{ (role_path ~ '/files/porelo-host-check') | quote }}
       --limits {{ lookup('ansible.builtin.file', role_path ~ '/files/limits.json') | from_json | to_json | quote }}
       --choices {{ __check_choices | to_json | quote }}
-      --wait-packages 300
+      --wait-packages {{ (300 * __porelo_host_limits.machines | float) | round(6) | round(0, 'ceil') | int }}
+      --time-limits {{ __porelo_host_limits_line | quote }}
     executable: python3
   vars:
     __check_choices:

@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The host program is held to at least `0.5.1~snapshot.571`, the first snapshot whose Porelo provides the agent
   protocol the published agents require; a host handed local packages of that floor no longer has to remove an
   installed agent on a second `up` to put back an older Porelo.
+- Every time limit of the host follows one of four inventory factors, `porelo_host_limits_services`, `_machines`,
+  `_polling` and `_retries`, each 1.0 unless set and refused before any change outside 0.1 to 100: the waits for
+  downloads, the push judge and the check's probes, for accounts, containers and pool VMs, the follow's timer and the
+  pauses and counts of retries. `up` writes them as Porelo's limits line into `/etc/porelo-host/host.yml` for the host
+  program, and the Matrix gate takes the same line as `--limits`. The organization's follow therefore runs five
+  minutes (times the polling factor) after the last one ended, and a minute after boot, instead of at every fifth
+  minute of the clock. Beside the line, `host.yml` holds the host's two day bounds, `certificate_days` and
+  `lent_token_days`, from `porelo_host_certificate_days` (7 unless set) and `porelo_host_lent_token_days` (1 unless
+  set), each refused before any change unless a whole number from 1 to 3650.
 - Every gate socket (the forge's web, git and runner gates, the push judge and the Matrix gate) takes up to 4096
   connections at once, a guard no real load reaches: the push judge no longer refuses a 17th push at the same time,
   and the gates no longer refuse past 256.

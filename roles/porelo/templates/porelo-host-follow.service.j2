@@ -10,4 +10,4 @@ User=root
 UMask=0077
 ExecStart=/usr/sbin/porelo-host org follow
 StandardInput=null
-TimeoutStartSec=5min
+TimeoutStartSec={{ (300 * __porelo_host_limits.machines | float) | round(6) | round(0, 'ceil') | int }}s

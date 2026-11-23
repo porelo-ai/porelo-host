@@ -32,7 +32,8 @@ anything is stopped while any record in `/etc/porelo-host/people/` holds a proje
 their memberships with `"Take the project off"` and `"Purge"`. A host admin's own membership does not stop it: down is
 the host admin's act, and an organization never lacks one.
 
-Root's persistent `porelo-host-follow.timer` runs `org follow` every five minutes. It fetches the organization using
+Root's `porelo-host-follow.timer` runs `org follow` a minute after boot and then five minutes after each run ended,
+times `porelo_host_limits_polling`. It fetches the organization using
 the host's deploy key in an isolated unit with network access, reconciles cards and project memberships, and publishes
 `organization/projects/<project>.json`, naming the host, with a read ACL for each unlocked member, and `organization/persons/<login>.json`, holding that person's projects as
 `{"projects": [...]}`, with a read ACL for that person alone, gone with their last membership, so `porelo project list`

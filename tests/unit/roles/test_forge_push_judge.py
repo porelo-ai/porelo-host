@@ -4,12 +4,20 @@ import subprocess
 import sys
 from pathlib import Path
 
+import jinja2
 import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
-HOOK = ROOT / "roles/forge/files/porelo-forge-pre-receive"
 FORGE = ROOT / "roles/forge"
+ONE = {"services": "1.0", "machines": "1.0", "polling": "1.0", "retries": "1.0"}
+
+
+def rendered(path):
+    """A template as up writes it at every factor 1.0."""
+    environment = jinja2.Environment(undefined=jinja2.StrictUndefined, keep_trailing_newline=True)
+    environment.filters["comment"] = lambda text: "# " + text
+    return environment.from_string(path.read_text()).render(__porelo_host_limits=ONE, ansible_managed="managed")
 
 
 def run_hook(tmp_path, status, answer="porelo: 1 new commit(s) judged and recorded\n", fails=False):
@@ -28,8 +36,10 @@ def run_hook(tmp_path, status, answer="porelo: 1 new commit(s) judged and record
     curl.chmod(0o755)
     repository = tmp_path / "app.git"
     repository.mkdir()
+    hook = tmp_path / "pre-receive"
+    hook.write_text(rendered(FORGE / "templates/porelo-forge-pre-receive.j2"))
     result = subprocess.run(
-        ["/bin/sh", str(HOOK)],
+        ["/bin/sh", str(hook)],
         cwd=repository,
         input="a" * 40 + " " + "c" * 40 + " refs/heads/main\n",
         capture_output=True,
@@ -87,7 +97,7 @@ def test_the_host_program_judges_each_push_behind_its_socket_before_forgejo_star
     )
     socket = (FORGE / "templates/porelo-host-verify.socket.j2").read_text()
     assert "ListenStream=/run/porelo-host/verify/verify.sock\n" in socket and "Accept=yes\n" in socket
-    service = (FORGE / "templates/porelo-host-verify@.service.j2").read_text()
+    service = rendered(FORGE / "templates/porelo-host-verify@.service.j2")
     assert "ExecStart=/usr/sbin/porelo-host judge-push\n" in service, "a push must be judged by the host program"
     main = yaml.safe_load((FORGE / "tasks/main.yml").read_text())
     assert not any("ansible.builtin.fail" in task for task in main), "a host with the judge sets its forge up"
@@ -96,6 +106,7 @@ def test_the_host_program_judges_each_push_behind_its_socket_before_forgejo_star
     assert "StandardInput=socket\n" in service and "StandardOutput=socket\n" in service
     assert "User=" not in service, "the helper runs as root and answers only the forge account's peer"
     assert "RuntimeMaxSec=310\n" in service, "a judge that hangs holds its connection for ever"
+    assert "--max-time 300 " in rendered(FORGE / "templates/porelo-forge-pre-receive.j2"), "the judge outlasts it"
     assert "SocketUser={{ forge_account }}\n" in socket and "SocketMode=0600\n" in socket, "anyone may connect"
     assert "MaxConnections=4096\n" in socket
 

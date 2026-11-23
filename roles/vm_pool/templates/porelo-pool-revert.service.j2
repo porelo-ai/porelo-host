@@ -9,7 +9,7 @@ ExecStart=/usr/sbin/porelo-host pool revert {{ __vm_pool_etc }}/vms
 RuntimeDirectory=porelo-pool-revert
 RuntimeDirectoryPreserve=yes
 Restart=always
-RestartSec=5
+RestartSec={{ (5 * __porelo_host_limits.retries | float) | round(6) | round(0, 'ceil') | int }}
 
 [Install]
 WantedBy=multi-user.target

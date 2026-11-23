@@ -10,7 +10,9 @@ This pre-installation check is one of the four collection script exceptions; it 
 
 Choices: `kvm`, `forge`, `jobs`, `job_cpus`, `job_memory`, `pool` (`systems`, `accounts`, `memory`), `ports`, `share_percent`
 (`porelo_host_work_share`, unset the limits' half). Each is optional.
-`--no-network` leaves the `reach_` findings `unknown`. `files/limits.json`, in the tarball, holds the limits, for an interface comparing an
+`--no-network` leaves the `reach_` findings `unknown`. `--time-limits <line>` takes Porelo's limits line, as `up` sends it: its probes and the reachability
+questions wait `services` times their 5 and 10 seconds, and a held package lock is looked at every `polling` times 2
+seconds; left out, all four are 1.0. `files/limits.json`, in the tarball, holds the limits, for an interface comparing an
 offer before renting too. The form of the answer is in [What a program reads](../../doc/lines.md).
 
 ## What it reads

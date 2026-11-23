@@ -17,7 +17,8 @@ description: porelo-host's programs and build: the files that are not Java, the 
   `build/stage-packages.sh`, shell, since it stages and checks local Debian inputs before the test container runs;
   `build/porelo-vm`, shell, since it drives virsh on a development machine for Molecule and the rehearsal and is
   never installed on a host; `roles/vm_pool/files/porelo-pool-give-back`, shell, since it runs inside a pool VM;
-  `roles/forge/files/porelo-forge-pre-receive`, shell, since it is the pre-receive hook inside Forgejo's container;
+  `roles/forge/templates/porelo-forge-pre-receive.j2`, shell, since it is the pre-receive hook inside Forgejo's container,
+  a template only for its wait on the push judge;
   `roles/check/files/porelo-host-check`, Python's standard library, since it runs on a machine before anything is installed;
   `roles/measure/files/porelo-host-measure`, Python's standard library, since it measures a host without Java;
   `build/measure-tables.py`, Python, since it reads the result files without running the measured machine;

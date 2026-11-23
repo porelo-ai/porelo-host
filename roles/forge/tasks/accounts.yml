@@ -29,7 +29,7 @@
 - name: accounts | Wait for each account's user manager and its session bus
   ansible.builtin.wait_for:
     path: "/run/user/{{ item.uid }}/bus"
-    timeout: 60
+    timeout: "{{ (60 * __porelo_host_limits.machines | float) | round(6) | round(0, 'ceil') | int }}"
     msg: "the user manager of {{ item.name }} has no session bus at /run/user/{{ item.uid }}/bus"
   loop: "{{ __forge_users.results }}"
   loop_control:

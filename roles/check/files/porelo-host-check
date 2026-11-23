@@ -25,8 +25,12 @@ import threading
 import time
 
 VERSION = 1
+# Each at a factor of 1.0; the limits line multiplies them, as every time limit of Porelo follows its group's factor.
 REACH_SECONDS = 10
+PROBE_SECONDS = 5
 PACKAGE_POLL_SECONDS = 2
+FACTOR_NAMES = ("services", "machines", "polling", "retries")
+FACTOR = re.compile(r"(?:[1-9][0-9]*|0)(?:\.[0-9]{1,2})?")
 PROBLEMS = (OSError, ValueError, KeyError, TypeError, AttributeError, ArithmeticError, subprocess.SubprocessError)
 SIZE = re.compile(r"^([0-9]+)([kmg]?)$")
 
@@ -92,12 +96,40 @@ def fit(request, limits):
     }
 
 
+def factors(line):
+    """The four factors of Porelo's limits line; a name left out is 1.0, and anything Porelo refuses is refused."""
+    found = dict.fromkeys(FACTOR_NAMES, 1.0)
+    seen = set()
+    for part in line.split(",") if line else []:
+        name, equals, value = part.partition("=")
+        if not equals or name not in FACTOR_NAMES or name in seen:
+            raise ValueError(f"--time-limits: {part!r} is no known name=value given once")
+        if not FACTOR.fullmatch(value) or not 0.1 <= float(value) <= 100:
+            raise ValueError(f"--time-limits: {name} must be a number from 0.1 to 100 with at most two decimals")
+        seen.add(name)
+        found[name] = float(value)
+    return found
+
+
 class Machine:
     """What is read of the machine, below a directory of fixtures in the tests."""
 
-    def __init__(self, root, network):
+    def __init__(self, root, network, limit_factors=None):
         self.root = root
         self.network = network
+        self.factors = limit_factors or factors("")
+
+    def reach_seconds(self):
+        """How long every reachability question together may take."""
+        return REACH_SECONDS * self.factors["services"]
+
+    def probe_seconds(self):
+        """How long one probe of a service may take."""
+        return PROBE_SECONDS * self.factors["services"]
+
+    def package_poll_seconds(self):
+        """How long until a held package lock is looked at again."""
+        return PACKAGE_POLL_SECONDS * self.factors["polling"]
 
     def path(self, name):
         """The file a test stands in for the machine's."""
@@ -125,7 +157,7 @@ class Machine:
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=5,
+                timeout=self.probe_seconds(),
             )
         except (OSError, subprocess.SubprocessError):
             return None
@@ -155,7 +187,7 @@ class Machine:
     def reaches(self, target):
         """Whether this host:port answers at TCP; nothing is sent over it."""
         host, port = target.rsplit(":", 1)
-        with socket.create_connection((host.strip("[]"), int(port)), timeout=5):
+        with socket.create_connection((host.strip("[]"), int(port)), timeout=self.probe_seconds()):
             return True
 
     def free_gib(self, name):
@@ -214,7 +246,7 @@ def package_lock_after(machine, seconds):
     end = time.monotonic() + seconds
     held = machine.package_lock_held()
     while held and time.monotonic() < end:
-        time.sleep(min(PACKAGE_POLL_SECONDS, max(0, end - time.monotonic())))
+        time.sleep(min(machine.package_poll_seconds(), max(0, end - time.monotonic())))
         held = machine.package_lock_held()
     return held
 
@@ -373,11 +405,11 @@ def check_reach(machine, findings, limits, choices):
     asking = [threading.Thread(target=ask, args=(target,), daemon=True) for target in every]
     for thread in asking:
         thread.start()
-    end = time.monotonic() + REACH_SECONDS
+    end = time.monotonic() + machine.reach_seconds()
     for thread in asking:
         thread.join(max(0, end - time.monotonic()))
     for target in wanted:
-        why = answers.get(target, f"no answer in {REACH_SECONDS} s")
+        why = answers.get(target, f"no answer in {machine.reach_seconds():g} s")
         findings.check(
             "reach_" + target.rsplit(":", 1)[0],
             why is None,
@@ -568,6 +600,7 @@ def answer_from_arguments():
     parser.add_argument("--root", default="")
     parser.add_argument("--no-network", action="store_true")
     parser.add_argument("--wait-packages", type=int, default=0)
+    parser.add_argument("--time-limits", default="")
     arguments = parser.parse_args()
     if arguments.limits:
         limits = json.loads(arguments.limits)
@@ -578,7 +611,7 @@ def answer_from_arguments():
     if arguments.fit:
         answer = fit(json.loads(arguments.fit), limits)
     else:
-        machine = Machine(arguments.root, not arguments.no_network)
+        machine = Machine(arguments.root, not arguments.no_network, factors(arguments.time_limits))
         answer = run(machine, limits, json.loads(arguments.choices), arguments.wait_packages)
     return answer, 0 if answer["ok"] else 1
 

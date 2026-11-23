@@ -44,7 +44,7 @@ Environment=FORGEJO__migrations__ALLOW_LOCALNETWORKS={{ forge_migrations_allow_l
 ExecStartPre=/usr/bin/install -d -m 0700 %t/porelo-forge
 # Retry while the container runtime starts after boot.
 Restart=always
-RestartSec=10
+RestartSec={{ (10 * __porelo_host_limits.retries | float) | round(6) | round(0, 'ceil') | int }}
 
 [Install]
 WantedBy=default.target

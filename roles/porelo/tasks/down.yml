@@ -37,6 +37,11 @@
     path: /etc/porelo-host/stop.conf
     state: absent
 
+- name: down | Remove the host's time factors
+  ansible.builtin.file:
+    path: /etc/porelo-host/host.yml
+    state: absent
+
 # Nothing of the project stays on a host given back.
 - name: down | Remove the setup's files the interface uploaded
   ansible.builtin.file:

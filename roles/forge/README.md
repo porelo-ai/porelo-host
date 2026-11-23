@@ -1,6 +1,7 @@
 # Role `forge`
 
-The only script this role installs is `/usr/local/libexec/porelo/pre-receive`, mounted inside Forgejo.
+The only script this role installs is `/usr/local/libexec/porelo/pre-receive`, mounted inside Forgejo, written from
+`templates/porelo-forge-pre-receive.j2` so its wait on the push judge follows `porelo_host_limits_services`.
 Root's project operations belong to `/usr/sbin/porelo-host project`, and token issuance uses `forge issue-token`
 and `forge lend-token`. Socket units call `porelo-host forge gate --web|--git|--runner --upstream <socket>`.
 The push judge's socket unit runs `porelo-host judge-push` for each connection. The follow links repository hooks to

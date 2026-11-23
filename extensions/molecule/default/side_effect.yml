@@ -30,6 +30,7 @@
           trap 'kill "$holder" 2> /dev/null || true; rm -rf "$marks"' EXIT
           timeout 360 bash -c "until [ -e '$marks/held' ]; do sleep 1; done"
           ansible -c local -i /root/porelo-host-inventory.yml all \
+            -e @/root/.ansible/collections/ansible_collections/porelo/host/playbooks/vars/limits.yml \
             -m include_role -a name=porelo.host.check > /dev/null &
           check=$!
           timeout 120 bash -c "until pgrep -f 'porelo-host-chec[k]' > /dev/null; do sleep 1; done"

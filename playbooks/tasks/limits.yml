@@ -1,0 +1,35 @@
+---
+# Porelo's limits line refuses what this refuses, so a host never runs with a factor a program of Porelo would not take.
+- name: Stop on a time factor that is no number from 0.1 to 100 with at most two digits after its dot
+  ansible.builtin.assert:
+    that:
+      - __porelo_host_factor is number
+      - __porelo_host_factor is not boolean
+      - 0.1 <= __porelo_host_factor <= 100
+      - ('%.2f' | format(__porelo_host_factor)) | float == __porelo_host_factor
+    fail_msg: >-
+      porelo_host_limits_{{ item }} must be a number from 0.1 to 100 with at most two digits after its dot;
+      got {{ __porelo_host_factor | to_json }}
+    quiet: true
+  loop: [services, machines, polling, retries]
+  vars:
+    __porelo_host_factor: "{{ lookup('ansible.builtin.vars', 'porelo_host_limits_' ~ item, default=1.0) }}"
+
+# porelo-host refuses what this refuses, so a host never runs with a day bound its program would stop on.
+- name: Stop on a day bound that is no whole number from 1 to 3650
+  ansible.builtin.assert:
+    that:
+      - __porelo_host_day_bound is integer
+      - __porelo_host_day_bound is not boolean
+      - 1 <= __porelo_host_day_bound <= 3650
+    fail_msg: >-
+      porelo_host_{{ item.name }} must be a whole number of days from 1 to 3650;
+      got {{ __porelo_host_day_bound | to_json }}
+    quiet: true
+  loop:
+    - {name: certificate_days, default: 7}
+    - {name: lent_token_days, default: 1}
+  loop_control:
+    label: "{{ item.name }}"
+  vars:
+    __porelo_host_day_bound: "{{ lookup('ansible.builtin.vars', 'porelo_host_' ~ item.name, default=item.default) }}"

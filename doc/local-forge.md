@@ -289,7 +289,8 @@ certificate names the one principal `task:<project>:<task>`, which the host and 
 
 ## The host's state taken from the organization
 
-The required organization follow fetches the signed organization from the central forge every five minutes;
+The required organization follow fetches the signed organization from the central forge five minutes after each
+follow ended, times `porelo_host_limits_polling`;
 its immediate refresh needs empty stdin, and takes the host admin's central token on standard input to
 add the organization's read key after setup or migrate projects waiting for that token. Setup supplies the initial
 admin pin and organization deploy key; a taken state advances the pin. Project files are readable through

@@ -73,7 +73,10 @@ def test_proxy_has_only_loopback_listeners_and_the_runner_socket():
     assert proxy.count("UNIX-CONNECT:/run/porelo-forge/runner.sock") == 2
     # busybox's wait has no -n: it would wait for both listeners and leave the namespace owner half up.
     assert "wait -n" not in proxy
-    assert "while kill -0 $$web 2>/dev/null && kill -0 $$git 2>/dev/null; do sleep 5; done; exit 1" in proxy
+    assert (
+        "while kill -0 $$web 2>/dev/null && kill -0 $$git 2>/dev/null; "
+        "do sleep {{ (5 * __porelo_host_limits.polling | float) | round(6) | round(0, 'ceil') | int }}; done; exit 1"
+    ) in proxy
     runner_tasks = tasks("runner")
     probe = next(t for t in runner_tasks if t.get("register") == "__forge_runner_proxy_image_there")
     assert probe["ansible.builtin.command"]["argv"] == ["podman", "image", "exists", "{{ __forge_runner_proxy_image }}"]

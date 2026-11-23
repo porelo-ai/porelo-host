@@ -23,7 +23,7 @@ Exec=/bin/forgejo-runner daemon --config /data/config.yml
 
 [Service]
 Restart=always
-RestartSec=10
+RestartSec={{ (10 * __porelo_host_limits.retries | float) | round(6) | round(0, 'ceil') | int }}
 
 [Install]
 # Started again with the proxy, since a stop through BindsTo= is not one Restart= answers.

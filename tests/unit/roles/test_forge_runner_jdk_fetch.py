@@ -15,6 +15,12 @@ def fetch():
     return next(t for t in yaml.safe_load((ROLE / "tasks/runner.yml").read_text()) if t["name"] == NAME)
 
 
+def at_one(value):
+    """A templated limit as up renders it at every factor 1.0."""
+    one = dict.fromkeys(["services", "machines", "polling", "retries"], "1.0")
+    return int(Environment(undefined=StrictUndefined).from_string(str(value)).render(__porelo_host_limits=one))
+
+
 def tries_again(result):
     """Whether Ansible runs the task again after this result: its until, with Ansible's tests, does not hold."""
     environment = Environment(undefined=StrictUndefined)
@@ -32,8 +38,9 @@ def test_the_fetch_waits_the_pinned_rules_fifteen_minutes():
     """Prevent one GitHub outage failing a host's first up, as on 2026-11-08."""
     task = fetch()
     assert task["register"] == "__forge_runner_jdk_fetch"
-    assert task["retries"] * task["delay"] <= 15 * 60 < (task["retries"] + 1) * task["delay"]
-    assert task["ansible.builtin.get_url"]["timeout"] >= 60
+    retries, delay = at_one(task["retries"]), at_one(task["delay"])
+    assert retries * delay <= 15 * 60 < (retries + 1) * delay
+    assert at_one(task["ansible.builtin.get_url"]["timeout"]) >= 60
 
 
 def test_the_fetch_tries_again_on_a_5xx_and_on_no_answer():

@@ -1,10 +1,10 @@
 {{ ansible_managed | comment }}
 [Unit]
-Description=Follow the host's organization every five minutes
+Description=Follow the host's organization every five minutes at a polling factor of 1.0
 
 [Timer]
-OnCalendar=*:0/5
-Persistent=true
+OnBootSec=1min
+OnUnitActiveSec={{ (300 * __porelo_host_limits.polling | float) | round(6) | round(0, 'ceil') | int }}s
 Unit=porelo-host-follow.service
 
 [Install]

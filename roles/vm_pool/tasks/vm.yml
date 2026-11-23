@@ -144,7 +144,7 @@
       - pool
       - address
       - "{{ __vm_pool_name }}"
-      - "300"
+      - "{{ (300 * __porelo_host_limits.machines | float) | round(6) | round(0, 'ceil') | int }}"
   register: __vm_pool_address
   changed_when: false
 
@@ -172,7 +172,7 @@
       - -o
       - IdentitiesOnly=yes
       - -o
-      - ConnectTimeout=5
+      - "ConnectTimeout={{ (5 * __porelo_host_limits.machines | float) | round(6) | round(0, 'ceil') | int }}"
       - -o
       - StrictHostKeyChecking=yes
       - -o
@@ -184,7 +184,7 @@
   register: __vm_pool_ready
   until: __vm_pool_ready.rc == 0 and __vm_pool_ready.stdout == 'ready'
   # A VM nested where there is no KVM boots emulated and slowly; the wait still ends and fails loud.
-  retries: 180
+  retries: "{{ (180 * __porelo_host_limits.machines | float) | round(6) | round(0, 'ceil') | int }}"
   delay: 5
   changed_when: false
 
@@ -215,11 +215,19 @@
 # not a VM that is never handed out.
 - name: vm | Set the clock through the guest agent, as every revert will
   ansible.builtin.command:
-    argv: [timeout, "10", virsh, -c, "qemu:///system", domtime, "{{ __vm_pool_name }}", --now]
+    argv:
+      - timeout
+      - "{{ (10 * __porelo_host_limits.machines | float) | round(6) | round(0, 'ceil') | int }}"
+      - virsh
+      - -c
+      - qemu:///system
+      - domtime
+      - "{{ __vm_pool_name }}"
+      - --now
   when: __vm_pool_snapshot.rc != 0
   register: __vm_pool_agent
   until: __vm_pool_agent.rc == 0
-  retries: 40
+  retries: "{{ (40 * __porelo_host_limits.machines | float) | round(6) | round(0, 'ceil') | int }}"
   delay: 3
   changed_when: false
 

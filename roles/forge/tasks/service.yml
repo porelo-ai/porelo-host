@@ -65,8 +65,8 @@
 
 # Forgejo's container mounts the file itself, so a new hook reaches it only when the container starts again.
 - name: service | Install the hook that has the host judge each push
-  ansible.builtin.copy:
-    src: "{{ role_path }}/files/porelo-forge-pre-receive"
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/porelo-forge-pre-receive.j2"
     dest: /usr/local/libexec/porelo/pre-receive
     owner: root
     group: root
@@ -116,11 +116,18 @@
 
 - name: service | Wait until Forgejo answers on its private socket
   ansible.builtin.command:
-    argv: [curl, -fsS, --max-time, "5", --unix-socket, "{{ __forge_socket }}", "http://localhost/api/v1/version"]
+    argv:
+      - curl
+      - -fsS
+      - --max-time
+      - "{{ (5 * __porelo_host_limits.machines | float) | round(6) | round(0, 'ceil') | int }}"
+      - --unix-socket
+      - "{{ __forge_socket }}"
+      - http://localhost/api/v1/version
   register: __forge_version
   changed_when: false
   until: __forge_version.rc == 0
-  retries: 30
+  retries: "{{ (30 * __porelo_host_limits.machines | float) | round(6) | round(0, 'ceil') | int }}"
   delay: 2
 
 - name: service | Make the people's socket group before admission

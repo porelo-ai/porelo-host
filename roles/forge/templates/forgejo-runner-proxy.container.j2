@@ -17,7 +17,7 @@ Exec=-ec 'socat TCP-LISTEN:{{ forge_http_port }},bind=127.0.0.1,reuseaddr,fork \
     UNIX-CONNECT:/run/porelo-forge/runner.sock & web=$$!; \
     socat TCP-LISTEN:{{ forge_git_port }},bind=127.0.0.1,reuseaddr,fork \
     UNIX-CONNECT:/run/porelo-forge/runner.sock & git=$$!; \
-    while kill -0 $$web 2>/dev/null && kill -0 $$git 2>/dev/null; do sleep 5; done; exit 1'
+    while kill -0 $$web 2>/dev/null && kill -0 $$git 2>/dev/null; do sleep {{ (5 * __porelo_host_limits.polling | float) | round(6) | round(0, 'ceil') | int }}; done; exit 1'
 
 [Service]
 # A job left behind depends on this container, and podman would refuse to replace it.
@@ -26,7 +26,7 @@ ExecStartPre=-/usr/bin/podman rm -v -f -i --depend forgejo-runner-proxy
 ExecStop=/usr/bin/podman rm -v -f -i --depend forgejo-runner-proxy
 ExecStopPost=-/usr/bin/podman rm -v -f -i --depend forgejo-runner-proxy
 Restart=always
-RestartSec=10
+RestartSec={{ (10 * __porelo_host_limits.retries | float) | round(6) | round(0, 'ceil') | int }}
 
 [Install]
 WantedBy=default.target

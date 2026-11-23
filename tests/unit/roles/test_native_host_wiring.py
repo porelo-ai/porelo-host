@@ -41,7 +41,11 @@ def test_units_execute_the_pinned_native_program(path, command):
 def test_hook_is_installed_at_the_follow_link_target():
     """Prevent every repository push failing because the native follow links a missing hook."""
     tasks = yaml.safe_load((ROOT / "roles/forge/tasks/service.yml").read_text())
-    hook = next(t["ansible.builtin.copy"] for t in tasks if "ansible.builtin.copy" in t)
+    hook = next(
+        t["ansible.builtin.template"]
+        for t in tasks
+        if t["name"] == "service | Install the hook that has the host judge each push"
+    )
     assert hook["dest"] == "/usr/local/libexec/porelo/pre-receive"
     assert (
         "Volume=/usr/local/libexec/porelo/pre-receive:{{ __forge_push_hook }}:ro"

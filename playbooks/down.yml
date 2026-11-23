@@ -8,6 +8,7 @@
   hosts: localhost
   connection: local
   gather_facts: false
+  vars_files: [vars/limits.yml]
   tasks:
     - name: Stop on an inventory of a version this playbook does not know
       ansible.builtin.assert:
@@ -42,6 +43,9 @@
           porelo_host_network must be an integer from 0 to 255;
           got {{ porelo_host_network | to_json if porelo_host_network is defined else 'undefined' }}
         quiet: true
+
+    - name: Stop on a time factor Porelo would refuse
+      ansible.builtin.include_tasks: tasks/limits.yml
 
     # First of all, before any check may refuse: a host being given back keeps no check switched off.
     - name: Take the host's test mode away

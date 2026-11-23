@@ -19,7 +19,9 @@ def test_gate_socket_and_service_keep_the_peer_boundary():
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(ROLE / "templates"), undefined=jinja2.StrictUndefined)
     socket = env.get_template("porelo-matrix-gate.socket.j2").render(matrix_account="porelo-matrix", __matrix_uid=1201)
     service = env.get_template("porelo-matrix-gate@.service.j2").render(
-        matrix_account="porelo-matrix", __matrix_uid=1201
+        matrix_account="porelo-matrix",
+        __matrix_uid=1201,
+        __porelo_host_limits_line="services=1.0,machines=1.0,polling=1.0,retries=1.0",
     )
     for setting in (
         "ListenStream=/run/porelo-matrix/client.sock",
@@ -33,7 +35,8 @@ def test_gate_socket_and_service_keep_the_peer_boundary():
         assert setting in socket.splitlines()
     for setting in (
         "User=porelo-matrix",
-        "ExecStart=/usr/libexec/porelo/transports/porelo-message-transport-matrix gate",
+        "ExecStart=/usr/libexec/porelo/transports/porelo-message-transport-matrix "
+        "--limits services=1.0,machines=1.0,polling=1.0,retries=1.0 gate",
         "StandardInput=socket",
         "NoNewPrivileges=yes",
         "PartOf=porelo-matrix-gate.socket",
@@ -136,7 +139,8 @@ def test_gate_gets_its_administrator_once_the_homeserver_answers():
     task = entries[admin]
     assert task["ansible.builtin.command"]["argv"][1:] == ["gate", "--prepare"]
     assert task["ansible.builtin.command"]["creates"] == "{{ __matrix_dir }}/gate/admin-token"
-    assert "administrator" in task["until"] and task["retries"] >= 10
+    retries = jinja2.Environment().from_string(task["retries"]).render(__porelo_host_limits={"machines": "1.0"})
+    assert "administrator" in task["until"] and int(retries) >= 10
     recorded = names.index("Record the completed Matrix gate preparation")
     assert recorded > admin
 

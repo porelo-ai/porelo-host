@@ -50,13 +50,13 @@
     url: "{{ __forge_runner_jdk.url }}"
     dest: "{{ __forge_runner_jdk_dir }}.tar.gz"
     checksum: "sha256:{{ __forge_runner_jdk.sha256 }}"
-    timeout: 60
+    timeout: "{{ (60 * __porelo_host_limits.services | float) | round(6) | round(0, 'ceil') | int }}"
     owner: root
     group: root
     mode: "0644"
   register: __forge_runner_jdk_fetch
-  retries: 7
-  delay: 120
+  retries: "{{ (7 * __porelo_host_limits.retries | float) | round(6) | round(0, 'ceil') | int }}"
+  delay: "{{ (120 * __porelo_host_limits.retries | float) | round(6) | round(0, 'ceil') | int }}"
   until: >-
     __forge_runner_jdk_fetch is succeeded
     or not (

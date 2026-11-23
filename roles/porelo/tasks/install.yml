@@ -193,3 +193,16 @@
     owner: root
     group: root
     mode: "0755"
+
+# The packaged host program reads its factors and day bounds here alone and hands the line on to each Porelo program
+# it starts.
+- name: install | Write the host's time factors and day bounds for the host program
+  ansible.builtin.copy:
+    content: >-
+      {{ {'limits': __porelo_host_limits_line,
+          'certificate_days': __porelo_host_days.certificate_days | int,
+          'lent_token_days': __porelo_host_days.lent_token_days | int} | to_nice_yaml(indent=2) }}
+    dest: /etc/porelo-host/host.yml
+    owner: root
+    group: root
+    mode: "0644"

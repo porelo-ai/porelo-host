@@ -1,4 +1,5 @@
 #!/bin/sh
+{{ ansible_managed | comment }}
 # Each push to the host's forge, judged by the host after Forgejo's own pre-receive hook: the hook's lines, the
 # repository and its quarantine go to the host's socket, whose answer is shown to the pusher. No answer refuses it.
 set -u
@@ -9,7 +10,7 @@ answer=$(
             "${GIT_QUARANTINE_PATH-}" "${GIT_OBJECT_DIRECTORY-}" "${GIT_ALTERNATE_OBJECT_DIRECTORIES-}" \
             "${GITEA_PUSHER_NAME-}"
         cat
-    } | curl -sS --max-time 300 --unix-socket /run/porelo-verify/verify.sock --data-binary @- \
+    } | curl -sS --max-time {{ (300 * __porelo_host_limits.services | float) | round(6) | round(0, 'ceil') | int }} --unix-socket /run/porelo-verify/verify.sock --data-binary @- \
         -H 'Content-Type: text/plain' -w '%{http_code}' http://localhost/verify 2>/dev/null
 ) || answer="porelo: the host could not judge this push
 000"

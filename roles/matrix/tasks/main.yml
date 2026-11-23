@@ -46,7 +46,7 @@
 - name: Wait for the homeserver account's user manager and its session bus
   ansible.builtin.wait_for:
     path: "/run/user/{{ __matrix_uid }}/bus"
-    timeout: 60
+    timeout: "{{ (60 * __porelo_host_limits.machines | float) | round(6) | round(0, 'ceil') | int }}"
     msg: "the user manager of {{ matrix_account }} has no session bus at /run/user/{{ __matrix_uid }}/bus"
   when: not ansible_check_mode
 
@@ -246,7 +246,7 @@
     __matrix_administrator is skipped
     or (__matrix_administrator.rc == 0 and not __matrix_administrator.changed)
     or (__matrix_administrator.rc == 0 and (__matrix_administrator.stdout | from_json).administrator | default(false))
-  retries: 20
+  retries: "{{ (20 * __porelo_host_limits.machines | float) | round(6) | round(0, 'ceil') | int }}"
   delay: 3
 
 # Here, not in a handler: a play that fails later must still find the prepare done.

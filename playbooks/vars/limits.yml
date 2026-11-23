@@ -1,0 +1,16 @@
+---
+# The four factors every time limit of the host follows, each its inventory's porelo_host_limits_<name> or 1.0, and
+# the limits line Porelo's programs take them in. Their form is checked by tasks/limits.yml before anything changes.
+__porelo_host_limits:
+  services: "{{ porelo_host_limits_services | default(1.0) | float }}"
+  machines: "{{ porelo_host_limits_machines | default(1.0) | float }}"
+  polling: "{{ porelo_host_limits_polling | default(1.0) | float }}"
+  retries: "{{ porelo_host_limits_retries | default(1.0) | float }}"
+# The host's two day bounds in /etc/porelo-host/host.yml, each its inventory's porelo_host_<name> or Porelo's default.
+__porelo_host_days:
+  certificate_days: "{{ porelo_host_certificate_days | default(7) }}"
+  lent_token_days: "{{ porelo_host_lent_token_days | default(1) }}"
+__porelo_host_limits_line: >-
+  {{ 'services=%s,machines=%s,polling=%s,retries=%s' | format(
+     __porelo_host_limits.services | default(1.0) | float, __porelo_host_limits.machines | default(1.0) | float,
+     __porelo_host_limits.polling | default(1.0) | float, __porelo_host_limits.retries | default(1.0) | float) }}

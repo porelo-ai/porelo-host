@@ -8,5 +8,6 @@ ExecStart=/usr/sbin/porelo-host judge-push
 StandardInput=socket
 StandardOutput=socket
 StandardError=journal
-TimeoutStartSec=310
-RuntimeMaxSec=310
+# Ten seconds past the hook's own wait, so the hook always gives up first and the pusher reads why.
+TimeoutStartSec={{ (300 * __porelo_host_limits.services | float) | round(6) | round(0, 'ceil') | int + 10 }}
+RuntimeMaxSec={{ (300 * __porelo_host_limits.services | float) | round(6) | round(0, 'ceil') | int + 10 }}

@@ -44,6 +44,24 @@ When not even one fits, `up` refuses. So the job count stops at 2. `forge_runner
 Above 50 `up` says so, as Forgejo, the runner and the tasks then keep less than half; it protects nothing but the host's own work, so going past it is the operator's choice. Whether 2 and a
 half are right, and what happens to tasks past them, is "not measured".
 
+## Slow networks and slow machines
+
+Every time limit of the host is a default times one of four factors, each 1.0 unless the inventory sets it:
+`porelo_host_limits_services` for answers from outside (downloads, the push judge, the check's probes),
+`porelo_host_limits_machines` for a program, container or VM starting or running a command, `porelo_host_limits_polling`
+for how long until something is looked at again, and `porelo_host_limits_retries` for how often, and after what pause,
+a failed step is tried again. A factor is a number from 0.1 to 100 with at most two digits after its dot; anything else
+stops `up` and `down` before they change the host. A waited time is rounded up to a whole second, and a number of tries
+up, never below one. `up` writes the four as Porelo's limits line, `limits: services=1.0,machines=1.0,polling=1.0,retries=1.0`,
+into `/etc/porelo-host/host.yml`, where the host program reads them and hands them on to each Porelo program it starts;
+the Matrix gate takes the same line as `--limits`. The measuring program's limits and the daily sweep of expired task
+tokens stay as they are.
+
+Two day bounds go into the same file: `porelo_host_certificate_days`, the longest a task certificate may hold on this
+host (7 unless set; a person certifies within it), and `porelo_host_lent_token_days`, how long the host program keeps
+a forge token it lent (1 unless set). Each is a whole number from 1 to 3650; anything else stops `up` and `down`
+before they change the host.
+
 ## What `up` tells you early
 
 `up` checks the machine before it installs anything, Ansible itself being the one change before that. In a person's words, it refuses:

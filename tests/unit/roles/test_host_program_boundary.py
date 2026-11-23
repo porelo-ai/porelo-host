@@ -39,7 +39,10 @@ def test_roles_ship_only_the_stated_program_exceptions():
         "vm_pool",
     }
     assert {path.parent.parent.name for path in paths} >= {"porelo", "forge", "vm_pool"}
-    assert {path.name for path in roles.glob("*/files/*") if path.name in EXCEPTIONS} == EXCEPTIONS
+    shipped = {path.name for path in roles.glob("*/files/*")} | {
+        path.name.removesuffix(".j2") for path in roles.glob("*/templates/*.j2")
+    }
+    assert EXCEPTIONS <= shipped
     offenders = []
     for path in paths:
         for task in walk_tasks(yaml.safe_load(path.read_text()) or []):
