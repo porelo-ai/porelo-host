@@ -12,8 +12,14 @@ from pathlib import Path
 
 SHARED = Path("/usr/local/share/porelo-org-standin")
 words = sys.argv[1:]
+# The host program leads a call under a dynamic user with the host's limits line.
+limits = []
+if words[:1] == ["--limits"]:
+    if len(words) < 2:
+        sys.exit("--limits needs its line")
+    limits, words = words[:2], words[2:]
 if words[:1] != ["org"]:
-    os.execv("/usr/bin/porelo-molecule-real", ["/usr/bin/porelo-molecule-real", *words])
+    os.execv("/usr/bin/porelo-molecule-real", ["/usr/bin/porelo-molecule-real", *limits, *words])
 
 
 def value(flag):
