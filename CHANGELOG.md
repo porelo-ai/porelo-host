@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The check before `up` reads an apt mirror list (`mirror+file:` in the package sources) as one finding,
+  `reach_mirror+file:<list>`, which passes when one of its mirrors answers, as apt goes on to the next; a list that
+  is missing or names no mirror fails it.
+
 ### Changed
 
 - The host program is held to at least `0.5.1~snapshot.571`, the first snapshot whose Porelo provides the agent

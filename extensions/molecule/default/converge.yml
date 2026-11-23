@@ -17,6 +17,8 @@
     converge_vm_pool: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_POOL', default='on') }}"
     converge_forge: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_FORGE', default='on') }}"
     converge_kvm_asked: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_KVM', default='on') }}"
+    # Ubuntu mirrors to try in this order, checked by build/molecule.sh; none keeps the image's own.
+    converge_mirrors: "{{ lookup('ansible.builtin.env', 'PORELO_HOST_MOLECULE_MIRRORS', default='') | split }}"
   tasks:
     # Whether nested virtualization reaches the Molecule VM itself, so a slow pool VM in CI can be told apart.
     - name: Read whether /dev/kvm exists on the Molecule VM
@@ -44,12 +46,43 @@
           runner; build/molecule.sh runs it locally
       when: converge_vm_pool == 'off'
 
+    # apt goes on to the next mirror when one does not answer; the host's check passes when one of them answers.
+    - name: Write the mirror chain the run names, first tried first
+      ansible.builtin.copy:
+        dest: /etc/apt/porelo-mirrors.txt
+        content: "{% for mirror in converge_mirrors %}{{ mirror }}\tpriority:{{ loop.index }}\n{% endfor %}"
+        owner: root
+        group: root
+        mode: "0644"
+      when: converge_mirrors | length > 0
+
+    # The image's own mirrors stay unless the run names a chain.
+    - name: Point the VM's Ubuntu sources at that mirror chain
+      ansible.builtin.replace:
+        path: /etc/apt/sources.list.d/ubuntu.sources
+        regexp: "^URIs: .*$"
+        replace: "URIs: mirror+file:/etc/apt/porelo-mirrors.txt"
+      when: converge_mirrors | length > 0
+
+    # A mirror that does not answer fails the run within minutes with apt's own words, not at the job's limit.
+    - name: Make apt give up on a mirror that does not answer
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/80porelo-molecule-limits
+        content: |
+          Acquire::http::Timeout "20";
+          Acquire::https::Timeout "20";
+          Acquire::Retries "2";
+        owner: root
+        group: root
+        mode: "0644"
+
     - name: Install Ubuntu's own ansible-core
       ansible.builtin.apt:
         name: ansible-core
         state: present
         update_cache: true
         cache_valid_time: 3600
+      timeout: 600
 
     - name: Copy the collection's tarball onto the host
       ansible.builtin.copy:

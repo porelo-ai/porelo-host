@@ -310,16 +310,32 @@ def uris(machine):
             " ".join(re.findall(r"(?m)^deb(?:-src)?\s+(?:\[[^]]*\]\s+)?(\S+)", machine.read(path[len(root) :]) or ""))
             + " "
         )
-    found = set()
-    for scheme, host in re.findall(r"(https?)://([^/\s]+)", text):
-        found.add(host if ":" in host.rsplit("]", 1)[-1] else f"{host}:{443 if scheme == 'https' else 80}")
-    return sorted(found)
+    return sorted(set(addresses(text))), sorted(set(re.findall(r"mirror\+file:(/\S+)", text)))
+
+
+def addresses(text):
+    """Each host:port the http and https addresses in the text name, https on its own port."""
+    return [
+        host if ":" in host.rsplit("]", 1)[-1] else f"{host}:{443 if scheme == 'https' else 80}"
+        for scheme, host in re.findall(r"(https?)://([^/\s]+)", text)
+    ]
+
+
+def mirror_list(machine, path):
+    """The host:port of each mirror an apt mirror list names, in its order; none when it is missing."""
+    lines = (machine.read(path) or "").splitlines()
+    return [
+        found
+        for line in lines
+        if line.strip() and not line.lstrip().startswith("#")
+        for found in addresses(line.split()[0])
+    ]
 
 
 def targets(machine, limits, choices):
     """What the run fetches from: each answers, or the run ends there after changing the machine."""
     reach = limits["reach"]
-    wanted = list(reach["always"]) + uris(machine)
+    wanted = list(reach["always"]) + uris(machine)[0]
     if choices.get("forge"):
         wanted += reach["forge"]
     for system in (choices.get("pool") or {}).get("systems", []):
@@ -330,10 +346,19 @@ def targets(machine, limits, choices):
 def check_reach(machine, findings, limits, choices):
     """All at once and against one clock, as a resolver that stalls takes no timeout of the socket's."""
     wanted = targets(machine, limits, choices)
+    # apt goes on to the next mirror of a list when one does not answer, so a list needs only one that answers.
+    lists = {path: mirror_list(machine, path) for path in uris(machine)[1]}
+    for path, mirrors in lists.items():
+        if not mirrors:
+            findings.check("reach_mirror+file:" + path, False, "no mirror", path, "Name a mirror in the mirror list.")
+    lists = {path: mirrors for path, mirrors in lists.items() if mirrors}
     if not machine.network:
         for target in wanted:
             findings.add("reach_" + target.rsplit(":", 1)[0], "unknown", asked=target, todo="Not asked here.")
+        for path, mirrors in lists.items():
+            findings.add("reach_mirror+file:" + path, "unknown", asked=mirrors, todo="Not asked here.")
         return
+    every = sorted(set(wanted).union(*lists.values()))
     answers = {}
 
     def ask(target):
@@ -343,7 +368,7 @@ def check_reach(machine, findings, limits, choices):
         except PROBLEMS as error:
             answers[target] = type(error).__name__
 
-    asking = [threading.Thread(target=ask, args=(target,), daemon=True) for target in wanted]
+    asking = [threading.Thread(target=ask, args=(target,), daemon=True) for target in every]
     for thread in asking:
         thread.start()
     end = time.monotonic() + REACH_SECONDS
@@ -357,6 +382,15 @@ def check_reach(machine, findings, limits, choices):
             why or target,
             target,
             "The machine cannot reach this: look at its network and its provider's firewall.",
+        )
+    for path, mirrors in lists.items():
+        why = {mirror: answers.get(mirror, f"no answer in {REACH_SECONDS} s") for mirror in mirrors}
+        findings.check(
+            "reach_mirror+file:" + path,
+            any(answer is None for answer in why.values()),
+            "; ".join(f"{mirror}: {answer or 'answered'}" for mirror, answer in why.items()),
+            mirrors,
+            "The machine reaches none of these mirrors: look at its network and its provider's firewall.",
         )
 
 

@@ -247,6 +247,11 @@ jobs:
                   PORELO_HOST_MOLECULE_KVM: ${{ matrix.kvm }}
                   # The forge's images from the cache above, loaded in the VM instead of pulled.
                   PORELO_HOST_IMAGES: ${{ runner.temp }}/images
+                  # The runner's own Ubuntu mirror first, then Ubuntu's, then two outside Canonical and Azure, as each
+                  # of the first two has been down from the runners.
+                  PORELO_HOST_MOLECULE_MIRRORS: >-
+                    http://azure.archive.ubuntu.com/ubuntu/ http://archive.ubuntu.com/ubuntu/
+                    http://mirrors.edge.kernel.org/ubuntu/ http://ftp.fau.de/ubuntu/
               run: |
                   set -eu
                   PORELO_HOST_DEB=$(build/fetch-host-deb.sh "$RUNNER_TEMP/packages")

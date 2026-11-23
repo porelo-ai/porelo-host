@@ -176,6 +176,49 @@ def test_a_source_at_an_ipv6_address_is_asked_on_its_port_and_a_broken_target_is
     assert next(row for row in answer["findings"] if row["id"] == "reach_[2001:db8::1]")["found"] == "ValueError"
 
 
+def test_a_mirror_list_is_one_finding_that_passes_when_any_of_its_mirrors_answers(tmp_path, monkeypatch):
+    root = machine(
+        tmp_path,
+        {
+            "etc/apt/sources.list.d/ubuntu.sources": (
+                "Types: deb\nURIs: mirror+file:/etc/apt/mirrors.txt\nSuites: resolute\n\n"
+                "Types: deb\nURIs: mirror+file:/etc/apt/mirrors.txt\nSuites: resolute-security\n"
+            ),
+            "etc/apt/mirrors.txt": (
+                "http://first.example/ubuntu/\tpriority:1\n# http://comment.example/ubuntu/\n\n"
+                "https://second.example/ubuntu/\tpriority:2\nhttp://third.example:8080/ubuntu/\n"
+            ),
+        },
+    )
+    _, _, found = ask(root)
+    assert not [name for name in found if name.startswith("reach_") and "example" in name], found.keys()
+    row = found["reach_mirror+file:/etc/apt/mirrors.txt"]
+    assert row["asked"] == ["first.example:80", "second.example:443", "third.example:8080"]
+    module = load()
+    down = {"first.example:80", "second.example:443"}
+
+    def answers(_self, target):
+        if target in down:
+            raise TimeoutError
+
+    monkeypatch.setattr(module.Machine, "reaches", answers)
+    rows = {row["id"]: row for row in module.run(module.Machine(str(root), True), LIMITS, {})["findings"]}
+    chain = rows["reach_mirror+file:/etc/apt/mirrors.txt"]
+    assert chain["state"] == "pass", chain
+    down.add("third.example:8080")
+    rows = {row["id"]: row for row in module.run(module.Machine(str(root), True), LIMITS, {})["findings"]}
+    chain = rows["reach_mirror+file:/etc/apt/mirrors.txt"]
+    assert chain["state"] == "fail" and "first.example:80: TimeoutError" in chain["found"], chain
+
+
+def test_a_mirror_list_that_is_missing_or_names_no_mirror_fails(tmp_path):
+    sources = {"etc/apt/sources.list.d/ubuntu.sources": "URIs: mirror+file:/etc/apt/mirrors.txt\n"}
+    _, _, found = ask(machine(tmp_path / "missing", sources))
+    assert found["reach_mirror+file:/etc/apt/mirrors.txt"]["state"] == "fail"
+    _, _, found = ask(machine(tmp_path / "empty", {**sources, "etc/apt/mirrors.txt": "# none\n"}))
+    assert found["reach_mirror+file:/etc/apt/mirrors.txt"]["state"] == "fail"
+
+
 def test_the_address_is_the_default_interfaces_own():
     module = load()
     assert module.Machine("", False).route_address("lo") == "127.0.0.1"

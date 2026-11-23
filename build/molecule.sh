@@ -23,6 +23,21 @@ vm=$root/build/porelo-vm
 say() { printf '%s\n' "$*" >&2; }
 fail() { say "FAILED: $*"; exit 1; }
 
+# Ubuntu mirrors the VM's apt tries in this order instead of the image's own, where the caller knows ones that answer;
+# they go into a file.
+if [ -n "${PORELO_HOST_MOLECULE_MIRRORS+set}" ]; then
+    mirrors=$PORELO_HOST_MOLECULE_MIRRORS
+    [ "$(printf '%s' "$mirrors" | wc -l)" -eq 0 ] \
+        || fail 'PORELO_HOST_MOLECULE_MIRRORS must be http or https addresses on one line'
+    named=0
+    for mirror in $mirrors; do
+        printf '%s' "$mirror" | grep -Eqx 'https?://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~/-]*)?' \
+            || fail "PORELO_HOST_MOLECULE_MIRRORS must be http or https addresses of letters, digits and ._~/-: $mirror"
+        named=$((named + 1))
+    done
+    [ "$named" -gt 0 ] || fail 'PORELO_HOST_MOLECULE_MIRRORS must be http or https addresses, at least one'
+fi
+
 # Refuse missing local artifacts before libvirt, downloads or a rented resource can be touched.
 packages_stage=$(mktemp -d)
 if ! sh "$root/build/stage-packages.sh" "$packages_stage/packages"; then

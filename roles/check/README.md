@@ -26,6 +26,7 @@ offer before renting too. The form of the answer is in [What a program reads](..
 | `cgroup`, `delegated` | cgroup v2's `cpu`, `memory`, `pids`, delegated to a user by systemd's default |
 | `route`, `address`, `host_key` | an IPv4 default route, the address it sends from; an ed25519 host key |
 | `reach_<host>`, one for each | TCP to what the run fetches from, the machine's own package sources too; nothing is sent, and all share one clock of 10 s |
+| `reach_mirror+file:<list>`, one for each | the mirrors an apt mirror list in the sources names, on the same clock; it passes when one answers, as apt goes on to the next, and fails when the list is missing or names none |
 | `disk` | reported, refusing nothing until a limit is measured |
 | `work_share` | only when asked: a whole number of percent from 1 to 100 |
 | `pool_shape`, `pool_kvm`, `pool_memory`, `jobs` | the pool and the jobs within the host's share |
