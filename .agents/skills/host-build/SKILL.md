@@ -14,6 +14,8 @@ description: porelo-host's programs and build: the files that are not Java, the 
   `build/move-check.sh`, shell, since it only reads Porelo's and the forge's answers during an agent's move, on a
   development machine and a host that need no Java for it;
   `build/rehearse-move.sh`, shell like `build/molecule.sh`, since it drives libvirt and ssh to rehearse a move on a VM;
+  `build/rehearse-person-ssh.sh` and `build/rehearse-root-ssh.sh`, shell, since they only run one ssh for a rehearsal's
+  step, as the person and as root;
   `build/stage-packages.sh`, shell, since it stages and checks local Debian inputs before the test container runs;
   `build/porelo-vm`, shell, since it drives virsh on a development machine for Molecule and the rehearsal and is
   never installed on a host; `roles/vm_pool/files/porelo-pool-give-back`, shell, since it runs inside a pool VM;

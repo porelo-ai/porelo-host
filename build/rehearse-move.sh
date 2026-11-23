@@ -875,13 +875,29 @@ exit "$found"' || return 1
 
 rented_hook() {
     known=$(cat "$state/known_hosts")
+    if [ "$1" = busy-room ]; then rented_matrix_checkout || return 2; fi
     REHEARSAL_STEP=$1 REHEARSAL_HOST=$server REHEARSAL_HOST_NAME=rented REHEARSAL_HOST_KEY=${known#* } \
         REHEARSAL_KNOWN_HOSTS=$state/known_hosts REHEARSAL_PERSON=$person REHEARSAL_PERSON_AGENT=$person_agent \
         REHEARSAL_ORG=$org_program REHEARSAL_CENTRAL_TOKEN=$central_token REHEARSAL_PROJECT=$project \
         REHEARSAL_REPOSITORY=$repository \
         REHEARSAL_PROVIDER_KEYS=$provider_keys REHEARSAL_REPORT=$report REHEARSAL_DEADLINE=$deadline \
-        REHEARSAL_PERSON_SSH=$root/build/rehearse-person-ssh.sh \
+        REHEARSAL_PERSON_SSH=$root/build/rehearse-person-ssh.sh REHEARSAL_SSH=$root/build/rehearse-root-ssh.sh \
         "$root/build/rehearse-steps/$1"
+}
+
+# The busy room plays porelo-message-matrix's own rehearsal: the checkout the run names, else a clone of its own in the
+# run's state, so no other checkout on the machine is written.
+rented_matrix_checkout() {
+    [ -z "${REHEARSAL_MATRIX_CHECKOUT:-}" ] || return 0
+    clone=$state/porelo-message-matrix
+    if [ ! -d "$clone/.git" ]; then
+        origin=${PORELO_REHEARSAL_MATRIX_REPOSITORY:-https://github.com/porelo-ai/porelo-message-matrix.git}
+        rm -rf "$clone"
+        GIT_TERMINAL_PROMPT=0 timeout 300 git clone -q -- "$origin" "$clone" </dev/null ||
+            { echo "busy-room: could not clone porelo-message-matrix from $origin into $clone"; return 1; }
+    fi
+    REHEARSAL_MATRIX_CHECKOUT=$clone
+    export REHEARSAL_MATRIX_CHECKOUT
 }
 
 # A story test of ST347: its outcome, passed, waiting on an issue or failed at a step, is the story's and never ends the

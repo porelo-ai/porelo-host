@@ -2237,3 +2237,102 @@ def test_rented_phase_two_resume_after_the_stop_reruns_the_project_step_but_not_
     after = marks[marks.index("RESUME the") :]
     assert after[:3] == ["RESUME the", "OK up", "OK project"] and after[3] == "OK push-pull", steps
     assert len([row for row in server.events("porelo") if row["args"][:2] == ["host", "stop-secrets"]]) == 1
+
+
+def step_stub(server, name, body):
+    steps = server.root / "build/rehearse-steps"
+    steps.mkdir(exist_ok=True)
+    fake(steps, name, body)
+
+
+def test_rented_steps_reach_root_on_the_host_through_the_persons_agent_alone(rented):
+    """Prevent a story step that needs root on the host, such as the pool story's, stopping for want of a way."""
+    server = rented()
+    helper = server.root / "build/rehearse-root-ssh.sh"
+    helper.write_bytes((ROOT / "build/rehearse-root-ssh.sh").read_bytes())
+    helper.chmod(0o755)
+    step_stub(
+        server,
+        "tasks",
+        'printf "%s\\n" "$REHEARSAL_SSH" > "$REHEARSAL_REPORT/tasks.ssh"\n"$REHEARSAL_SSH" id -un || true\n',
+    )
+    done = phase_two(server)
+    assert done.returncode == 0, done.stderr
+    report, steps = server.report()
+    assert any(line.startswith("OK tasks ") for line in steps), steps
+    assert (report / "tasks.ssh").read_text().strip() == str(server.root / "build/rehearse-root-ssh.sh")
+    root = [row for row in server.events("ssh") if row["args"][row["args"].index("--") + 1] == "root@192.0.2.10"]
+    asked = [row for row in root if row["remote"][-2:] == ["id", "-un"]]
+    assert asked, (report / "tasks.log").read_text()
+    assert asked[0]["remote"][:3] == ["exec", "env", "-i"], asked[0]
+    for option in (f"IdentityAgent={server.base / 'agent.sock'}", "IdentityFile=none", "StrictHostKeyChecking=yes"):
+        assert option in asked[0]["args"], asked[0]
+
+
+def matrix_origin(tmp_path):
+    origin = tmp_path / "matrix-origin"
+    subprocess.run(["git", "init", "-q", "-b", "main", str(origin)], check=True)
+    git = [
+        "git",
+        "-C",
+        str(origin),
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+    ]
+    subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "matrix main"], check=True)
+    return origin
+
+
+BUSY_ROOM_PROBE = (
+    'printf "%s\\n" "$REHEARSAL_MATRIX_CHECKOUT" > "$REHEARSAL_REPORT/busy-room.checkout"\n'
+    'git -C "$REHEARSAL_MATRIX_CHECKOUT" log -1 --format=%s > "$REHEARSAL_REPORT/busy-room.head"\n'
+)
+
+
+def test_rented_busy_room_gets_a_matrix_checkout_cloned_into_the_runs_own_state(rented, tmp_path):
+    """Prevent the busy room failing on a machine without a matrix checkout, or writing in another agent's one."""
+    server = rented()
+    server.environment.pop("REHEARSAL_MATRIX_CHECKOUT", None)
+    server.environment["PORELO_REHEARSAL_MATRIX_REPOSITORY"] = str(matrix_origin(tmp_path))
+    step_stub(server, "tasks", "exit 0\n")
+    step_stub(server, "busy-room", BUSY_ROOM_PROBE)
+    done = phase_two(server)
+    assert done.returncode == 0, done.stderr
+    report, steps = server.report()
+    assert any(line.startswith("OK busy-room ") for line in steps), steps
+    checkout = (report / "busy-room.checkout").read_text().strip()
+    assert checkout == str(server.state / "porelo-message-matrix"), checkout
+    assert (report / "busy-room.head").read_text().strip() == "matrix main"
+
+
+def test_rented_busy_room_takes_the_matrix_checkout_the_run_names_without_cloning(rented, tmp_path):
+    """Prevent a run that names its own matrix checkout getting a fresh clone instead."""
+    server = rented()
+    named = tmp_path / "named-matrix"
+    subprocess.run(["git", "clone", "-q", str(matrix_origin(tmp_path)), str(named)], check=True)
+    server.environment["REHEARSAL_MATRIX_CHECKOUT"] = str(named)
+    server.environment["PORELO_REHEARSAL_MATRIX_REPOSITORY"] = str(tmp_path / "no-such-repository")
+    step_stub(server, "tasks", "exit 0\n")
+    step_stub(server, "busy-room", BUSY_ROOM_PROBE)
+    done = phase_two(server)
+    assert done.returncode == 0, done.stderr
+    report, steps = server.report()
+    assert any(line.startswith("OK busy-room ") for line in steps), steps
+    assert (report / "busy-room.checkout").read_text().strip() == str(named)
+
+
+def test_rented_busy_room_fails_naming_the_clone_it_could_not_make(rented, tmp_path):
+    """Prevent a failed clone passing silently or the step running on a checkout that is not there."""
+    server = rented()
+    server.environment.pop("REHEARSAL_MATRIX_CHECKOUT", None)
+    server.environment["PORELO_REHEARSAL_MATRIX_REPOSITORY"] = str(tmp_path / "no-such-repository")
+    step_stub(server, "tasks", "exit 0\n")
+    step_stub(server, "busy-room", "exit 0\n")
+    done = phase_two(server)
+    report, steps = server.report()
+    assert any(line.startswith("FAIL busy-room ") for line in steps), steps
+    assert "could not clone porelo-message-matrix" in (report / "busy-room.log").read_text()

@@ -156,9 +156,15 @@ person's agent socket, the only identity), `REHEARSAL_ORG` (the program running 
 `REHEARSAL_CENTRAL_TOKEN` (the path of the program that prints the central token, never the token: a step runs it into a
 pipe only), `REHEARSAL_PROJECT`, `REHEARSAL_REPOSITORY`, `REHEARSAL_PROVIDER_KEYS` (the directory of the providers' test
 keys, read into a pipe only), `REHEARSAL_REPORT` (where it writes only `<name>.*`), `REHEARSAL_DEADLINE` (the hard stop
-in Unix seconds) and `REHEARSAL_PERSON_SSH` (`build/rehearse-person-ssh.sh`, which runs one command on the host as the
-person, each argument quoted, standard input forwarded); the run's own environment, such as the window step's
-`REHEARSAL_WINDOW_VM`, `REHEARSAL_WINDOW_VM_KEY` and `REHEARSAL_WINDOW_CHECKOUT`, reaches it too. Beside it,
+in Unix seconds), `REHEARSAL_PERSON_SSH` (`build/rehearse-person-ssh.sh`, which runs one command on the host as the
+person, each argument quoted, standard input forwarded) and `REHEARSAL_SSH` (`build/rehearse-root-ssh.sh`, the same as
+root, through the person's agent alone, whose key the run put among root's keys, and with the SSH session's variables
+dropped); `busy-room` also gets `REHEARSAL_MATRIX_CHECKOUT`: the run's own, or else a clone of porelo-message-matrix
+(`PORELO_REHEARSAL_MATRIX_REPOSITORY`, by default its GitHub address) made in the run's state, so no other checkout on
+the machine is written, and a clone that fails fails the step naming it. On a build box the run's environment names the
+JDK and Maven settings the busy room builds with (`JAVA_HOME`, `MAVEN_ARGS` without `-o`); the run's own environment,
+such as the window step's `REHEARSAL_WINDOW_VM`, `REHEARSAL_WINDOW_VM_KEY` and `REHEARSAL_WINDOW_CHECKOUT`, reaches it
+too. Beside it,
 `$REHEARSAL_REPORT/org-status.json` holds the host's last `porelo-host org status --json` answer, written by the
 `project` step when the follow admitted the person: who is an active person of the project, read by `busy-room` to tell
 the project's own people from strangers. Its exit is its answer: 0 is `OK`, 77 is `SKIP` with its last printed line as
