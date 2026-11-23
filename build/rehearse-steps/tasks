@@ -28,11 +28,12 @@ bounded 1800 "$REHEARSAL_PERSON_SSH" porelo task prepare --agent=pi -p "$REHEARS
     < /dev/null
 echo "the pi task image of $REHEARSAL_PROJECT/$REHEARSAL_REPOSITORY is prepared"
 
-prompt="For the next $answer_minutes minutes, do only this: read your messages as your Porelo guide says, then run \
-'sleep 20' and read them again. To every line meant for you - one that names you, one to All agents or @room, and one \
-that names nobody - answer once, in the room it came from, with one line holding the word it asks you to answer \
-with; a person's direct chat with you counts too. Never answer a line that names only another agent. Change no file \
-and push nothing. After $answer_minutes minutes, stop."
+# Each new line is answered before the next sleep, so the busy room's wait measures delivery, not the task's pace.
+prompt="For the next $answer_minutes minutes, repeat only this: read your messages as your Porelo guide says, and \
+answer at once every new line meant for you - one that names you, one to All agents or @room, and one that names \
+nobody - once, in the room it came from, with one line holding the word it asks you to answer with; a person's \
+direct chat with you counts too. Only then run 'sleep 20' once and read again. Never answer a line that names only \
+another agent. Change no file and push nothing. After $answer_minutes minutes, stop."
 # Each start goes from the person's side, as the product wants: the test identity's porelo here (REHEARSAL_ORG) starts
 # the task on the host with --host, its key certified by the person's agent here, never forwarded. A start with --host
 # is detached, so the pair's runs go on, each for its --minutes; Porelo ends a run after that time.
