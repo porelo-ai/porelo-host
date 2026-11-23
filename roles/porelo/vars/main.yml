@@ -22,6 +22,6 @@ __porelo_pinned_programs: >-
 __porelo_newest_programs: >-
   {{ ([] if porelo_version | length > 0 else ['porelo'])
      + ([] if porelo_host_version | length > 0 else ['porelo-host']) }}
-# The oldest host program whose verbs the collection calls (org follow-now) and whose Porelo provides the agents
-# protocol; a newest one is held to it.
-__porelo_host_floor: "0.5.1~snapshot.571"
+# The oldest host program whose verbs the collection calls (org follow-now) and whose Porelo provides the agent
+# protocol the published agents require (6); a newest one is held to it.
+__porelo_host_floor: "0.5.1~snapshot.575"

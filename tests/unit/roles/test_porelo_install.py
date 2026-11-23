@@ -192,4 +192,4 @@ def test_the_newest_host_program_is_held_to_the_collections_floor():
     values = role_values("snapshots")
     values["__porelo_host_package"] = {"stdout": "0.5.1~snapshot.613"}
     argv = [rendered(arg, values) for arg in compare["ansible.builtin.command"]["argv"]]
-    assert argv[-1] == values["__porelo_host_floor"] == "0.5.1~snapshot.571", argv
+    assert argv[-1] == values["__porelo_host_floor"] == "0.5.1~snapshot.575", argv

@@ -18,8 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The host program is held to at least `0.5.1~snapshot.571`, the first snapshot whose Porelo provides the agent
-  protocol the published agents require; a host handed local packages of that floor no longer has to remove an
+- The host program is held to at least `0.5.1~snapshot.575`, the first snapshot whose Porelo provides agent protocol
+  6, which every published agent requires; a host handed local packages of that floor no longer has to remove an
   installed agent on a second `up` to put back an older Porelo.
 - Every time limit of the host follows one of four inventory factors, `porelo_host_limits_services`, `_machines`,
   `_polling` and `_retries`, each 1.0 unless set and refused before any change outside 0.1 to 100: the waits for
