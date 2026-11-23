@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The host program is held to at least `0.5.1~snapshot.571`, the first snapshot whose Porelo provides the agent
+  protocol the published agents require; a host handed local packages of that floor no longer has to remove an
+  installed agent on a second `up` to put back an older Porelo.
 - Every gate socket (the forge's web, git and runner gates, the push judge and the Matrix gate) takes up to 4096
   connections at once, a guard no real load reaches: the push judge no longer refuses a 17th push at the same time,
   and the gates no longer refuse past 256.

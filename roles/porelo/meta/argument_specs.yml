@@ -19,7 +19,7 @@ argument_specs:
         type: str
         description: >-
           Exact Debian version of the porelo-host package, from the same repository and distribution; on the
-          snapshots channel empty by default, the newest the channel holds, never older than 0.5.1~snapshot.474.
+          snapshots channel empty by default, the newest the channel holds, never older than 0.5.1~snapshot.571.
       porelo_local_packages:
         type: path
         default: ""
