@@ -15,6 +15,7 @@ import argparse
 import fcntl
 import glob
 import json
+import math
 import os
 import re
 import socket
@@ -27,6 +28,9 @@ import time
 VERSION = 1
 # Each at a factor of 1.0; the limits line multiplies them, as every time limit of Porelo follows its group's factor.
 REACH_SECONDS = 10
+# A probe whose connection fails is tried again, so a short stall of a mirror does not stop up.
+REACH_TRIES = 3
+REACH_PAUSE_SECONDS = 2
 PROBE_SECONDS = 5
 PACKAGE_POLL_SECONDS = 2
 FACTOR_NAMES = ("services", "machines", "polling", "retries")
@@ -122,6 +126,14 @@ class Machine:
     def reach_seconds(self):
         """How long every reachability question together may take."""
         return REACH_SECONDS * self.factors["services"]
+
+    def reach_tries(self):
+        """How often a probe whose connection fails is tried, never less than once."""
+        return max(1, math.ceil(round(REACH_TRIES * self.factors["retries"], 6)))
+
+    def reach_pause_seconds(self):
+        """How long to wait before a probe is tried again."""
+        return REACH_PAUSE_SECONDS * self.factors["retries"]
 
     def probe_seconds(self):
         """How long one probe of a service may take."""
@@ -394,35 +406,56 @@ def check_reach(machine, findings, limits, choices):
         return
     every = sorted(set(wanted).union(*lists.values()))
     answers = {}
+    tries = machine.reach_tries()
 
     def ask(target):
-        try:
-            machine.reaches(target)
-            answers[target] = None
-        except PROBLEMS as error:
-            answers[target] = type(error).__name__
+        said = answers.setdefault(target, [])
+        for attempt in range(tries):
+            try:
+                machine.reaches(target)
+                said.append(None)
+                return
+            except OSError as error:
+                said.append(type(error).__name__)
+            except PROBLEMS as error:
+                said.append(type(error).__name__)
+                return
+            if attempt + 1 < tries:
+                time.sleep(machine.reach_pause_seconds())
+
+    def answered(target):
+        said = seen.get(target, [])
+        return bool(said) and said[-1] is None
+
+    def tried(target):
+        said = list(seen.get(target, []))
+        if not answered(target) and target in running:
+            said.append(f"no answer in {clock:g} s")
+        return "; ".join(f"try {n}: {why or 'answered'}" for n, why in enumerate(said, 1))
 
     asking = [threading.Thread(target=ask, args=(target,), daemon=True) for target in every]
     for thread in asking:
         thread.start()
-    end = time.monotonic() + machine.reach_seconds()
+    clock = machine.reach_seconds() * tries + machine.reach_pause_seconds() * (tries - 1)
+    end = time.monotonic() + clock
     for thread in asking:
         thread.join(max(0, end - time.monotonic()))
+    running = {target for target, thread in zip(every, asking) if thread.is_alive()}
+    # One copy, taken after running: a probe that answers late is judged and named from the same answers.
+    seen = {target: list(answers.get(target, [])) for target in every}
     for target in wanted:
-        why = answers.get(target, f"no answer in {machine.reach_seconds():g} s")
         findings.check(
             "reach_" + target.rsplit(":", 1)[0],
-            why is None,
-            why or target,
+            answered(target),
+            target if seen.get(target) == [None] else tried(target),
             target,
             "The machine cannot reach this: look at its network and its provider's firewall.",
         )
     for path, mirrors in lists.items():
-        why = {mirror: answers.get(mirror, f"no answer in {REACH_SECONDS} s") for mirror in mirrors}
         findings.check(
             "reach_mirror+file:" + path,
-            any(answer is None for answer in why.values()),
-            "; ".join(f"{mirror}: {answer or 'answered'}" for mirror, answer in why.items()),
+            any(answered(mirror) for mirror in mirrors),
+            "; ".join(f"{mirror}: {'answered' if seen.get(mirror) == [None] else tried(mirror)}" for mirror in mirrors),
             mirrors,
             "The machine reaches none of these mirrors: look at its network and its provider's firewall.",
         )

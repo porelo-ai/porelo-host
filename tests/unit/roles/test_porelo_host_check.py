@@ -173,7 +173,7 @@ def test_a_source_at_an_ipv6_address_is_asked_on_its_port_and_a_broken_target_is
     start = time.monotonic()
     answer = module.run(module.Machine(str(root), True), LIMITS, {})
     assert time.monotonic() - start < 5
-    assert next(row for row in answer["findings"] if row["id"] == "reach_[2001:db8::1]")["found"] == "ValueError"
+    assert next(row for row in answer["findings"] if row["id"] == "reach_[2001:db8::1]")["found"] == "try 1: ValueError"
 
 
 def test_a_mirror_list_is_one_finding_that_passes_when_any_of_its_mirrors_answers(tmp_path, monkeypatch):
@@ -202,13 +202,16 @@ def test_a_mirror_list_is_one_finding_that_passes_when_any_of_its_mirrors_answer
             raise TimeoutError
 
     monkeypatch.setattr(module.Machine, "reaches", answers)
+    monkeypatch.setattr(module, "REACH_PAUSE_SECONDS", 0)
     rows = {row["id"]: row for row in module.run(module.Machine(str(root), True), LIMITS, {})["findings"]}
     chain = rows["reach_mirror+file:/etc/apt/mirrors.txt"]
     assert chain["state"] == "pass", chain
     down.add("third.example:8080")
     rows = {row["id"]: row for row in module.run(module.Machine(str(root), True), LIMITS, {})["findings"]}
     chain = rows["reach_mirror+file:/etc/apt/mirrors.txt"]
-    assert chain["state"] == "fail" and "first.example:80: TimeoutError" in chain["found"], chain
+    assert (
+        chain["state"] == "fail" and "first.example:80: try 1: TimeoutError; try 2: TimeoutError" in chain["found"]
+    ), chain
 
 
 def test_a_mirror_list_that_is_missing_or_names_no_mirror_fails(tmp_path):
@@ -315,14 +318,17 @@ def test_a_target_that_does_not_answer_fails_and_names_it(tmp_path, monkeypatch)
         raise ConnectionRefusedError
 
     monkeypatch.setattr(module.Machine, "reaches", refused)
+    monkeypatch.setattr(module, "REACH_PAUSE_SECONDS", 0)
     answer = module.run(module.Machine(str(machine(tmp_path)), True), LIMITS, {"forge": False})
     row = next(row for row in answer["findings"] if row["id"] == "reach_fuinorg.jfrog.io")
-    assert row["state"] == "fail" and row["found"] == "ConnectionRefusedError" and row["do"]
+    assert row["state"] == "fail" and row["do"]
+    assert row["found"] == "; ".join(f"try {n}: ConnectionRefusedError" for n in (1, 2, 3))
 
 
 def test_a_stalled_resolver_cannot_hold_the_check_past_its_clock(tmp_path, monkeypatch):
     module = load()
     monkeypatch.setattr(module, "REACH_SECONDS", 1)
+    monkeypatch.setattr(module, "REACH_PAUSE_SECONDS", 0)
 
     def stalled(_self, _target):
         time.sleep(30)
@@ -332,7 +338,7 @@ def test_a_stalled_resolver_cannot_hold_the_check_past_its_clock(tmp_path, monke
     answer = module.run(module.Machine(str(machine(tmp_path)), True), LIMITS, {"forge": True})
     assert time.monotonic() - start < 5
     row = next(row for row in answer["findings"] if row["id"] == "reach_codeberg.org")
-    assert row["state"] == "fail" and row["found"] == "no answer in 1 s"
+    assert row["state"] == "fail" and row["found"] == "try 1: no answer in 3 s", "three tries of 1 s on one clock"
 
 
 @pytest.mark.parametrize(
@@ -469,3 +475,96 @@ def test_every_apt_of_up_waits_for_a_package_run_as_long_as_the_check():
     check = yaml.safe_load((root / "roles/check/tasks/main.yml").read_text())[0]["ansible.builtin.script"]["cmd"]
     waits = {play["module_defaults"]["ansible.builtin.apt"]["lock_timeout"] for play in plays}
     assert len(waits) == 1 and "--wait-packages " + waits.pop() + " " in check
+
+
+def flaky(module, monkeypatch, fails):
+    """A machine whose probes of each target fail the given number of times with a refused connection, then answer."""
+    tries = {}
+
+    def reaches(_self, target):
+        tries[target] = tries.get(target, 0) + 1
+        if tries[target] <= fails.get(target, 0):
+            raise ConnectionRefusedError
+
+    monkeypatch.setattr(module.Machine, "reaches", reaches)
+    monkeypatch.setattr(module, "REACH_PAUSE_SECONDS", 0)
+    return tries
+
+
+def test_a_probe_that_answers_on_a_later_try_passes_and_says_its_tries(tmp_path, monkeypatch):
+    root = machine(tmp_path, {"etc/apt/sources.list.d/a.sources": "URIs: http://slow.example/ubuntu\n"})
+    module = load()
+    tries = flaky(module, monkeypatch, {"slow.example:80": 2})
+    rows = {row["id"]: row for row in module.run(module.Machine(str(root), True), LIMITS, {})["findings"]}
+    assert rows["reach_slow.example"]["state"] == "pass", rows["reach_slow.example"]
+    assert tries["slow.example:80"] == 3
+    assert (
+        rows["reach_slow.example"]["found"]
+        == "try 1: ConnectionRefusedError; try 2: ConnectionRefusedError; try 3: answered"
+    )
+
+
+def test_a_probe_is_refused_only_after_all_its_tries_failed_each_said(tmp_path, monkeypatch):
+    root = machine(tmp_path, {"etc/apt/sources.list.d/a.sources": "URIs: http://down.example/ubuntu\n"})
+    module = load()
+    tries = flaky(module, monkeypatch, {"down.example:80": 99})
+    rows = {row["id"]: row for row in module.run(module.Machine(str(root), True), LIMITS, {})["findings"]}
+    assert tries["down.example:80"] == 3
+    row = rows["reach_down.example"]
+    assert row["state"] == "fail"
+    assert row["found"] == "; ".join(f"try {n}: ConnectionRefusedError" for n in (1, 2, 3))
+
+
+@pytest.mark.parametrize(("line", "wanted"), [("retries=2.0", 6), ("retries=0.1", 1), ("retries=0.5", 2)])
+def test_the_tries_follow_the_retries_factor_and_never_fall_below_one(tmp_path, monkeypatch, line, wanted):
+    root = machine(tmp_path, {"etc/apt/sources.list.d/a.sources": "URIs: http://down.example/ubuntu\n"})
+    module = load()
+    tries = flaky(module, monkeypatch, {"down.example:80": 99})
+    module.run(module.Machine(str(root), True, module.factors(line)), LIMITS, {})
+    assert tries["down.example:80"] == wanted
+
+
+def test_a_mirror_list_passes_when_a_mirror_answers_on_a_later_try(tmp_path, monkeypatch):
+    root = machine(
+        tmp_path,
+        {
+            "etc/apt/sources.list.d/ubuntu.sources": "URIs: mirror+file:/etc/apt/mirrors.txt\n",
+            "etc/apt/mirrors.txt": "http://first.example/ubuntu/\n",
+        },
+    )
+    module = load()
+    flaky(module, monkeypatch, {"first.example:80": 1})
+    rows = {row["id"]: row for row in module.run(module.Machine(str(root), True), LIMITS, {})["findings"]}
+    row = rows["reach_mirror+file:/etc/apt/mirrors.txt"]
+    assert row["state"] == "pass" and row["found"] == "first.example:80: try 1: ConnectionRefusedError; try 2: answered"
+
+
+def test_a_probe_still_trying_at_the_clock_names_its_failed_try_and_the_clock(tmp_path, monkeypatch):
+    root = machine(tmp_path, {"etc/apt/sources.list.d/a.sources": "URIs: http://slow.example/ubuntu\n"})
+    module = load()
+    monkeypatch.setattr(module, "REACH_SECONDS", 1)
+    monkeypatch.setattr(module, "REACH_PAUSE_SECONDS", 0)
+    seen = []
+
+    def reaches(_self, target):
+        if target == "slow.example:80":
+            seen.append(target)
+            if len(seen) == 1:
+                raise ConnectionRefusedError
+            time.sleep(30)
+
+    monkeypatch.setattr(module.Machine, "reaches", reaches)
+    rows = {row["id"]: row for row in module.run(module.Machine(str(root), True), LIMITS, {})["findings"]}
+    row = rows["reach_slow.example"]
+    assert row["state"] == "fail" and row["found"] == "try 1: ConnectionRefusedError; try 2: no answer in 3 s", row
+
+
+def test_the_pause_between_tries_is_waited_and_follows_the_retries_factor(tmp_path, monkeypatch):
+    root = machine(tmp_path, {"etc/apt/sources.list.d/a.sources": "URIs: http://down.example/ubuntu\n"})
+    module = load()
+    flaky(module, monkeypatch, {"down.example:80": 99})
+    monkeypatch.setattr(module, "REACH_PAUSE_SECONDS", 2)
+    slept = []
+    monkeypatch.setattr(module.time, "sleep", slept.append)
+    module.run(module.Machine(str(root), True, module.factors("retries=0.5")), LIMITS, {})
+    assert slept == [1.0], "two tries at 0.5, one pause of 2 s times 0.5 between them"

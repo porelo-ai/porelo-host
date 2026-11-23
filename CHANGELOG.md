@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The check before `up` tries a probe whose connection fails again, 3 times 2 seconds apart, both times
+  `porelo_host_limits_retries`, and fails it only when every try failed, naming each try in the finding; a short stall
+  of a mirror no longer stops `up` on a host that already has everything.
 - The check before `up` reads an apt mirror list (`mirror+file:` in the package sources) as one finding,
   `reach_mirror+file:<list>`, which passes when one of its mirrors answers, as apt goes on to the next; a list that
   is missing or names no mirror fails it.

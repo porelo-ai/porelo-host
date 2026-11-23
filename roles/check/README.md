@@ -11,7 +11,8 @@ This pre-installation check is one of the four collection script exceptions; it 
 Choices: `kvm`, `forge`, `jobs`, `job_cpus`, `job_memory`, `pool` (`systems`, `accounts`, `memory`), `ports`, `share_percent`
 (`porelo_host_work_share`, unset the limits' half). Each is optional.
 `--no-network` leaves the `reach_` findings `unknown`. `--time-limits <line>` takes Porelo's limits line, as `up` sends it: its probes and the reachability
-questions wait `services` times their 5 and 10 seconds, and a held package lock is looked at every `polling` times 2
+questions wait `services` times their 5 and 10 seconds, a failed connection is tried `retries` times 3 times, `retries` times 2 seconds
+apart (at least once), the one clock spanning all tries, and a held package lock is looked at every `polling` times 2
 seconds; left out, all four are 1.0. `files/limits.json`, in the tarball, holds the limits, for an interface comparing an
 offer before renting too. The form of the answer is in [What a program reads](../../doc/lines.md).
 
@@ -27,7 +28,7 @@ offer before renting too. The form of the answer is in [What a program reads](..
 | `virtualization` | `vmx` or `svm`, only with `kvm` |
 | `cgroup`, `delegated` | cgroup v2's `cpu`, `memory`, `pids`, delegated to a user by systemd's default |
 | `route`, `address`, `host_key` | an IPv4 default route, the address it sends from; an ed25519 host key |
-| `reach_<host>`, one for each | TCP to what the run fetches from, the machine's own package sources too; nothing is sent, and all share one clock of 10 s |
+| `reach_<host>`, one for each | TCP to what the run fetches from, the machine's own package sources too; nothing is sent, and all share one clock; a refused or failed connection is tried again, 3 tries 2 s apart, each try named in the finding, so only a target that failed every try fails |
 | `reach_mirror+file:<list>`, one for each | the mirrors an apt mirror list in the sources names, on the same clock; it passes when one answers, as apt goes on to the next, and fails when the list is missing or names none |
 | `disk` | reported, refusing nothing until a limit is measured |
 | `work_share` | only when asked: a whole number of percent from 1 to 100 |
