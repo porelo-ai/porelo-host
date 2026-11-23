@@ -350,7 +350,9 @@ def check_reach(machine, findings, limits, choices):
     lists = {path: mirror_list(machine, path) for path in uris(machine)[1]}
     for path, mirrors in lists.items():
         if not mirrors:
-            findings.check("reach_mirror+file:" + path, False, "no mirror", path, "Name a mirror in the mirror list.")
+            findings.check(
+                "reach_mirror+file:" + path, False, f"no mirror in {path}", [], "Name a mirror in the mirror list."
+            )
     lists = {path: mirrors for path, mirrors in lists.items() if mirrors}
     if not machine.network:
         for target in wanted:

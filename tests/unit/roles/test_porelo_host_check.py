@@ -213,10 +213,23 @@ def test_a_mirror_list_is_one_finding_that_passes_when_any_of_its_mirrors_answer
 
 def test_a_mirror_list_that_is_missing_or_names_no_mirror_fails(tmp_path):
     sources = {"etc/apt/sources.list.d/ubuntu.sources": "URIs: mirror+file:/etc/apt/mirrors.txt\n"}
-    _, _, found = ask(machine(tmp_path / "missing", sources))
-    assert found["reach_mirror+file:/etc/apt/mirrors.txt"]["state"] == "fail"
-    _, _, found = ask(machine(tmp_path / "empty", {**sources, "etc/apt/mirrors.txt": "# none\n"}))
-    assert found["reach_mirror+file:/etc/apt/mirrors.txt"]["state"] == "fail"
+    for name, files in [("missing", sources), ("empty", {**sources, "etc/apt/mirrors.txt": "# none\n"})]:
+        _, _, found = ask(machine(tmp_path / name, files))
+        row = found["reach_mirror+file:/etc/apt/mirrors.txt"]
+        assert row["state"] == "fail", "a missing or empty list is the machine's own fact, asked with no network too"
+        assert row["asked"] == [] and row["found"] == "no mirror in /etc/apt/mirrors.txt", row
+
+
+def test_a_mirror_list_with_no_network_asked_is_unknown_and_names_its_mirrors(tmp_path):
+    root = machine(
+        tmp_path,
+        {
+            "etc/apt/sources.list.d/ubuntu.sources": "URIs: mirror+file:/etc/apt/mirrors.txt\n",
+            "etc/apt/mirrors.txt": "http://first.example/ubuntu/\tpriority:1\n",
+        },
+    )
+    row = ask(root)[2]["reach_mirror+file:/etc/apt/mirrors.txt"]
+    assert row["state"] == "unknown" and row["asked"] == ["first.example:80"], row
 
 
 def test_the_address_is_the_default_interfaces_own():

@@ -76,6 +76,7 @@ def test_ci_names_the_runners_mirror_then_ubuntus_then_two_outside_canonical_and
         "http://x/$(id)/",
         "http://x/ubuntu/\nURIs: y",
         " ",
+        "http://x/ubuntu/\nhttp://y/ubuntu/",
     ],
 )
 def test_molecule_refuses_a_chain_that_is_not_plain_http_addresses(tmp_path, mirror):
