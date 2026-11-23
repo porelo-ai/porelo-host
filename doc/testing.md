@@ -159,9 +159,9 @@ keys, read into a pipe only), `REHEARSAL_REPORT` (where it writes only `<name>.*
 in Unix seconds), `REHEARSAL_PERSON_SSH` (`build/rehearse-person-ssh.sh`, which runs one command on the host as the
 person, each argument quoted, standard input forwarded) and `REHEARSAL_SSH` (`build/rehearse-root-ssh.sh`, the same as
 root, through the person's agent alone, whose key the run put among root's keys, and with the SSH session's variables
-dropped); `busy-room` also gets `REHEARSAL_MATRIX_CHECKOUT`: the run's own, or else a clone of porelo-message-matrix
-(`PORELO_REHEARSAL_MATRIX_REPOSITORY`, by default its GitHub address) made in the run's state, so no other checkout on
-the machine is written, and a clone that fails fails the step naming it. On a build box the run's environment names the
+dropped); `busy-room`, kept in porelo-message-matrix and copied here as it is, clones that repository's main into its
+own scratch directory from `REHEARSAL_MATRIX_SOURCE` (a URL, path or bundle; by default its GitHub address), so no
+checkout on the machine is written, and a main that cannot be cloned fails the step. On a build box the run's environment names the
 JDK and Maven settings the busy room builds with (`JAVA_HOME`, `MAVEN_ARGS` without `-o`); the run's own environment,
 such as the window step's `REHEARSAL_WINDOW_VM`, `REHEARSAL_WINDOW_VM_KEY` and `REHEARSAL_WINDOW_CHECKOUT`, reaches it
 too. Beside it,
