@@ -24,6 +24,12 @@ Every push to `main` that builds also publishes one as a snapshot on the pre-rel
 `SHA256SUMS` over the newest five, and `latest.json` naming the newest file, its `sha256` and its `commit`;
 `build/check-snapshot.py <directory>` checks the three agree.
 
+**Roles run through the playbooks**, which load the time limits' factors and day bounds from
+`playbooks/vars/limits.yml` and check their form with `playbooks/tasks/limits.yml`. A play that runs a role of the
+collection alone does both itself, by the installed collection's path
+(`<collections path>/ansible_collections/porelo/host/playbooks/...`, not the collection's name); without the file the
+role stops on an undefined `__porelo_host_*` variable, and without the check a factor out of its range goes unrefused.
+
 **Documentation: [porelo-ai.github.io](https://porelo-ai.github.io)**, all of Porelo's documentation in one site.
 
 [Contributing](CONTRIBUTING.md), and [reporting a vulnerability](SECURITY.md).

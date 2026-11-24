@@ -52,7 +52,9 @@ Every time limit of the host is a default times one of four factors, each 1.0 un
 for how long until something is looked at again, and `porelo_host_limits_retries` for how often, and after what pause,
 a failed step is tried again. A factor is a number from 0.1 to 100 with at most two digits after its dot; anything else
 stops `up` and `down` before they change the host. A waited time is rounded up to a whole second, and a number of tries
-up, never below one. `up` writes the four as Porelo's limits line, `limits: services=1.0,machines=1.0,polling=1.0,retries=1.0`,
+up, never below one. A wait for a machine (the forge, the homeserver, a pool VM coming up) looks again after a fixed
+pause of 2 to 5 seconds and scales only its number of looks by `porelo_host_limits_machines`, so its whole length
+follows the factor while the pause stays as it is. `up` writes the four as Porelo's limits line, `limits: services=1.0,machines=1.0,polling=1.0,retries=1.0`,
 into `/etc/porelo-host/host.yml`, where the host program reads them and hands them on to each Porelo program it starts;
 the Matrix gate takes the same line as `--limits`. The measuring program's limits and the daily sweep of expired task
 tokens stay as they are.
