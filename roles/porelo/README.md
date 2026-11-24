@@ -74,6 +74,16 @@ the pin advanced by a successful follow. Setup generates `read/organization` onc
 public half as `organization_read_key` in `host.json`. `org renew-pin` takes replacement login/key lines on standard input. The directory and its `projects` and `persons`
 subdirectories permit traversal so member ACLs work; credentials and applied state remain root-only.
 
+**A re-rented host keeps its identity.** Its preparation puts the identity Porelo's vault keeps for it beside the
+machine file, as root's `0600` `identity.json`. Before any read key is made or the follow runs, `up` hands that file
+to `porelo-host identity import` on standard input. The import writes the organization's and the repositories' read keys
+in the host program's own form. On a fresh host it also replaces cloud-init's first-boot SSH host keys. `up` then
+removes the file, whether the import passed or not, and reloads sshd when the import answered `imported`. So the read
+keys stay registered at the central forge between rentals, and a person's `known_hosts` stays valid. No key text
+becomes a variable, an output or a command line. Without the file, `up` makes a new identity as above. `down` leaves
+the identity in the vault and removes nothing at the central forge; giving a host up for good is Porelo's
+`porelo host give-up`.
+
 Where the host has its Matrix gate installed, follow runs `keep-room --project <project> --persons <logins>` as
 `porelo-matrix`, with only unlocked members, on every follow, and names who left the room in its journal. The project
 file then names the gate as `homeserver` and the room `keep-room` answered; on a host with no gate both are null, and

@@ -70,6 +70,63 @@
     - {path: /etc/porelo-host/organization/read, mode: '0700'}
     - {path: /etc/porelo-host/organization/projects, mode: '0711'}
 
+# The host program reads it before any verb, the identity's import first; a forge host's forge role wrote its own.
+- name: organization | Name the host to the helper when no forge runs
+  ansible.builtin.copy:
+    dest: /etc/porelo-host/forge.conf
+    content: "host={{ porelo_host_name }}\naccount=\n"
+    owner: root
+    group: root
+    mode: "0644"
+  when: not (porelo_host_forge | default(false) | bool)
+
+# A re-rented host brings the identity it had: the organization's and the repositories' read keys and its SSH host
+# keys, which the host program writes in its own form. The file goes to the program on standard input alone and is
+# removed after, so no key text becomes a variable, an output or a command line; the import's own output and refusal
+# hold none.
+- name: organization | Inspect a brought identity before importing it
+  ansible.builtin.stat:
+    path: "{{ __porelo_identity_file }}"
+    follow: false
+  register: __porelo_identity_stat
+
+- name: organization | Take the host's brought identity
+  when: __porelo_identity_stat.stat.exists
+  block:
+    - name: organization | Require a brought identity only root can read
+      ansible.builtin.assert:
+        that:
+          - __porelo_identity_stat.stat.isreg and not __porelo_identity_stat.stat.islnk and
+            __porelo_identity_stat.stat.uid == 0 and __porelo_identity_stat.stat.mode == '0600'
+        fail_msg: "{{ __porelo_identity_file }} must be a plain 0600 file of root's"
+        quiet: true
+
+    - name: organization | Import the identity through the host program
+      ansible.builtin.shell:
+        cmd: >-
+          env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin /usr/sbin/porelo-host identity import
+          < {{ __porelo_identity_file | quote }}
+      register: __porelo_identity_import
+      changed_when: __porelo_identity_import.stdout == 'imported'
+      notify: Serve the host's own SSH host keys
+
+    - name: organization | Require one of the import's two answers
+      ansible.builtin.assert:
+        that:
+          - __porelo_identity_import.stdout in ['imported', 'unchanged']
+        fail_msg: "porelo-host identity import answered neither imported nor unchanged"
+        quiet: true
+      when: not ansible_check_mode
+  always:
+    - name: organization | Remove the brought identity
+      ansible.builtin.file:
+        path: "{{ __porelo_identity_file }}"
+        state: absent
+
+# A later failure must not leave a rerun whose import is unchanged while sshd still serves the first-boot keys.
+- name: organization | Serve the imported host keys before the play goes on
+  ansible.builtin.meta: flush_handlers
+
 - name: organization | Write the adapter settings without interpreting them
   ansible.builtin.copy:
     dest: /etc/porelo-host/organization/organization.yml
@@ -132,15 +189,6 @@
   ansible.builtin.set_fact:
     porelo_host_organization_read_key: >-  # noqa: var-naming[no-role-prefix]
       {{ __porelo_organization_public.stdout | trim }}
-
-- name: organization | Name the host to the helper when no forge runs
-  ansible.builtin.copy:
-    dest: /etc/porelo-host/forge.conf
-    content: "host={{ porelo_host_name }}\naccount=\n"
-    owner: root
-    group: root
-    mode: "0644"
-  when: not (porelo_host_forge | default(false) | bool)
 
 - name: organization | Install the follow's service and persistent timer
   ansible.builtin.template:

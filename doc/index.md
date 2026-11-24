@@ -11,7 +11,7 @@ signed repository and packages, which make Porelo's account with linger and subo
 and every agent the repository publishes). The second play begins with the [waiting stop](lines.md), which no role of
 the collection asks for at present, then runs `forge` and `vm_pool` where the host settings ask for them, the Matrix
 homeserver unless `porelo_host_room` is off, and `porelo`'s person part (the people's sudo rules, the organization's
-follow and the daily task token sweep), and ends with `base`'s host part, which writes and prints what the host's card
+follow and the daily task token sweep, after the identity a re-rented host brings), and ends with `base`'s host part, which writes and prints what the host's card
 needs. A second `up` runs both plays from the top and changes only what differs, read from the commands' own exit
 codes and `--json` output, so resuming is idempotence, with no marker file of the playbook's own.
 

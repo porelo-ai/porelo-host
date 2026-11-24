@@ -1,4 +1,10 @@
 ---
+# sshd reads its host keys again on reload, so a re-rented host serves the identity's keys from then on.
+- name: Serve the host's own SSH host keys
+  ansible.builtin.service:
+    name: ssh
+    state: reloaded
+
 - name: Reload SSH to read the people's keys
   ansible.builtin.service:
     name: "{{ 'ssh' if ansible_facts['os_family'] == 'Debian' else 'sshd' }}"

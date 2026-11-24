@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A re-rented host keeps its identity: `up` hands the `identity.json` its preparation puts beside the machine file to
+  `porelo-host identity import` on standard input, before any read key is made or the follow runs, removes the file
+  whatever the outcome, and reloads sshd when the import answered `imported`; so the read keys stay registered at the
+  central forge and the SSH host keys stay the same between rentals.
 - The check before `up` tries a probe whose connection fails again, 3 times 2 seconds apart, both times
   `porelo_host_limits_retries`, and fails it only when every try failed, naming each try in the finding; a short stall
   of a mirror no longer stops `up` on a host that already has everything.
