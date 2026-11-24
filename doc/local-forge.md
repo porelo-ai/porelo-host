@@ -450,7 +450,10 @@ The push itself still decides.
 The gathered push asks for the central token with hidden input in the SSH terminal and stores it nowhere; git
 receives it only as a header in its environment, never on a command line, and the command's output names no token. The
 token for a project's initial repository migration arrives only on `org refresh` standard input. A project stands
-as `waiting-for-token` until it arrives. Refresh passes it once to the root project helper on a pipe; the helper adds
+as `waiting-for-token` until it arrives. Refresh takes a token only while the last pass recorded something waiting for
+one - a project, a repository or a take-off held on the host - or before any pass has recorded anything, on a host
+with a forge of its own as on one without; otherwise it changes nothing and exits 65 with "nothing on this host waits
+for a token; org refresh requires empty standard input". Refresh passes it once to the root project helper on a pipe; the helper adds
 a read-only deploy key to the central repository and migrates the repository the organization state names through
 Forgejo's private socket API, with the token in the request body alone. HTTPS and git SSH project addresses are
 normalized to the central forge's HTTPS clone address. The central forge must match the organization's adapter

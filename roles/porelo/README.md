@@ -51,7 +51,10 @@ standard input, has had `porelo org add-read-key` add the host's read key; the t
 state with the host's project records. With a forge, it registers each new project under an unlocked project admin
 and that admin's current signing key. The project stands as `waiting-for-token` until `org refresh` receives the host
 admin's central token on standard input and migrates the repository the state names. The token is kept in memory
-for that refresh alone. Empty standard input follows immediately without migrating a waiting repository.
+for that refresh alone. Empty standard input follows immediately without migrating a waiting repository. A token
+is taken only while the last pass recorded a project, a repository or a held take-off waiting for one, or before any
+pass recorded anything, with a forge or without; otherwise refresh changes nothing and exits 65 with "nothing on this
+host waits for a token; org refresh requires empty standard input".
 A host without a forge admits the members without running a forge command.
 
 Taking a project off runs the project helper's removal after membership revocation. An unpushed commit keeps the
