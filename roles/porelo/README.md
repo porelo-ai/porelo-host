@@ -54,7 +54,8 @@ admin's central token on standard input and migrates the repository the state na
 for that refresh alone. Empty standard input follows immediately without migrating a waiting repository. A token
 is taken only while the last pass recorded a project, a repository or a held take-off waiting for one, or before any
 pass recorded anything, with a forge or without; otherwise refresh changes nothing and exits 65 with "nothing on this
-host waits for a token; org refresh requires empty standard input".
+host waits for a token; org refresh requires empty standard input". A project or repository signed since the last pass
+is seen only after the next one, so `org follow` runs first.
 A host without a forge admits the members without running a forge command.
 
 Taking a project off runs the project helper's removal after membership revocation. An unpushed commit keeps the
